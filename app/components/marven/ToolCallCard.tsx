@@ -16,16 +16,16 @@ interface ToolCallCardProps {
 
 function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown> }) {
   if (tool === "read_file" || tool === "write_file") {
-    return <span className="text-[#555]">{String(args.path ?? "")}</span>;
+    return <span className="text-[#888]">{String(args.path ?? "")}</span>;
   }
   if (tool === "run_command") {
-    return <span className="text-[#555] font-mono">{String(args.command ?? "").slice(0, 40)}</span>;
+    return <span className="text-[#888] font-mono">{String(args.command ?? "").slice(0, 40)}</span>;
   }
   if (tool === "search_files") {
-    return <span className="text-[#555]">&quot;{String(args.query ?? "")}&quot;</span>;
+    return <span className="text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
   }
   if (tool === "list_files") {
-    return <span className="text-[#555]">{String(args.path ?? ".")}</span>;
+    return <span className="text-[#888]">{String(args.path ?? ".")}</span>;
   }
   return null;
 }
@@ -42,15 +42,15 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
     <div
       className={`overflow-hidden rounded-md border transition-colors ${
         isActive
-          ? "border-[#2a2a1a] bg-[rgba(209,154,102,0.04)]"
-          : "border-[#1a1a1a] bg-[#0d0d0d]"
+          ? "border-[#3d3020] bg-[rgba(209,154,102,0.07)]"
+          : "border-[#333] bg-[#1e1e1e]"
       }`}
     >
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="text-[11px]">{icon}</span>
         <span
           className={`font-mono text-[11px] ${
-            isActive ? "text-[#d19a66]" : isDone ? "text-[#666]" : "text-[#444]"
+            isActive ? "text-[#d19a66]" : isDone ? "text-[#999]" : "text-[#777]"
           }`}
         >
           {tool}
@@ -68,14 +68,14 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
               ))}
             </span>
           )}
-          {isDone && <span className="text-[10px] text-[#444]">✓</span>}
-          {isError && <span className="text-[10px] text-red-800">✗</span>}
+          {isDone && <span className="text-[10px] text-[#666]">✓</span>}
+          {isError && <span className="text-[10px] text-red-500">✗</span>}
         </div>
       </div>
 
       {output && (
-        <div className="border-t border-[#1a1a1a] px-3 py-1.5">
-          <p className="font-mono text-[10px] text-[#333] leading-5 whitespace-pre-wrap break-all line-clamp-3">
+        <div className="border-t border-[#333] px-3 py-1.5">
+          <p className="font-mono text-[10px] text-[#888] leading-5 whitespace-pre-wrap break-all line-clamp-3">
             {output}
           </p>
         </div>

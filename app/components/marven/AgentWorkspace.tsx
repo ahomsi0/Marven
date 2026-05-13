@@ -51,9 +51,9 @@ export function AgentWorkspace({
   onRefreshFiles,
 }: AgentWorkspaceProps) {
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-[#0a0a0a]">
+    <div className="flex h-full min-h-0 overflow-hidden bg-[#1a1a1a]">
       {/* Left — Agent panel */}
-      <div className="flex w-[320px] min-w-[320px] flex-col border-r border-[#1a1a1a]">
+      <div className="flex w-[320px] min-w-[320px] flex-col border-r border-[#333]">
         <WorkspaceBar
           workspaceRoot={workspaceRoot}
           provider={provider}
