@@ -32,10 +32,13 @@ function toGroqMessages(
   }) as Array<Record<string, unknown>>;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function groqAgentStep(
   messages: InternalMessage[],
   tools: ToolDefinition[],
-  model: string
+  model: string,
+  _attempt = 0
 ): Promise<ProviderStepResult> {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error("GROQ_API_KEY is not set in .env.local");
@@ -58,15 +61,19 @@ export async function groqAgentStep(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
 
-    if (res.status === 429) {
-      let retryMsg = "Rate limit reached.";
+    if (res.status === 429 && _attempt < 3) {
+      let waitMs = 6_000;
       try {
         const parsed = JSON.parse(text);
         const msg: string = parsed?.error?.message ?? "";
-        const match = msg.match(/try again in ([\d.]+s)/i);
-        retryMsg = match ? `Rate limit reached — retry in ${match[1]}.` : `Rate limit reached. ${msg}`;
+        const match = msg.match(/try again in ([\d.]+)s/i);
+        if (match) waitMs = Math.ceil(parseFloat(match[1]) * 1000) + 500;
       } catch { /* ignore */ }
-      throw new Error(retryMsg);
+      await sleep(waitMs);
+      return groqAgentStep(messages, tools, model, _attempt + 1);
+    }
+    if (res.status === 429) {
+      throw new Error("Rate limit reached. Too many retries — try again in a moment.");
     }
 
     // Llama models sometimes output <function=name>{...}</function> (native format)
