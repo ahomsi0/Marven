@@ -66,4 +66,29 @@ describe("runAgentLoop", () => {
 
     expect(events.some((e) => e.type === "error" && e.code === "tools_not_supported")).toBe(true);
   });
+
+  it("emits max_iterations error when loop exceeds 20 tool calls without a text response", async () => {
+    const mockStep = vi.fn().mockResolvedValue({
+      type: "tool_call",
+      callId: "c1",
+      tool: "echo",
+      args: { text: "hi" },
+    });
+    const mockExecuteTool = vi.fn().mockResolvedValue("hi");
+    const events: AgentEvent[] = [];
+
+    for await (const event of runAgentLoop({
+      messages: [{ role: "user", content: "loop forever" }],
+      tools: [echoTool],
+      workspaceRoot: "/tmp",
+      providerStep: mockStep,
+      executeToolFn: mockExecuteTool,
+    })) {
+      events.push(event);
+    }
+
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.type).toBe("error");
+    expect(lastEvent.code).toBe("max_iterations");
+  });
 });
