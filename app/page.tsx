@@ -1007,6 +1007,7 @@ export default function Home() {
         agentTerminalOutput={agentTerminalOutput}
         onAgentInputChange={setAgentInput}
         onAgentSend={() => { agentStream.send(agentInput); setAgentInput(""); }}
+        onAgentStop={agentStream.stop}
         onOpenFolder={handleOpenFolder}
         onInputChange={setInput}
         onSend={() => sendMessage(input.trim())}
@@ -1043,7 +1044,7 @@ export default function Home() {
       )}
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[480px] rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] p-4 shadow-2xl">
+          <div className="w-[480px] rounded-lg border border-[#333] bg-[#1e1e1e] p-4 shadow-2xl">
             <p className="mb-3 text-[12px] text-[#888]">Enter the full folder path to open as workspace:</p>
             <input
               autoFocus
@@ -1055,13 +1056,13 @@ export default function Home() {
                 if (e.key === "Escape") setFolderInputVisible(false);
               }}
               placeholder="/Users/you/my-project"
-              className="w-full rounded-md border border-[#2a2a2a] bg-[#111] px-3 py-2 font-mono text-[12px] text-[#ccc] outline-none focus:border-[#d19a66]/50"
+              className="w-full rounded-md border border-[#383838] bg-[#252525] px-3 py-2 font-mono text-[12px] text-[#ccc] outline-none focus:border-[#d19a66]/50"
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setFolderInputVisible(false)}
-                className="rounded-md border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#555] hover:text-[#888]"
+                className="rounded-md border border-[#383838] px-3 py-1.5 text-[11px] text-[#666] hover:text-[#999]"
               >
                 Cancel
               </button>

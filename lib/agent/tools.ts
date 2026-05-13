@@ -114,7 +114,12 @@ export async function executeTool(
     case "write_file": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
       await fs.mkdir(path.dirname(abs), { recursive: true });
-      await fs.writeFile(abs, args.content as string, "utf-8");
+      // Models sometimes emit literal \n instead of actual newlines
+      const content = (args.content as string)
+        .replace(/\\n/g, "\n")
+        .replace(/\\t/g, "\t")
+        .replace(/\\r/g, "\r");
+      await fs.writeFile(abs, content, "utf-8");
       return `Written: ${args.path}`;
     }
 

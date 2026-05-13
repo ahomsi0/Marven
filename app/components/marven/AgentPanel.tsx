@@ -13,6 +13,7 @@ interface AgentPanelProps {
   error: string | null;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  onStop: () => void;
 }
 
 export function AgentPanel({
@@ -22,6 +23,7 @@ export function AgentPanel({
   error,
   onInputChange,
   onSend,
+  onStop,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -100,16 +102,29 @@ export function AgentPanel({
             className="min-h-[36px] flex-1 resize-none rounded-md border border-[#383838] bg-[#252525] px-3 py-2 text-[12px] text-[#ddd] placeholder-[#555] outline-none transition-colors focus:border-[#555] disabled:opacity-40"
             style={{ maxHeight: 120, overflowY: "auto" }}
           />
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={!input.trim() || isRunning}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#383838] bg-[#252525] text-[#d19a66] transition-colors hover:border-[#d19a66]/50 disabled:opacity-30"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-            </svg>
-          </button>
+          {isRunning ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-red-700/50 bg-red-950/30 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/50"
+              title="Stop agent"
+            >
+              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={!input.trim()}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-[#383838] bg-[#252525] text-[#d19a66] transition-colors hover:border-[#d19a66]/50 disabled:opacity-30"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

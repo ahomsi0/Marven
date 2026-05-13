@@ -55,6 +55,7 @@ interface ChatLayoutProps {
   agentTerminalOutput: string;
   onAgentInputChange: (v: string) => void;
   onAgentSend: () => void;
+  onAgentStop: () => void;
   onOpenFolder: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
@@ -83,14 +84,14 @@ function formatSize(bytes: number): string {
 function TypingRow() {
   return (
     <div className="message-in flex justify-start">
-      <div className="border-l border-[rgba(255,255,255,0.1)] pl-3 py-2">
+      <div className="border-l border-[#333] pl-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[#55555c]">
+          <span className="text-[11px] text-[#666]">
             Thinking
           </span>
-          <span className="dot-1 inline-block h-1.5 w-1.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
-          <span className="dot-2 inline-block h-1.5 w-1.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
-          <span className="dot-3 inline-block h-1.5 w-1.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
+          <span className="dot-1 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
+          <span className="dot-2 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
+          <span className="dot-3 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
         </div>
       </div>
     </div>
@@ -131,6 +132,7 @@ export function ChatLayout({
   agentTerminalOutput,
   onAgentInputChange,
   onAgentSend,
+  onAgentStop,
   onOpenFolder,
   onInputChange,
   onSend,
@@ -172,7 +174,7 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[#0a0a0b] text-[#e8e8ea]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#1a1a1a] text-[#d4d4d4]">
       {/* TitleBar — draggable, frameless window controls */}
       <TitleBar />
 
@@ -193,7 +195,7 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="bg-[#111113] border-b border-[rgba(255,255,255,0.07)] px-6 pb-3 pt-3 sm:px-8">
+          <header className="bg-[#1e1e1e] border-b border-[#333] px-6 pb-3 pt-3 sm:px-8">
             <div className={`mx-auto w-full space-y-2.5 ${mode === "agent" ? "max-w-none" : "max-w-[920px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -201,7 +203,7 @@ export function ChatLayout({
                   <button
                     type="button"
                     onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-lg p-1.5 text-[#55555c] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#8a8a92]"
+                    className="rounded-lg p-1.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#999]"
                     aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                     title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                   >
@@ -212,18 +214,18 @@ export function ChatLayout({
 
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
-                      <h1 className="text-[17px] font-semibold text-[#e8e8ea]">
+                      <h1 className="text-[17px] font-semibold text-[#d4d4d4]">
                         {mode === "agent" ? "Marven Agent" : "Marven"}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
-                    <span className="text-[12px] text-[#55555c]">
+                    <span className="text-[12px] text-[#666]">
                       {mode === "agent" ? "File-aware workspace" : "AI Interface"}
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[11px] text-[#55555c]">
+                <div className="text-[11px] text-[#666]">
                   {tokenUsage.totalTokens.toLocaleString()} tokens
                 </div>
               </div>
@@ -231,14 +233,14 @@ export function ChatLayout({
               {/* Controls row */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Provider toggle */}
-                <div className="inline-flex rounded-lg bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.09)] p-0.5">
+                <div className="inline-flex rounded-lg bg-[#252525] border border-[#383838] p-0.5">
                   <button
                     type="button"
                     onClick={() => onProviderChange("groq")}
                     className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                       provider === "groq"
-                        ? "bg-[rgba(255,255,255,0.1)] text-[#e8e8ea]"
-                        : "text-[#6a6a72] hover:text-[#c0c0c8]"
+                        ? "bg-[#333] text-[#d4d4d4]"
+                        : "text-[#777] hover:text-[#ccc]"
                     }`}
                   >
                     Cloud
@@ -248,8 +250,8 @@ export function ChatLayout({
                     onClick={() => onProviderChange("ollama")}
                     className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                       provider === "ollama"
-                        ? "bg-[rgba(255,255,255,0.1)] text-[#e8e8ea]"
-                        : "text-[#6a6a72] hover:text-[#c0c0c8]"
+                        ? "bg-[#333] text-[#d4d4d4]"
+                        : "text-[#777] hover:text-[#ccc]"
                     }`}
                   >
                     Ollama
@@ -259,18 +261,18 @@ export function ChatLayout({
                 {/* Model selector */}
                 <div className="relative min-w-[200px]">
                   {modelsLoading ? (
-                    <div className="rounded-lg border border-[rgba(255,255,255,0.09)] px-3 py-1.5 text-[12px] text-[#55555c]">
+                    <div className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]">
                       Loading models...
                     </div>
                   ) : modelsError ? (
                     <div
-                      className="rounded-lg border border-[rgba(255,255,255,0.09)] px-3 py-1.5 text-[12px] text-[#55555c]"
+                      className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]"
                       title={modelsError}
                     >
                       Models unavailable
                     </div>
                   ) : models.length === 0 ? (
-                    <div className="rounded-lg border border-[rgba(255,255,255,0.09)] px-3 py-1.5 text-[12px] text-[#55555c]">
+                    <div className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]">
                       No models found
                     </div>
                   ) : (
@@ -278,7 +280,7 @@ export function ChatLayout({
                       <select
                         value={selectedModel}
                         onChange={(event) => onModelChange(event.target.value)}
-                        className="w-full appearance-none rounded-lg bg-transparent border border-[rgba(255,255,255,0.09)] px-3 py-1.5 pr-8 text-[12px] text-[#c0c0c8] outline-none focus:border-[rgba(255,255,255,0.18)]"
+                        className="w-full appearance-none rounded-lg bg-transparent border border-[#383838] px-3 py-1.5 pr-8 text-[12px] text-[#ccc] outline-none focus:border-[#555]"
                       >
                         {models.map((model) => (
                           <option key={model.name} value={model.name}>
@@ -288,7 +290,7 @@ export function ChatLayout({
                         ))}
                       </select>
                       <svg
-                        className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#55555c]"
+                        className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#666]"
                         fill="none"
                         stroke="currentColor"
                         strokeWidth={2.2}
@@ -307,7 +309,7 @@ export function ChatLayout({
                   className={`rounded-lg px-2.5 py-1 text-[11px] transition-colors border ${
                     speechEnabled
                       ? "bg-[rgba(91,156,246,0.12)] border-[rgba(91,156,246,0.3)] text-[#5b9cf6]"
-                      : "bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.09)] text-[#8a8a92] hover:text-[#e8e8ea] hover:bg-[rgba(255,255,255,0.08)]"
+                      : "bg-[#252525] border-[#383838] text-[#888] hover:text-[#d4d4d4] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {speechEnabled ? "Speech on" : "Speech off"}
@@ -324,7 +326,7 @@ export function ChatLayout({
                       ? voiceState === "command-listening"
                         ? "bg-[rgba(239,68,68,0.1)] border-[rgba(239,68,68,0.3)] text-[#f87171]"
                         : "bg-[rgba(91,156,246,0.12)] border-[rgba(91,156,246,0.3)] text-[#5b9cf6]"
-                      : "bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.09)] text-[#8a8a92] hover:text-[#e8e8ea] hover:bg-[rgba(255,255,255,0.08)]"
+                      : "bg-[#252525] border-[#383838] text-[#888] hover:text-[#d4d4d4] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {isVoiceSupported
@@ -334,13 +336,13 @@ export function ChatLayout({
                     : "Voice unavailable"}
                 </button>
                 {voiceError && (
-                  <span className="text-[10px] text-[rgba(239,68,68,0.7)]" title={voiceError}>
+                  <span className="text-[10px] text-red-500/70" title={voiceError}>
                     mic: {voiceError}
                   </span>
                 )}
                 {wakeEnabled && lastHeard && (
                   <span
-                    className="max-w-[220px] truncate text-[10px] text-[#55555c]"
+                    className="max-w-[220px] truncate text-[10px] text-[#666]"
                     title={`Last heard: "${lastHeard}"`}
                   >
                     heard: &ldquo;{lastHeard}&rdquo;
@@ -367,6 +369,7 @@ export function ChatLayout({
               terminalOutput={agentTerminalOutput}
               onInputChange={onAgentInputChange}
               onSend={onAgentSend}
+              onStop={onAgentStop}
               onOpenFolder={onOpenFolder}
               onSelectFile={onSelectAgentFile}
               onFileContentChange={onAgentFileContentChange}
@@ -382,7 +385,7 @@ export function ChatLayout({
               >
                 <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
                   {messages.length === 0 && !isLoading && (
-                    <div className="message-in py-16 text-center text-[13px] text-[#38383e]">
+                    <div className="message-in py-16 text-center text-[13px] text-[#555]">
                       Start a conversation
                     </div>
                   )}
@@ -396,7 +399,7 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="bg-[#111113] border-t border-[rgba(255,255,255,0.07)] mt-auto px-6 pb-10 pt-3 sm:px-10 sm:pb-12">
+              <footer className="bg-[#1e1e1e] border-t border-[#333] mt-auto px-6 pb-10 pt-3 sm:px-10 sm:pb-12">
                 <div className="mx-auto w-full max-w-[720px]">
                   <InputBar
                     value={input}
@@ -408,7 +411,7 @@ export function ChatLayout({
                     onVoiceClick={onVoiceClick}
                     onSlashCommand={handleSlashCommand}
                   />
-                  <p className="mt-2 text-center text-[10px] text-[#2e2e34]">
+                  <p className="mt-2 text-center text-[10px] text-[#444]">
                     Enter to send · Shift + Enter for new line
                   </p>
                 </div>

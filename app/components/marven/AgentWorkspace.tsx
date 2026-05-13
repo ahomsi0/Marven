@@ -21,6 +21,7 @@ interface AgentWorkspaceProps {
   terminalOutput: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  onStop: () => void;
   onOpenFolder: () => void;
   onSelectFile: (path: string) => void;
   onFileContentChange: (value: string) => void;
@@ -44,6 +45,7 @@ export function AgentWorkspace({
   terminalOutput,
   onInputChange,
   onSend,
+  onStop,
   onOpenFolder,
   onSelectFile,
   onFileContentChange,
@@ -68,6 +70,7 @@ export function AgentWorkspace({
             error={error}
             onInputChange={onInputChange}
             onSend={onSend}
+            onStop={onStop}
           />
         </div>
       </div>
