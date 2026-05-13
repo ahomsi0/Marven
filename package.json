@@ -12,14 +12,75 @@
     "helper": "menubar-helper/MarvenHelper",
     "launch": "concurrently \"npm run dev\" \"sleep 3 && menubar-helper/MarvenHelper\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "electron:build": "next build && node scripts/prepare-standalone.js && electron-builder"
   },
   "build": {
     "appId": "com.marven.app",
     "productName": "Marven",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "!electron/assets/icon.svg"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "nextjs-server",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "nextjs-server/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "nextjs-server/public"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dmg"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.png"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.png",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   },
   "dependencies": {
@@ -38,6 +99,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",

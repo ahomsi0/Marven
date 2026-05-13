@@ -1,8 +1,41 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog } = require('electron');
+const { spawn } = require('child_process');
+const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+let serverProcess = null;
+
+function waitForPort(port, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    function attempt() {
+      const sock = net.createConnection({ port, host: '127.0.0.1' });
+      sock.once('connect', () => { sock.destroy(); resolve(true); });
+      sock.once('error', () => {
+        sock.destroy();
+        if (Date.now() < deadline) setTimeout(attempt, 200);
+        else resolve(false);
+      });
+    }
+    attempt();
+  });
+}
+
+function startNextServer() {
+  if (isDev) return Promise.resolve();
+  const serverDir = path.join(process.resourcesPath, 'nextjs-server');
+  const serverScript = path.join(serverDir, 'server.js');
+  serverProcess = spawn(process.execPath, [serverScript], {
+    cwd: serverDir,
+    env: { ...process.env, PORT: '3000', NODE_ENV: 'production', HOSTNAME: '127.0.0.1' },
+    stdio: 'ignore',
+  });
+  serverProcess.unref();
+  return waitForPort(3000);
+}
 
 // ── Load icons from buffer (more reliable than createFromPath with spaces in path) ──
 function loadIcon(filename, scaleFactor = 1) {
@@ -41,7 +74,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 640,
     frame: false,
-    backgroundColor: '#060a14',
+    backgroundColor: '#1a1a1a',
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -61,11 +94,7 @@ function createWindow() {
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
 
-  mainWindow.loadURL(
-    isDev
-      ? 'http://localhost:3000'
-      : `file://${path.join(__dirname, '../out/index.html')}`
-  );
+  mainWindow.loadURL('http://localhost:3000');
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
@@ -169,7 +198,12 @@ ipcMain.handle('dialog-open-folder', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-app.whenReady().then(() => {
+app.on('before-quit', () => {
+  if (serverProcess) serverProcess.kill();
+});
+
+app.whenReady().then(async () => {
+  await startNextServer();
   // Set custom dock icon on macOS
   if (process.platform === 'darwin' && !APP_ICON.isEmpty()) {
     app.dock.setIcon(APP_ICON);
