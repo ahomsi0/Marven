@@ -35,9 +35,12 @@ export async function* runAgentLoop(
     try {
       result = await providerStep(history, tools);
     } catch (err) {
-      const error = err as Error;
-      if (error.name === "OllamaToolsNotSupportedError") {
-        const msg = error.message;
+      if (!(err instanceof Error)) {
+        yield { type: "error", code: "provider_error", message: String(err) };
+        return;
+      }
+      if (err.name === "OllamaToolsNotSupportedError") {
+        const msg = err.message;
         const suggestionsMatch = msg.match(/Compatible Ollama models: (.+)$/);
         const suggestions = suggestionsMatch
           ? suggestionsMatch[1].split(", ")
@@ -50,7 +53,7 @@ export async function* runAgentLoop(
         };
         return;
       }
-      yield { type: "error", code: "provider_error", message: error.message };
+      yield { type: "error", code: "provider_error", message: err.message };
       return;
     }
 
@@ -60,7 +63,6 @@ export async function* runAgentLoop(
       return;
     }
 
-    // Tool call
     toolCallCount++;
     yield {
       type: "tool_call",
@@ -80,7 +82,7 @@ export async function* runAgentLoop(
     try {
       output = await exec(result.tool, result.args, workspaceRoot);
     } catch (err) {
-      output = `Error executing tool: ${(err as Error).message}`;
+      output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
     }
 
     const truncated = output.length > 4_000;
