@@ -22,6 +22,7 @@ interface AgentWorkspaceProps {
   onInputChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
+  onSlashCommand: (cmd: string) => void;
   onOpenFolder: () => void;
   onSelectFile: (path: string) => void;
   onFileContentChange: (value: string) => void;
@@ -46,6 +47,7 @@ export function AgentWorkspace({
   onInputChange,
   onSend,
   onStop,
+  onSlashCommand,
   onOpenFolder,
   onSelectFile,
   onFileContentChange,
@@ -71,6 +73,7 @@ export function AgentWorkspace({
             onInputChange={onInputChange}
             onSend={onSend}
             onStop={onStop}
+            onSlashCommand={onSlashCommand}
           />
         </div>
       </div>

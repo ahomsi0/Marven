@@ -1008,6 +1008,21 @@ export default function Home() {
         onAgentInputChange={setAgentInput}
         onAgentSend={() => { agentStream.send(agentInput); setAgentInput(""); }}
         onAgentStop={agentStream.stop}
+        onAgentSlashCommand={(cmd) => {
+          switch (cmd) {
+            case "/clear":
+              agentStream.clearMessages();
+              break;
+            case "/refresh":
+              loadWorkspaceFiles().catch(() => {});
+              break;
+            case "/help":
+              agentStream.injectAssistantMessage(
+                "**Agent Commands**\n\n- `/clear` — clear this conversation\n- `/refresh` — reload the workspace file list\n- `/help` — show this message\n\nType a task like *\"add a dark mode toggle\"* or *\"refactor the auth module\"* and the agent will use tools to read, write, and run commands in your workspace."
+              );
+              break;
+          }
+        }}
         onOpenFolder={handleOpenFolder}
         onInputChange={setInput}
         onSend={() => sendMessage(input.trim())}

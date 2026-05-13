@@ -154,5 +154,15 @@ export function useAgentStream({ provider, model, workspaceRoot }: UseAgentStrea
     setError(null);
   }, []);
 
-  return { messages, isRunning, error, send, stop, clearMessages };
+  const injectAssistantMessage = useCallback((content: string) => {
+    const msg: AgentMessage = {
+      id: `sys-${Date.now()}`,
+      role: "assistant",
+      content,
+      toolCalls: [],
+    };
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
+  return { messages, isRunning, error, send, stop, clearMessages, injectAssistantMessage };
 }

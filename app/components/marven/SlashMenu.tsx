@@ -15,15 +15,22 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { command: "/briefing", description: "Morning briefing — time, weather & news" },
 ];
 
+export const AGENT_SLASH_COMMANDS: SlashCommand[] = [
+  { command: "/clear", description: "Clear agent conversation" },
+  { command: "/refresh", description: "Refresh workspace file list" },
+  { command: "/help", description: "Show agent commands" },
+];
+
 interface SlashMenuProps {
   query: string;
   activeIndex: number;
+  commands?: SlashCommand[];
   onSelect: (command: string) => void;
   onSetActive: (index: number) => void;
 }
 
-export function SlashMenu({ query, activeIndex, onSelect, onSetActive }: SlashMenuProps) {
-  const matches = SLASH_COMMANDS.filter((c) =>
+export function SlashMenu({ query, activeIndex, commands = SLASH_COMMANDS, onSelect, onSetActive }: SlashMenuProps) {
+  const matches = commands.filter((c) =>
     c.command.slice(1).startsWith(query)
   );
 

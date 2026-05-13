@@ -56,6 +56,7 @@ interface ChatLayoutProps {
   onAgentInputChange: (v: string) => void;
   onAgentSend: () => void;
   onAgentStop: () => void;
+  onAgentSlashCommand: (cmd: string) => void;
   onOpenFolder: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
@@ -133,6 +134,7 @@ export function ChatLayout({
   onAgentInputChange,
   onAgentSend,
   onAgentStop,
+  onAgentSlashCommand,
   onOpenFolder,
   onInputChange,
   onSend,
@@ -370,6 +372,7 @@ export function ChatLayout({
               onInputChange={onAgentInputChange}
               onSend={onAgentSend}
               onStop={onAgentStop}
+              onSlashCommand={onAgentSlashCommand}
               onOpenFolder={onOpenFolder}
               onSelectFile={onSelectAgentFile}
               onFileContentChange={onAgentFileContentChange}

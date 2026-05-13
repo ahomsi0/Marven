@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ToolCallCard } from "./ToolCallCard";
+import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import type { AgentMessage } from "@/types";
 
 interface AgentPanelProps {
@@ -14,6 +15,7 @@ interface AgentPanelProps {
   onInputChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
+  onSlashCommand: (cmd: string) => void;
 }
 
 export function AgentPanel({
@@ -24,14 +26,35 @@ export function AgentPanel({
   onInputChange,
   onSend,
   onStop,
+  onSlashCommand,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const menuOpen = input.startsWith("/") && !input.includes(" ");
+  const query = menuOpen ? input.slice(1) : "";
+  const matches = AGENT_SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
+  const [menuActiveIdx, setMenuActiveIdx] = useState(0);
+
+  useEffect(() => { setMenuActiveIdx(0); }, [query]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isRunning]);
 
+  function selectCommand(cmd: string) {
+    onSlashCommand(cmd);
+    onInputChange("");
+    textareaRef.current?.focus();
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (menuOpen && matches.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMenuActiveIdx((i) => (i + 1) % matches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setMenuActiveIdx((i) => (i - 1 + matches.length) % matches.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) selectCommand(sel.command); return; }
+      if (e.key === "Escape") { e.preventDefault(); onInputChange(""); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSend();
@@ -91,14 +114,24 @@ export function AgentPanel({
       </div>
 
       <div className="border-t border-[#333] bg-[#1a1a1a] px-3 py-3">
-        <div className="flex items-end gap-2">
+        <div className="relative flex items-end gap-2">
+          {menuOpen && (
+            <SlashMenu
+              query={query}
+              activeIndex={menuActiveIdx}
+              commands={AGENT_SLASH_COMMANDS}
+              onSelect={selectCommand}
+              onSetActive={setMenuActiveIdx}
+            />
+          )}
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isRunning}
             rows={1}
-            placeholder="Describe what to build or change..."
+            placeholder="Describe what to build... or type / for commands"
             className="min-h-[36px] flex-1 resize-none rounded-md border border-[#383838] bg-[#252525] px-3 py-2 text-[12px] text-[#ddd] placeholder-[#555] outline-none transition-colors focus:border-[#555] disabled:opacity-40"
             style={{ maxHeight: 120, overflowY: "auto" }}
           />
