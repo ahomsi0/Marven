@@ -1,10 +1,11 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -134,17 +135,23 @@ export async function executeTool(
     }
 
     case "search_files": {
-      const query = (args.query as string).replace(/"/g, '\\"');
+      const query = args.query as string;
       const searchPath = args.path
         ? assertSafePath(workspaceRoot, args.path as string)
         : workspaceRoot;
+
+      const extensions = ["ts", "tsx", "js", "jsx", "json", "md"];
+      const includeArgs = extensions.flatMap((ext) => ["--include", `*.${ext}`]);
+
       try {
-        const { stdout } = await execAsync(
-          `grep -r --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.json" --include="*.md" -n "${query}" .`,
-          { cwd: searchPath }
-        );
+        const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, query, "."], {
+          cwd: searchPath,
+        });
         return stdout.trim() || "No matches found";
-      } catch {
+      } catch (err) {
+        // grep exits 1 when no matches found — that's not an error
+        const execErr = err as { code?: number; stdout?: string };
+        if (execErr.code === 1) return "No matches found";
         return "No matches found";
       }
     }
