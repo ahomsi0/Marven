@@ -308,7 +308,7 @@ export function ChatLayout({
                   onClick={onToggleSpeech}
                   className={`rounded-lg px-2.5 py-1 text-[11px] transition-colors border ${
                     speechEnabled
-                      ? "bg-[rgba(91,156,246,0.12)] border-[rgba(91,156,246,0.3)] text-[#5b9cf6]"
+                      ? "bg-[#d19a66]/10 border-[#d19a66]/30 text-[#d19a66]"
                       : "bg-[#252525] border-[#383838] text-[#888] hover:text-[#d4d4d4] hover:bg-[#2a2a2a]"
                   }`}
                 >
@@ -325,7 +325,7 @@ export function ChatLayout({
                     wakeEnabled
                       ? voiceState === "command-listening"
                         ? "bg-[rgba(239,68,68,0.1)] border-[rgba(239,68,68,0.3)] text-[#f87171]"
-                        : "bg-[rgba(91,156,246,0.12)] border-[rgba(91,156,246,0.3)] text-[#5b9cf6]"
+                        : "bg-[#d19a66]/10 border-[#d19a66]/30 text-[#d19a66]"
                       : "bg-[#252525] border-[#383838] text-[#888] hover:text-[#d4d4d4] hover:bg-[#2a2a2a]"
                   }`}
                 >

@@ -141,7 +141,7 @@ export function InputBar({
             type="button"
             onClick={onSend}
             disabled={isLoading || !value.trim()}
-            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#2a2a2a] border border-[#444] text-[#ccc] transition-all hover:bg-[#333] hover:text-[#d4d4d4] disabled:cursor-not-allowed disabled:opacity-25"
+            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
             aria-label="Send message"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
