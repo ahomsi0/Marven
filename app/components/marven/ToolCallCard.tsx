@@ -30,6 +30,31 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
   return null;
 }
 
+const URL_RE = /(https?:\/\/[^\s]+)/;
+
+function OutputWithLinks({ output }: { output: string }) {
+  const parts = output.split(URL_RE);
+  return (
+    <p className="font-mono text-[10px] text-[#888] leading-5 whitespace-pre-wrap break-all line-clamp-3">
+      {parts.map((part, i) =>
+        URL_RE.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#d19a66] underline underline-offset-2 hover:text-[#e0b07a]"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </p>
+  );
+}
+
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
   const icon = TOOL_ICONS[tool] ?? "🔧";
@@ -75,9 +100,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
 
       {output && (
         <div className="border-t border-[#333] px-3 py-1.5">
-          <p className="font-mono text-[10px] text-[#888] leading-5 whitespace-pre-wrap break-all line-clamp-3">
-            {output}
-          </p>
+          <OutputWithLinks output={output} />
         </div>
       )}
     </div>
