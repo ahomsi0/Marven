@@ -3,6 +3,25 @@ import type { ProviderStepResult } from "./groq";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
+interface JsonToolCall { name: string; args: Record<string, unknown> }
+
+function extractJsonToolCall(text: string): JsonToolCall | null {
+  // Match a top-level JSON object anywhere in the text
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]);
+    const name = typeof obj.name === "string" ? obj.name : null;
+    if (!name) return null;
+    // Support both "arguments" and "args" keys
+    const args = (obj.arguments ?? obj.args ?? {}) as Record<string, unknown>;
+    if (typeof args !== "object" || Array.isArray(args)) return null;
+    return { name, args };
+  } catch {
+    return null;
+  }
+}
+
 /** Models known to support tool calling in Ollama */
 export const OLLAMA_TOOL_CAPABLE_MODELS = [
   "llama3.1",
@@ -103,5 +122,15 @@ export async function ollamaAgentStep(
     throw new OllamaToolsNotSupportedError(model);
   }
 
-  return { type: "text", content: (msg.content as string ?? "").trim() };
+  const text: string = (msg.content ?? "").trim();
+
+  // Some models (qwen2.5-coder etc.) output tool calls as inline JSON text.
+  // Try to extract: {"name":"...","arguments":{...}} or {"name":"...","args":{...}}
+  const jsonFallback = extractJsonToolCall(text);
+  if (jsonFallback) {
+    const callId = `ollama-fb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return { type: "tool_call", callId, tool: jsonFallback.name, args: jsonFallback.args };
+  }
+
+  return { type: "text", content: text };
 }
