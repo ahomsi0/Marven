@@ -107,7 +107,7 @@ export interface ToolDefinition {
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, { type: string; description: string }>;
+    properties: Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; description: string }>;
     required: string[];
   };
 }
@@ -122,24 +122,12 @@ export type InternalMessage =
 
 export type AgentEventType = "tool_call" | "tool_result" | "text_delta" | "done" | "error";
 
-export interface AgentEvent {
-  type: AgentEventType;
-  // tool_call
-  callId?: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  // tool_result
-  output?: string;
-  truncated?: boolean;
-  // text_delta
-  delta?: string;
-  // done
-  toolCallCount?: number;
-  // error
-  code?: string;
-  message?: string;
-  suggestions?: string[];
-}
+export type AgentEvent =
+  | { type: "tool_call"; callId: string; tool: string; args: Record<string, unknown> }
+  | { type: "tool_result"; callId: string; output: string; truncated: boolean }
+  | { type: "text_delta"; delta: string }
+  | { type: "done"; toolCallCount: number }
+  | { type: "error"; code: string; message: string; suggestions?: string[] };
 
 export interface WorkspaceSession {
   root: string;
