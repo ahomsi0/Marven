@@ -66,7 +66,8 @@ describe("runAgentLoop", () => {
 
     const errorEvent = events.find((e) => e.type === "error" && e.code === "tools_not_supported");
     expect(errorEvent).toBeDefined();
-    expect(errorEvent?.suggestions).toEqual(["llama3.1"]);
+    if (errorEvent?.type !== "error") throw new Error("expected error event");
+    expect(errorEvent.suggestions).toEqual(["llama3.1"]);
   });
 
   it("emits max_iterations error when loop exceeds 20 tool calls without a text response", async () => {
@@ -91,6 +92,7 @@ describe("runAgentLoop", () => {
 
     const lastEvent = events[events.length - 1];
     expect(lastEvent.type).toBe("error");
+    if (lastEvent.type !== "error") throw new Error("expected error event");
     expect(lastEvent.code).toBe("max_iterations");
   });
 });
