@@ -1,5 +1,6 @@
-import { exec, execFile } from "child_process";
+import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
+import net from "net";
 import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
@@ -44,7 +45,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "run_command",
-    description: "Run a shell command inside the workspace. Use for npm, git, tests, etc.",
+    description: "Run a shell command inside the workspace. Use for npm install, git, tests, builds, etc. Server-starting commands (node server.js, npm start, python -m http.server, etc.) are automatically run in the background and return the local URL immediately.",
     parameters: {
       type: "object",
       properties: {
@@ -79,6 +80,35 @@ export function assertSafePath(workspaceRoot: string, relPath: string): string {
 }
 
 const MAX_READ = 8_000;
+
+function findFreePort(start: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(start, () => {
+      const addr = server.address() as net.AddressInfo;
+      server.close(() => resolve(addr.port));
+    });
+    server.on("error", () => {
+      findFreePort(start + 1).then(resolve, reject);
+    });
+  });
+}
+
+function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    function attempt() {
+      const sock = net.createConnection({ port, host: "127.0.0.1" });
+      sock.once("connect", () => { sock.destroy(); resolve(true); });
+      sock.once("error", () => {
+        sock.destroy();
+        if (Date.now() < deadline) setTimeout(attempt, 200);
+        else resolve(false);
+      });
+    }
+    attempt();
+  });
+}
 
 export async function executeTool(
   name: string,
@@ -133,6 +163,27 @@ export async function executeTool(
       const cwd = args.cwd
         ? assertSafePath(workspaceRoot, args.cwd as string)
         : workspaceRoot;
+
+      // Detect server-starting commands — run them in background and return the URL
+      const serverPattern = /(?:^|\s)(node\s+\S+\.(?:js|mjs)|python\s+-m\s+http\.server|python3?\s+\S+\.py|npx?\s+serve|npm\s+(?:start|run\s+\S+)|bun\s+(?:run\s+\S+|\S+\.(?:js|ts)))\b/i;
+      const portMatch = cmd.match(/\b(\d{4,5})\b/);
+      if (serverPattern.test(cmd)) {
+        const port = portMatch ? parseInt(portMatch[1]) : await findFreePort(3000);
+        const finalCmd = portMatch ? cmd : `${cmd} ${port}`;
+        const child = spawn("sh", ["-c", finalCmd], {
+          cwd,
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+        // Wait up to 3s for the port to open
+        const alive = await waitForPort(port, 3000);
+        if (alive) {
+          return `Server started on port ${port}.\nOpen: http://localhost:${port}`;
+        }
+        return `Server process launched (port ${port}). If the page doesn't load immediately, wait a moment then open http://localhost:${port}`;
+      }
+
       try {
         const { stdout, stderr } = await execAsync(cmd, { cwd, timeout: 30_000 });
         return (stdout + stderr).trim() || "(no output)";
