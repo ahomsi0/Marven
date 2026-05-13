@@ -1,0 +1,1038 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import type {
+  AIProvider,
+  Message,
+  ChatRequest,
+  ChatResponse,
+  OllamaModel,
+  TokenUsage,
+  Conversation,
+  CustomShortcut,
+  HistoryMessage,
+  AgentResponse,
+  WorkspaceFile,
+  ConversationMode,
+} from "@/types";
+import type { UserProfile } from "@/lib/userProfile";
+import { useVoice } from "@/hooks/useVoice";
+import { useAgentStream } from "@/hooks/useAgentStream";
+import { speak, stopSpeaking } from "@/lib/speak";
+import { ChatLayout } from "@/app/components/marven/ChatLayout";
+import { SetupModal } from "@/app/components/marven/SetupModal";
+import { parseCommand } from "@/lib/commandParser";
+import {
+  loadConversations,
+  saveConversations,
+  createConversation,
+  createConversationWithMode,
+  deleteConversation,
+  loadCustomShortcuts,
+  saveCustomShortcuts,
+} from "@/lib/storage";
+import {
+  loadProfile,
+  saveProfile,
+  loadMemories,
+  addMemory,
+} from "@/lib/userProfile";
+
+// ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
+function openUrl(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// ─── Timer detection ──────────────────────────────────────────────────────────
+const TIMER_RE =
+  /(?:set (?:a )?timer for |timer (?:for )?|set (?:a )?timer )(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)/i;
+
+function parseTimer(text: string): { ms: number; label: string } | null {
+  const match = text.trim().match(TIMER_RE);
+  if (!match) return null;
+  const amount = parseFloat(match[1]);
+  const unit = match[2].toLowerCase();
+  let ms: number;
+  let label: string;
+  if (/^(s|sec)/.test(unit)) {
+    ms = amount * 1000;
+    label = `${amount} second${amount !== 1 ? "s" : ""}`;
+  } else if (/^(m|min)/.test(unit)) {
+    ms = amount * 60 * 1000;
+    label = `${amount} minute${amount !== 1 ? "s" : ""}`;
+  } else {
+    ms = amount * 60 * 60 * 1000;
+    label = `${amount} hour${amount !== 1 ? "s" : ""}`;
+  }
+  return { ms, label };
+}
+
+// ─── Clipboard detection ──────────────────────────────────────────────────────
+type ClipboardAction = "read" | "summarize" | "fix-grammar" | null;
+
+function detectClipboardAction(text: string): ClipboardAction {
+  const lower = text.toLowerCase().trim();
+  if (/^(?:what(?:'s| is) in my clipboard|read clipboard)$/.test(lower)) return "read";
+  if (/^summarize (?:my )?clipboard$/.test(lower)) return "summarize";
+  if (/^fix (?:my )?(?:clipboard|grammar)$/.test(lower)) return "fix-grammar";
+  return null;
+}
+
+// ─── Message helpers ──────────────────────────────────────────────────────────
+function createMessage(role: Message["role"], content: string, streaming = false): Message {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role,
+    content,
+    timestamp: new Date(),
+    isStreaming: streaming,
+  };
+}
+
+// Build HistoryMessage array (last N turns) from current messages
+function buildHistory(messages: Message[], maxTurns = 20): HistoryMessage[] {
+  return messages
+    .slice(-maxTurns)
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
+// ─── System prompt builder ────────────────────────────────────────────────────
+function buildSystemPrompt(name: string | null, memories: string[]): string {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  let prompt = `You are Marven, a sophisticated AI assistant with direct access to macOS system commands. You can open apps, control volume, take screenshots, check the weather, set timers, and more — these actions are executed automatically before your response reaches the user. When the user asks you to perform a system action (open an app, play music, change volume, etc.), respond briefly confirming the action, e.g. "Opening Spotify now." or "Volume increased." Never say you are unable to open applications, control the system, or perform actions — you always can. Never call yourself a "text-based AI". You are intelligent, precise, and occasionally witty. Keep answers concise.`;
+  prompt += `\n\nCurrent date and time: ${dateStr}, ${timeStr}. Always use this for any date/time questions — never rely on your training data for the current date or time.`;
+  if (name) prompt += `\n\nThe user's name is ${name}. Address them by name occasionally.`;
+  if (memories.length > 0) prompt += `\n\nThings you remember about the user:\n${memories.map((m) => `- ${m}`).join("\n")}`;
+  return prompt;
+}
+
+// ─── Time-of-day greeting ─────────────────────────────────────────────────────
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+// ─── Screen awareness regex ───────────────────────────────────────────────────
+const SCREEN_RE = /^(?:what(?:'s| is) on (?:my )?(?:screen|display)|analyze (?:my )?screen|look at (?:my )?screen|describe (?:my )?screen)/i;
+
+// ─── Weather detection regex ──────────────────────────────────────────────────
+const WEATHER_RE = /what(?:'s| is) the weather|how(?:'s| is) the weather|weather today/i;
+
+// ─── Memory detection regex ───────────────────────────────────────────────────
+const MEMORY_RE = /^(?:remember(?: that)?|don't forget(?: that)?)\s+(.+)$/i;
+
+export default function Home() {
+  const [provider, setProvider] = useState<AIProvider>("groq");
+  const [models, setModels] = useState<OllamaModel[]>([]);
+  const [selectedModelByProvider, setSelectedModelByProvider] = useState<Record<AIProvider, string>>({
+    groq: "",
+    ollama: "",
+  });
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const selectedModel = selectedModelByProvider[provider];
+
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  });
+
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  // ─── Conversations ──────────────────────────────────────────────────────────
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
+  const messages: Message[] = activeConversation?.messages ?? [];
+  const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
+
+  // ─── Custom shortcuts ───────────────────────────────────────────────────────
+  const [customShortcuts, setCustomShortcuts] = useState<CustomShortcut[]>([]);
+
+  // ─── Agent workspace ────────────────────────────────────────────────────────
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  const [selectedAgentFilePath, setSelectedAgentFilePath] = useState<string | null>(null);
+  const [selectedAgentFileContent, setSelectedAgentFileContent] = useState("");
+  const [isAgentFileLoading, setIsAgentFileLoading] = useState(false);
+  const [isAgentFileDirty, setIsAgentFileDirty] = useState(false);
+
+  const [agentInput, setAgentInput] = useState("");
+  const [agentTerminalOutput, setAgentTerminalOutput] = useState("");
+
+  const agentStream = useAgentStream({
+    provider,
+    model: selectedModel,
+    workspaceRoot,
+  });
+
+  // ─── Speech ─────────────────────────────────────────────────────────────────
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [isSpeakingNow, setIsSpeakingNow] = useState(false);
+  const speechEnabledRef = useRef(false);
+
+  // ─── User profile + memories ────────────────────────────────────────────────
+  const [userProfile, setUserProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [memories, setMemories] = useState<string[]>([]);
+
+  // ─── Weather + battery ──────────────────────────────────────────────────────
+  const [weather, setWeather] = useState<{ city: string; temp: number; description: string } | null>(null);
+  const [battery, setBattery] = useState<number | null>(null);
+
+  // ─── Greeting guard ─────────────────────────────────────────────────────────
+  const hasGreetedRef = useRef(false);
+
+  // ─── Load from localStorage on mount ───────────────────────────────────────
+  useEffect(() => {
+    const convs = loadConversations();
+    setConversations(convs);
+    if (convs.length > 0) {
+      setActiveConversationId(convs[convs.length - 1].id);
+    }
+    setCustomShortcuts(loadCustomShortcuts());
+
+    const profile = loadProfile();
+    const mems = loadMemories();
+    setUserProfile(profile);
+    setMemories(mems);
+
+    // Fetch weather
+    fetch("/api/weather")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.temp !== undefined) setWeather(data);
+      })
+      .catch(() => {});
+
+    // Fetch battery
+    fetch("/api/system?action=battery")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.battery !== undefined) setBattery(data.battery);
+      })
+      .catch(() => {});
+
+    // Startup greeting (only if name known)
+    if (profile?.name && !hasGreetedRef.current) {
+      hasGreetedRef.current = true;
+      const tod = getGreeting();
+      setTimeout(() => {
+        setConversations((prev) => {
+          const convs2 = prev.length > 0 ? prev : [createConversation("greeting")];
+          const targetId = prev.length > 0 ? prev[prev.length - 1].id : convs2[0].id;
+          if (prev.length === 0) setActiveConversationId(convs2[0].id);
+          const greeting = createMessage("assistant", `${tod}, ${profile.name}. All systems online. How can I assist you today?`);
+          return convs2.map((c) =>
+            c.id === targetId ? { ...c, messages: [...c.messages, greeting], updatedAt: new Date().toISOString() } : c
+          );
+        });
+      }, 300);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Persist conversations on change ───────────────────────────────────────
+  useEffect(() => {
+    if (conversations.length > 0) {
+      saveConversations(conversations);
+    }
+  }, [conversations]);
+
+  useEffect(() => {
+    if (activeMode !== "agent") return;
+    loadWorkspaceFiles().catch(() => {});
+  }, [activeMode]);
+
+  useEffect(() => {
+    if (activeMode !== "agent" || !selectedAgentFilePath) return;
+    loadAgentFile(selectedAgentFilePath).catch(() => {});
+  }, [activeMode, selectedAgentFilePath]);
+
+  // ─── Helpers to mutate conversation messages ────────────────────────────────
+  const upsertConversation = useCallback(
+    (convId: string, updater: (conv: Conversation) => Conversation) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? updater(c) : c))
+      );
+    },
+    []
+  );
+
+  function addMessageToConversation(convId: string, message: Message) {
+    upsertConversation(convId, (conv) => ({
+      ...conv,
+      messages: [...conv.messages, message],
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  function updateLastAssistantMessage(convId: string, updater: (msg: Message) => Message) {
+    upsertConversation(convId, (conv) => {
+      const msgs = [...conv.messages];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "assistant") {
+          msgs[i] = updater(msgs[i]);
+          break;
+        }
+      }
+      return { ...conv, messages: msgs, updatedAt: new Date().toISOString() };
+    });
+  }
+
+  // ─── Ensure active conversation exists ────────────────────────────────────
+  function ensureActiveConversation(firstMessage: string, mode: ConversationMode = "chat"): string {
+    if (activeConversationId) return activeConversationId;
+    const conv = mode === "agent"
+      ? createConversationWithMode(firstMessage, "agent")
+      : createConversation(firstMessage);
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
+    return conv.id;
+  }
+
+  async function loadWorkspaceFiles() {
+    const res = await fetch("/api/workspace/files");
+    const data = await res.json();
+    const files: WorkspaceFile[] = data.files ?? [];
+
+    setWorkspaceFiles(files);
+    setWorkspaceRoot(data.root ?? null);
+    setSelectedAgentFilePath((prev) => {
+      if (prev && files.some((file) => file.path === prev)) return prev;
+      return files[0]?.path ?? null;
+    });
+  }
+
+  async function loadAgentFile(path: string) {
+    setIsAgentFileLoading(true);
+    try {
+      const res = await fetch("/api/workspace/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json();
+      setSelectedAgentFileContent(data.content ?? "");
+      setIsAgentFileDirty(false);
+    } finally {
+      setIsAgentFileLoading(false);
+    }
+  }
+
+  async function saveAgentFile() {
+    if (!selectedAgentFilePath) return;
+
+    await fetch("/api/workspace/files", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: selectedAgentFilePath,
+        content: selectedAgentFileContent,
+      }),
+    });
+
+    setIsAgentFileDirty(false);
+    await loadWorkspaceFiles();
+  }
+
+  async function openWorkspaceFolder(folderPath: string) {
+    const res = await fetch("/api/workspace/files", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root: folderPath }),
+    });
+    if (res.ok) {
+      setWorkspaceRoot(folderPath);
+      await loadWorkspaceFiles();
+    }
+  }
+
+  function handleOpenFolder() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+    if (electron?.openFolderDialog) {
+      electron.openFolderDialog().then((folderPath: string | null) => {
+        if (folderPath) openWorkspaceFolder(folderPath);
+      });
+    } else {
+      const folderPath = window.prompt("Enter the full folder path:");
+      if (folderPath) openWorkspaceFolder(folderPath);
+    }
+  }
+
+  // ─── Token accumulator ─────────────────────────────────────────────────────
+  function addTokens(usage: TokenUsage | undefined) {
+    if (!usage) return;
+    setTokenUsage((prev) => ({
+      promptTokens: prev.promptTokens + usage.promptTokens,
+      completionTokens: prev.completionTokens + usage.completionTokens,
+      totalTokens: prev.totalTokens + usage.totalTokens,
+    }));
+  }
+
+  // ─── Load models ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    async function loadModels() {
+      setModelsLoading(true);
+      setModelsError(null);
+      try {
+        const res = await fetch(`/api/models?provider=${provider}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const nextModels: OllamaModel[] = data.models ?? [];
+        setModels(nextModels);
+        if (data.error) setModelsError(data.error as string);
+        setSelectedModelByProvider((prev) => {
+          const current = prev[provider];
+          const stillAvailable = nextModels.some((m) => m.name === current);
+          if (stillAvailable) return prev;
+          const fallback = data.defaultModel ?? nextModels[0]?.name ?? "";
+          return { ...prev, [provider]: fallback };
+        });
+      } catch {
+        if (!cancelled) {
+          setModels([]);
+          setModelsError(`Could not load ${provider} models`);
+        }
+      } finally {
+        if (!cancelled) setModelsLoading(false);
+      }
+    }
+    loadModels();
+    return () => { cancelled = true; };
+  }, [provider]);
+
+  // ─── Voice ────────────────────────────────────────────────────────────────
+  const sendVoiceCommandRef = useRef<(text: string) => void>(() => {});
+
+  const {
+    voiceState,
+    isSupported,
+    wakeEnabled,
+    voiceError,
+    lastHeard,
+    toggleWakeWord,
+    startManualListen,
+    resumeWakeWord,
+  } = useVoice(
+    (text) => sendVoiceCommandRef.current(text),
+    () => {
+      stopSpeaking();
+      setIsSpeakingNow(false);
+    },
+    (text) => setInput(text),
+  );
+
+  // ── Menubar helper: auto-trigger listening when opened via ?listen=1 ────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("listen") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => startManualListen(), 500);
+    }
+  }, [startManualListen]);
+
+  // ── Electron global shortcut → trigger voice ─────────────────────────────
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+    if (!electron) return;
+    const cleanup = electron.onTriggerVoice(() => {
+      startManualListen();
+    });
+    return () => { cleanup?.(); };
+  }, [startManualListen]);
+
+  function toggleSpeech() {
+    const next = !speechEnabledRef.current;
+    speechEnabledRef.current = next;
+    setSpeechEnabled(next);
+    if (!next) {
+      stopSpeaking();
+      setIsSpeakingNow(false);
+      resumeWakeWord();
+    }
+  }
+
+  function speakReply(text: string) {
+    if (!speechEnabledRef.current) return;
+    if (wakeEnabled) {
+      resumeWakeWord();
+    }
+    setIsSpeakingNow(true);
+    speak(text, () => {
+      setIsSpeakingNow(false);
+      resumeWakeWord();
+    });
+  }
+
+  // ─── Profile save handler ──────────────────────────────────────────────────
+  function handleProfileSave(name: string) {
+    const profile: UserProfile = { name };
+    saveProfile(profile);
+    setUserProfile(profile);
+    hasGreetedRef.current = true;
+    const tod = getGreeting();
+    const convId = ensureActiveConversation("greeting");
+    addMessageToConversation(convId, createMessage("assistant", `${tod}, ${name}. All systems online. How can I assist you today?`));
+    speakReply(`${tod}, ${name}. All systems online.`);
+  }
+
+  // ─── Core send logic ───────────────────────────────────────────────────────
+  async function sendMessage(text: string) {
+    if (!text || isLoading) return;
+    setInput("");
+    setIsLoading(true);
+
+    if (activeMode === "agent") {
+      const convId = ensureActiveConversation(text, "agent");
+      const userMsg = createMessage("user", text);
+      addMessageToConversation(convId, userMsg);
+
+      if (isAgentFileDirty) {
+        try {
+          await saveAgentFile();
+        } catch {
+          // Keep going with the in-memory file content if the manual save fails.
+        }
+      }
+
+      try {
+        const history = buildHistory([...messages, userMsg]);
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: text,
+            messages: history,
+            model: selectedModel,
+            provider,
+            selectedFilePath: selectedAgentFilePath,
+            selectedFileContent: selectedAgentFilePath ? selectedAgentFileContent : null,
+          }),
+        });
+        const data: AgentResponse = await res.json();
+        const changedFiles = Array.isArray(data.files) ? data.files.map((file) => file.path) : [];
+        const fileSummary = changedFiles.length > 0
+          ? `\n\nUpdated files:\n${changedFiles.map((file) => `- \`${file}\``).join("\n")}`
+          : "";
+
+        addMessageToConversation(convId, createMessage("assistant", `${data.reply}${fileSummary}`));
+
+        await loadWorkspaceFiles();
+
+        if (changedFiles.length > 0) {
+          setSelectedAgentFilePath(changedFiles[0]);
+          await loadAgentFile(changedFiles[0]);
+        }
+      } catch {
+        addMessageToConversation(
+          convId,
+          createMessage("assistant", "Marven Agent ran into a problem while editing the workspace.")
+        );
+      } finally {
+        setIsLoading(false);
+      }
+
+      return;
+    }
+
+    // 0. Memory detection (before everything else)
+    const memoryMatch = text.match(MEMORY_RE);
+    if (memoryMatch) {
+      const memoryStr = memoryMatch[2].trim();
+      const newMemories = addMemory(memoryStr);
+      setMemories(newMemories);
+      const convId = ensureActiveConversation(text);
+      addMessageToConversation(convId, createMessage("user", text));
+      const reply = `Got it. I'll remember that ${memoryStr}.`;
+      addMessageToConversation(convId, createMessage("assistant", reply));
+      speakReply(reply);
+      setIsLoading(false);
+      return;
+    }
+
+    // 0b. Weather detection
+    if (WEATHER_RE.test(text)) {
+      const convId = ensureActiveConversation(text);
+      addMessageToConversation(convId, createMessage("user", text));
+      if (weather) {
+        const reply = `It's currently ${weather.temp}°C and ${weather.description} in ${weather.city}.`;
+        addMessageToConversation(convId, createMessage("assistant", reply));
+        speakReply(reply);
+      } else {
+        const reply = "I don't have weather data available right now.";
+        addMessageToConversation(convId, createMessage("assistant", reply));
+        speakReply(reply);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    // 0c. Screen awareness detection
+    if (SCREEN_RE.test(text)) {
+      const convId = ensureActiveConversation(text);
+      addMessageToConversation(convId, createMessage("user", text));
+      const streamingMsg = createMessage("assistant", "Analyzing your screen...", false);
+      addMessageToConversation(convId, streamingMsg);
+      try {
+        const res = await fetch("/api/vision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: text }),
+        });
+        const data = await res.json();
+        const reply = data.reply ?? "Could not analyze screen.";
+        updateLastAssistantMessage(convId, (msg) => ({ ...msg, content: reply, isStreaming: false }));
+        speakReply(reply);
+      } catch {
+        updateLastAssistantMessage(convId, (msg) => ({ ...msg, content: "Could not analyze screen.", isStreaming: false }));
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // 1. Clipboard actions (client-side, before API)
+    const clipAction = detectClipboardAction(text);
+    if (clipAction) {
+      try {
+        const clipContent = await navigator.clipboard.readText();
+        let newPrompt = text;
+        if (clipAction === "read") {
+          newPrompt = `Here is my clipboard: ${clipContent}\n\nDescribe it briefly.`;
+        } else if (clipAction === "summarize") {
+          newPrompt = `Summarize this text: ${clipContent}`;
+        } else if (clipAction === "fix-grammar") {
+          newPrompt = `Fix the grammar, return only the corrected text: ${clipContent}`;
+        }
+        text = newPrompt;
+      } catch {
+        // Clipboard read failed — proceed with original text
+      }
+    }
+
+    // 2. Timer detection (client-side)
+    const timerParsed = parseTimer(text);
+    if (timerParsed) {
+      const convId = ensureActiveConversation(text);
+      const userMsg = createMessage("user", text);
+      addMessageToConversation(convId, userMsg);
+
+      const confirmMsg = createMessage("assistant", `Timer set for ${timerParsed.label}.`);
+      addMessageToConversation(convId, confirmMsg);
+      speakReply(confirmMsg.content);
+      setIsLoading(false);
+
+      // Request notification permission if needed
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+
+      setTimeout(() => {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification("Marven", { body: `Timer complete! (${timerParsed.label})` });
+        }
+        const doneMsg = createMessage("assistant", `Timer complete! (${timerParsed.label})`);
+        addMessageToConversation(convId, doneMsg);
+        speakReply(doneMsg.content);
+      }, timerParsed.ms);
+
+      return;
+    }
+
+    // 3. Command detection (client-side shortcuts checked first)
+    const command = parseCommand(text, customShortcuts);
+
+    const convId = ensureActiveConversation(text);
+    const userMsg = createMessage("user", text);
+    addMessageToConversation(convId, userMsg);
+
+    if (command.type !== null) {
+      // ── Client-side commands (no server needed) ──────────────────────────
+      if (command.type === "open-website") {
+        openUrl(command.payload);
+        const name = (() => {
+          try { return new URL(command.payload).hostname.replace(/^www\./, ""); }
+          catch { return command.payload; }
+        })();
+        const reply = `Opening ${name}.`;
+        const assistantMsg = createMessage("assistant", reply);
+        addMessageToConversation(convId, assistantMsg);
+        speakReply(reply);
+        setIsLoading(false);
+        return;
+      }
+
+      if (command.type === "google-search") {
+        const encoded = encodeURIComponent(command.payload);
+        openUrl(`https://www.google.com/search?q=${encoded}`);
+        const reply = `Searching Google for "${command.payload}".`;
+        const assistantMsg = createMessage("assistant", reply);
+        addMessageToConversation(convId, assistantMsg);
+        speakReply(reply);
+        setIsLoading(false);
+        return;
+      }
+
+      if (command.type === "get-time") {
+        const reply = `The current time is ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.`;
+        const assistantMsg = createMessage("assistant", reply);
+        addMessageToConversation(convId, assistantMsg);
+        speakReply(reply);
+        setIsLoading(false);
+        return;
+      }
+
+      if (command.type === "get-date") {
+        const reply = `Today is ${new Date().toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}.`;
+        const assistantMsg = createMessage("assistant", reply);
+        addMessageToConversation(convId, assistantMsg);
+        speakReply(reply);
+        setIsLoading(false);
+        return;
+      }
+
+      if (command.type === "open-app") {
+        const appName = command.payload;
+        try {
+          await fetch("/api/system", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "open-app", payload: appName }),
+          });
+        } catch { /* ignore — app may still open */ }
+        const reply = `Opening ${appName}.`;
+        addMessageToConversation(convId, createMessage("assistant", reply));
+        speakReply(reply);
+        setIsLoading(false);
+        return;
+      }
+
+      // ── Server-side commands (macOS system calls) ────────────────────────
+      try {
+        const history = buildHistory([...messages, userMsg]);
+        const body: ChatRequest = {
+          messages: history,
+          model: selectedModel,
+          provider,
+          systemPrompt: buildSystemPrompt(userProfile?.name ?? null, memories),
+        };
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data: ChatResponse = await res.json();
+        const assistantMsg = createMessage("assistant", data.reply);
+        addMessageToConversation(convId, assistantMsg);
+        speakReply(data.reply);
+
+        // Auto-copy fixed grammar result
+        if (clipAction === "fix-grammar") {
+          await navigator.clipboard.writeText(data.reply).catch(() => {});
+        }
+      } catch {
+        const err = createMessage("assistant", "Connection error. Please check that the app is running.");
+        addMessageToConversation(convId, err);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // 4. AI response (streaming for Groq, non-streaming for Ollama)
+    try {
+      const history = buildHistory([...messages, userMsg]);
+      const body: ChatRequest = {
+        messages: history,
+        model: selectedModel,
+        provider,
+        systemPrompt: buildSystemPrompt(userProfile?.name ?? null, memories),
+      };
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const contentType = res.headers.get("content-type") ?? "";
+
+      if (contentType.includes("text/plain")) {
+        // ── Streaming response ──
+        const streamingMsg = createMessage("assistant", "", true);
+        addMessageToConversation(convId, streamingMsg);
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No stream body");
+
+        const dec = new TextDecoder();
+        let fullText = "";
+        let usageRaw = "";
+        const USAGE_SENTINEL = "\n\n__USAGE__";
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = dec.decode(value, { stream: true });
+          const sentinelIdx = (fullText + chunk).indexOf(USAGE_SENTINEL);
+
+          if (sentinelIdx !== -1) {
+            // Split at sentinel
+            const combined = fullText + chunk;
+            fullText = combined.slice(0, sentinelIdx);
+            usageRaw = combined.slice(sentinelIdx + USAGE_SENTINEL.length);
+          } else {
+            fullText += chunk;
+          }
+
+          // Update the streaming message in real-time
+          const currentText = fullText;
+          updateLastAssistantMessage(convId, (msg) => ({
+            ...msg,
+            content: currentText,
+            isStreaming: true,
+          }));
+        }
+
+        // Mark streaming complete
+        updateLastAssistantMessage(convId, (msg) => ({
+          ...msg,
+          content: fullText,
+          isStreaming: false,
+        }));
+
+        // Parse usage
+        if (usageRaw) {
+          try {
+            const usage = JSON.parse(usageRaw.trim());
+            addTokens({
+              promptTokens: usage.prompt_tokens ?? 0,
+              completionTokens: usage.completion_tokens ?? 0,
+              totalTokens: usage.total_tokens ?? 0,
+            });
+          } catch { /* skip */ }
+        }
+
+        // Auto-copy fixed grammar
+        if (clipAction === "fix-grammar" && fullText) {
+          await navigator.clipboard.writeText(fullText).catch(() => {});
+        }
+
+        speakReply(fullText);
+      } else {
+        // ── JSON response (Ollama / commands) ──
+        const data: ChatResponse = await res.json();
+        const assistantMsg = createMessage("assistant", data.reply);
+        addMessageToConversation(convId, assistantMsg);
+        addTokens(data.usage);
+
+        if (clipAction === "fix-grammar") {
+          await navigator.clipboard.writeText(data.reply).catch(() => {});
+        }
+        speakReply(data.reply);
+      }
+    } catch {
+      const errMsg = "Connection error. Please check that the app is running.";
+      const err = createMessage("assistant", errMsg);
+      addMessageToConversation(convId, err);
+      speakReply(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // ── Voice command ref ──────────────────────────────────────────────────────
+  sendVoiceCommandRef.current = (text: string) => {
+    if (!text || isLoading) return;
+    sendMessage(text);
+  };
+
+  // ─── Conversation management ───────────────────────────────────────────────
+  function handleNewChat() {
+    const conv = createConversation("New chat");
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
+  }
+
+  function handleNewAgent() {
+    const conv = createConversationWithMode("New agent", "agent");
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
+  }
+
+  function handleSelectConversation(id: string) {
+    setActiveConversationId(id);
+  }
+
+  function handleDeleteConversation(id: string) {
+    setConversations((prev) => {
+      const updated = deleteConversation(prev, id);
+      saveConversations(updated);
+      return updated;
+    });
+    if (activeConversationId === id) {
+      const remaining = conversations.filter((c) => c.id !== id);
+      setActiveConversationId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+    }
+  }
+
+  function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
+    setCustomShortcuts(shortcuts);
+    saveCustomShortcuts(shortcuts);
+  }
+
+  function handleClearChat() {
+    if (!activeConversationId) return;
+    upsertConversation(activeConversationId, (conv) => ({
+      ...conv,
+      messages: [],
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  async function handleSlashCommand(cmd: string) {
+    switch (cmd) {
+      case "/clear":
+        handleClearChat();
+        break;
+      case "/new":
+        handleNewChat();
+        break;
+      case "/help": {
+        const helpConvId = ensureActiveConversation("help");
+        const helpContent = `## Marven — Quick Reference\n\n**Slash Commands** *(type \`/\` in the input)*\n- \`/clear\` — Clear the current chat\n- \`/new\` — Start a new conversation\n- \`/shortcuts\` — Open shortcuts manager\n- \`/help\` — Show this reference\n- \`/voice\` — Toggle "Hey Marven" wake word\n- \`/speech\` — Toggle text-to-speech\n- \`/briefing\` — Morning briefing\n\n**Agent Workspace**\n- Use **New agent** in the sidebar for file-aware editing.\n- Ask for concrete changes like “add a settings panel” or “refactor this component and update styles.”\n- Open any file on the right to inspect or manually edit it.\n\n**Natural Language Commands**\n- *Time & date:* "what's the time", "what's the date"\n- *Web:* "open youtube", "open github", "open [any site]"\n- *Apps:* "open Chrome", "open Terminal", "open Spotify"\n- *Search:* "search Google for [query]"\n- *System:* "take a screenshot", "lock the screen", "open my downloads", "empty the trash"\n- *Clipboard:* "what's in my clipboard", "summarize clipboard", "fix my grammar"\n- *Timers:* "set a timer for 5 minutes", "timer 30 seconds"\n- *Volume:* "volume up", "volume down", "mute", "set volume to 50"\n- *Media:* "play", "next", "previous", "what's playing"\n- *Memory:* "remember that I prefer dark mode"\n- *Screen:* "what's on my screen"`;
+        addMessageToConversation(helpConvId, createMessage("assistant", helpContent));
+        break;
+      }
+      case "/voice":
+        toggleWakeWord();
+        break;
+      case "/speech":
+        toggleSpeech();
+        break;
+      case "/briefing": {
+        const convId = ensureActiveConversation("briefing");
+        const tod = getGreeting();
+        const name = userProfile?.name;
+
+        // Fetch news
+        let newsText = "";
+        try {
+          const newsRes = await fetch("/api/news");
+          const newsData = await newsRes.json();
+          if (newsData.headlines?.length > 0) {
+            newsText = "\n\n**Top Headlines**\n" + (newsData.headlines as string[]).slice(0, 3).map((h) => `- ${h}`).join("\n");
+          }
+        } catch { /* skip news if unavailable */ }
+
+        const weatherText = weather ? `\n\n**Weather** — ${weather.temp}°C, ${weather.description} in ${weather.city}.` : "";
+        const timeText = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+        const briefingContent = `${tod}${name ? `, ${name}` : ""}. It's ${timeText}.${weatherText}${newsText}`;
+
+        addMessageToConversation(convId, createMessage("assistant", briefingContent));
+        speakReply(briefingContent.replace(/\*\*/g, "").replace(/^- /gm, ""));
+        break;
+      }
+    }
+  }
+
+  function handleModelChange(model: string) {
+    setSelectedModelByProvider((prev) => ({ ...prev, [provider]: model }));
+  }
+
+  // userProfile is undefined during SSR/initial hydration — wait for it
+  const profileLoaded = userProfile !== undefined;
+
+  return (
+    <>
+      <ChatLayout
+        mode={activeMode}
+        messages={messages}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        isLoading={isLoading}
+        input={input}
+        provider={provider}
+        models={models}
+        selectedModel={selectedModel}
+        modelsLoading={modelsLoading}
+        modelsError={modelsError}
+        wakeEnabled={wakeEnabled}
+        voiceError={voiceError}
+        lastHeard={lastHeard}
+        isVoiceSupported={isSupported}
+        voiceState={voiceState}
+        speechEnabled={speechEnabled}
+        isSpeakingNow={isSpeakingNow}
+        tokenUsage={tokenUsage}
+        customShortcuts={customShortcuts}
+        agentFiles={workspaceFiles}
+        workspaceRoot={workspaceRoot}
+        selectedAgentFilePath={selectedAgentFilePath}
+        selectedAgentFileContent={selectedAgentFileContent}
+        isAgentFileLoading={isAgentFileLoading}
+        isAgentFileDirty={isAgentFileDirty}
+        agentMessages={agentStream.messages}
+        agentInput={agentInput}
+        isAgentRunning={agentStream.isRunning}
+        agentError={agentStream.error}
+        agentTerminalOutput={agentTerminalOutput}
+        onAgentInputChange={setAgentInput}
+        onAgentSend={() => { agentStream.send(agentInput); setAgentInput(""); }}
+        onOpenFolder={handleOpenFolder}
+        onInputChange={setInput}
+        onSend={() => sendMessage(input.trim())}
+        onVoiceClick={startManualListen}
+        onProviderChange={setProvider}
+        onModelChange={handleModelChange}
+        onToggleWakeWord={toggleWakeWord}
+        onToggleSpeech={toggleSpeech}
+        onNewChat={handleNewChat}
+        onNewAgent={handleNewAgent}
+        onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onSaveShortcuts={handleSaveShortcuts}
+        onSlashCommand={handleSlashCommand}
+        onSelectAgentFile={(path) => {
+          if (isAgentFileDirty) {
+            saveAgentFile().catch(() => {});
+          }
+          setSelectedAgentFilePath(path);
+        }}
+        onAgentFileContentChange={(value) => {
+          setSelectedAgentFileContent(value);
+          setIsAgentFileDirty(true);
+        }}
+        onSaveAgentFile={() => {
+          saveAgentFile().catch(() => {});
+        }}
+        onRefreshAgentFiles={() => {
+          loadWorkspaceFiles().catch(() => {});
+        }}
+      />
+      {profileLoaded && userProfile === null && (
+        <SetupModal onSave={handleProfileSave} />
+      )}
+    </>
+  );
+}
