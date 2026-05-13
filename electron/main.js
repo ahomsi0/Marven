@@ -35,7 +35,7 @@ function startNextServer() {
     stdio: 'ignore',
   });
   serverProcess.unref();
-  return waitForPort(3000);
+  return waitForPort(3000, 30000);
 }
 
 // ── Load icons from buffer (more reliable than createFromPath with spaces in path) ──
@@ -96,6 +96,11 @@ function createWindow() {
   mainWindow = new BrowserWindow(windowOptions);
 
   mainWindow.loadURL('http://localhost:3000');
+
+  // Retry if server wasn't ready yet
+  mainWindow.webContents.on('did-fail-load', () => {
+    setTimeout(() => mainWindow.loadURL('http://localhost:3000'), 1500);
+  });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
