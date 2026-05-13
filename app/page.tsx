@@ -170,6 +170,8 @@ export default function Home() {
   const [selectedAgentFileContent, setSelectedAgentFileContent] = useState("");
   const [isAgentFileLoading, setIsAgentFileLoading] = useState(false);
   const [isAgentFileDirty, setIsAgentFileDirty] = useState(false);
+  const [folderInputVisible, setFolderInputVisible] = useState(false);
+  const [folderInputValue, setFolderInputValue] = useState("");
 
   const [agentInput, setAgentInput] = useState("");
   const [agentTerminalOutput, setAgentTerminalOutput] = useState("");
@@ -369,9 +371,15 @@ export default function Home() {
         if (folderPath) openWorkspaceFolder(folderPath);
       });
     } else {
-      const folderPath = window.prompt("Enter the full folder path:");
-      if (folderPath) openWorkspaceFolder(folderPath);
+      setFolderInputValue("");
+      setFolderInputVisible(true);
     }
+  }
+
+  function handleFolderInputSubmit() {
+    const p = folderInputValue.trim();
+    if (p) openWorkspaceFolder(p);
+    setFolderInputVisible(false);
   }
 
   // ─── Token accumulator ─────────────────────────────────────────────────────
@@ -1032,6 +1040,41 @@ export default function Home() {
       />
       {profileLoaded && userProfile === null && (
         <SetupModal onSave={handleProfileSave} />
+      )}
+      {folderInputVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[480px] rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] p-4 shadow-2xl">
+            <p className="mb-3 text-[12px] text-[#888]">Enter the full folder path to open as workspace:</p>
+            <input
+              autoFocus
+              type="text"
+              value={folderInputValue}
+              onChange={(e) => setFolderInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleFolderInputSubmit();
+                if (e.key === "Escape") setFolderInputVisible(false);
+              }}
+              placeholder="/Users/you/my-project"
+              className="w-full rounded-md border border-[#2a2a2a] bg-[#111] px-3 py-2 font-mono text-[12px] text-[#ccc] outline-none focus:border-[#d19a66]/50"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFolderInputVisible(false)}
+                className="rounded-md border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#555] hover:text-[#888]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFolderInputSubmit}
+                className="rounded-md bg-[#d19a66]/10 border border-[#d19a66]/30 px-3 py-1.5 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20"
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
