@@ -94,6 +94,30 @@ function findFreePort(start: number): Promise<number> {
   });
 }
 
+function waitForFirstPort(ports: number[], timeoutMs: number): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    let resolved = false;
+    function attempt() {
+      if (resolved) return;
+      if (Date.now() >= deadline) { resolve(null); return; }
+      let pending = ports.length;
+      for (const port of ports) {
+        const sock = net.createConnection({ port, host: "127.0.0.1" });
+        sock.once("connect", () => {
+          if (!resolved) { resolved = true; sock.destroy(); resolve(port); }
+          else sock.destroy();
+        });
+        sock.once("error", () => {
+          sock.destroy();
+          if (--pending === 0) setTimeout(attempt, 250);
+        });
+      }
+    }
+    attempt();
+  });
+}
+
 function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
@@ -166,22 +190,28 @@ export async function executeTool(
 
       // Detect server-starting commands — run them in background and return the URL
       const serverPattern = /(?:^|\s)(node\s+\S+\.(?:js|mjs)|python\s+-m\s+http\.server|python3?\s+\S+\.py|npx?\s+serve|npm\s+(?:start|run\s+\S+)|bun\s+(?:run\s+\S+|\S+\.(?:js|ts)))\b/i;
-      const portMatch = cmd.match(/\b(\d{4,5})\b/);
+      const explicitPort = cmd.match(/\b(3\d{3}|4\d{3}|5\d{3}|8\d{3}|9\d{3})\b/);
       if (serverPattern.test(cmd)) {
-        const port = portMatch ? parseInt(portMatch[1]) : await findFreePort(3000);
-        const finalCmd = portMatch ? cmd : `${cmd} ${port}`;
-        const child = spawn("sh", ["-c", finalCmd], {
+        const child = spawn("sh", ["-c", cmd], {
           cwd,
           detached: true,
           stdio: "ignore",
         });
         child.unref();
-        // Wait up to 3s for the port to open
-        const alive = await waitForPort(port, 3000);
-        if (alive) {
-          return `Server started on port ${port}.\nOpen: http://localhost:${port}`;
+
+        // If command has an explicit port, wait for that one
+        if (explicitPort) {
+          const port = parseInt(explicitPort[1]);
+          const alive = await waitForPort(port, 4000);
+          if (alive) return `Server started.\nOpen: http://localhost:${port}`;
+          return `Server launching on port ${port}. Open: http://localhost:${port}`;
         }
-        return `Server process launched (port ${port}). If the page doesn't load immediately, wait a moment then open http://localhost:${port}`;
+
+        // No explicit port — probe common dev server ports (Vite=5173, CRA/Next=3000, webpack=8080, etc.)
+        const COMMON_PORTS = [3000, 3001, 5173, 4200, 8080, 8000, 4000];
+        const port = await waitForFirstPort(COMMON_PORTS, 5000);
+        if (port) return `Server started.\nOpen: http://localhost:${port}`;
+        return `Server process launched. Try: http://localhost:3000 or http://localhost:5173`;
       }
 
       try {

@@ -13,6 +13,14 @@ export const OLLAMA_TOOL_CAPABLE_MODELS = [
   "hermes3",
 ];
 
+/** Models too small for reliable tool calling (param count ≤ 3B) */
+const SMALL_MODEL_RE = /[:\-_](0\.5b|1b|1\.5b|2b|3b)\b/i;
+
+export function isToolCapableModel(model: string): boolean {
+  if (SMALL_MODEL_RE.test(model)) return false;
+  return OLLAMA_TOOL_CAPABLE_MODELS.some((m) => model.startsWith(m));
+}
+
 function toOllamaMessages(messages: InternalMessage[]): Record<string, unknown>[] {
   return messages.flatMap((m) => {
     if (m.role === "system") return [{ role: "system", content: m.content }];
@@ -36,9 +44,12 @@ function toOllamaMessages(messages: InternalMessage[]): Record<string, unknown>[
 
 export class OllamaToolsNotSupportedError extends Error {
   constructor(model: string) {
+    const isSmall = SMALL_MODEL_RE.test(model);
+    const reason = isSmall
+      ? `"${model}" is too small for tool calling (≤3B parameters).`
+      : `"${model}" does not support tool use.`;
     super(
-      `Model "${model}" does not support tool use. ` +
-      `Compatible Ollama models: ${OLLAMA_TOOL_CAPABLE_MODELS.join(", ")}.`
+      `${reason} Switch to a capable model: ${OLLAMA_TOOL_CAPABLE_MODELS.join(", ")}.`
     );
     this.name = "OllamaToolsNotSupportedError";
   }
@@ -49,6 +60,10 @@ export async function ollamaAgentStep(
   tools: ToolDefinition[],
   model: string
 ): Promise<ProviderStepResult> {
+  if (SMALL_MODEL_RE.test(model)) {
+    throw new OllamaToolsNotSupportedError(model);
+  }
+
   let res: Response;
   try {
     res = await fetch(`${OLLAMA_BASE}/api/chat`, {
