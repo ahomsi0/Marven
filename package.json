@@ -1,0 +1,44 @@
+{
+  "name": "marven",
+  "version": "1.0.0",
+  "description": "Marven - Local AI Desktop Assistant",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "electron:dev": "node electron/create-icon.js && concurrently --kill-others-on-fail \"next dev -p 3000\" \"wait-on tcp:3000 && cross-env NODE_ENV=development ./node_modules/.bin/electron .\"",
+    "electron:start": "cross-env NODE_ENV=development ./node_modules/.bin/electron .",
+    "helper": "menubar-helper/MarvenHelper",
+    "launch": "concurrently \"npm run dev\" \"sleep 3 && menubar-helper/MarvenHelper\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "build": {
+    "appId": "com.marven.app",
+    "productName": "Marven",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    }
+  },
+  "dependencies": {
+    "next": "^15.5.15",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "electron": "^41.2.1",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.6"
+  }
+}
