@@ -57,6 +57,16 @@ export async function groqAgentStep(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    if (res.status === 429) {
+      let retryMsg = "Rate limit reached.";
+      try {
+        const parsed = JSON.parse(text);
+        const msg: string = parsed?.error?.message ?? "";
+        const match = msg.match(/try again in ([\d.]+s)/i);
+        retryMsg = match ? `Rate limit reached — retry in ${match[1]}.` : `Rate limit reached. ${msg}`;
+      } catch { /* ignore */ }
+      throw new Error(retryMsg);
+    }
     throw new Error(`Groq error (${res.status}): ${text || "unknown"}`);
   }
 
