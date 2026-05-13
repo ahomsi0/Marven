@@ -57,6 +57,7 @@ export async function groqAgentStep(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+
     if (res.status === 429) {
       let retryMsg = "Rate limit reached.";
       try {
@@ -67,6 +68,25 @@ export async function groqAgentStep(
       } catch { /* ignore */ }
       throw new Error(retryMsg);
     }
+
+    // Llama models sometimes output <function=name>{...}</function> (native format)
+    // instead of OpenAI tool_calls JSON. Groq returns 400 with the raw output in
+    // failed_generation — parse it ourselves so the loop can continue.
+    if (res.status === 400) {
+      try {
+        const parsed = JSON.parse(text);
+        const raw: string = parsed?.error?.failed_generation ?? "";
+        const match = raw.match(/<function=(\w+)>([\s\S]*?)<\/function>/);
+        if (match) {
+          const tool = match[1];
+          const callId = `groq-fallback-${Date.now()}`;
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(match[2]); } catch { /* ignore */ }
+          return { type: "tool_call", callId, tool, args };
+        }
+      } catch { /* ignore */ }
+    }
+
     throw new Error(`Groq error (${res.status}): ${text || "unknown"}`);
   }
 
