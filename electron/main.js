@@ -1,4 +1,5 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
@@ -30,7 +31,7 @@ function startNextServer() {
   const serverScript = path.join(serverDir, 'server.js');
   serverProcess = spawn(process.execPath, [serverScript], {
     cwd: serverDir,
-    env: { ...process.env, PORT: '3000', NODE_ENV: 'production', HOSTNAME: '127.0.0.1' },
+    env: { ...process.env, PORT: '3000', NODE_ENV: 'production', HOSTNAME: '127.0.0.1', ELECTRON_RUN_AS_NODE: '1' },
     stdio: 'ignore',
   });
   serverProcess.unref();
@@ -211,6 +212,10 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+
+  if (!isDev) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 
   // Fix for Web Speech API: Google's speech service checks the Origin header.
   // In Electron, requests may not carry a proper Origin. Inject it so

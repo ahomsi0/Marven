@@ -44,7 +44,14 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "icon": "electron/assets/icon.png",
       "identity": null
     },
@@ -74,9 +81,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "ahomsi0",
+      "repo": "Marven"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "next": "^15.5.15",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
