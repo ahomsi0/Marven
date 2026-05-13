@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   const provider = (body.provider ?? "groq") as AIProvider;
-  const model = body.model ?? (provider === "groq" ? "llama3-groq-70b-8192-tool-use-preview" : "qwen2.5-coder");
+  const model = body.model ?? (provider === "groq" ? "llama-3.3-70b-versatile" : "qwen2.5-coder");
 
   const history: InternalMessage[] = (body.history ?? []).map((m) => ({
     role: m.role as "user" | "assistant",

@@ -88,7 +88,9 @@ export async function executeTool(
   switch (name) {
     case "list_files": {
       const rel = (args.path as string | undefined) ?? ".";
-      const dir = assertSafePath(workspaceRoot, rel);
+      const resolved = assertSafePath(workspaceRoot, rel);
+      const stat = await fs.stat(resolved).catch(() => null);
+      const dir = stat?.isFile() ? path.dirname(resolved) : resolved;
       const entries = await fs.readdir(dir, { withFileTypes: true });
       return (
         entries
