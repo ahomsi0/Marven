@@ -3,6 +3,7 @@ import { parseCommand } from "@/lib/commandParser";
 import { executeCommand } from "@/lib/executeCommand";
 import { askGroq, streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
 import { askOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
+import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import type { ChatRequest, ChatResponse, HistoryMessage } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const messages: HistoryMessage[] = body.messages ?? [];
   const provider = (body.provider ?? "groq").toLowerCase();
-  const defaultModel = provider === "ollama" ? OLLAMA_DEFAULT_MODEL : GROQ_DEFAULT_MODEL;
+  const defaultModel = provider === "ollama" ? OLLAMA_DEFAULT_MODEL : provider === "nim" ? NIM_DEFAULT_MODEL : GROQ_DEFAULT_MODEL;
   const model = body.model?.trim() || defaultModel;
 
   // The latest user message is the last one in history
@@ -54,6 +55,24 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. No command matched — send to selected provider
+  if (provider === "nim") {
+    try {
+      const history = messages.slice(-20);
+      const stream = streamNim(history, model, body.systemPrompt);
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache",
+          "Transfer-Encoding": "chunked",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      return NextResponse.json({ reply: `Marven couldn't reach NVIDIA NIM: ${msg}` }, { status: 503 });
+    }
+  }
+
   if (provider === "ollama") {
     try {
       const reply = await askOllama(messageText, model);

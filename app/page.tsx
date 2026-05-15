@@ -265,6 +265,21 @@ export default function Home() {
     loadAgentFile(selectedAgentFilePath).catch(() => {});
   }, [activeMode, selectedAgentFilePath]);
 
+  // Auto-open the last file written by the streaming agent
+  useEffect(() => {
+    const lastMsg = agentStream.messages[agentStream.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant") return;
+    const doneCalls = (lastMsg.toolCalls ?? []).filter(
+      (tc) => tc.tool === "write_file" && tc.status === "done"
+    );
+    if (doneCalls.length === 0) return;
+    const lastWrite = doneCalls[doneCalls.length - 1];
+    const writtenPath = lastWrite.args?.path as string | undefined;
+    if (writtenPath) {
+      setSelectedAgentFilePath(writtenPath);
+    }
+  }, [agentStream.messages]);
+
   // ─── Helpers to mutate conversation messages ────────────────────────────────
   const upsertConversation = useCallback(
     (convId: string, updater: (conv: Conversation) => Conversation) => {

@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GROQ_MODELS } from "@/lib/groq";
+import { GROQ_MODELS, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
 import { fetchInstalledModels, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
-import { DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { NIM_MODELS, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 
 export async function GET(req: NextRequest) {
   const provider = (req.nextUrl.searchParams.get("provider") ?? "groq").toLowerCase();
+
+  if (provider === "nim") {
+    return NextResponse.json({
+      provider: "nim",
+      models: NIM_MODELS,
+      defaultModel: NIM_DEFAULT_MODEL,
+    });
+  }
 
   if (provider === "ollama") {
     try {

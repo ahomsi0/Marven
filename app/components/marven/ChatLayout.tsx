@@ -258,6 +258,17 @@ export function ChatLayout({
                   >
                     Ollama
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => onProviderChange("nim")}
+                    className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+                      provider === "nim"
+                        ? "bg-[#333] text-[#d4d4d4]"
+                        : "text-[#777] hover:text-[#ccc]"
+                    }`}
+                  >
+                    NIM
+                  </button>
                 </div>
 
                 {/* Model selector */}
