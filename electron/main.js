@@ -110,6 +110,9 @@ ipcMain.handle('check-for-updates', () => {
   autoUpdater.checkForUpdates();
   return { status: 'checking' };
 });
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 
 // ── Tray icon — dedicated transparent PNG, set as template so macOS renders
 //    it correctly in both light and dark menu bars ─────────────────────────────
@@ -277,28 +280,30 @@ app.whenReady().then(async () => {
     autoUpdater.autoDownload = true;
 
     autoUpdater.on('update-available', (info) => {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Available',
-        message: `Marven ${info.version} is available and downloading in the background.`,
-        buttons: ['OK'],
+      if (mainWindow) mainWindow.webContents.send('update-status', { type: 'available', version: info.version });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      if (mainWindow) mainWindow.webContents.send('update-status', {
+        type: 'progress',
+        percent: Math.round(progress.percent),
+        transferred: progress.transferred,
+        total: progress.total,
+        bytesPerSecond: progress.bytesPerSecond,
       });
     });
 
     autoUpdater.on('update-downloaded', (info) => {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Ready',
-        message: `Marven ${info.version} is ready to install. Restart now to apply the update.`,
-        buttons: ['Restart Now', 'Later'],
-        defaultId: 0,
-      }).then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall();
-      });
+      if (mainWindow) mainWindow.webContents.send('update-status', { type: 'ready', version: info.version });
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      if (mainWindow) mainWindow.webContents.send('update-status', { type: 'up-to-date' });
     });
 
     autoUpdater.on('error', (err) => {
       console.error('[Marven] Auto-updater error:', err.message);
+      if (mainWindow) mainWindow.webContents.send('update-status', { type: 'error', message: err.message });
     });
 
     autoUpdater.checkForUpdates();
