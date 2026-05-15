@@ -138,6 +138,7 @@ export default function Home() {
   const [selectedModelByProvider, setSelectedModelByProvider] = useState<Record<AIProvider, string>>({
     groq: "",
     ollama: "",
+    nim: "",
   });
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
