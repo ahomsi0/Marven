@@ -31,7 +31,7 @@ export function StatusBar({ weather, battery }: StatusBarProps) {
 
   return (
     <div className="flex items-center justify-between text-[11px] text-zinc-500">
-      <span>{time}</span>
+      <span className="text-[#d19a66]/60">{time}</span>
       {weather && (
         <span>
           {weather.temp}°C &middot; {weather.description}

@@ -23,11 +23,11 @@ export function TitleBar() {
     >
       <div className="flex items-center gap-1.5 select-none">
         <MarvenLogo size={18} />
-        <span className="text-[12px] font-semibold tracking-wide text-[rgba(232,232,234,0.55)]">
+        <span className="text-[12px] font-semibold tracking-wide text-[#d19a66]">
           Marven
         </span>
         {version && (
-          <span className="text-[10px] text-[rgba(232,232,234,0.25)] font-mono">
+          <span className="text-[10px] text-[#d19a66]/40 font-mono">
             v{version}
           </span>
         )}
