@@ -1,15 +1,12 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawn } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
 
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = !app.isPackaged;
 
-let serverProcess = null;
-
-function waitForPort(port, timeoutMs = 15000) {
+function waitForPort(port, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
     function attempt() {
@@ -29,13 +26,28 @@ function startNextServer() {
   if (isDev) return Promise.resolve();
   const serverDir = path.join(process.resourcesPath, 'nextjs-server');
   const serverScript = path.join(serverDir, 'server.js');
-  serverProcess = spawn(process.execPath, [serverScript], {
-    cwd: serverDir,
-    env: { ...process.env, PORT: '3000', NODE_ENV: 'production', HOSTNAME: '127.0.0.1', ELECTRON_RUN_AS_NODE: '1' },
-    stdio: 'ignore',
+
+  if (!fs.existsSync(serverScript)) {
+    dialog.showErrorBox('Startup Error', `Server not found:\n${serverScript}`);
+    return Promise.reject(new Error('Server not found'));
+  }
+
+  // Run the Next.js standalone server inside the Electron main process.
+  // This avoids spawning an unsigned child binary (which macOS blocks on arm64).
+  const PORT = 47891;
+  process.env.PORT = String(PORT);
+  process.env.HOSTNAME = '127.0.0.1';
+  process.env.NODE_ENV = 'production';
+
+  setImmediate(() => {
+    try {
+      require(serverScript);
+    } catch (err) {
+      console.error('[Marven] Server failed to start:', err.message);
+    }
   });
-  serverProcess.unref();
-  return waitForPort(3000, 30000);
+
+  return waitForPort(PORT);
 }
 
 // ── Load icons from buffer (more reliable than createFromPath with spaces in path) ──
@@ -95,11 +107,12 @@ function createWindow() {
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
 
-  mainWindow.loadURL('http://localhost:3000');
+  const appPort = isDev ? 3000 : 47891;
+  mainWindow.loadURL(`http://localhost:${appPort}`);
 
   // Retry if server wasn't ready yet
   mainWindow.webContents.on('did-fail-load', () => {
-    setTimeout(() => mainWindow.loadURL('http://localhost:3000'), 1500);
+    setTimeout(() => mainWindow.loadURL(`http://localhost:${appPort}`), 1500);
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -202,10 +215,6 @@ ipcMain.handle('dialog-open-folder', async () => {
     properties: ['openDirectory'],
   });
   return result.canceled ? null : result.filePaths[0];
-});
-
-app.on('before-quit', () => {
-  if (serverProcess) serverProcess.kill();
 });
 
 app.whenReady().then(async () => {

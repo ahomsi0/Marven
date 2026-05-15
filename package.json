@@ -18,6 +18,8 @@
   "build": {
     "appId": "com.marven.app",
     "productName": "Marven",
+    "asar": false,
+    "afterPack": "scripts/after-pack.js",
     "directories": {
       "output": "dist"
     },
