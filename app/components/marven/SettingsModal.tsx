@@ -83,6 +83,7 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [keysSaved, setKeysSaved] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "found" | "not-found">("idle");
   const electron = typeof window !== "undefined" ? (window as any).marvenElectron : null;
 
   useEffect(() => {
@@ -110,6 +111,18 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
     await electron.saveSettings({ groqApiKey: groqKey.trim(), ollamaUrl: ollamaUrl.trim() });
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 2500);
+  }
+
+  async function handleCheckUpdates() {
+    if (!electron) return;
+    setUpdateStatus("checking");
+    const result = await electron.checkForUpdates();
+    if (result?.status === "dev") {
+      setUpdateStatus("not-found");
+    } else {
+      // Dialogs shown by main process; reset after delay
+      setTimeout(() => setUpdateStatus("idle"), 8000);
+    }
   }
 
   function saveItems(next: CustomShortcut[]) {
@@ -471,8 +484,17 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                 {keysSaved ? "Saved ✓" : "Save Keys"}
               </button>
 
+              <button
+                type="button"
+                onClick={handleCheckUpdates}
+                disabled={!electron || updateStatus === "checking"}
+                className="w-full rounded-lg border border-[#383838] bg-[#252525] py-2.5 font-mono text-[11px] tracking-wider text-[#888] uppercase transition-all hover:bg-[#2a2a2a] hover:text-[#aaa] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {updateStatus === "checking" ? "Checking..." : "Check for Updates"}
+              </button>
+
               {version && (
-                <div className="pt-4 border-t border-[#2a2a2a]">
+                <div className="pt-2 border-t border-[#2a2a2a]">
                   <p className="font-mono text-[10px] text-[#444] text-center">Marven v{version}</p>
                 </div>
               )}

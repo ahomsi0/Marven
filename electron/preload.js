@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getVersion: () => ipcRenderer.invoke('get-version'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 });

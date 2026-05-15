@@ -105,6 +105,11 @@ ipcMain.handle('save-settings', (_, settings) => {
   return true;
 });
 ipcMain.handle('get-version', () => app.getVersion());
+ipcMain.handle('check-for-updates', () => {
+  if (isDev) return { status: 'dev' };
+  autoUpdater.checkForUpdates();
+  return { status: 'checking' };
+});
 
 // ── Tray icon — dedicated transparent PNG, set as template so macOS renders
 //    it correctly in both light and dark menu bars ─────────────────────────────
