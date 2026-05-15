@@ -228,8 +228,9 @@ export default function Home() {
       })
       .catch(() => {});
 
-    // Startup greeting (only if name known)
-    if (profile?.name && !hasGreetedRef.current) {
+    // Startup greeting (once per session, not per remount)
+    if (profile?.name && !sessionStorage.getItem('marven_greeted')) {
+      sessionStorage.setItem('marven_greeted', '1');
       hasGreetedRef.current = true;
       const tod = getGreeting();
       setTimeout(() => {
@@ -237,7 +238,7 @@ export default function Home() {
           const convs2 = prev.length > 0 ? prev : [createConversation("greeting")];
           const targetId = prev.length > 0 ? prev[prev.length - 1].id : convs2[0].id;
           if (prev.length === 0) setActiveConversationId(convs2[0].id);
-          const greeting = createMessage("assistant", `${tod}, ${profile.name}. All systems online. How can I assist you today?`);
+          const greeting = createMessage("assistant", `${tod}, ${profile.name}. How can I assist you today?`);
           return convs2.map((c) =>
             c.id === targetId ? { ...c, messages: [...c.messages, greeting], updatedAt: new Date().toISOString() } : c
           );
@@ -497,8 +498,8 @@ export default function Home() {
     hasGreetedRef.current = true;
     const tod = getGreeting();
     const convId = ensureActiveConversation("greeting");
-    addMessageToConversation(convId, createMessage("assistant", `${tod}, ${name}. All systems online. How can I assist you today?`));
-    speakReply(`${tod}, ${name}. All systems online.`);
+    addMessageToConversation(convId, createMessage("assistant", `${tod}, ${name}. How can I assist you today?`));
+    speakReply(`${tod}, ${name}.`);
   }
 
   // ─── Core send logic ───────────────────────────────────────────────────────

@@ -169,9 +169,9 @@ function createWindow() {
     `).catch(() => {});
   });
 
-  // Hide instead of quit on close so the app keeps running in the menu bar
+  // On macOS: hide to menu bar when closed. On Windows/Linux: quit.
   mainWindow.on('close', (e) => {
-    if (!isQuitting) {
+    if (process.platform === 'darwin' && !isQuitting) {
       e.preventDefault();
       mainWindow.hide();
     }
@@ -241,7 +241,13 @@ ipcMain.on('window-maximize', () => {
 });
 
 ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.hide();
+  if (!mainWindow) return;
+  if (process.platform === 'darwin') {
+    mainWindow.hide();
+  } else {
+    isQuitting = true;
+    app.quit();
+  }
 });
 
 ipcMain.handle('dialog-open-folder', async () => {
@@ -263,7 +269,34 @@ app.whenReady().then(async () => {
   createTray();
 
   if (!isDev) {
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.autoDownload = true;
+
+    autoUpdater.on('update-available', (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Available',
+        message: `Marven ${info.version} is available and downloading in the background.`,
+        buttons: ['OK'],
+      });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: `Marven ${info.version} is ready to install. Restart now to apply the update.`,
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('[Marven] Auto-updater error:', err.message);
+    });
+
+    autoUpdater.checkForUpdates();
   }
 
   // Fix for Web Speech API: Google's speech service checks the Origin header.
