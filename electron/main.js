@@ -72,6 +72,40 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
+// ── Persistent settings (userData/settings.json) ─────────────────────────────
+function settingsPath() {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+function loadSettings() {
+  try {
+    const p = settingsPath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {}
+  return {};
+}
+
+function persistSettings(settings) {
+  try {
+    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
+  } catch (err) {
+    console.error('[Marven] Could not write settings:', err.message);
+  }
+}
+
+function applySettings(settings) {
+  if (settings.groqApiKey) process.env.GROQ_API_KEY = settings.groqApiKey;
+  if (settings.ollamaUrl)  process.env.OLLAMA_URL   = settings.ollamaUrl;
+}
+
+ipcMain.handle('get-settings', () => loadSettings());
+ipcMain.handle('save-settings', (_, settings) => {
+  persistSettings(settings);
+  applySettings(settings);
+  return true;
+});
+ipcMain.handle('get-version', () => app.getVersion());
+
 // ── Tray icon — dedicated transparent PNG, set as template so macOS renders
 //    it correctly in both light and dark menu bars ─────────────────────────────
 function buildTrayIcon() {
@@ -218,6 +252,7 @@ ipcMain.handle('dialog-open-folder', async () => {
 });
 
 app.whenReady().then(async () => {
+  applySettings(loadSettings());
   await startNextServer();
   // Set custom dock icon on macOS
   if (process.platform === 'darwin' && !APP_ICON.isEmpty()) {

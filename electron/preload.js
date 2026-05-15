@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   openFolderDialog: () => ipcRenderer.invoke('dialog-open-folder'),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getVersion: () => ipcRenderer.invoke('get-version'),
 });

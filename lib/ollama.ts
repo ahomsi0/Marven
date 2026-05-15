@@ -2,7 +2,7 @@
 // DEFAULT_MODEL is used as the initial selection in the UI.
 // The active model is chosen by the user at runtime.
 export const DEFAULT_MODEL = "phi3";
-const OLLAMA_BASE_URL = "http://localhost:11434";
+const OLLAMA_BASE_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 
 export async function askOllama(prompt: string, model: string): Promise<string> {
   let response: Response;

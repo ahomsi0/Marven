@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { CustomShortcut } from "@/types";
 
 interface SettingsModalProps {
@@ -9,7 +9,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabId = "shortcuts" | "commands";
+type TabId = "shortcuts" | "commands" | "api-keys";
 
 interface EditState {
   index: number;
@@ -78,6 +78,22 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   const [activeTab, setActiveTab] = useState<TabId>("shortcuts");
   const [items, setItems] = useState<CustomShortcut[]>(shortcuts.map((s) => ({ ...s })));
 
+  // API Keys tab state
+  const [groqKey, setGroqKey] = useState("");
+  const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
+  const [keysSaved, setKeysSaved] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+  const electron = typeof window !== "undefined" ? (window as any).marvenElectron : null;
+
+  useEffect(() => {
+    if (!electron) return;
+    electron.getSettings().then((s: any) => {
+      if (s.groqApiKey) setGroqKey(s.groqApiKey);
+      if (s.ollamaUrl)  setOllamaUrl(s.ollamaUrl);
+    });
+    electron.getVersion().then(setVersion);
+  }, []);
+
   // Add form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [addLabel, setAddLabel] = useState("");
@@ -88,6 +104,13 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   // Edit state
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editError, setEditError] = useState("");
+
+  async function handleSaveKeys() {
+    if (!electron) return;
+    await electron.saveSettings({ groqApiKey: groqKey.trim(), ollamaUrl: ollamaUrl.trim() });
+    setKeysSaved(true);
+    setTimeout(() => setKeysSaved(false), 2500);
+  }
 
   function saveItems(next: CustomShortcut[]) {
     setItems(next);
@@ -208,7 +231,7 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
 
         {/* Tab bar */}
         <div className="flex border-b border-[#2a2a2a] px-5 shrink-0 bg-[#1e1e1e]">
-          {(["shortcuts", "commands"] as TabId[]).map((tab) => (
+          {(["shortcuts", "commands", "api-keys"] as TabId[]).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -219,7 +242,7 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                   : "text-[#555] border-transparent hover:text-[#888]"
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "api-keys" ? "API Keys" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -392,6 +415,65 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "api-keys" && (
+            <div className="space-y-5">
+              {!electron && (
+                <div className="rounded-lg border border-[#383838] bg-[#252525] px-4 py-3">
+                  <p className="font-mono text-[11px] text-[#666]">API key settings are only available in the packaged app.</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+                  Groq API Key
+                </label>
+                <input
+                  type="password"
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                  placeholder="gsk_..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+                  Free at console.groq.com — powers cloud AI chat.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+                  Ollama URL
+                </label>
+                <input
+                  type="text"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+                  Default: http://localhost:11434 — only change if Ollama runs on a different machine.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveKeys}
+                disabled={!electron}
+                className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2.5 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/15 hover:border-[#d19a66]/50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {keysSaved ? "Saved ✓" : "Save Keys"}
+              </button>
+
+              {version && (
+                <div className="pt-4 border-t border-[#2a2a2a]">
+                  <p className="font-mono text-[10px] text-[#444] text-center">Marven v{version}</p>
                 </div>
               )}
             </div>
