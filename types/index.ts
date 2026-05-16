@@ -1,5 +1,5 @@
 export type MessageRole = "user" | "assistant";
-export type AIProvider = "groq" | "ollama" | "nim" | "openrouter";
+export type AIProvider = "groq" | "ollama" | "nim" | "openrouter" | "openai" | "anthropic";
 export type ConversationMode = "chat" | "agent";
 
 export interface Message {
@@ -98,6 +98,8 @@ export interface Conversation {
   messages: Message[];
   createdAt: string; // ISO string for localStorage serialization
   updatedAt: string;
+  provider?: AIProvider;
+  model?: string;
 }
 
 // ─── Agent tool-use loop types ────────────────────────────────────────────────
