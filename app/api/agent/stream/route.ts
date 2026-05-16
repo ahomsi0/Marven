@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const provider = (body.provider ?? "groq") as AIProvider;
   const model = body.model ?? (
     provider === "groq" ? "llama-3.3-70b-versatile" :
-    provider === "nim"  ? "meta/llama-3.1-70b-instruct" :
+    provider === "nim"  ? "mistralai/mistral-nemotron" :
     "qwen2.5-coder"
   );
 

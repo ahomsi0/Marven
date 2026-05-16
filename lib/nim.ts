@@ -1,18 +1,18 @@
 // NVIDIA NIM — OpenAI-compatible API
 // Key from: https://build.nvidia.com → Get API Key
 
-export const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
+export const DEFAULT_MODEL = "mistralai/mistral-nemotron";
 const NIM_BASE_URL = "https://integrate.api.nvidia.com/v1";
 
 const SYSTEM_PROMPT =
   "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
 
 export const NIM_MODELS = [
-  { name: "meta/llama-3.1-70b-instruct" },
-  { name: "meta/llama-3.1-8b-instruct" },
-  { name: "mistralai/mistral-large-2-instruct" },
-  { name: "mistralai/mixtral-8x7b-instruct-v0.1" },
-  { name: "nvidia/nemotron-4-340b-instruct" },
+  { name: "mistralai/mistral-nemotron" },
+  { name: "mistralai/mistral-large-3-675b-instruct-2512" },
+  { name: "qwen/qwen3-coder-480b-a35b-instruct" },
+  { name: "bytedance/seed-oss-36b-instruct" },
+  { name: "minimaxai/minimax-m2.7" },
 ];
 
 import type { HistoryMessage } from "@/types";
