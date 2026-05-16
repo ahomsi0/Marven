@@ -28,7 +28,20 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Ignore clipboard errors
+      // Fallback for Electron clipboard permission issues
+      const ta = document.createElement("textarea");
+      ta.value = message.content;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch { /* ignore */ }
+      document.body.removeChild(ta);
     }
   }
 
@@ -134,8 +147,8 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                   {message.content}
                 </p>
               </div>
-              {/* Action bar — top-right, visible on hover */}
-              <div className="absolute -right-2 -top-2 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              {/* Action bar — left of bubble, visible on hover */}
+              <div className="absolute right-full top-1 mr-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {actionBtn("Edit message", () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
                 {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
               </div>
