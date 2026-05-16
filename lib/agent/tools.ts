@@ -4,6 +4,7 @@ import net from "net";
 import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
+import { appendMemory } from "@/lib/memoryClient";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -67,9 +68,65 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ["query"],
     },
   },
+  {
+    name: "web_search",
+    description: "Search the web for information using DuckDuckGo. Returns abstracts and top related results.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The search query." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "fetch_url",
+    description: "Fetch the content of a URL and return it as plain text (HTML stripped). Useful for reading documentation, GitHub files, or API responses.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The URL to fetch." },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "remember",
+    description: "Save information to persistent memory for future agent sessions. Use for user preferences, project context, or recurring facts.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The information to save to memory." },
+      },
+      required: ["content"],
+    },
+  },
 ];
 
 const BLOCKED = [/sudo/, /rm\s+-rf\s+\//, /mkfs/, /dd\s+if=/, />\s*\/dev\//];
+
+export function formatWebSearchResult(data: {
+  AbstractText?: string;
+  AbstractURL?: string;
+  RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }>;
+}): string {
+  const lines: string[] = [];
+  if (data.AbstractText) {
+    lines.push(data.AbstractText);
+    if (data.AbstractURL) lines.push(`Source: ${data.AbstractURL}`);
+    lines.push("");
+  }
+  const topics = (data.RelatedTopics ?? [])
+    .filter((t) => t.Text && !t.Topics)
+    .slice(0, 5);
+  if (topics.length > 0) {
+    lines.push("Related:");
+    for (const t of topics) {
+      lines.push(`- ${t.Text}${t.FirstURL ? ` (${t.FirstURL})` : ""}`);
+    }
+  }
+  return lines.join("\n").trim() || "No results found.";
+}
 
 export function assertSafePath(workspaceRoot: string, relPath: string): string {
   const resolved = path.resolve(workspaceRoot, relPath);
@@ -242,6 +299,54 @@ export async function executeTool(
         if (execErr.code === 1) return "No matches found";
         return "No matches found";
       }
+    }
+
+    case "web_search": {
+      const query = args.query as string;
+      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        const data = await res.json() as {
+          AbstractText?: string;
+          AbstractURL?: string;
+          RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }>;
+        };
+        return formatWebSearchResult(data);
+      } catch (err) {
+        return `Search failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    case "fetch_url": {
+      const url = args.url as string;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        if (!res.ok) return `Error ${res.status}: ${res.statusText}`;
+        const text = await res.text();
+        const stripped = text
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        return stripped.length > 8_000
+          ? stripped.slice(0, 8_000) + "\n[truncated]"
+          : stripped;
+      } catch (err) {
+        return `Fetch failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    case "remember": {
+      const content = args.content as string;
+      appendMemory(content);
+      return "Remembered.";
     }
 
     default:

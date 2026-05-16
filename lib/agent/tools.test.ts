@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { executeTool, TOOL_DEFINITIONS } from "./tools";
+import { executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -15,14 +15,17 @@ afterEach(async () => {
 });
 
 describe("TOOL_DEFINITIONS", () => {
-  it("exports 5 tools", () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(5);
+  it("exports 8 tools", () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(8);
     const names = TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toContain("list_files");
     expect(names).toContain("read_file");
     expect(names).toContain("write_file");
     expect(names).toContain("run_command");
     expect(names).toContain("search_files");
+    expect(names).toContain("web_search");
+    expect(names).toContain("fetch_url");
+    expect(names).toContain("remember");
   });
 });
 
@@ -80,5 +83,41 @@ describe("executeTool – search_files", () => {
     await fs.writeFile(path.join(tmpDir, "app.ts"), "nothing here");
     const result = await executeTool("search_files", { query: "zzznomatch" }, tmpDir);
     expect(result).toMatch(/no matches/i);
+  });
+});
+
+describe("formatWebSearchResult", () => {
+  it("returns no results message when data is empty", () => {
+    expect(formatWebSearchResult({})).toBe("No results found.");
+  });
+
+  it("includes AbstractText and AbstractURL", () => {
+    const result = formatWebSearchResult({
+      AbstractText: "Node.js is a JavaScript runtime",
+      AbstractURL: "https://nodejs.org",
+    });
+    expect(result).toContain("Node.js is a JavaScript runtime");
+    expect(result).toContain("https://nodejs.org");
+  });
+
+  it("includes up to 5 related topics", () => {
+    const topics = Array.from({ length: 7 }, (_, i) => ({
+      Text: `Topic ${i}`,
+      FirstURL: `https://example.com/${i}`,
+    }));
+    const result = formatWebSearchResult({ RelatedTopics: topics });
+    const matches = result.match(/- Topic \d/g) ?? [];
+    expect(matches).toHaveLength(5);
+  });
+
+  it("skips topics that have a nested Topics array (category groups)", () => {
+    const result = formatWebSearchResult({
+      RelatedTopics: [
+        { Topics: [{}] },
+        { Text: "Good topic", FirstURL: "https://example.com" },
+      ],
+    });
+    expect(result).toContain("Good topic");
+    expect(result).not.toContain("Topics");
   });
 });
