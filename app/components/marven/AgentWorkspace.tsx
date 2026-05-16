@@ -128,6 +128,48 @@ export function AgentWorkspace({
   const [showEditor, setShowEditor] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
 
+  const [agentWidth, setAgentWidth] = useState(() => {
+    if (typeof window === "undefined") return 320;
+    return Number(localStorage.getItem("marven-agent-width") ?? 320) || 320;
+  });
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDragging.current) return;
+      const delta = e.clientX - dragStartX.current;
+      const next = Math.min(600, Math.max(200, dragStartWidth.current + delta));
+      setAgentWidth(next);
+    }
+    function onMouseUp() {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("marven-agent-width", String(agentWidth));
+  }, [agentWidth]);
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = agentWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1a1a1a]">
       {/* Panel toggle toolbar */}
@@ -145,7 +187,14 @@ export function AgentWorkspace({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left — Agent panel */}
         {showAgent && (
-          <div className={`flex flex-col border-r border-[#333] ${showEditor ? "w-[320px] min-w-[320px]" : "flex-1"}`}>
+          <div
+            className="flex flex-col border-r border-[#333]"
+            style={
+              showEditor
+                ? { width: agentWidth, minWidth: agentWidth, flexShrink: 0 }
+                : { flex: 1 }
+            }
+          >
             <WorkspaceBar
               workspaceRoot={workspaceRoot}
               provider={provider}
@@ -163,6 +212,18 @@ export function AgentWorkspace({
                 onStop={onStop}
                 onSlashCommand={onSlashCommand}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Drag handle — only when both panels visible */}
+        {showAgent && showEditor && (
+          <div
+            onMouseDown={startDrag}
+            className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/30 active:bg-[#d19a66]/50 transition-colors"
+          >
+            <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
             </div>
           </div>
         )}
