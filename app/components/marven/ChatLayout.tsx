@@ -20,6 +20,7 @@ import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
 import { AgentWorkspace } from "@/app/components/marven/AgentWorkspace";
+import { generateMarkdown } from "@/lib/chatHelpers";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -176,6 +177,26 @@ export function ChatLayout({
     onSlashCommand(cmd);
   }
 
+  function handleExport() {
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    if (!conv || conv.messages.length === 0) return;
+    const md = generateMarkdown(conv);
+    const slug = (conv.name || "conversation")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60);
+    const blob = new Blob([md], { type: "text/markdown; charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
@@ -239,6 +260,21 @@ export function ChatLayout({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* Export button — only in chat mode, only when there are messages */}
+                  {mode === "chat" && messages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleExport}
+                      title="Export as Markdown"
+                      aria-label="Export conversation as Markdown"
+                      className="rounded-lg p-1.5 text-[#555] transition-colors hover:bg-[#2a2a2a] hover:text-[#999]"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                    </button>
+                  )}
+
                   {/* System prompt toggle — only in chat mode */}
                   {mode === "chat" && (
                     <button
