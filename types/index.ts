@@ -13,7 +13,7 @@ export interface Message {
 
 export interface ImageAttachment {
   base64: string;     // full data URL e.g. "data:image/png;base64,..."
-  mimeType: string;   // "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+  mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
   name: string;       // original filename e.g. "screenshot.png"
 }
 
@@ -39,7 +39,7 @@ export interface OllamaModel {
 
 /** A single turn in the conversation history sent to the AI */
 export interface HistoryMessage {
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
   attachments?: ImageAttachment[];
 }
