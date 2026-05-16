@@ -99,8 +99,10 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "electron-updater": "^6.8.3",
     "next": "^15.5.15",
+    "openai": "^6.38.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
