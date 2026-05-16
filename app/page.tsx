@@ -139,6 +139,7 @@ export default function Home() {
     groq: "",
     ollama: "",
     nim: "",
+    openrouter: "",
   });
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
