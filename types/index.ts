@@ -8,6 +8,27 @@ export interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  attachments?: ImageAttachment[];
+}
+
+export interface ImageAttachment {
+  base64: string;     // full data URL e.g. "data:image/png;base64,..."
+  mimeType: string;   // "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+  name: string;       // original filename e.g. "screenshot.png"
+}
+
+export interface MCPServer {
+  id: string;         // uuid generated on creation
+  name: string;       // user label e.g. "filesystem"
+  command: string;    // full shell command e.g. "npx @modelcontextprotocol/server-filesystem ~/"
+  enabled: boolean;
+}
+
+export interface PromptTemplate {
+  id: string;
+  trigger: string;    // slash keyword e.g. "review" → accessible as /review
+  prompt: string;     // text that fills the input on selection
+  label?: string;     // display name in slash menu (falls back to trigger)
 }
 
 export interface OllamaModel {
@@ -20,6 +41,7 @@ export interface OllamaModel {
 export interface HistoryMessage {
   role: "user" | "assistant";
   content: string;
+  attachments?: ImageAttachment[];
 }
 
 export interface ChatRequest {
