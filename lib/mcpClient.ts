@@ -29,45 +29,73 @@ const TIMEOUT_MS = 30_000;
 
 class MCPClient {
   private servers = new Map<string, ServerEntry>();
+  private starting = new Set<string>();
 
   async start(server: MCPServer): Promise<void> {
-    // Kill existing process if restarting
-    const existing = this.servers.get(server.id);
-    if (existing) {
-      existing.process.kill();
-      this.servers.delete(server.id);
+    if (this.starting.has(server.id)) {
+      throw new Error(`MCP server ${server.id} is already starting`);
     }
+    this.starting.add(server.id);
+    try {
+      // Kill existing process if restarting, rejecting any pending requests
+      const existing = this.servers.get(server.id);
+      if (existing) {
+        for (const [, req] of existing.pending) {
+          clearTimeout(req.timer);
+          req.reject(new Error("MCP server restarted"));
+        }
+        existing.process.kill();
+        this.servers.delete(server.id);
+      }
 
-    const proc = spawn("sh", ["-c", server.command], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+      const proc = spawn("sh", ["-c", server.command], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
-    const entry: ServerEntry = {
-      process: proc,
-      status: "disconnected",
-      buffer: "",
-      pending: new Map(),
-      nextId: 1,
-    };
-    this.servers.set(server.id, entry);
+      const entry: ServerEntry = {
+        process: proc,
+        status: "disconnected",
+        buffer: "",
+        pending: new Map(),
+        nextId: 1,
+      };
+      this.servers.set(server.id, entry);
 
-    proc.stdout!.on("data", (chunk: Buffer) =>
-      this.handleData(server.id, chunk.toString())
-    );
-    proc.on("exit", () => {
-      const e = this.servers.get(server.id);
-      if (e) e.status = "disconnected";
-    });
-    proc.stderr!.on("data", () => {/* swallow stderr */});
+      proc.stdout!.on("data", (chunk: Buffer) =>
+        this.handleData(server.id, chunk.toString())
+      );
+      proc.on("exit", () => {
+        const e = this.servers.get(server.id);
+        if (!e) return;
+        for (const [, req] of e.pending) {
+          clearTimeout(req.timer);
+          req.reject(new Error("MCP server exited unexpectedly"));
+        }
+        e.pending.clear();
+        this.servers.delete(server.id);
+      });
+      let stderrOutput = "";
+      proc.stderr!.on("data", (chunk: Buffer) => {
+        stderrOutput += chunk.toString();
+      });
 
-    // MCP handshake
-    await this.request(server.id, "initialize", {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "marven", version: "1.0.0" },
-    });
-    this.notify(server.id, "notifications/initialized", {});
-    entry.status = "connected";
+      // MCP handshake
+      try {
+        await this.request(server.id, "initialize", {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "marven", version: "1.0.0" },
+        });
+      } catch (err) {
+        this.servers.delete(server.id);
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`MCP initialize failed: ${msg}${stderrOutput ? `\nServer stderr: ${stderrOutput.slice(0, 500)}` : ""}`);
+      }
+      this.notify(server.id, "notifications/initialized", {});
+      entry.status = "connected";
+    } finally {
+      this.starting.delete(server.id);
+    }
   }
 
   stop(id: string): void {
