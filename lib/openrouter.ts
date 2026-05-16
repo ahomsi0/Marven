@@ -12,11 +12,11 @@ export const OPENROUTER_MODELS = [
   { name: "mistralai/mistral-7b-instruct:free", size: 0 },
 ];
 
-export async function streamOpenRouter(
+export function streamOpenRouter(
   messages: HistoryMessage[],
   model: string,
   systemPrompt?: string
-): Promise<ReadableStream<Uint8Array>> {
+): ReadableStream<Uint8Array> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY is not set in settings");
 
@@ -24,32 +24,49 @@ export async function streamOpenRouter(
     ? [{ role: "system", content: systemPrompt }]
     : [];
 
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-      "HTTP-Referer": "https://marven.app",
-      "X-Title": "Marven",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [...sysMessages, ...messages],
-      stream: true,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`OpenRouter error (${res.status}): ${text || "unknown"}`);
-  }
-
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   return new ReadableStream({
     async start(controller) {
-      const reader = res.body!.getReader();
+      let res: Response;
+      try {
+        res = await fetch(OPENROUTER_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+            "HTTP-Referer": "https://marven.app",
+            "X-Title": "Marven",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [...sysMessages, ...messages],
+            temperature: 0.7,
+            stream: true,
+            stream_options: { include_usage: true },
+          }),
+        });
+      } catch (err) {
+        controller.error(err);
+        return;
+      }
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        controller.error(
+          new Error(`OpenRouter error (${res.status}): ${text || "unknown"}`)
+        );
+        return;
+      }
+
+      const body = res.body;
+      if (!body) {
+        controller.close();
+        return;
+      }
+
+      const reader = body.getReader();
       let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
       while (true) {
