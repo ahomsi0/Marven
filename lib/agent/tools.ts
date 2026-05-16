@@ -305,6 +305,9 @@ export async function executeTool(
       const query = args.query as string;
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
       try {
+        if (!query.trim()) {
+          return "Search failed: query must not be empty.";
+        }
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
         const res = await fetch(url, { signal: controller.signal });
@@ -323,6 +326,9 @@ export async function executeTool(
     case "fetch_url": {
       const url = args.url as string;
       try {
+        if (!/^https?:\/\//i.test(url)) {
+          return `Fetch failed: only http:// and https:// URLs are supported.`;
+        }
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
         const res = await fetch(url, { signal: controller.signal });
@@ -345,8 +351,12 @@ export async function executeTool(
 
     case "remember": {
       const content = args.content as string;
-      appendMemory(content);
-      return "Remembered.";
+      try {
+        appendMemory(content);
+        return "Remembered.";
+      } catch (err) {
+        return `Remember failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
 
     default:

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
+import * as memoryClient from "@/lib/memoryClient";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -83,6 +84,25 @@ describe("executeTool – search_files", () => {
     await fs.writeFile(path.join(tmpDir, "app.ts"), "nothing here");
     const result = await executeTool("search_files", { query: "zzznomatch" }, tmpDir);
     expect(result).toMatch(/no matches/i);
+  });
+});
+
+describe("executeTool — remember", () => {
+  it("returns 'Remembered.' and calls appendMemory", async () => {
+    const spy = vi.spyOn(memoryClient, "appendMemory").mockImplementation(() => {});
+    const result = await executeTool("remember", { content: "user prefers TypeScript" }, "/tmp");
+    expect(result).toBe("Remembered.");
+    expect(spy).toHaveBeenCalledWith("user prefers TypeScript");
+    spy.mockRestore();
+  });
+
+  it("returns error string when appendMemory throws", async () => {
+    vi.spyOn(memoryClient, "appendMemory").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    const result = await executeTool("remember", { content: "test" }, "/tmp");
+    expect(result).toContain("disk full");
+    vi.restoreAllMocks();
   });
 });
 
