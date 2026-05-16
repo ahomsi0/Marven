@@ -98,6 +98,8 @@ function applySettings(settings) {
   if (settings.ollamaUrl)        process.env.OLLAMA_URL          = settings.ollamaUrl;
   if (settings.nimApiKey)        process.env.NIM_API_KEY         = settings.nimApiKey;
   if (settings.openrouterApiKey) process.env.OPENROUTER_API_KEY  = settings.openrouterApiKey;
+  if (settings.openaiApiKey)     process.env.OPENAI_API_KEY      = settings.openaiApiKey;
+  if (settings.anthropicApiKey)  process.env.ANTHROPIC_API_KEY   = settings.anthropicApiKey;
 }
 
 ipcMain.handle('get-settings', () => loadSettings());

@@ -140,6 +140,8 @@ export default function Home() {
     ollama: "",
     nim: "",
     openrouter: "",
+    openai: "",
+    anthropic: "",
   });
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);

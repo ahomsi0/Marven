@@ -82,6 +82,8 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   const [groqKey, setGroqKey] = useState("");
   const [nimKey, setNimKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [keysSaved, setKeysSaved] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
@@ -95,6 +97,8 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
       if (s.groqApiKey)       setGroqKey(s.groqApiKey);
       if (s.nimApiKey)        setNimKey(s.nimApiKey);
       if (s.openrouterApiKey) setOpenrouterKey(s.openrouterApiKey);
+      if (s.openaiApiKey)     setOpenaiKey(s.openaiApiKey);
+      if (s.anthropicApiKey)  setAnthropicKey(s.anthropicApiKey);
       if (s.ollamaUrl)        setOllamaUrl(s.ollamaUrl);
     });
     electron.getVersion().then(setVersion);
@@ -122,6 +126,8 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
       groqApiKey: groqKey.trim(),
       nimApiKey: nimKey.trim(),
       openrouterApiKey: openrouterKey.trim(),
+      openaiApiKey: openaiKey.trim(),
+      anthropicApiKey: anthropicKey.trim(),
       ollamaUrl: ollamaUrl.trim(),
     });
     setKeysSaved(true);
@@ -499,6 +505,40 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                 />
                 <p className="mt-1.5 font-mono text-[10px] text-[#555]">
                   Free at openrouter.ai — access Gemma, Llama, Mistral & more at no cost.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+                  OpenAI API Key
+                </label>
+                <input
+                  type="password"
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  placeholder="sk-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+                  Get yours at platform.openai.com — powers GPT-4o and GPT-4o mini.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+                  Anthropic API Key
+                </label>
+                <input
+                  type="password"
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+                  placeholder="sk-ant-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+                  Get yours at console.anthropic.com — powers Claude Sonnet, Haiku &amp; Opus.
                 </p>
               </div>
 
