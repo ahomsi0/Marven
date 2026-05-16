@@ -148,7 +148,7 @@ function ModelDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-[#383838] bg-[#1e1e1e] py-1 shadow-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-[160px] w-64 overflow-y-auto rounded-lg border border-[#383838] bg-[#1e1e1e] py-1 shadow-xl">
           {models.map((model) => {
             const isActive = model.name === selected;
             return (
@@ -333,39 +333,28 @@ export function ChatLayout({
               <div className="flex flex-wrap items-center gap-2">
                 {/* Provider toggle */}
                 <div className="inline-flex rounded-lg bg-[#252525] border border-[#383838] p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onProviderChange("groq")}
-                    className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-                      provider === "groq"
-                        ? "bg-[#333] text-[#d4d4d4]"
-                        : "text-[#777] hover:text-[#ccc]"
-                    }`}
-                  >
-                    Cloud
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onProviderChange("ollama")}
-                    className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-                      provider === "ollama"
-                        ? "bg-[#333] text-[#d4d4d4]"
-                        : "text-[#777] hover:text-[#ccc]"
-                    }`}
-                  >
-                    Ollama
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onProviderChange("nim")}
-                    className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-                      provider === "nim"
-                        ? "bg-[#333] text-[#d4d4d4]"
-                        : "text-[#777] hover:text-[#ccc]"
-                    }`}
-                  >
-                    NIM
-                  </button>
+                  {(
+                    [
+                      { id: "groq",        label: "Groq",        color: "#9333ea" },
+                      { id: "ollama",      label: "Ollama",      color: "#3b82f6" },
+                      { id: "nim",         label: "NIM",         color: "#22c55e" },
+                      { id: "openrouter",  label: "OpenRouter",  color: "#06b6d4" },
+                    ] as const
+                  ).map(({ id, label, color }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => onProviderChange(id)}
+                      style={provider === id ? { color } : undefined}
+                      className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+                        provider === id
+                          ? "bg-[#333] font-medium"
+                          : "text-[#777] hover:text-[#ccc]"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Model selector */}
