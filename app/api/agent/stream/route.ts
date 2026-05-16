@@ -6,8 +6,9 @@ import { nimAgentStep } from "@/lib/agent/nim";
 import { openrouterAgentStep } from "@/lib/agent/openrouter";
 import { openaiAgentStep } from "@/lib/agent/openai";
 import { anthropicAgentStep } from "@/lib/agent/anthropic";
-import { TOOL_DEFINITIONS } from "@/lib/agent/tools";
-import type { AIProvider, InternalMessage, HistoryMessage } from "@/types";
+import { TOOL_DEFINITIONS, executeTool } from "@/lib/agent/tools";
+import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
+import type { AIProvider, InternalMessage, HistoryMessage, MCPServer } from "@/types";
 
 interface StreamRequestBody {
   prompt?: string;
@@ -16,6 +17,7 @@ interface StreamRequestBody {
   provider?: AIProvider;
   workspaceRoot?: string;
   memory?: string;
+  mcpServers?: MCPServer[];
 }
 
 export async function POST(req: NextRequest) {
@@ -68,6 +70,24 @@ export async function POST(req: NextRequest) {
     provider === "anthropic"  ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => anthropicAgentStep(msgs, tools, model) :
     (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => ollamaAgentStep(msgs, tools, model);
 
+  // Merge MCP tools from enabled servers
+  const enabledMcpServers = (body.mcpServers ?? []).filter((s) => s.enabled);
+  const allTools = [...TOOL_DEFINITIONS];
+  const mcpToolOwners = new Map<string, string>(); // namespaced tool name → server id
+
+  for (const server of enabledMcpServers) {
+    try {
+      const mcpTools = await mcpClient.listTools(server.id);
+      for (const tool of mcpTools) {
+        const def = mcpToolToDefinition(server.name, tool);
+        allTools.push(def);
+        mcpToolOwners.set(def.name, server.id);
+      }
+    } catch {
+      // Server not connected — skip its tools silently
+    }
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -81,10 +101,24 @@ export async function POST(req: NextRequest) {
       try {
         for await (const event of runAgentLoop({
           messages: history,
-          tools: TOOL_DEFINITIONS,
+          tools: allTools,
           workspaceRoot,
           memory: body.memory,
           providerStep,
+          executeToolFn: async (name, args, root) => {
+            // Route MCP tools to the MCP client
+            const mcpServerId = mcpToolOwners.get(name);
+            if (mcpServerId) {
+              const toolName = name.split("__").slice(1).join("__");
+              try {
+                return await mcpClient.callTool(mcpServerId, toolName, args);
+              } catch (err) {
+                return `MCP tool error: ${err instanceof Error ? err.message : String(err)}`;
+              }
+            }
+            // Built-in tools
+            return executeTool(name, args, root);
+          },
         })) {
           emit(event.type, event);
         }
