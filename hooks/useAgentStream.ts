@@ -49,9 +49,13 @@ export function useAgentStream({ provider, model, workspaceRoot }: UseAgentStrea
     addMessage(assistantMsg);
 
     const history = messages
-      .concat(userMsg)
-      .filter((m) => m.role === "user" || (m.role === "assistant" && m.content))
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({
+        role: m.role,
+        content: m.content || (m.toolCalls?.length
+          ? `[Used tools: ${m.toolCalls.map((tc) => tc.tool).join(", ")}]`
+          : ""),
+      }))
+      .filter((m) => m.content);
 
     const abort = new AbortController();
     abortRef.current = abort;

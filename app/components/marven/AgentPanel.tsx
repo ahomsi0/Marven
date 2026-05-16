@@ -131,7 +131,7 @@ export function AgentPanel({
             onKeyDown={handleKeyDown}
             disabled={isRunning}
             rows={1}
-            placeholder="Describe what to build... or type / for commands"
+            placeholder="Describe task... or / for commands"
             className="min-h-[36px] flex-1 resize-none rounded-md border border-[#383838] bg-[#252525] px-3 py-2 text-[12px] text-[#ddd] placeholder-[#555] outline-none transition-colors focus:border-[#555] disabled:opacity-40"
             style={{ maxHeight: 120, overflowY: "auto" }}
           />

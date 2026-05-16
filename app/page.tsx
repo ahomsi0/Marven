@@ -266,19 +266,20 @@ export default function Home() {
     loadAgentFile(selectedAgentFilePath).catch(() => {});
   }, [activeMode, selectedAgentFilePath]);
 
-  // Auto-open the last file written by the streaming agent
+  // Instant workspace refresh + auto-open when agent writes files
+  const processedWriteCallsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const lastMsg = agentStream.messages[agentStream.messages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
-    const doneCalls = (lastMsg.toolCalls ?? []).filter(
-      (tc) => tc.tool === "write_file" && tc.status === "done"
+    const newDone = (lastMsg.toolCalls ?? []).filter(
+      (tc) => tc.tool === "write_file" && tc.status === "done" && !processedWriteCallsRef.current.has(tc.callId)
     );
-    if (doneCalls.length === 0) return;
-    const lastWrite = doneCalls[doneCalls.length - 1];
+    if (newDone.length === 0) return;
+    newDone.forEach((tc) => processedWriteCallsRef.current.add(tc.callId));
+    loadWorkspaceFiles().catch(() => {});
+    const lastWrite = newDone[newDone.length - 1];
     const writtenPath = lastWrite.args?.path as string | undefined;
-    if (writtenPath) {
-      setSelectedAgentFilePath(writtenPath);
-    }
+    if (writtenPath) setSelectedAgentFilePath(writtenPath);
   }, [agentStream.messages]);
 
   // ─── Helpers to mutate conversation messages ────────────────────────────────

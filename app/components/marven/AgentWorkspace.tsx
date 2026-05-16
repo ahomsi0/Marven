@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { WorkspaceFile, AgentMessage } from "@/types";
 import { WorkspaceBar } from "./WorkspaceBar";
 import { AgentPanel } from "./AgentPanel";
@@ -30,6 +31,22 @@ interface AgentWorkspaceProps {
   onRefreshFiles: () => void;
 }
 
+function PanelToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+        active
+          ? "bg-[#d19a66]/20 text-[#d19a66] border border-[#d19a66]/30"
+          : "bg-[#252525] text-[#555] border border-[#333] hover:text-[#888]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function AgentWorkspace({
   messages,
   input,
@@ -54,45 +71,65 @@ export function AgentWorkspace({
   onSaveFile,
   onRefreshFiles,
 }: AgentWorkspaceProps) {
+  const [showAgent, setShowAgent] = useState(true);
+  const [showEditor, setShowEditor] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(true);
+
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-[#1a1a1a]">
-      {/* Left — Agent panel */}
-      <div className="flex w-[320px] min-w-[320px] flex-col border-r border-[#333]">
-        <WorkspaceBar
-          workspaceRoot={workspaceRoot}
-          provider={provider}
-          model={model}
-          onOpenFolder={onOpenFolder}
-        />
-        <div className="min-h-0 flex-1">
-          <AgentPanel
-            messages={messages}
-            input={input}
-            isRunning={isRunning}
-            error={error}
-            onInputChange={onInputChange}
-            onSend={onSend}
-            onStop={onStop}
-            onSlashCommand={onSlashCommand}
-          />
-        </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1a1a1a]">
+      {/* Panel toggle toolbar */}
+      <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#161616] px-3 py-1.5">
+        <span className="text-[9px] uppercase tracking-[0.2em] text-[#444] mr-1">Panels</span>
+        <PanelToggle label="Agent" active={showAgent} onClick={() => setShowAgent((v) => !v)} />
+        <PanelToggle label="Editor" active={showEditor} onClick={() => setShowEditor((v) => !v)} />
+        <PanelToggle label="Terminal" active={showTerminal} onClick={() => setShowTerminal((v) => !v)} />
       </div>
 
-      {/* Right — Editor panel */}
-      <div className="min-h-0 min-w-0 flex-1">
-        <EditorPanel
-          files={files}
-          workspaceRoot={workspaceRoot}
-          selectedFilePath={selectedFilePath}
-          fileContent={fileContent}
-          isFileLoading={isFileLoading}
-          isFileDirty={isFileDirty}
-          terminalOutput={terminalOutput}
-          onSelectFile={onSelectFile}
-          onFileContentChange={onFileContentChange}
-          onSaveFile={onSaveFile}
-          onRefreshFiles={onRefreshFiles}
-        />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Left — Agent panel */}
+        {showAgent && (
+          <div className={`flex flex-col border-r border-[#333] ${showEditor ? "w-[320px] min-w-[320px]" : "flex-1"}`}>
+            <WorkspaceBar
+              workspaceRoot={workspaceRoot}
+              provider={provider}
+              model={model}
+              onOpenFolder={onOpenFolder}
+            />
+            <div className="min-h-0 flex-1">
+              <AgentPanel
+                messages={messages}
+                input={input}
+                isRunning={isRunning}
+                error={error}
+                onInputChange={onInputChange}
+                onSend={onSend}
+                onStop={onStop}
+                onSlashCommand={onSlashCommand}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Right — Editor panel */}
+        {showEditor && (
+          <div className="min-h-0 min-w-0 flex-1">
+            <EditorPanel
+              files={files}
+              workspaceRoot={workspaceRoot}
+              selectedFilePath={selectedFilePath}
+              fileContent={fileContent}
+              isFileLoading={isFileLoading}
+              isFileDirty={isFileDirty}
+              terminalOutput={terminalOutput}
+              showTerminal={showTerminal}
+              onToggleTerminal={() => setShowTerminal((v) => !v)}
+              onSelectFile={onSelectFile}
+              onFileContentChange={onFileContentChange}
+              onSaveFile={onSaveFile}
+              onRefreshFiles={onRefreshFiles}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
