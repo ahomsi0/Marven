@@ -94,9 +94,10 @@ function persistSettings(settings) {
 }
 
 function applySettings(settings) {
-  if (settings.groqApiKey) process.env.GROQ_API_KEY = settings.groqApiKey;
-  if (settings.ollamaUrl)  process.env.OLLAMA_URL   = settings.ollamaUrl;
-  if (settings.nimApiKey)  process.env.NIM_API_KEY   = settings.nimApiKey;
+  if (settings.groqApiKey)       process.env.GROQ_API_KEY        = settings.groqApiKey;
+  if (settings.ollamaUrl)        process.env.OLLAMA_URL          = settings.ollamaUrl;
+  if (settings.nimApiKey)        process.env.NIM_API_KEY         = settings.nimApiKey;
+  if (settings.openrouterApiKey) process.env.OPENROUTER_API_KEY  = settings.openrouterApiKey;
 }
 
 ipcMain.handle('get-settings', () => loadSettings());

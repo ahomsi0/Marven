@@ -81,6 +81,7 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   // API Keys tab state
   const [groqKey, setGroqKey] = useState("");
   const [nimKey, setNimKey] = useState("");
+  const [openrouterKey, setOpenrouterKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [keysSaved, setKeysSaved] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
@@ -91,9 +92,10 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
   useEffect(() => {
     if (!electron) return;
     electron.getSettings().then((s: any) => {
-      if (s.groqApiKey) setGroqKey(s.groqApiKey);
-      if (s.nimApiKey)  setNimKey(s.nimApiKey);
-      if (s.ollamaUrl)  setOllamaUrl(s.ollamaUrl);
+      if (s.groqApiKey)       setGroqKey(s.groqApiKey);
+      if (s.nimApiKey)        setNimKey(s.nimApiKey);
+      if (s.openrouterApiKey) setOpenrouterKey(s.openrouterApiKey);
+      if (s.ollamaUrl)        setOllamaUrl(s.ollamaUrl);
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -116,7 +118,12 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
 
   async function handleSaveKeys() {
     if (!electron) return;
-    await electron.saveSettings({ groqApiKey: groqKey.trim(), nimApiKey: nimKey.trim(), ollamaUrl: ollamaUrl.trim() });
+    await electron.saveSettings({
+      groqApiKey: groqKey.trim(),
+      nimApiKey: nimKey.trim(),
+      openrouterApiKey: openrouterKey.trim(),
+      ollamaUrl: ollamaUrl.trim(),
+    });
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 2500);
   }
@@ -475,6 +482,23 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                 />
                 <p className="mt-1.5 font-mono text-[10px] text-[#555]">
                   Free credits at build.nvidia.com — access llama-3.1-70b and more.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+                  OpenRouter API Key
+                </label>
+                <input
+                  type="password"
+                  value={openrouterKey}
+                  onChange={(e) => setOpenrouterKey(e.target.value)}
+                  placeholder="sk-or-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+                  Free at openrouter.ai — access Gemma, Llama, Mistral & more at no cost.
                 </p>
               </div>
 
