@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type {
   AIProvider,
   AgentMessage,
@@ -80,6 +80,103 @@ interface ChatLayoutProps {
 function formatSize(bytes: number): string {
   const gb = bytes / 1_000_000_000;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1_000_000).toFixed(0)} MB`;
+}
+
+function shortModelName(name: string): string {
+  // "mistralai/mistral-large-3-675b-instruct-2512" → "mistral-large-3-675b"
+  const base = name.includes("/") ? name.split("/").pop()! : name;
+  return base.replace(/-instruct.*$/, "").replace(/-\d{4}$/, "");
+}
+
+function ModelDropdown({
+  models,
+  selected,
+  loading,
+  error,
+  onChange,
+}: {
+  models: import("@/types").OllamaModel[];
+  selected: string;
+  loading: boolean;
+  error: string | null;
+  onChange: (m: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open, close]);
+
+  if (loading) return (
+    <div className="rounded-lg border border-[#383838] bg-[#252525] px-3 py-1.5 text-[11px] text-[#555]">
+      Loading…
+    </div>
+  );
+  if (error || models.length === 0) return (
+    <div className="rounded-lg border border-[#383838] bg-[#252525] px-3 py-1.5 text-[11px] text-[#555]" title={error ?? ""}>
+      {error ? "Unavailable" : "No models"}
+    </div>
+  );
+
+  const selectedModel = models.find((m) => m.name === selected);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 rounded-lg border border-[#383838] bg-[#252525] px-3 py-1.5 text-left transition-colors hover:border-[#555] hover:bg-[#2a2a2a]"
+        style={{ minWidth: 180 }}
+      >
+        <span className="flex-1 truncate text-[11px] text-[#ccc]">
+          {selectedModel ? shortModelName(selectedModel.name) : "Select model"}
+        </span>
+        {selectedModel?.size ? (
+          <span className="shrink-0 text-[10px] text-[#555]">{formatSize(selectedModel.size)}</span>
+        ) : null}
+        <svg className="h-3 w-3 shrink-0 text-[#555]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-[#383838] bg-[#1e1e1e] py-1 shadow-xl">
+          {models.map((model) => {
+            const isActive = model.name === selected;
+            return (
+              <button
+                key={model.name}
+                type="button"
+                onClick={() => { onChange(model.name); close(); }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[#252525] ${isActive ? "bg-[#252525]" : ""}`}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? "bg-[#d19a66]" : "bg-transparent"}`} />
+                <div className="min-w-0 flex-1">
+                  <div className={`truncate text-[11px] ${isActive ? "text-[#d19a66]" : "text-[#ccc]"}`}>
+                    {shortModelName(model.name)}
+                  </div>
+                  {model.name !== shortModelName(model.name) && (
+                    <div className="truncate text-[9px] text-[#555]">{model.name}</div>
+                  )}
+                </div>
+                {model.size > 0 && (
+                  <span className="shrink-0 text-[10px] text-[#555]">{formatSize(model.size)}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TypingRow() {
@@ -272,48 +369,13 @@ export function ChatLayout({
                 </div>
 
                 {/* Model selector */}
-                <div className="relative min-w-[200px]">
-                  {modelsLoading ? (
-                    <div className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]">
-                      Loading models...
-                    </div>
-                  ) : modelsError ? (
-                    <div
-                      className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]"
-                      title={modelsError}
-                    >
-                      Models unavailable
-                    </div>
-                  ) : models.length === 0 ? (
-                    <div className="rounded-lg border border-[#383838] px-3 py-1.5 text-[12px] text-[#666]">
-                      No models found
-                    </div>
-                  ) : (
-                    <>
-                      <select
-                        value={selectedModel}
-                        onChange={(event) => onModelChange(event.target.value)}
-                        className="w-full appearance-none rounded-lg bg-transparent border border-[#383838] px-3 py-1.5 pr-8 text-[12px] text-[#ccc] outline-none focus:border-[#555]"
-                      >
-                        {models.map((model) => (
-                          <option key={model.name} value={model.name}>
-                            {model.name}
-                            {model.size > 0 ? ` · ${formatSize(model.size)}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <svg
-                        className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#666]"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2.2}
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </>
-                  )}
-                </div>
+                <ModelDropdown
+                  models={models}
+                  selected={selectedModel}
+                  loading={modelsLoading}
+                  error={modelsError}
+                  onChange={onModelChange}
+                />
 
                 {/* Speech toggle */}
                 <button

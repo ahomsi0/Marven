@@ -8,9 +8,9 @@ export type VoiceState = "idle" | "wake-listening" | "command-listening";
 const WAKE_WORD_REGEX =
   /\b(?:hey|hi|ok|okay|oi)\s*[,.]?\s*(?:marv(?:en|in|an|yn|ell?|el)|maven|martin|marven)\b/i;
 
-const SPEECH_THRESHOLD = 0.008; // RMS above = speaking
-const SPEECH_END_MS    = 700;   // ms of silence that ends an utterance
-const CMD_SILENCE_MS   = 1800;  // ms of silence that ends command recording
+const SPEECH_THRESHOLD = 0.006; // RMS above = speaking
+const SPEECH_END_MS    = 600;   // ms of silence that ends an utterance
+const CMD_SILENCE_MS   = 2000;  // ms of silence that ends command recording
 
 function hasWakeWord(t: string) { return WAKE_WORD_REGEX.test(t); }
 function stripWakeWord(t: string) {
@@ -242,8 +242,17 @@ export function useVoice(
     setVoiceState("command-listening");
     onInterimRef.current?.("Listening...");
 
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      if (!cmdActiveRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+    // Reuse the wake stream if available (avoids mic re-acquisition gap)
+    const existingStream = wakeStreamRef.current;
+    const streamPromise = existingStream
+      ? Promise.resolve(existingStream)
+      : navigator.mediaDevices.getUserMedia({ audio: true });
+
+    streamPromise.then(stream => {
+      if (!cmdActiveRef.current) {
+        if (!existingStream) stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       cmdStreamRef.current = stream;
       const mime = preferredMime();
       const mr   = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -255,7 +264,8 @@ export function useVoice(
       mr.onstop = async () => {
         cancelAnimationFrame(cmdRafRef.current);
         if (cmdAudioRef.current) { try { cmdAudioRef.current.ctx.close(); } catch { /**/ } cmdAudioRef.current = null; }
-        stream.getTracks().forEach(t => t.stop());
+        // Only stop the stream if we own it (not borrowed from wake listener)
+        if (!existingStream) stream.getTracks().forEach(t => t.stop());
         cmdStreamRef.current = null; cmdActiveRef.current = false;
 
         const blob = new Blob(cmdChunksRef.current, { type: mr.mimeType || "audio/webm" });

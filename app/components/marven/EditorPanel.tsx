@@ -170,6 +170,11 @@ export function EditorPanel({
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
   const projectName = workspaceRoot?.split("/").filter(Boolean).pop() ?? "workspace";
+  const relativeFilePath = workspaceRoot && selectedFilePath
+    ? selectedFilePath.startsWith(workspaceRoot)
+      ? selectedFilePath.slice(workspaceRoot.length).replace(/^\//, "")
+      : activeFileName ?? ""
+    : activeFileName ?? "";
 
   const highlighted = isFileLoading ? "" : highlightCode(fileContent, fileExt);
   const lineCount = isFileLoading ? 1 : (fileContent.split("\n").length || 1);
@@ -239,8 +244,13 @@ export function EditorPanel({
           {/* Tab bar */}
           <div className="flex items-stretch border-b border-[#333] bg-[#1a1a1a]">
             {activeFileName ? (
-              <div className="flex items-center gap-2 border-r border-[#333] bg-[#1e1e1e] px-4 py-2 text-[11px] font-mono text-[#aaa]">
-                {activeFileName}
+              <div className="flex items-center gap-1.5 border-r border-[#333] bg-[#1e1e1e] px-4 py-2 font-mono" title={selectedFilePath ?? ""}>
+                {relativeFilePath.includes("/") && (
+                  <span className="text-[10px] text-[#555]">
+                    {relativeFilePath.slice(0, relativeFilePath.lastIndexOf("/") + 1)}
+                  </span>
+                )}
+                <span className="text-[11px] text-[#aaa]">{activeFileName}</span>
                 {isFileDirty && <span className="text-[#d19a66] text-[10px]">●</span>}
               </div>
             ) : (

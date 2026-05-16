@@ -4,7 +4,16 @@ import type { ProviderStepResult } from "./groq";
 
 const MAX_ITERATIONS = 20;
 
-const AGENT_SYSTEM_PROMPT = `You are Marven Agent, an expert software engineer. You have tools to read, write, and run code in the user's workspace. Always inspect relevant files before making changes. Be precise and concise in your final reply.`;
+function makeSystemPrompt(workspaceRoot: string): string {
+  return `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
+
+IMPORTANT RULES:
+- When the user mentions their project, files, or asks you to analyze/modify something, ALWAYS call list_files first to discover what exists — never ask the user for a file path you can find yourself.
+- Use read_file to inspect files before modifying them.
+- Use write_file to create or update files.
+- Use run_command to install dependencies, run builds, start servers, etc.
+- Be precise and concise in your final reply.`;
+}
 
 interface LoopOptions {
   messages: InternalMessage[];
@@ -24,7 +33,7 @@ export async function* runAgentLoop(
   const exec = options.executeToolFn ?? executeTool;
 
   const history: InternalMessage[] = [
-    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "system", content: makeSystemPrompt(workspaceRoot) },
     ...options.messages,
   ];
 
