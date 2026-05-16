@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message as ChatMessage } from "@/types";
@@ -17,6 +17,10 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
+
+  useEffect(() => {
+    if (!isEditing) setEditValue(message.content);
+  }, [message.content, isEditing]);
 
   async function handleCopy() {
     try {
