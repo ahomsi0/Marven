@@ -951,44 +951,44 @@ export default function Home() {
 
   async function handleEditMessage(messageId: string, newContent: string) {
     if (!activeConversationId || isLoading) return;
-    const conv = conversations.find((c) => c.id === activeConversationId);
-    if (!conv) return;
-    const idx = conv.messages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
-    // Truncate: remove the edited message and everything after it
-    upsertConversation(activeConversationId, (c) => ({
-      ...c,
-      messages: c.messages.slice(0, idx),
-      updatedAt: new Date().toISOString(),
-    }));
+    upsertConversation(activeConversationId, (c) => {
+      const idx = c.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return c;
+      // Truncate: remove the edited message and everything after it
+      return {
+        ...c,
+        messages: c.messages.slice(0, idx),
+        updatedAt: new Date().toISOString(),
+      };
+    });
     // sendMessage will add the user message fresh and get the AI reply
     await sendMessage(newContent);
   }
 
   async function handleRetryMessage(messageId: string) {
     if (!activeConversationId || isLoading) return;
-    const conv = conversations.find((c) => c.id === activeConversationId);
-    if (!conv) return;
-    const idx = conv.messages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
-    // Find the user message immediately before this assistant message
     let userContent = "";
-    let userIdx = -1;
-    for (let i = idx - 1; i >= 0; i--) {
-      if (conv.messages[i].role === "user") {
-        userContent = conv.messages[i].content;
-        userIdx = i;
-        break;
+    upsertConversation(activeConversationId, (c) => {
+      const idx = c.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return c;
+      // Find the user message immediately before this assistant message
+      let userIdx = -1;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (c.messages[i].role === "user") {
+          userContent = c.messages[i].content;
+          userIdx = i;
+          break;
+        }
       }
-    }
-    if (userIdx === -1) return;
-    // Truncate: remove from the user message onwards
-    upsertConversation(activeConversationId, (c) => ({
-      ...c,
-      messages: c.messages.slice(0, userIdx),
-      updatedAt: new Date().toISOString(),
-    }));
-    await sendMessage(userContent);
+      if (userIdx === -1) return c;
+      // Truncate: remove from the user message onwards
+      return {
+        ...c,
+        messages: c.messages.slice(0, userIdx),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (userContent) await sendMessage(userContent);
   }
 
   async function handleSlashCommand(cmd: string) {
