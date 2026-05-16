@@ -294,7 +294,7 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="bg-[#1e1e1e] border-b border-[#333] px-6 pb-3 pt-3 sm:px-8">
+          <header className="gold-gradient bg-[#1e1e1e] border-b border-[#333] px-6 pb-3 pt-3 sm:px-8">
             <div className={`mx-auto w-full space-y-2.5 ${mode === "agent" ? "max-w-none" : "max-w-[920px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">

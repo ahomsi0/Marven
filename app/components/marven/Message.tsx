@@ -32,7 +32,7 @@ export function Message({ message }: MessageProps) {
     <div className={`message-in group flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       {isUser ? (
         <div className="relative max-w-[86%] sm:max-w-[78%]">
-          <div className="bg-[#252525] border border-[#383838] rounded-2xl rounded-br-sm px-4 py-3">
+          <div className="bg-[#252525] border border-[#383838] border-l border-l-[#d19a66]/20 rounded-2xl rounded-br-sm px-4 py-3">
             <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
               {message.content}
             </p>
