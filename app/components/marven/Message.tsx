@@ -161,8 +161,8 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
         </div>
       ) : (
         <div className="relative max-w-[88%] sm:max-w-[82%]">
-          {/* Action bar — top-right, visible on hover */}
-          <div className="absolute -right-2 -top-2 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          {/* Action bar — right of bubble, visible on hover */}
+          <div className="absolute left-full top-1 ml-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>
