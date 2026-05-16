@@ -1,5 +1,5 @@
 export type MessageRole = "user" | "assistant";
-export type AIProvider = "groq" | "ollama" | "nim";
+export type AIProvider = "groq" | "ollama" | "nim" | "openrouter";
 export type ConversationMode = "chat" | "agent";
 
 export interface Message {

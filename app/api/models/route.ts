@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GROQ_MODELS, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
 import { fetchInstalledModels, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
 import { NIM_MODELS, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
+import { OPENROUTER_MODELS, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
 
 export async function GET(req: NextRequest) {
   const provider = (req.nextUrl.searchParams.get("provider") ?? "groq").toLowerCase();
@@ -34,6 +35,14 @@ export async function GET(req: NextRequest) {
         { status: 503 }
       );
     }
+  }
+
+  if (provider === "openrouter") {
+    return NextResponse.json({
+      provider: "openrouter",
+      models: OPENROUTER_MODELS,
+      defaultModel: OPENROUTER_DEFAULT_MODEL,
+    });
   }
 
   return NextResponse.json({

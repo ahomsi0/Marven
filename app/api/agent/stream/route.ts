@@ -3,6 +3,7 @@ import { runAgentLoop } from "@/lib/agent/loop";
 import { groqAgentStep } from "@/lib/agent/groq";
 import { ollamaAgentStep } from "@/lib/agent/ollama";
 import { nimAgentStep } from "@/lib/agent/nim";
+import { openrouterAgentStep } from "@/lib/agent/openrouter";
 import { TOOL_DEFINITIONS } from "@/lib/agent/tools";
 import type { AIProvider, InternalMessage, HistoryMessage } from "@/types";
 
@@ -55,8 +56,9 @@ export async function POST(req: NextRequest) {
   history.push({ role: "user", content: prompt });
 
   const providerStep =
-    provider === "groq" ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => groqAgentStep(msgs, tools, model) :
-    provider === "nim"  ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => nimAgentStep(msgs, tools, model) :
+    provider === "groq"       ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => groqAgentStep(msgs, tools, model) :
+    provider === "nim"        ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => nimAgentStep(msgs, tools, model) :
+    provider === "openrouter" ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => openrouterAgentStep(msgs, tools, model) :
     (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => ollamaAgentStep(msgs, tools, model);
 
   const encoder = new TextEncoder();
