@@ -15,6 +15,7 @@ interface StreamRequestBody {
   model?: string;
   provider?: AIProvider;
   workspaceRoot?: string;
+  memory?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
           messages: history,
           tools: TOOL_DEFINITIONS,
           workspaceRoot,
+          memory: body.memory,
           providerStep,
         })) {
           emit(event.type, event);

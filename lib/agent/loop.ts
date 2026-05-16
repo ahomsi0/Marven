@@ -4,21 +4,30 @@ import type { ProviderStepResult } from "./groq";
 
 const MAX_ITERATIONS = 20;
 
-function makeSystemPrompt(workspaceRoot: string): string {
-  return `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
+function makeSystemPrompt(workspaceRoot: string, memory?: string): string {
+  let base = `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
 
 IMPORTANT RULES:
 - When the user mentions their project, files, or asks you to analyze/modify something, ALWAYS call list_files first to discover what exists — never ask the user for a file path you can find yourself.
 - Use read_file to inspect files before modifying them.
 - Use write_file to create or update files.
 - Use run_command to install dependencies, run builds, start servers, etc.
+- Use web_search to look up documentation, APIs, or current information.
+- Use fetch_url to read a specific webpage, README, or raw file from the internet.
+- Use remember to save important facts about the user's project or preferences for future sessions.
 - Be precise and concise in your final reply.`;
+
+  if (memory && memory.trim()) {
+    base = `### Memory\n${memory.trim()}\n\n---\n\n` + base;
+  }
+  return base;
 }
 
 interface LoopOptions {
   messages: InternalMessage[];
   tools: ToolDefinition[];
   workspaceRoot: string;
+  memory?: string;
   providerStep: (
     messages: InternalMessage[],
     tools: ToolDefinition[],
@@ -33,7 +42,7 @@ export async function* runAgentLoop(
   const exec = options.executeToolFn ?? executeTool;
 
   const history: InternalMessage[] = [
-    { role: "system", content: makeSystemPrompt(workspaceRoot) },
+    { role: "system", content: makeSystemPrompt(workspaceRoot, options.memory) },
     ...options.messages,
   ];
 
