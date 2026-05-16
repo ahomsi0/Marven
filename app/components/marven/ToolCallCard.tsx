@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { ToolCallState } from "@/types";
 
 const TOOL_ICONS: Record<string, string> = {
@@ -64,6 +65,9 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const isDone = status === "done";
   const isError = status === "error";
 
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = (isDone || isError) && output !== undefined;
+
   return (
     <div
       className={`overflow-hidden rounded-md border transition-colors ${
@@ -72,7 +76,10 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           : "border-[#333] bg-[#1e1e1e]"
       }`}
     >
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div
+        className={`flex items-center gap-2 px-3 py-2 ${canExpand ? "cursor-pointer" : ""}`}
+        onClick={() => canExpand && setExpanded((v) => !v)}
+      >
         <span className="text-[11px]">{icon}</span>
         <span
           className={`font-mono text-[11px] ${
@@ -96,12 +103,30 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           )}
           {isDone && <span className="text-[10px] text-[#666]">✓</span>}
           {isError && <span className="text-[10px] text-red-500">✗</span>}
+          {canExpand && (
+            <span className="text-[10px] text-[#444] ml-1">
+              {expanded ? "▲" : "▼"}
+            </span>
+          )}
         </div>
       </div>
 
-      {output && (
-        <div className="border-t border-[#333] px-3 py-1.5">
-          <OutputWithLinks output={output} />
+      {expanded && canExpand && (
+        <div className="border-t border-[#2a2a2a] px-3 py-2 space-y-2">
+          <div>
+            <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Input</p>
+            <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2 overflow-x-auto">
+              {JSON.stringify(args, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Output</p>
+            <div className="overflow-y-auto max-h-[300px]">
+              <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+                {output}
+              </pre>
+            </div>
+          </div>
         </div>
       )}
     </div>
