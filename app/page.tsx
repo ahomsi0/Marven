@@ -949,6 +949,48 @@ export default function Home() {
     }));
   }
 
+  async function handleEditMessage(messageId: string, newContent: string) {
+    if (!activeConversationId || isLoading) return;
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    if (!conv) return;
+    const idx = conv.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    // Truncate: remove the edited message and everything after it
+    upsertConversation(activeConversationId, (c) => ({
+      ...c,
+      messages: c.messages.slice(0, idx),
+      updatedAt: new Date().toISOString(),
+    }));
+    // sendMessage will add the user message fresh and get the AI reply
+    await sendMessage(newContent);
+  }
+
+  async function handleRetryMessage(messageId: string) {
+    if (!activeConversationId || isLoading) return;
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    if (!conv) return;
+    const idx = conv.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    // Find the user message immediately before this assistant message
+    let userContent = "";
+    let userIdx = -1;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (conv.messages[i].role === "user") {
+        userContent = conv.messages[i].content;
+        userIdx = i;
+        break;
+      }
+    }
+    if (userIdx === -1) return;
+    // Truncate: remove from the user message onwards
+    upsertConversation(activeConversationId, (c) => ({
+      ...c,
+      messages: c.messages.slice(0, userIdx),
+      updatedAt: new Date().toISOString(),
+    }));
+    await sendMessage(userContent);
+  }
+
   async function handleSlashCommand(cmd: string) {
     switch (cmd) {
       case "/clear":
@@ -1067,6 +1109,8 @@ export default function Home() {
         onNewAgent={handleNewAgent}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
+        onEditMessage={handleEditMessage}
+        onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}
         onSlashCommand={handleSlashCommand}
         onSelectAgentFile={(path) => {

@@ -75,6 +75,8 @@ interface ChatLayoutProps {
   onAgentFileContentChange: (value: string) => void;
   onSaveAgentFile: () => void;
   onRefreshAgentFiles: () => void;
+  onEditMessage: (id: string, newContent: string) => void;
+  onRetryMessage: (id: string) => void;
 }
 
 function TypingRow() {
@@ -148,6 +150,8 @@ export function ChatLayout({
   onAgentFileContentChange,
   onSaveAgentFile,
   onRefreshAgentFiles,
+  onEditMessage,
+  onRetryMessage,
 }: ChatLayoutProps) {
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -278,7 +282,13 @@ export function ChatLayout({
                     </div>
                   )}
                   {messages.map((message) => (
-                    <Message key={message.id} message={message} />
+                    <Message
+                      key={message.id}
+                      message={message}
+                      disabled={isLoading}
+                      onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
+                      onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                    />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
                     <TypingRow />
