@@ -4,6 +4,8 @@ import { groqAgentStep } from "@/lib/agent/groq";
 import { ollamaAgentStep } from "@/lib/agent/ollama";
 import { nimAgentStep } from "@/lib/agent/nim";
 import { openrouterAgentStep } from "@/lib/agent/openrouter";
+import { openaiAgentStep } from "@/lib/agent/openai";
+import { anthropicAgentStep } from "@/lib/agent/anthropic";
 import { TOOL_DEFINITIONS } from "@/lib/agent/tools";
 import type { AIProvider, InternalMessage, HistoryMessage } from "@/types";
 
@@ -44,8 +46,10 @@ export async function POST(req: NextRequest) {
 
   const provider = (body.provider ?? "groq") as AIProvider;
   const model = body.model ?? (
-    provider === "groq" ? "llama-3.3-70b-versatile" :
-    provider === "nim"  ? "mistralai/mistral-nemotron" :
+    provider === "groq"      ? "llama-3.3-70b-versatile" :
+    provider === "nim"       ? "mistralai/mistral-nemotron" :
+    provider === "openai"    ? "gpt-4o-mini" :
+    provider === "anthropic" ? "claude-sonnet-4-5" :
     "qwen2.5-coder"
   );
 
@@ -59,6 +63,8 @@ export async function POST(req: NextRequest) {
     provider === "groq"       ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => groqAgentStep(msgs, tools, model) :
     provider === "nim"        ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => nimAgentStep(msgs, tools, model) :
     provider === "openrouter" ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => openrouterAgentStep(msgs, tools, model) :
+    provider === "openai"     ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => openaiAgentStep(msgs, tools, model) :
+    provider === "anthropic"  ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => anthropicAgentStep(msgs, tools, model) :
     (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => ollamaAgentStep(msgs, tools, model);
 
   const encoder = new TextEncoder();
