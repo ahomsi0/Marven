@@ -14,7 +14,8 @@ interface ToolCallCardProps {
   toolCall: ToolCallState;
 }
 
-function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown> }) {
+function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown> | null }) {
+  if (!args) return null;
   if (tool === "read_file" || tool === "write_file") {
     return <span className="text-[#888]">{String(args.path ?? "")}</span>;
   }
