@@ -56,8 +56,9 @@ function ConvRow({
   onPin: () => void;
 }) {
   return (
-    <div
-      className={`group relative flex cursor-pointer items-center rounded-md px-2 py-1.5 transition-colors ${
+    <button
+      type="button"
+      className={`group relative flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left transition-colors ${
         isActive
           ? "bg-[#2a2a2a] text-[#d4d4d4]"
           : "text-[#888] hover:text-[#ccc] hover:bg-[#252525]"
@@ -105,7 +106,7 @@ function ConvRow({
       >
         ×
       </button>
-    </div>
+    </button>
   );
 }
 
