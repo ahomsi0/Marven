@@ -70,6 +70,8 @@ interface ChatLayoutProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
+  conversationSystemPrompt: string;
+  onSystemPromptChange: (value: string) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   onSlashCommand: (cmd: string) => void;
   onSelectAgentFile: (path: string) => void;
@@ -146,6 +148,8 @@ export function ChatLayout({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
+  conversationSystemPrompt,
+  onSystemPromptChange,
   onSaveShortcuts,
   onSlashCommand,
   onSelectAgentFile,
@@ -158,6 +162,7 @@ export function ChatLayout({
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
 
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
@@ -229,10 +234,49 @@ export function ChatLayout({
                   </div>
                 </div>
 
-                <div className="text-[11px] text-[#666]">
-                  {tokenUsage.totalTokens.toLocaleString()} tokens
+                <div className="flex items-center gap-2">
+                  {/* System prompt toggle — only in chat mode */}
+                  {mode === "chat" && (
+                    <button
+                      type="button"
+                      onClick={() => setSystemPromptOpen((v) => !v)}
+                      title="System prompt"
+                      aria-label="Edit system prompt"
+                      className={`rounded-lg p-1.5 transition-colors hover:bg-[#2a2a2a] ${
+                        conversationSystemPrompt
+                          ? "text-[#d19a66]"
+                          : systemPromptOpen
+                          ? "text-[#999]"
+                          : "text-[#555] hover:text-[#999]"
+                      }`}
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <div className="text-[11px] text-[#666]">
+                    {tokenUsage.totalTokens.toLocaleString()} tokens
+                  </div>
                 </div>
               </div>
+
+              {/* System prompt panel */}
+              {mode === "chat" && systemPromptOpen && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] uppercase tracking-wider text-[#555]">
+                    System prompt for this conversation
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert')"
+                    value={conversationSystemPrompt}
+                    onChange={(e) => onSystemPromptChange(e.target.value)}
+                    className="w-full resize-none rounded-lg border border-[#2a2a2a] bg-[#161616] px-3 py-2 text-[12px] text-[#ccc] placeholder-[#444] outline-none focus:border-[#383838]"
+                  />
+                </div>
+              )}
 
             </div>
           </header>

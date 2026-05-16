@@ -163,6 +163,7 @@ export default function Home() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
+  const conversationSystemPrompt = activeConversation?.systemPrompt ?? "";
 
   // ─── Custom shortcuts ───────────────────────────────────────────────────────
   const [customShortcuts, setCustomShortcuts] = useState<CustomShortcut[]>([]);
@@ -761,7 +762,11 @@ export default function Home() {
           messages: history,
           model: selectedModel,
           provider,
-          systemPrompt: buildSystemPrompt(userProfile?.name ?? null, memories),
+          systemPrompt: (() => {
+            const base = buildSystemPrompt(userProfile?.name ?? null, memories);
+            const extra = activeConversation?.systemPrompt?.trim();
+            return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
+          })(),
         };
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -793,7 +798,11 @@ export default function Home() {
         messages: history,
         model: selectedModel,
         provider,
-        systemPrompt: buildSystemPrompt(userProfile?.name ?? null, memories),
+        systemPrompt: (() => {
+          const base = buildSystemPrompt(userProfile?.name ?? null, memories);
+          const extra = activeConversation?.systemPrompt?.trim();
+          return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
+        })(),
       };
 
       const res = await fetch("/api/chat", {
@@ -937,6 +946,14 @@ export default function Home() {
 
   function handlePinConversation(id: string, pinned: boolean) {
     upsertConversation(id, (conv) => ({ ...conv, pinned }));
+  }
+
+  function handleSystemPromptChange(value: string) {
+    if (!activeConversationId) return;
+    upsertConversation(activeConversationId, (conv) => ({
+      ...conv,
+      systemPrompt: value,
+    }));
   }
 
   function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
@@ -1114,6 +1131,8 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onPinConversation={handlePinConversation}
+        conversationSystemPrompt={conversationSystemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}
