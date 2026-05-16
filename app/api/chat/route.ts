@@ -5,6 +5,8 @@ import { askGroq, streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/
 import { askOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
 import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { streamOpenRouter, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
+import { streamOpenAI, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
+import { streamAnthropic, DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib/anthropic";
 import type { ChatRequest, ChatResponse, HistoryMessage } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -25,6 +27,8 @@ export async function POST(req: NextRequest) {
     provider === "ollama"      ? OLLAMA_DEFAULT_MODEL :
     provider === "nim"         ? NIM_DEFAULT_MODEL :
     provider === "openrouter"  ? OPENROUTER_DEFAULT_MODEL :
+    provider === "openai"      ? OPENAI_DEFAULT_MODEL :
+    provider === "anthropic"   ? ANTHROPIC_DEFAULT_MODEL :
     GROQ_DEFAULT_MODEL;
   const model = body.model?.trim() || defaultModel;
 
@@ -109,6 +113,42 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error.";
       return NextResponse.json({ reply: `Marven couldn't reach OpenRouter: ${msg}` }, { status: 503 });
+    }
+  }
+
+  if (provider === "openai") {
+    try {
+      const history = messages.slice(-20);
+      const stream = streamOpenAI(history, model, body.systemPrompt);
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache",
+          "Transfer-Encoding": "chunked",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      return NextResponse.json({ reply: `Marven couldn't reach OpenAI: ${msg}` }, { status: 503 });
+    }
+  }
+
+  if (provider === "anthropic") {
+    try {
+      const history = messages.slice(-20);
+      const stream = streamAnthropic(history, model, body.systemPrompt);
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache",
+          "Transfer-Encoding": "chunked",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      return NextResponse.json({ reply: `Marven couldn't reach Anthropic: ${msg}` }, { status: 503 });
     }
   }
 
