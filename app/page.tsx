@@ -295,11 +295,12 @@ export default function Home() {
     []
   );
 
-  function addMessageToConversation(convId: string, message: Message) {
+  function addMessageToConversation(convId: string, message: Message, stamped?: { provider: AIProvider; model: string }) {
     upsertConversation(convId, (conv) => ({
       ...conv,
       messages: [...conv.messages, message],
       updatedAt: new Date().toISOString(),
+      ...(stamped ?? {}),
     }));
   }
 
@@ -531,7 +532,7 @@ export default function Home() {
     if (activeMode === "agent") {
       const convId = ensureActiveConversation(text, "agent");
       const userMsg = createMessage("user", text);
-      addMessageToConversation(convId, userMsg);
+      addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
       if (isAgentFileDirty) {
         try {
@@ -588,7 +589,7 @@ export default function Home() {
       const newMemories = addMemory(memoryStr);
       setMemories(newMemories);
       const convId = ensureActiveConversation(text);
-      addMessageToConversation(convId, createMessage("user", text));
+      addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const reply = `Got it. I'll remember that ${memoryStr}.`;
       addMessageToConversation(convId, createMessage("assistant", reply));
       speakReply(reply);
@@ -599,7 +600,7 @@ export default function Home() {
     // 0b. Weather detection
     if (WEATHER_RE.test(text)) {
       const convId = ensureActiveConversation(text);
-      addMessageToConversation(convId, createMessage("user", text));
+      addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       if (weather) {
         const reply = `It's currently ${weather.temp}°C and ${weather.description} in ${weather.city}.`;
         addMessageToConversation(convId, createMessage("assistant", reply));
@@ -616,7 +617,7 @@ export default function Home() {
     // 0c. Screen awareness detection
     if (SCREEN_RE.test(text)) {
       const convId = ensureActiveConversation(text);
-      addMessageToConversation(convId, createMessage("user", text));
+      addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const streamingMsg = createMessage("assistant", "Analyzing your screen...", false);
       addMessageToConversation(convId, streamingMsg);
       try {
@@ -661,7 +662,7 @@ export default function Home() {
     if (timerParsed) {
       const convId = ensureActiveConversation(text);
       const userMsg = createMessage("user", text);
-      addMessageToConversation(convId, userMsg);
+      addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
       const confirmMsg = createMessage("assistant", `Timer set for ${timerParsed.label}.`);
       addMessageToConversation(convId, confirmMsg);
@@ -690,7 +691,7 @@ export default function Home() {
 
     const convId = ensureActiveConversation(text);
     const userMsg = createMessage("user", text);
-    addMessageToConversation(convId, userMsg);
+    addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
     if (command.type !== null) {
       // ── Client-side commands (no server needed) ──────────────────────────
@@ -910,6 +911,16 @@ export default function Home() {
 
   function handleSelectConversation(id: string) {
     setActiveConversationId(id);
+    const conv = conversations.find((c) => c.id === id);
+    if (conv?.provider) {
+      setProvider(conv.provider);
+      if (conv.model) {
+        setSelectedModelByProvider((prev) => ({
+          ...prev,
+          [conv.provider!]: conv.model!,
+        }));
+      }
+    }
   }
 
   function handleDeleteConversation(id: string) {
