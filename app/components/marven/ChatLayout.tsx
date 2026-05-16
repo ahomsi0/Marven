@@ -69,6 +69,7 @@ interface ChatLayoutProps {
   onNewAgent: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onPinConversation: (id: string, pinned: boolean) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   onSlashCommand: (cmd: string) => void;
   onSelectAgentFile: (path: string) => void;
@@ -144,6 +145,7 @@ export function ChatLayout({
   onNewAgent,
   onSelectConversation,
   onDeleteConversation,
+  onPinConversation,
   onSaveShortcuts,
   onSlashCommand,
   onSelectAgentFile,
@@ -190,6 +192,7 @@ export function ChatLayout({
           onNewAgent={onNewAgent}
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
+          onPinConversation={onPinConversation}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 

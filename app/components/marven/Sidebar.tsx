@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type { Conversation } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
+import { filterConversations } from "@/lib/chatHelpers";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -11,6 +13,7 @@ interface SidebarProps {
   onNewAgent: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onPinConversation: (id: string, pinned: boolean) => void;
   onOpenSettings: () => void;
 }
 
@@ -27,7 +30,6 @@ function relativeDate(isoString: string): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-/** Group conversations by relative date label */
 function groupConversations(
   conversations: Conversation[]
 ): { label: string; items: Conversation[] }[] {
@@ -40,6 +42,73 @@ function groupConversations(
   return Object.entries(groups).map(([label, items]) => ({ label, items }));
 }
 
+function ConvRow({
+  conv,
+  isActive,
+  onSelect,
+  onDelete,
+  onPin,
+}: {
+  conv: Conversation;
+  isActive: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+  onPin: () => void;
+}) {
+  return (
+    <div
+      className={`group relative flex cursor-pointer items-center rounded-md px-2 py-1.5 transition-colors ${
+        isActive
+          ? "bg-[#2a2a2a] text-[#d4d4d4]"
+          : "text-[#888] hover:text-[#ccc] hover:bg-[#252525]"
+      }`}
+      onClick={onSelect}
+    >
+      {conv.pinned && (
+        <span className="mr-1.5 text-[#d19a66]/60">
+          <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M16 2v11l2 2v2H6v-2l2-2V2h8zm-2 0H10v10.586L8 14.586V15h8v-.414L14 12.586V2z" />
+            <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z" />
+          </svg>
+        </span>
+      )}
+      <span className="flex-1 truncate pr-9 text-[13px]">
+        {conv.name || "Untitled"}
+      </span>
+      {conv.mode === "agent" && (
+        <span className="mr-1 rounded-full border border-[#d19a66]/20 bg-[#d19a66]/08 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#d19a66]">
+          Agent
+        </span>
+      )}
+
+      {/* Pin button — shown on hover */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onPin(); }}
+        aria-label={conv.pinned ? "Unpin conversation" : "Pin conversation"}
+        title={conv.pinned ? "Unpin" : "Pin"}
+        className={`absolute right-6 top-1/2 -translate-y-1/2 rounded px-0.5 py-0.5 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 ${
+          conv.pinned ? "text-[#d19a66]/70 hover:text-[#d19a66]" : "text-[#555] hover:text-[#888]"
+        }`}
+      >
+        <svg className="h-3 w-3" fill={conv.pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" />
+        </svg>
+      </button>
+
+      {/* Delete button */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        aria-label="Delete conversation"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-[11px] text-[#666] opacity-0 transition-opacity hover:text-red-500/80 group-hover:opacity-100"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export function Sidebar({
   conversations,
   activeConversationId,
@@ -48,9 +117,17 @@ export function Sidebar({
   onNewAgent,
   onSelectConversation,
   onDeleteConversation,
+  onPinConversation,
   onOpenSettings,
 }: SidebarProps) {
-  const grouped = groupConversations(conversations);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const pinnedConvs = conversations.filter((c) => c.pinned);
+  const unpinnedConvs = conversations.filter((c) => !c.pinned);
+
+  const isSearching = searchQuery.trim().length > 0;
+  const searchResults = isSearching ? filterConversations(conversations, searchQuery) : null;
+  const grouped = isSearching ? null : groupConversations(unpinnedConvs);
 
   return (
     <aside
@@ -79,7 +156,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={onNewChat}
-            className="mx-3 mb-3 border border-[#383838] text-[#888] rounded-lg px-3 py-1.5 text-[12px] hover:border-[#555] hover:text-[#d4d4d4] hover:bg-[#252525] transition-all"
+            className="mx-3 mb-2 border border-[#383838] text-[#888] rounded-lg px-3 py-1.5 text-[12px] hover:border-[#555] hover:text-[#d4d4d4] hover:bg-[#252525] transition-all"
           >
             + New chat
           </button>
@@ -91,53 +168,94 @@ export function Sidebar({
             + New agent
           </button>
 
+          {/* Search */}
+          <div className="mx-3 mb-2">
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[#555]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-md border border-[#2a2a2a] bg-[#161616] py-1.5 pl-7 pr-3 text-[11px] text-[#888] placeholder-[#444] outline-none focus:border-[#383838] focus:text-[#ccc]"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#444] hover:text-[#888]"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Conversation list */}
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
-            {grouped.length === 0 && (
-              <p className="px-2 text-[12px] text-[#555]">
-                No conversations yet
-              </p>
-            )}
-            {grouped.map(({ label, items }) => (
-              <div key={label} className="mb-3">
-                <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[#555]">
-                  {label}
-                </p>
-                {items.map((conv) => (
-                  <div
+            {isSearching ? (
+              /* ── Search results (flat) ── */
+              searchResults!.length === 0 ? (
+                <p className="px-2 py-2 text-[11px] text-[#555]">No results</p>
+              ) : (
+                searchResults!.map((conv) => (
+                  <ConvRow
                     key={conv.id}
-                    className={`group relative flex cursor-pointer items-center rounded-md px-2 py-1.5 transition-colors ${
-                      conv.id === activeConversationId
-                        ? "bg-[#2a2a2a] text-[#d4d4d4]"
-                        : "text-[#888] hover:text-[#ccc] hover:bg-[#252525]"
-                    }`}
-                    onClick={() => onSelectConversation(conv.id)}
-                  >
-                    <span className="flex-1 truncate pr-5 text-[13px]">
-                      {conv.name || "Untitled"}
-                    </span>
-                    {conv.mode === "agent" && (
-                      <span className="mr-5 rounded-full border border-[#d19a66]/20 bg-[#d19a66]/08 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#d19a66]">
-                        Agent
-                      </span>
-                    )}
+                    conv={conv}
+                    isActive={conv.id === activeConversationId}
+                    onSelect={() => onSelectConversation(conv.id)}
+                    onDelete={() => onDeleteConversation(conv.id)}
+                    onPin={() => onPinConversation(conv.id, !conv.pinned)}
+                  />
+                ))
+              )
+            ) : (
+              /* ── Normal grouped view ── */
+              <>
+                {/* Pinned section */}
+                {pinnedConvs.length > 0 && (
+                  <div className="mb-3">
+                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[#555]">
+                      Pinned
+                    </p>
+                    {pinnedConvs.map((conv) => (
+                      <ConvRow
+                        key={conv.id}
+                        conv={conv}
+                        isActive={conv.id === activeConversationId}
+                        onSelect={() => onSelectConversation(conv.id)}
+                        onDelete={() => onDeleteConversation(conv.id)}
+                        onPin={() => onPinConversation(conv.id, false)}
+                      />
+                    ))}
+                  </div>
+                )}
 
-                    {/* Delete button — only on hover */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteConversation(conv.id);
-                      }}
-                      aria-label="Delete conversation"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-[11px] text-[#666] opacity-0 transition-opacity hover:text-red-500/80 group-hover:opacity-100"
-                    >
-                      ×
-                    </button>
+                {/* Date-grouped unpinned conversations */}
+                {grouped!.length === 0 && pinnedConvs.length === 0 && (
+                  <p className="px-2 text-[12px] text-[#555]">No conversations yet</p>
+                )}
+                {grouped!.map(({ label, items }) => (
+                  <div key={label} className="mb-3">
+                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[#555]">
+                      {label}
+                    </p>
+                    {items.map((conv) => (
+                      <ConvRow
+                        key={conv.id}
+                        conv={conv}
+                        isActive={conv.id === activeConversationId}
+                        onSelect={() => onSelectConversation(conv.id)}
+                        onDelete={() => onDeleteConversation(conv.id)}
+                        onPin={() => onPinConversation(conv.id, true)}
+                      />
+                    ))}
                   </div>
                 ))}
-              </div>
-            ))}
+              </>
+            )}
           </div>
 
           {/* Settings gear at bottom */}

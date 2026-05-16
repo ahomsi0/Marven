@@ -935,6 +935,10 @@ export default function Home() {
     }
   }
 
+  function handlePinConversation(id: string, pinned: boolean) {
+    upsertConversation(id, (conv) => ({ ...conv, pinned }));
+  }
+
   function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
     setCustomShortcuts(shortcuts);
     saveCustomShortcuts(shortcuts);
@@ -1109,6 +1113,7 @@ export default function Home() {
         onNewAgent={handleNewAgent}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
+        onPinConversation={handlePinConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}
