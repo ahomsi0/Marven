@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { WorkspaceFile, AgentMessage } from "@/types";
+import type { AIProvider, WorkspaceFile, AgentMessage, OllamaModel } from "@/types";
+import type { VoiceState } from "@/hooks/useVoice";
 import { WorkspaceBar } from "./WorkspaceBar";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
@@ -13,6 +14,14 @@ interface AgentWorkspaceProps {
   error: string | null;
   provider: string;
   model: string;
+  models: OllamaModel[];
+  modelsLoading: boolean;
+  modelsError: string | null;
+  speechEnabled: boolean;
+  wakeEnabled: boolean;
+  voiceState: VoiceState;
+  isVoiceSupported: boolean;
+  voiceError: string | null;
   workspaceRoot: string | null;
   files: WorkspaceFile[];
   selectedFilePath: string | null;
@@ -20,6 +29,10 @@ interface AgentWorkspaceProps {
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
+  onProviderChange: (p: AIProvider) => void;
+  onModelChange: (m: string) => void;
+  onToggleSpeech: () => void;
+  onToggleWakeWord: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
@@ -107,6 +120,14 @@ export function AgentWorkspace({
   error,
   provider,
   model,
+  models,
+  modelsLoading,
+  modelsError,
+  speechEnabled,
+  wakeEnabled,
+  voiceState,
+  isVoiceSupported,
+  voiceError,
   workspaceRoot,
   files,
   selectedFilePath,
@@ -114,6 +135,10 @@ export function AgentWorkspace({
   isFileLoading,
   isFileDirty,
   terminalOutput,
+  onProviderChange,
+  onModelChange,
+  onToggleSpeech,
+  onToggleWakeWord,
   onInputChange,
   onSend,
   onStop,
@@ -130,7 +155,7 @@ export function AgentWorkspace({
 
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 320;
-    return Number(localStorage.getItem("marven-agent-width") ?? 320) || 320;
+    return Math.max(400, Number(localStorage.getItem("marven-agent-width") ?? 320) || 320);
   });
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -140,7 +165,7 @@ export function AgentWorkspace({
     function onMouseMove(e: MouseEvent) {
       if (!isDragging.current) return;
       const delta = e.clientX - dragStartX.current;
-      const next = Math.min(600, Math.max(200, dragStartWidth.current + delta));
+      const next = Math.min(600, Math.max(400, dragStartWidth.current + delta));
       setAgentWidth(next);
     }
     function onMouseUp() {
@@ -188,7 +213,7 @@ export function AgentWorkspace({
         {/* Left — Agent panel */}
         {showAgent && (
           <div
-            className="flex flex-col border-r border-[#333]"
+            className="flex flex-col overflow-hidden border-r border-[#333]"
             style={
               showEditor
                 ? { width: agentWidth, minWidth: agentWidth, flexShrink: 0 }
@@ -207,6 +232,13 @@ export function AgentWorkspace({
                 input={input}
                 isRunning={isRunning}
                 error={error}
+                provider={provider as import("@/types").AIProvider}
+                models={models}
+                selectedModel={model}
+                modelsLoading={modelsLoading}
+                modelsError={modelsError}
+                onProviderChange={onProviderChange}
+                onModelChange={onModelChange}
                 onInputChange={onInputChange}
                 onSend={onSend}
                 onStop={onStop}

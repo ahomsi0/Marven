@@ -1,21 +1,91 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
-import type { AgentMessage } from "@/types";
+import type { AgentMessage, AIProvider, OllamaModel } from "@/types";
 
 interface AgentPanelProps {
   messages: AgentMessage[];
   input: string;
   isRunning: boolean;
   error: string | null;
+  provider: AIProvider;
+  models: OllamaModel[];
+  selectedModel: string;
+  modelsLoading: boolean;
+  modelsError: string | null;
+  onProviderChange: (p: AIProvider) => void;
+  onModelChange: (m: string) => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
+}
+
+function shortModelName(name: string): string {
+  const base = name.includes("/") ? name.split("/").pop()! : name;
+  return base.replace(/-instruct.*$/, "").replace(/-\d{4}$/, "");
+}
+
+function formatSize(bytes: number): string {
+  const gb = bytes / 1_000_000_000;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1_000_000).toFixed(0)} MB`;
+}
+
+function AgentModelDropdown({
+  models, selected, loading, error, onChange,
+}: { models: OllamaModel[]; selected: string; loading: boolean; error: string | null; onChange: (m: string) => void; }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open, close]);
+
+  if (loading) return <span className="text-[10px] text-[#444]">Loading…</span>;
+  if (error || models.length === 0) return <span className="text-[10px] text-[#444]">{error ? "Unavailable" : "No models"}</span>;
+
+  const active = models.find((m) => m.name === selected);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#666] transition-all hover:bg-[#252525] hover:text-[#bbb]"
+      >
+        <span className="truncate max-w-[160px]">{active ? shortModelName(active.name) : "Select model"}</span>
+        {active?.size ? <span className="text-[#3a3a3a]">{formatSize(active.size)}</span> : null}
+        <svg className="h-2.5 w-2.5 text-[#3a3a3a]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-50 mb-1 max-h-[160px] w-40 overflow-y-auto rounded-lg border border-[#333] bg-[#1a1a1a] py-1 shadow-xl">
+          {models.map((m) => {
+            const isActive = m.name === selected;
+            return (
+              <button key={m.name} type="button" onClick={() => { onChange(m.name); close(); }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#252525] ${isActive ? "bg-[#252525]" : ""}`}>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? "bg-[#d19a66]" : "bg-transparent"}`} />
+                <span className={`flex-1 truncate text-[11px] ${isActive ? "text-[#d19a66]" : "text-[#ccc]"}`}>{shortModelName(m.name)}</span>
+                {m.size > 0 && <span className="shrink-0 text-[10px] text-[#555]">{formatSize(m.size)}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AgentPanel({
@@ -23,6 +93,13 @@ export function AgentPanel({
   input,
   isRunning,
   error,
+  provider,
+  models,
+  selectedModel,
+  modelsLoading,
+  modelsError,
+  onProviderChange,
+  onModelChange,
   onInputChange,
   onSend,
   onStop,
@@ -113,7 +190,7 @@ export function AgentPanel({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-[#333] bg-[#1a1a1a] px-3 py-3">
+      <div className="border-t border-[#2a2a2a] bg-[#1a1a1a] px-3 pt-3 pb-2">
         <div className="relative flex items-end gap-2">
           {menuOpen && (
             <SlashMenu
@@ -158,6 +235,35 @@ export function AgentPanel({
               </svg>
             </button>
           )}
+        </div>
+
+        {/* Status line — below input, like Claude Code */}
+        <div className="mt-1.5 flex items-center gap-0.5 pl-0.5">
+          {(["groq", "ollama", "nim", "openrouter"] as const).map((id, i) => (
+            <Fragment key={id}>
+              {i > 0 && <span className="mx-0.5 text-[#2a2a2a]">·</span>}
+              <button
+                type="button"
+                onClick={() => onProviderChange(id)}
+                className={`rounded px-1.5 py-0.5 text-[10px] transition-all ${
+                  provider === id ? "text-[#d19a66]" : "text-[#444] hover:text-[#888]"
+                }`}
+              >
+                {id === "groq" ? "Groq" : id === "ollama" ? "Ollama" : id === "nim" ? "NIM" : "OpenRouter"}
+              </button>
+            </Fragment>
+          ))}
+
+          <span className="mx-1 text-[#2a2a2a]">·</span>
+
+          <AgentModelDropdown
+            models={models}
+            selected={selectedModel}
+            loading={modelsLoading}
+            error={modelsError}
+            onChange={onModelChange}
+          />
+
         </div>
       </div>
     </div>

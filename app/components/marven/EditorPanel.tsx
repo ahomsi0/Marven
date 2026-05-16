@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import type { WorkspaceFile } from "@/types";
 
 interface EditorPanelProps {
@@ -146,6 +146,168 @@ function highlightCode(code: string, ext: string): string {
     .join("");
 }
 
+// ── File tree ─────────────────────────────────────────────────────────────────
+
+interface TreeNode {
+  name: string;
+  path: string;
+  type: "file" | "folder";
+  children: TreeNode[];
+}
+
+function buildTree(files: WorkspaceFile[]): TreeNode[] {
+  const dirs = new Map<string, TreeNode>();
+  const root: TreeNode[] = [];
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+
+  for (const file of sorted) {
+    const parts = file.path.split("/");
+    let currentChildren = root;
+    let currentPath = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+      if (!dirs.has(currentPath)) {
+        const dir: TreeNode = { name: parts[i], path: currentPath, type: "folder", children: [] };
+        dirs.set(currentPath, dir);
+        currentChildren.push(dir);
+      }
+      currentChildren = dirs.get(currentPath)!.children;
+    }
+    currentChildren.push({ name: parts[parts.length - 1], path: file.path, type: "file", children: [] });
+  }
+
+  function sort(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map((n) => ({ ...n, children: sort(n.children) }));
+  }
+  return sort(root);
+}
+
+function allFolderPaths(nodes: TreeNode[]): string[] {
+  const paths: string[] = [];
+  function walk(ns: TreeNode[]) {
+    for (const n of ns) {
+      if (n.type === "folder") { paths.push(n.path); walk(n.children); }
+    }
+  }
+  walk(nodes);
+  return paths;
+}
+
+function fileIconColor(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["ts", "tsx"].includes(ext)) return "#569cd6";
+  if (["js", "jsx", "mjs", "cjs"].includes(ext)) return "#d19a66";
+  if (["css", "scss", "sass"].includes(ext)) return "#ce9178";
+  if (ext === "json") return "#b5cea8";
+  if (ext === "html") return "#f28b54";
+  if (ext === "md" || ext === "mdx") return "#89c4f4";
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"].includes(ext)) return "#22c55e";
+  if (ext === "py") return "#3b82f6";
+  if (["sh", "bash", "zsh"].includes(ext)) return "#9333ea";
+  if (ext === "env" || name.startsWith(".env")) return "#d19a66";
+  if (ext === "yml" || ext === "yaml") return "#ce9178";
+  return "#888";
+}
+
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const color = fileIconColor(name);
+  const label =
+    ext === "ts" ? "TS" : ext === "tsx" ? "TS" :
+    ext === "js" ? "JS" : ext === "jsx" ? "JS" :
+    ext === "json" ? "{}" :
+    ext === "css" || ext === "scss" ? "CSS" :
+    ext === "html" ? "HTML" :
+    ext === "md" || ext === "mdx" ? "MD" :
+    ext === "py" ? "PY" :
+    ext === "yml" || ext === "yaml" ? "YML" :
+    ["png","jpg","jpeg","gif","svg","webp","ico"].includes(ext) ? "IMG" :
+    ext ? ext.toUpperCase().slice(0, 3) : "·";
+  return (
+    <span className="w-7 shrink-0 text-right font-mono text-[8px] font-bold leading-none" style={{ color }}>
+      {label}
+    </span>
+  );
+}
+
+function FolderIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" style={{ color: "#d19a66" }}>
+      <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v1H2V6z" />
+      <path d="M2 9h16v5a2 2 0 01-2 2H4a2 2 0 01-2-2V9z" />
+    </svg>
+  ) : (
+    <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor" style={{ color: "#888" }}>
+      <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+    </svg>
+  );
+}
+
+function TreeItem({
+  node, depth, openFolders, selectedFilePath, onSelectFile, onToggleFolder,
+}: {
+  node: TreeNode; depth: number; openFolders: Set<string>;
+  selectedFilePath: string | null;
+  onSelectFile: (path: string) => void;
+  onToggleFolder: (path: string) => void;
+}) {
+  const isOpen = openFolders.has(node.path);
+  const isActive = node.path === selectedFilePath;
+  const pl = 8 + depth * 12;
+
+  if (node.type === "folder") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => onToggleFolder(node.path)}
+          className="flex w-full items-center gap-1 py-[3px] text-left text-[#bbb] transition-colors hover:bg-[#2a2a2a] hover:text-[#e0e0e0]"
+          style={{ paddingLeft: pl }}
+        >
+          <svg
+            className="h-3 w-3 shrink-0 text-[#777] transition-transform duration-100"
+            style={{ transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <FolderIcon open={isOpen} />
+          <span className="truncate font-mono text-[12px] leading-5">{node.name}</span>
+        </button>
+        {isOpen && node.children.map((child) => (
+          <TreeItem
+            key={child.path} node={child} depth={depth + 1}
+            openFolders={openFolders} selectedFilePath={selectedFilePath}
+            onSelectFile={onSelectFile} onToggleFolder={onToggleFolder}
+          />
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectFile(node.path)}
+      title={node.path}
+      className={`flex w-full items-center gap-1 py-[3px] text-left transition-colors ${
+        isActive
+          ? "bg-[rgba(209,154,102,0.12)] text-[#d19a66]"
+          : "text-[#ccc] hover:bg-[#2a2a2a] hover:text-[#e0e0e0]"
+      }`}
+      style={{ paddingLeft: pl + 16 }}
+    >
+      <FileIcon name={node.name} />
+      <span className="truncate font-mono text-[12px] leading-5">{node.name}</span>
+    </button>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function EditorPanel({
@@ -166,6 +328,27 @@ export function EditorPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
+
+  const tree = useMemo(() => buildTree(files), [files]);
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPaths(buildTree(files))));
+
+  // When files change (e.g. new folder created), auto-open new folders
+  useEffect(() => {
+    const newPaths = allFolderPaths(tree);
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      newPaths.forEach((p) => next.add(p));
+      return next;
+    });
+  }, [tree]);
+
+  function toggleFolder(path: string) {
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }
 
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
@@ -204,38 +387,43 @@ export function EditorPanel({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* File explorer */}
         <div className="flex w-[220px] min-w-[220px] flex-col border-r border-[#333] bg-[#1a1a1a]">
-          <div className="flex items-center justify-between border-b border-[#333] px-3 py-2">
-            <span className="text-[9px] uppercase tracking-[0.2em] text-[#666]">{projectName}</span>
+          {/* Explorer header */}
+          <div className="flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2">
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#555]">Explorer</span>
             <button
               type="button"
               onClick={onRefreshFiles}
-              className="text-[11px] text-[#666] hover:text-[#aaa] transition-colors"
+              title="Refresh"
+              className="text-[#555] transition-colors hover:text-[#aaa]"
             >
-              ↻
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
             </button>
           </div>
+          {/* Project root row */}
+          <div className="flex items-center gap-1 border-b border-[#2a2a2a] px-2 py-1.5">
+            <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+            </svg>
+            <span className="truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[#ccc]">{projectName}</span>
+          </div>
+          {/* Tree */}
           <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            {files.length === 0 && (
+            {tree.length === 0 && (
               <p className="px-3 py-2 text-[10px] text-[#555]">No files</p>
             )}
-            {files.map((file) => {
-              const isActive = file.path === selectedFilePath;
-              return (
-                <button
-                  key={file.path}
-                  type="button"
-                  onClick={() => onSelectFile(file.path)}
-                  title={file.path}
-                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left transition-colors ${
-                    isActive
-                      ? "border-[#d19a66] bg-[rgba(209,154,102,0.08)] text-[#d19a66]"
-                      : "border-transparent text-[#888] hover:bg-[#252525] hover:text-[#ccc]"
-                  }`}
-                >
-                  <span className="truncate text-[11px] font-mono">{file.name}</span>
-                </button>
-              );
-            })}
+            {tree.map((node) => (
+              <TreeItem
+                key={node.path}
+                node={node}
+                depth={0}
+                openFolders={openFolders}
+                selectedFilePath={selectedFilePath}
+                onSelectFile={onSelectFile}
+                onToggleFolder={toggleFolder}
+              />
+            ))}
           </div>
         </div>
 
