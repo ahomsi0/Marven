@@ -164,6 +164,10 @@ export function ChatLayout({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
 
+  useEffect(() => {
+    setSystemPromptOpen(false);
+  }, [activeConversationId]);
+
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
       setSettingsOpen(true);
@@ -265,10 +269,11 @@ export function ChatLayout({
               {/* System prompt panel */}
               {mode === "chat" && systemPromptOpen && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] uppercase tracking-wider text-[#555]">
+                  <label htmlFor="conv-system-prompt" className="text-[10px] uppercase tracking-wider text-[#555]">
                     System prompt for this conversation
                   </label>
                   <textarea
+                    id="conv-system-prompt"
                     rows={3}
                     placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert')"
                     value={conversationSystemPrompt}
