@@ -100,6 +100,8 @@ export interface Conversation {
   updatedAt: string;
   provider?: AIProvider;
   model?: string;
+  pinned?: boolean;
+  systemPrompt?: string;
 }
 
 // ─── Agent tool-use loop types ────────────────────────────────────────────────
