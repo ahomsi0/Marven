@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
 
@@ -15,9 +15,9 @@ export function writeMemory(content: string, path = DEFAULT_MEMORY_PATH): void {
 }
 
 export function appendMemory(content: string, path = DEFAULT_MEMORY_PATH): void {
-  const existing = readMemory(path);
+  mkdirSync(dirname(path), { recursive: true });
   const entry = `\n\n- [${new Date().toISOString()}] ${content}`;
-  writeMemory(existing + entry, path);
+  appendFileSync(path, entry, "utf8");
 }
 
 export function clearMemory(path = DEFAULT_MEMORY_PATH): void {

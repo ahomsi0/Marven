@@ -40,7 +40,21 @@ describe("appendMemory", () => {
     const content = readMemory(memPath);
     expect(content).toContain("existing");
     expect(content).toContain("new entry");
-    expect(content).toMatch(/\[\d{4}-\d{2}-\d{2}/);
+    expect(content).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+});
+
+describe("writeMemory", () => {
+  it("creates intermediate directories if they do not exist", () => {
+    const nested = join(tmpDir, "a", "b", "memory.md");
+    writeMemory("data", nested);
+    expect(readFileSync(nested, "utf8")).toBe("data");
+  });
+
+  it("overwrites existing content", () => {
+    writeMemory("first", memPath);
+    writeMemory("second", memPath);
+    expect(readMemory(memPath)).toBe("second");
   });
 });
 
