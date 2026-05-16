@@ -8,11 +8,10 @@ export async function GET(req: NextRequest) {
   const provider = (req.nextUrl.searchParams.get("provider") ?? "groq").toLowerCase();
 
   if (provider === "nim") {
-    return NextResponse.json({
-      provider: "nim",
-      models: NIM_MODELS,
-      defaultModel: NIM_DEFAULT_MODEL,
-    });
+    if (!process.env.NIM_API_KEY) {
+      return NextResponse.json({ provider: "nim", models: [], defaultModel: NIM_DEFAULT_MODEL, error: "No API key — add it in Settings" }, { status: 401 });
+    }
+    return NextResponse.json({ provider: "nim", models: NIM_MODELS, defaultModel: NIM_DEFAULT_MODEL });
   }
 
   if (provider === "ollama") {
@@ -38,16 +37,15 @@ export async function GET(req: NextRequest) {
   }
 
   if (provider === "openrouter") {
-    return NextResponse.json({
-      provider: "openrouter",
-      models: OPENROUTER_MODELS,
-      defaultModel: OPENROUTER_DEFAULT_MODEL,
-    });
+    if (!process.env.OPENROUTER_API_KEY) {
+      return NextResponse.json({ provider: "openrouter", models: [], defaultModel: OPENROUTER_DEFAULT_MODEL, error: "No API key — add it in Settings" }, { status: 401 });
+    }
+    return NextResponse.json({ provider: "openrouter", models: OPENROUTER_MODELS, defaultModel: OPENROUTER_DEFAULT_MODEL });
   }
 
-  return NextResponse.json({
-    provider: "groq",
-    models: GROQ_MODELS,
-    defaultModel: GROQ_DEFAULT_MODEL,
-  });
+  // Groq
+  if (!process.env.GROQ_API_KEY) {
+    return NextResponse.json({ provider: "groq", models: [], defaultModel: GROQ_DEFAULT_MODEL, error: "No API key — add it in Settings" }, { status: 401 });
+  }
+  return NextResponse.json({ provider: "groq", models: GROQ_MODELS, defaultModel: GROQ_DEFAULT_MODEL });
 }

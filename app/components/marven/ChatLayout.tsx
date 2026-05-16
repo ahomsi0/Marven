@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, Fragment } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AIProvider,
   AgentMessage,
@@ -75,108 +75,6 @@ interface ChatLayoutProps {
   onAgentFileContentChange: (value: string) => void;
   onSaveAgentFile: () => void;
   onRefreshAgentFiles: () => void;
-}
-
-function formatSize(bytes: number): string {
-  const gb = bytes / 1_000_000_000;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1_000_000).toFixed(0)} MB`;
-}
-
-function shortModelName(name: string): string {
-  // "mistralai/mistral-large-3-675b-instruct-2512" → "mistral-large-3-675b"
-  const base = name.includes("/") ? name.split("/").pop()! : name;
-  return base.replace(/-instruct.*$/, "").replace(/-\d{4}$/, "");
-}
-
-function ModelDropdown({
-  models,
-  selected,
-  loading,
-  error,
-  onChange,
-}: {
-  models: import("@/types").OllamaModel[];
-  selected: string;
-  loading: boolean;
-  error: string | null;
-  onChange: (m: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const close = useCallback(() => setOpen(false), []);
-
-  useEffect(() => {
-    if (!open) return;
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open, close]);
-
-  if (loading) return (
-    <div className="rounded px-2 py-1 text-[11px] text-[#555]">
-      Loading…
-    </div>
-  );
-  if (error || models.length === 0) return (
-    <div className="rounded px-2 py-1 text-[11px] text-[#555]" title={error ?? ""}>
-      {error ? "Unavailable" : "No models"}
-    </div>
-  );
-
-  const selectedModel = models.find((m) => m.name === selected);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-[#252525]"
-        style={{ minWidth: 140 }}
-      >
-        <span className="flex-1 truncate text-[11px] text-[#888] hover:text-[#ccc]">
-          {selectedModel ? shortModelName(selectedModel.name) : "Select model"}
-        </span>
-        {selectedModel?.size ? (
-          <span className="shrink-0 text-[10px] text-[#444]">{formatSize(selectedModel.size)}</span>
-        ) : null}
-        <svg className="h-3 w-3 shrink-0 text-[#444]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-[160px] w-44 overflow-y-auto rounded-lg border border-[#383838] bg-[#1e1e1e] py-1 shadow-xl">
-          {models.map((model) => {
-            const isActive = model.name === selected;
-            return (
-              <button
-                key={model.name}
-                type="button"
-                onClick={() => { onChange(model.name); close(); }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[#252525] ${isActive ? "bg-[#252525]" : ""}`}
-              >
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? "bg-[#d19a66]" : "bg-transparent"}`} />
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate text-[11px] ${isActive ? "text-[#d19a66]" : "text-[#ccc]"}`}>
-                    {shortModelName(model.name)}
-                  </div>
-                  {model.name !== shortModelName(model.name) && (
-                    <div className="truncate text-[9px] text-[#555]">{model.name}</div>
-                  )}
-                </div>
-                {model.size > 0 && (
-                  <span className="shrink-0 text-[10px] text-[#555]">{formatSize(model.size)}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function TypingRow() {
@@ -329,88 +227,6 @@ export function ChatLayout({
                 </div>
               </div>
 
-              {/* Controls row — chat mode only; agent mode shows it below the input */}
-              {mode !== "agent" && <div className="flex flex-wrap items-center gap-0.5">
-                {/* Provider toggle */}
-                <div className="inline-flex items-center">
-                  {(["groq", "ollama", "nim", "openrouter"] as const).map((id, i) => (
-                    <Fragment key={id}>
-                      {i > 0 && <div className="h-3 w-px bg-[#2a2a2a]" />}
-                      <button
-                        type="button"
-                        onClick={() => onProviderChange(id)}
-                        className={`rounded px-2 py-1 text-[11px] transition-all ${
-                          provider === id
-                            ? "text-[#d19a66] bg-[#2a2a2a]"
-                            : "text-[#555] hover:text-[#bbb] hover:bg-[#252525]"
-                        }`}
-                      >
-                        {id === "groq" ? "Groq" : id === "ollama" ? "Ollama" : id === "nim" ? "NIM" : "OpenRouter"}
-                      </button>
-                    </Fragment>
-                  ))}
-                </div>
-
-                <div className="h-3 w-px bg-[#2a2a2a] mx-1" />
-
-                {/* Model selector */}
-                <ModelDropdown
-                  models={models}
-                  selected={selectedModel}
-                  loading={modelsLoading}
-                  error={modelsError}
-                  onChange={onModelChange}
-                />
-
-                <div className="h-3 w-px bg-[#2a2a2a] mx-1" />
-
-                {/* Speech toggle */}
-                <button
-                  type="button"
-                  onClick={onToggleSpeech}
-                  className={`rounded px-2 py-1 text-[11px] transition-all ${
-                    speechEnabled
-                      ? "text-[#d19a66] bg-[#2a2a2a]"
-                      : "text-[#555] hover:text-[#bbb] hover:bg-[#252525]"
-                  }`}
-                >
-                  {speechEnabled ? "Speech on" : "Speech off"}
-                </button>
-
-                {/* Wake word toggle */}
-                <button
-                  type="button"
-                  onClick={onToggleWakeWord}
-                  disabled={!isVoiceSupported}
-                  title={voiceError ? `Voice error: ${voiceError}` : undefined}
-                  className={`rounded px-2 py-1 text-[11px] transition-all disabled:cursor-not-allowed disabled:opacity-30 ${
-                    wakeEnabled
-                      ? voiceState === "command-listening"
-                        ? "text-[#f87171] bg-[rgba(239,68,68,0.08)]"
-                        : "text-[#d19a66] bg-[#2a2a2a]"
-                      : "text-[#555] hover:text-[#bbb] hover:bg-[#252525]"
-                  }`}
-                >
-                  {isVoiceSupported
-                    ? wakeEnabled
-                      ? '"Hey Marven" on'
-                      : '"Hey Marven" off'
-                    : "Voice unavailable"}
-                </button>
-                {voiceError && (
-                  <span className="text-[10px] text-red-500/70" title={voiceError}>
-                    mic: {voiceError}
-                  </span>
-                )}
-                {wakeEnabled && lastHeard && (
-                  <span
-                    className="max-w-[220px] truncate text-[10px] text-[#666]"
-                    title={`Last heard: "${lastHeard}"`}
-                  >
-                    heard: &ldquo;{lastHeard}&rdquo;
-                  </span>
-                )}
-              </div>}
             </div>
           </header>
 
@@ -422,9 +238,6 @@ export function ChatLayout({
               error={agentError}
               provider={provider}
               model={selectedModel}
-              models={models}
-              modelsLoading={modelsLoading}
-              modelsError={modelsError}
               speechEnabled={speechEnabled}
               wakeEnabled={wakeEnabled}
               voiceState={voiceState}
@@ -481,10 +294,20 @@ export function ChatLayout({
                     isLoading={isLoading}
                     isVoiceSupported={isVoiceSupported}
                     voiceState={voiceState}
+                    provider={provider}
+                    selectedModel={selectedModel}
+                    speechEnabled={speechEnabled}
+                    wakeEnabled={wakeEnabled}
+                    voiceError={voiceError}
+                    lastHeard={lastHeard}
                     onChange={onInputChange}
                     onSend={onSend}
                     onVoiceClick={onVoiceClick}
                     onSlashCommand={handleSlashCommand}
+                    onProviderChange={onProviderChange}
+                    onModelChange={onModelChange}
+                    onToggleSpeech={onToggleSpeech}
+                    onToggleWakeWord={onToggleWakeWord}
                   />
                   <p className="mt-2 text-center text-[10px] text-[#444]">
                     Enter to send · Shift + Enter for new line
