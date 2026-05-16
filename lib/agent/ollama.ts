@@ -6,20 +6,32 @@ const OLLAMA_BASE = "http://localhost:11434";
 interface JsonToolCall { name: string; args: Record<string, unknown> }
 
 function extractJsonToolCall(text: string): JsonToolCall | null {
-  // Match a top-level JSON object anywhere in the text
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    const obj = JSON.parse(match[0]);
-    const name = typeof obj.name === "string" ? obj.name : null;
-    if (!name) return null;
-    // Support both "arguments" and "args" keys
-    const args = (obj.arguments ?? obj.args ?? {}) as Record<string, unknown>;
-    if (typeof args !== "object" || Array.isArray(args)) return null;
-    return { name, args };
-  } catch {
-    return null;
+  // Use brace-depth tracking to find the first complete top-level JSON object.
+  // A greedy regex fails when the model outputs multiple JSON blobs separated by text.
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (text[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          const obj = JSON.parse(text.slice(start, i + 1));
+          const name = typeof obj.name === "string" ? obj.name : null;
+          if (!name) { start = -1; continue; }
+          // Support both "arguments" and "args" keys
+          const args = (obj.arguments ?? obj.args ?? {}) as Record<string, unknown>;
+          if (typeof args !== "object" || Array.isArray(args)) { start = -1; continue; }
+          return { name, args };
+        } catch {
+          start = -1;
+        }
+      }
+    }
   }
+  return null;
 }
 
 /** Models known to support tool calling in Ollama */
