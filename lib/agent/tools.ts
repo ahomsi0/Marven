@@ -260,6 +260,21 @@ function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
   });
 }
 
+function isPortOpen(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = net.createConnection({ port, host: "127.0.0.1" });
+    const finish = (open: boolean) => { sock.destroy(); resolve(open); };
+    sock.once("connect", () => finish(true));
+    sock.once("error", () => finish(false));
+    setTimeout(() => finish(false), 250);
+  });
+}
+
+async function snapshotOpenPorts(ports: number[]): Promise<Set<number>> {
+  const results = await Promise.all(ports.map(async (p) => ({ p, open: await isPortOpen(p) })));
+  return new Set(results.filter((r) => r.open).map((r) => r.p));
+}
+
 async function streamShellCommand(
   command: string,
   cwd: string,
@@ -357,32 +372,69 @@ export async function executeTool(
       const serverPattern = /(?:^|\s)(node\s+\S+\.(?:js|mjs)|python\s+-m\s+http\.server|python3?\s+\S+\.py|npx?\s+serve|npm\s+(?:start|run\s+\S+)|bun\s+(?:run\s+\S+|\S+\.(?:js|ts)))\b/i;
       const explicitPort = cmd.match(/\b(3\d{3}|4\d{3}|5\d{3}|8\d{3}|9\d{3})\b/);
       if (serverPattern.test(cmd)) {
+        // Snapshot which ports are ALREADY open (Marven itself runs on 3000 in dev,
+        // and other services may be running) — so we only pick a NEW port that
+        // appears after we spawn the child.
+        const COMMON_PORTS = [3000, 3001, 5173, 4200, 8080, 8000, 4000, 4321, 4173];
+        const portsToWatch = explicitPort ? [parseInt(explicitPort[1])] : COMMON_PORTS;
+        const alreadyOpen = explicitPort ? new Set<number>() : await snapshotOpenPorts(portsToWatch);
+
+        // Pipe stdio so we can read the URL the server prints. Detached + unref
+        // means the child survives this request handler returning.
         const child = spawn("sh", ["-c", cmd], {
           cwd,
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", "pipe", "pipe"],
         });
         child.unref();
 
-        // If command has an explicit port, wait for that one
-        if (explicitPort) {
-          const port = parseInt(explicitPort[1]);
-          const alive = await waitForPort(port, 8000);
-          const url = `http://localhost:${port}`;
-          return alive
-            ? `SERVER READY. Tell the user the URL is ${url}\n\nLive URL: ${url}`
-            : `SERVER STARTING on port ${port}. Tell the user the URL is ${url}\n\nLive URL: ${url}`;
+        const urlFromOutput = new Promise<string | null>((resolve) => {
+          const matcher = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::(\d+))?(?:\/\S*)?/i;
+          const handle = (buf: Buffer) => {
+            const m = buf.toString().match(matcher);
+            if (m) resolve(m[0].replace("0.0.0.0", "localhost").replace(/\/$/, ""));
+          };
+          child.stdout?.on("data", handle);
+          child.stderr?.on("data", handle);
+          // Drain streams so the child doesn't stall on full pipe buffers, even
+          // after we've found a URL (we keep listening so they get consumed).
+          setTimeout(() => resolve(null), 20_000);
+        });
+
+        const newPort = (async () => {
+          const deadline = Date.now() + 20_000;
+          while (Date.now() < deadline) {
+            for (const p of portsToWatch) {
+              if (alreadyOpen.has(p)) continue;
+              if (await isPortOpen(p)) return p;
+            }
+            await new Promise((r) => setTimeout(r, 400));
+          }
+          return null;
+        })();
+
+        const winner = await Promise.race([
+          urlFromOutput.then((u) => (u ? { kind: "url" as const, value: u } : null)),
+          newPort.then((p) => (p ? { kind: "port" as const, value: p } : null)),
+        ]);
+
+        let resolvedUrl: string | null = null;
+        if (winner?.kind === "url") resolvedUrl = winner.value;
+        else if (winner?.kind === "port") resolvedUrl = `http://localhost:${winner.value}`;
+        // Race-loser fallbacks — wait a beat more on whichever didn't win.
+        if (!resolvedUrl) {
+          const p = await newPort;
+          if (p) resolvedUrl = `http://localhost:${p}`;
+        }
+        if (!resolvedUrl) {
+          const u = await urlFromOutput;
+          if (u) resolvedUrl = u;
         }
 
-        // No explicit port — probe common dev server ports (Vite=5173, CRA/Next=3000, webpack=8080, etc.)
-        // Use a longer scan window — npm start can take 10s+ on first run / cold caches.
-        const COMMON_PORTS = [3000, 3001, 5173, 4200, 8080, 8000, 4000];
-        const port = await waitForFirstPort(COMMON_PORTS, 15000);
-        if (port) {
-          const url = `http://localhost:${port}`;
-          return `SERVER READY. Tell the user the URL is ${url}\n\nLive URL: ${url}`;
+        if (resolvedUrl) {
+          return `SERVER READY at ${resolvedUrl}\n\nTell the user the URL is ${resolvedUrl}. Format it as a clickable link.\n\nLive URL: ${resolvedUrl}`;
         }
-        return `SERVER LAUNCHING (port not detected within 15s). Tell the user to open http://localhost:3000 (most likely) or http://localhost:5173.\n\nLive URL: http://localhost:3000`;
+        return `SERVER LAUNCHING but no URL detected within 20s. Tell the user the server is starting in the background — they can try http://localhost:3000 or http://localhost:5173 once it's ready.`;
       }
 
       const output = await streamShellCommand(cmd, cwd, (chunk) => onProgress?.(chunk));
