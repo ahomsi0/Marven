@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -42,7 +43,53 @@ jobs:
       - name: Prepare standalone server
         run: node scripts/prepare-standalone.js
 
-      - name: Build and publish Electron app (${{ matrix.platform }})
-        run: npx electron-builder --${{ matrix.platform }} --publish always
+      - name: Build Electron app (${{ matrix.platform }})
+        # `--publish never` keeps each matrix job from racing to create the
+        # GitHub release; the single release job below assembles all
+        # artifacts into one release after the matrix completes.
+        run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: marven-${{ matrix.platform }}
+          path: |
+            dist/*.dmg
+            dist/*.dmg.blockmap
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/*.AppImage
+            dist/latest*.yml
+          if-no-files-found: warn
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List collected artifacts
+        run: ls -R artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.dmg.blockmap
+            artifacts/**/*.exe
+            artifacts/**/*.exe.blockmap
+            artifacts/**/*.AppImage
+            artifacts/**/latest*.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
