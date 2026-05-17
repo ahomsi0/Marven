@@ -218,11 +218,7 @@ export function ChatLayout({
 
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
-      if (mode === "agent") {
-        onOpenSettings();
-      } else {
-        setSettingsOpen(true);
-      }
+      setSettingsOpen(true);
       return;
     }
     onSlashCommand(cmd);
@@ -274,7 +270,7 @@ export function ChatLayout({
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
-          onOpenSettings={() => mode === "agent" ? onOpenSettings() : setSettingsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         {/* Main panel */}
@@ -399,7 +395,9 @@ export function ChatLayout({
               onApproveToolCall={onApproveToolCall}
               recentWorkspaces={recentWorkspaces}
               onSelectRecent={onSelectRecent}
-              onOpenSettings={onOpenSettings}
+              // Agent mode now opens Settings as a full-page overlay (same as chat),
+              // not as an editor tab. Override the page.tsx-supplied handler.
+              onOpenSettings={() => setSettingsOpen(true)}
               appVersion={appVersion}
               onProviderChange={onProviderChange}
               onModelChange={onModelChange}
@@ -493,7 +491,7 @@ export function ChatLayout({
       </div>
 
       {/* Settings popup — chat mode only (agent mode renders it as a tab) */}
-      {settingsOpen && mode !== "agent" && (
+      {settingsOpen && (
         <SettingsModal
           shortcuts={customShortcuts}
           promptTemplates={promptTemplates}
