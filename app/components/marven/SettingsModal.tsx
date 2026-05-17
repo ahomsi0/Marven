@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { CustomShortcut } from "@/types";
+import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
   onSave: (shortcuts: CustomShortcut[]) => void;
   onClose: () => void;
+  promptTemplates: PromptTemplate[];
+  mcpServers: MCPServer[];
+  onSaveTemplates: (templates: PromptTemplate[]) => void;
+  onSaveMCPServers: (servers: MCPServer[]) => void;
 }
 
-type TabId = "shortcuts" | "commands" | "api-keys";
+type TabId = "shortcuts" | "commands" | "api-keys" | "templates" | "mcp";
 
 interface EditState {
   index: number;
@@ -74,7 +78,7 @@ const NATURAL_LANGUAGE_SECTIONS = [
   },
 ];
 
-export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps) {
+export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcpServers, onSaveTemplates, onSaveMCPServers }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("shortcuts");
   const [items, setItems] = useState<CustomShortcut[]>(shortcuts.map((s) => ({ ...s })));
 
@@ -108,6 +112,30 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
     });
     return unsub;
   }, []);
+
+  // Templates tab state
+  const [templates, setTemplates] = useState<PromptTemplate[]>(promptTemplates.map((t) => ({ ...t })));
+  const [showAddTemplate, setShowAddTemplate] = useState(false);
+  const [newTrigger, setNewTrigger] = useState("");
+  const [newTemplateLabel, setNewTemplateLabel] = useState("");
+  const [newPrompt, setNewPrompt] = useState("");
+  const [templateError, setTemplateError] = useState("");
+
+  // MCP tab state
+  const [mcpList, setMcpList] = useState<MCPServer[]>(mcpServers.map((s) => ({ ...s })));
+  const [mcpStatuses, setMcpStatuses] = useState<Record<string, "connected" | "disconnected">>({});
+  const [showAddMCP, setShowAddMCP] = useState(false);
+  const [newMcpName, setNewMcpName] = useState("");
+  const [newMcpCommand, setNewMcpCommand] = useState("");
+  const [mcpError, setMcpError] = useState("");
+  const [mcpLoading, setMcpLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== "mcp") return;
+    fetch("/api/mcp").then((r) => r.json()).then((data) => {
+      if (data.status) setMcpStatuses(data.status);
+    }).catch(() => {});
+  }, [activeTab]);
 
   // Add form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -259,13 +287,13 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b border-[#2a2a2a] px-5 shrink-0 bg-[#1e1e1e]">
-          {(["shortcuts", "commands", "api-keys"] as TabId[]).map((tab) => (
+        <div className="flex border-b border-[#2a2a2a] px-5 shrink-0 bg-[#1e1e1e] overflow-x-auto">
+          {(["shortcuts", "commands", "api-keys", "templates", "mcp"] as TabId[]).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-2.5 font-mono text-[11px] tracking-[0.1em] uppercase transition-colors border-b-2 -mb-px ${
+              className={`px-3 py-2.5 font-mono text-[11px] tracking-[0.1em] uppercase transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 activeTab === tab
                   ? "text-[#d19a66] border-[#d19a66]"
                   : "text-[#555] border-transparent hover:text-[#888]"
@@ -633,6 +661,170 @@ export function SettingsModal({ shortcuts, onSave, onClose }: SettingsModalProps
                   <p className="font-mono text-[11px] text-[#555] text-center">Checking…</p>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === "templates" && (
+            <div className="space-y-2">
+              {templates.length === 0 && (
+                <p className="text-[12px] text-[#555] px-1">No templates yet. Add one below.</p>
+              )}
+              {templates.map((t) => (
+                <div key={t.id} className="flex items-start gap-2 rounded-md border border-[#2a2a2a] bg-[#161616] px-3 py-2">
+                  <span className="font-mono text-[12px] text-[#d19a66] min-w-[80px]">/{t.trigger}</span>
+                  <span className="flex-1 text-[11px] text-[#666] truncate">{t.label ?? t.prompt.slice(0, 60)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = templates.filter((x) => x.id !== t.id);
+                      setTemplates(updated);
+                      onSaveTemplates(updated);
+                    }}
+                    className="text-[#555] hover:text-red-400 text-[12px] shrink-0"
+                  >×</button>
+                </div>
+              ))}
+
+              {!showAddTemplate ? (
+                <button type="button" onClick={() => setShowAddTemplate(true)}
+                  className="mt-2 w-full rounded-md border border-dashed border-[#333] py-2 text-[11px] text-[#555] hover:border-[#555] hover:text-[#888]">
+                  + Add template
+                </button>
+              ) : (
+                <div className="mt-2 rounded-md border border-[#333] bg-[#161616] p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="flex items-center rounded border border-[#333] bg-[#1e1e1e] px-2 text-[11px] text-[#555]">/</div>
+                    <input
+                      value={newTrigger}
+                      onChange={(e) => setNewTrigger(e.target.value.replace(/\s/g, "").toLowerCase())}
+                      placeholder="trigger"
+                      className="flex-1 rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                    />
+                    <input
+                      value={newTemplateLabel}
+                      onChange={(e) => setNewTemplateLabel(e.target.value)}
+                      placeholder="Label (optional)"
+                      className="flex-1 rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                    />
+                  </div>
+                  <textarea
+                    value={newPrompt}
+                    onChange={(e) => setNewPrompt(e.target.value)}
+                    placeholder="Prompt text…"
+                    rows={3}
+                    className="w-full resize-none rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                  />
+                  {templateError && <p className="text-[10px] text-red-400">{templateError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => { setShowAddTemplate(false); setNewTrigger(""); setNewTemplateLabel(""); setNewPrompt(""); setTemplateError(""); }}
+                      className="text-[11px] text-[#555] hover:text-[#888] px-3 py-1">Cancel</button>
+                    <button type="button" onClick={() => {
+                      if (!newTrigger.trim()) { setTemplateError("Trigger is required"); return; }
+                      if (!newPrompt.trim()) { setTemplateError("Prompt is required"); return; }
+                      if (templates.some((t) => t.trigger === newTrigger.trim())) { setTemplateError("Trigger already exists"); return; }
+                      const updated = [...templates, {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                        trigger: newTrigger.trim(),
+                        label: newTemplateLabel.trim() || undefined,
+                        prompt: newPrompt.trim(),
+                      }];
+                      setTemplates(updated);
+                      onSaveTemplates(updated);
+                      setShowAddTemplate(false);
+                      setNewTrigger(""); setNewTemplateLabel(""); setNewPrompt(""); setTemplateError("");
+                    }}
+                      className="rounded border border-[#d19a66]/30 bg-[#d19a66]/10 px-3 py-1 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20">
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "mcp" && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-[#555] px-1 mb-2">
+                MCP servers provide extra tools to the agent (filesystem, GitHub, databases, etc.).
+              </p>
+              {mcpList.length === 0 && (
+                <p className="text-[12px] text-[#555] px-1">No MCP servers configured.</p>
+              )}
+              {mcpList.map((server) => (
+                <div key={server.id} className="flex items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#161616] px-3 py-2">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: mcpStatuses[server.id] === "connected" ? "#4caf50" : "#555" }}
+                    title={mcpStatuses[server.id] ?? "unknown"}
+                  />
+                  <span className="text-[12px] text-[#d4d4d4] min-w-[80px]">{server.name}</span>
+                  <span className="flex-1 font-mono text-[10px] text-[#555] truncate">{server.command}</span>
+                  <button
+                    type="button"
+                    disabled={mcpLoading === server.id}
+                    onClick={async () => {
+                      setMcpLoading(server.id);
+                      await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "stop", server }) });
+                      const updated = mcpList.filter((s) => s.id !== server.id);
+                      setMcpList(updated);
+                      onSaveMCPServers(updated);
+                      setMcpLoading(null);
+                    }}
+                    className="text-[#555] hover:text-red-400 text-[12px] shrink-0 disabled:opacity-30"
+                  >×</button>
+                </div>
+              ))}
+
+              {!showAddMCP ? (
+                <button type="button" onClick={() => setShowAddMCP(true)}
+                  className="mt-2 w-full rounded-md border border-dashed border-[#333] py-2 text-[11px] text-[#555] hover:border-[#555] hover:text-[#888]">
+                  + Add server
+                </button>
+              ) : (
+                <div className="mt-2 rounded-md border border-[#333] bg-[#161616] p-3 space-y-2">
+                  <input
+                    value={newMcpName}
+                    onChange={(e) => setNewMcpName(e.target.value)}
+                    placeholder="Name (e.g. filesystem)"
+                    className="w-full rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                  />
+                  <input
+                    value={newMcpCommand}
+                    onChange={(e) => setNewMcpCommand(e.target.value)}
+                    placeholder="Command (e.g. npx @modelcontextprotocol/server-filesystem ~/)"
+                    className="w-full rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] font-mono text-[#d4d4d4] outline-none focus:border-[#555]"
+                  />
+                  {mcpError && <p className="text-[10px] text-red-400">{mcpError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => { setShowAddMCP(false); setNewMcpName(""); setNewMcpCommand(""); setMcpError(""); }}
+                      className="text-[11px] text-[#555] hover:text-[#888] px-3 py-1">Cancel</button>
+                    <button type="button" onClick={async () => {
+                      if (!newMcpName.trim()) { setMcpError("Name is required"); return; }
+                      if (!newMcpCommand.trim()) { setMcpError("Command is required"); return; }
+                      const newServer: MCPServer = {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                        name: newMcpName.trim(),
+                        command: newMcpCommand.trim(),
+                        enabled: true,
+                      };
+                      setMcpLoading(newServer.id);
+                      const res = await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start", server: newServer }) });
+                      const data = await res.json();
+                      if (!data.ok) { setMcpError(data.error ?? "Failed to connect"); setMcpLoading(null); return; }
+                      const updated = [...mcpList, newServer];
+                      setMcpList(updated);
+                      onSaveMCPServers(updated);
+                      setMcpStatuses((s) => ({ ...s, [newServer.id]: "connected" }));
+                      setShowAddMCP(false);
+                      setNewMcpName(""); setNewMcpCommand(""); setMcpError("");
+                      setMcpLoading(null);
+                    }}
+                      className="rounded border border-[#d19a66]/30 bg-[#d19a66]/10 px-3 py-1 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20">
+                      Save &amp; Connect
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
