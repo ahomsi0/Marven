@@ -73,9 +73,7 @@ export function WorkspaceLanding({
           <MarvenLogo size={48} />
           <span className="font-mono text-[28px] font-semibold tracking-wide text-[#ddd]">MARVEN</span>
         </div>
-        <div className="mb-12 text-[13px] text-[#666]">
-          {version ? `Version ${version}` : "Local AI Desktop"}
-        </div>
+        <div className="mb-12 text-[13px] text-[#666]">Local AI Desktop</div>
 
         {/* Action cards */}
         <div className="mb-10 grid grid-cols-3 gap-3">

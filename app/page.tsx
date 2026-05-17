@@ -334,6 +334,16 @@ export default function Home() {
     // any later state changes (e.g. server hot-reload race) don't strand us
     // with the wrong root when normalizing paths.
     const rootSnapshot = workspaceRoot;
+    // Refresh ALL open file tabs — path-matching between agent (which may use
+    // absolute paths) and tab keys (relative) is too brittle to rely on. The
+    // open-tab paths are already normalized, so refreshing each one of them is
+    // always safe and catches everything the agent could have touched.
+    openTabs.forEach((tab) => {
+      if (tab.kind === "file") refreshFileBuffer(tab.path, rootSnapshot);
+    });
+    // Also refresh under the agent-reported paths (in case the agent wrote a
+    // file the user hadn't opened yet — refreshFileBuffer no-ops if no buffer
+    // exists, but we also want the focus shift below).
     writtenPaths.forEach((p) => refreshFileBuffer(p, rootSnapshot));
     const lastWritten = writtenPaths[writtenPaths.length - 1];
     if (lastWritten) openFileTab(lastWritten);
