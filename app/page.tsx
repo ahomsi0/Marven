@@ -14,6 +14,9 @@ import type {
   AgentResponse,
   WorkspaceFile,
   ConversationMode,
+  MCPServer,
+  PromptTemplate,
+  ImageAttachment,
 } from "@/types";
 import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
@@ -99,7 +102,7 @@ function createMessage(role: Message["role"], content: string, streaming = false
 function buildHistory(messages: Message[], maxTurns = 20): HistoryMessage[] {
   return messages
     .slice(-maxTurns)
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content, attachments: m.attachments }));
 }
 
 // ─── System prompt builder ────────────────────────────────────────────────────
@@ -168,6 +171,25 @@ export default function Home() {
   // ─── Custom shortcuts ───────────────────────────────────────────────────────
   const [customShortcuts, setCustomShortcuts] = useState<CustomShortcut[]>([]);
 
+  // ─── MCP servers ────────────────────────────────────────────────────────────
+  const [mcpServers, setMcpServers] = useState<MCPServer[]>(() => {
+    try { return JSON.parse(localStorage.getItem("marven_mcp_servers") ?? "[]"); }
+    catch { return []; }
+  });
+
+  // ─── Prompt templates ───────────────────────────────────────────────────────
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>(() => {
+    try { return JSON.parse(localStorage.getItem("marven_prompt_templates") ?? "[]"); }
+    catch { return []; }
+  });
+
+  // ─── Chat image attachments (cleared after each send) ──────────────────────
+  const [chatAttachments, setChatAttachments] = useState<ImageAttachment[]>([]);
+
+  // ─── User profile + memories (declared early for useAgentStream) ─────────
+  const [userProfile, setUserProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [memories, setMemories] = useState<string[]>([]);
+
   // ─── Agent workspace ────────────────────────────────────────────────────────
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
@@ -185,16 +207,14 @@ export default function Home() {
     provider,
     model: selectedModel,
     workspaceRoot,
+    memory: memories.length > 0 ? memories.map((m) => `- ${m}`).join("\n") : undefined,
+    mcpServers,
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [isSpeakingNow, setIsSpeakingNow] = useState(false);
   const speechEnabledRef = useRef(false);
-
-  // ─── User profile + memories ────────────────────────────────────────────────
-  const [userProfile, setUserProfile] = useState<UserProfile | null | undefined>(undefined);
-  const [memories, setMemories] = useState<string[]>([]);
 
   // ─── Weather + battery ──────────────────────────────────────────────────────
   const [weather, setWeather] = useState<{ city: string; temp: number; description: string } | null>(null);
@@ -692,6 +712,10 @@ export default function Home() {
 
     const convId = ensureActiveConversation(text);
     const userMsg = createMessage("user", text);
+    if (chatAttachments.length > 0) {
+      userMsg.attachments = [...chatAttachments];
+      setChatAttachments([]);
+    }
     addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
     if (command.type !== null) {
@@ -961,6 +985,16 @@ export default function Home() {
     saveCustomShortcuts(shortcuts);
   }
 
+  function handleSaveMCPServers(servers: MCPServer[]) {
+    setMcpServers(servers);
+    localStorage.setItem("marven_mcp_servers", JSON.stringify(servers));
+  }
+
+  function handleSavePromptTemplates(templates: PromptTemplate[]) {
+    setPromptTemplates(templates);
+    localStorage.setItem("marven_prompt_templates", JSON.stringify(templates));
+  }
+
   function handleClearChat() {
     if (!activeConversationId) return;
     upsertConversation(activeConversationId, (conv) => ({
@@ -1136,6 +1170,12 @@ export default function Home() {
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}
+        promptTemplates={promptTemplates}
+        mcpServers={mcpServers}
+        onSaveTemplates={handleSavePromptTemplates}
+        onSaveMCPServers={handleSaveMCPServers}
+        chatAttachments={chatAttachments}
+        onAttachmentsChange={setChatAttachments}
         onSlashCommand={handleSlashCommand}
         onSelectAgentFile={(path) => {
           if (isAgentFileDirty) {

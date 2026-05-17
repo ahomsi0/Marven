@@ -1,13 +1,15 @@
 import { useState, useRef, useCallback } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage } from "@/types";
+import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer } from "@/types";
 
 interface UseAgentStreamOptions {
   provider: AIProvider;
   model: string;
   workspaceRoot: string | null;
+  memory?: string;
+  mcpServers?: MCPServer[];
 }
 
-export function useAgentStream({ provider, model, workspaceRoot }: UseAgentStreamOptions) {
+export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function useAgentStream({ provider, model, workspaceRoot }: UseAgentStrea
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled) }),
         signal: abort.signal,
       });
 

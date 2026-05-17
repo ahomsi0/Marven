@@ -11,6 +11,9 @@ import type {
   TokenUsage,
   CustomShortcut,
   WorkspaceFile,
+  MCPServer,
+  PromptTemplate,
+  ImageAttachment,
 } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { Message } from "@/app/components/marven/Message";
@@ -74,6 +77,12 @@ interface ChatLayoutProps {
   conversationSystemPrompt: string;
   onSystemPromptChange: (value: string) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
+  promptTemplates: PromptTemplate[];
+  mcpServers: MCPServer[];
+  onSaveTemplates: (templates: PromptTemplate[]) => void;
+  onSaveMCPServers: (servers: MCPServer[]) => void;
+  chatAttachments: ImageAttachment[];
+  onAttachmentsChange: (attachments: ImageAttachment[]) => void;
   onSlashCommand: (cmd: string) => void;
   onSelectAgentFile: (path: string) => void;
   onAgentFileContentChange: (value: string) => void;
@@ -152,6 +161,12 @@ export function ChatLayout({
   conversationSystemPrompt,
   onSystemPromptChange,
   onSaveShortcuts,
+  promptTemplates,
+  mcpServers,
+  onSaveTemplates,
+  onSaveMCPServers,
+  chatAttachments,
+  onAttachmentsChange,
   onSlashCommand,
   onSelectAgentFile,
   onAgentFileContentChange,
@@ -398,6 +413,9 @@ export function ChatLayout({
                     wakeEnabled={wakeEnabled}
                     voiceError={voiceError}
                     lastHeard={lastHeard}
+                    attachments={chatAttachments}
+                    onAttachmentsChange={onAttachmentsChange}
+                    promptTemplates={promptTemplates}
                     onChange={onInputChange}
                     onSend={onSend}
                     onVoiceClick={onVoiceClick}
@@ -421,7 +439,11 @@ export function ChatLayout({
       {settingsOpen && (
         <SettingsModal
           shortcuts={customShortcuts}
+          promptTemplates={promptTemplates}
+          mcpServers={mcpServers}
           onSave={onSaveShortcuts}
+          onSaveTemplates={onSaveTemplates}
+          onSaveMCPServers={onSaveMCPServers}
           onClose={() => setSettingsOpen(false)}
         />
       )}
