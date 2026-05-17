@@ -1,17 +1,28 @@
 // Ollama integration helper
 // DEFAULT_MODEL is used as the initial selection in the UI.
 // The active model is chosen by the user at runtime.
+
+import type { ImageAttachment } from "@/types";
+import { stripAttachments } from "@/lib/imageHelpers";
+
 export const DEFAULT_MODEL = "phi3";
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 
-export async function askOllama(prompt: string, model: string): Promise<string> {
+export async function askOllama(
+  prompt: string,
+  model: string,
+  attachments?: ImageAttachment[]
+): Promise<string> {
+  const safePrompt = attachments?.length
+    ? stripAttachments(prompt, attachments)
+    : prompt;
   let response: Response;
 
   try {
     response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt: safePrompt, stream: false }),
     });
   } catch {
     throw new Error(

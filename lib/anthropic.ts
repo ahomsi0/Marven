@@ -2,6 +2,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { HistoryMessage } from "@/types";
+import { buildAnthropicContent } from "@/lib/imageHelpers";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-5";
 
@@ -40,7 +41,10 @@ export function streamAnthropic(
           system: systemPrompt ?? SYSTEM_PROMPT,
           messages: messages.map((m) => ({
             role: m.role as "user" | "assistant",
-            content: m.content,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content: (m.role === "user" && m.attachments?.length
+              ? buildAnthropicContent(m.content, m.attachments)
+              : m.content) as any,
           })),
         });
 

@@ -16,6 +16,7 @@ export const NIM_MODELS = [
 ];
 
 import type { HistoryMessage } from "@/types";
+import { stripAttachments } from "@/lib/imageHelpers";
 
 export function streamNim(
   messages: HistoryMessage[],
@@ -39,7 +40,15 @@ export function streamNim(
           },
           body: JSON.stringify({
             model,
-            messages: [{ role: "system", content: systemPrompt ?? SYSTEM_PROMPT }, ...messages],
+            messages: [
+              { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
+              ...messages.map((m) => ({
+                role: m.role,
+                content: m.role === "user" && m.attachments?.length
+                  ? stripAttachments(m.content, m.attachments)
+                  : m.content,
+              })),
+            ],
             temperature: 0.7,
             stream: true,
           }),

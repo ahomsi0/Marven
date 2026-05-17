@@ -1,7 +1,9 @@
 // lib/openai.ts — server-side only (uses OPENAI_API_KEY from .env.local / Electron settings)
 
 import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { HistoryMessage } from "@/types";
+import { buildOpenAIContent } from "@/lib/imageHelpers";
 
 export const DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -39,7 +41,13 @@ export function streamOpenAI(
           model,
           messages: [
             { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-            ...messages,
+            ...messages.map((m): ChatCompletionMessageParam => ({
+              role: m.role as "user" | "assistant",
+              content: (m.role === "user" && m.attachments?.length
+                ? buildOpenAIContent(m.content, m.attachments)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                : m.content) as any,
+            })),
           ],
           stream: true,
           stream_options: { include_usage: true },

@@ -1,4 +1,5 @@
 import type { HistoryMessage } from "@/types";
+import { buildOpenAIContent } from "@/lib/imageHelpers";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -41,7 +42,15 @@ export function streamOpenRouter(
           },
           body: JSON.stringify({
             model,
-            messages: [...sysMessages, ...messages],
+            messages: [
+              ...sysMessages,
+              ...messages.map((m) => ({
+                role: m.role,
+                content: m.role === "user" && m.attachments?.length
+                  ? buildOpenAIContent(m.content, m.attachments) as string | unknown[]
+                  : m.content,
+              })),
+            ],
             temperature: 0.7,
             stream: true,
             stream_options: { include_usage: true },
