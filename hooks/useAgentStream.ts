@@ -13,6 +13,8 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveTerminalOutput, setLiveTerminalOutput] = useState<string>("");
+  const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const addMessage = (msg: AgentMessage) =>
@@ -113,6 +115,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
           }
 
           if (event.type === "tool_result") {
+            setLiveTerminalOutput("");
             updateLastAssistant((msg) => ({
               ...msg,
               toolCalls: (msg.toolCalls ?? []).map((tc) =>
@@ -121,6 +124,38 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
                   : tc
               ),
             }));
+          }
+
+          if (event.type === "tool_progress") {
+            setLiveTerminalOutput((prev) => {
+              const next = prev + event.chunk;
+              const lines = next.split("\n");
+              if (lines.length > 500) return lines.slice(-500).join("\n");
+              return next;
+            });
+            updateLastAssistant((msg) => ({
+              ...msg,
+              toolCalls: (msg.toolCalls ?? []).map((tc) =>
+                tc.callId === event.callId
+                  ? { ...tc, liveOutput: (tc.liveOutput ?? "") + event.chunk }
+                  : tc
+              ),
+            }));
+          }
+
+          if (event.type === "pending_approval") {
+            updateLastAssistant((msg) => ({
+              ...msg,
+              toolCalls: (msg.toolCalls ?? []).map((tc) =>
+                tc.callId === event.callId
+                  ? { ...tc, status: "awaiting_approval" as const }
+                  : tc
+              ),
+            }));
+          }
+
+          if (event.type === "checkpoint") {
+            setCheckpoints((prev) => prev.includes(event.path) ? prev : [...prev, event.path]);
           }
 
           if (event.type === "text_delta") {
@@ -148,7 +183,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot]);
+  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -170,5 +205,16 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  return { messages, isRunning, error, send, stop, clearMessages, injectAssistantMessage };
+  const approve = useCallback(async (callId: string, accept: boolean) => {
+    await fetch("/api/agent/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, accept }),
+    });
+  }, []);
+
+  return {
+    messages, isRunning, error, send, stop, clearMessages, injectAssistantMessage,
+    liveTerminalOutput, checkpoints, approve,
+  };
 }
