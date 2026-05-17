@@ -2,7 +2,7 @@
 
 import { KeyboardEvent, useEffect, useRef, useState, Fragment } from "react";
 import type { VoiceState } from "@/hooks/useVoice";
-import type { AIProvider, ImageAttachment } from "@/types";
+import type { AIProvider, ImageAttachment, PromptTemplate } from "@/types";
 import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
 import { GroupedModelDropdown } from "@/app/components/marven/GroupedModelDropdown";
 
@@ -29,6 +29,7 @@ interface InputBarProps {
   onToggleWakeWord: () => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
+  promptTemplates?: PromptTemplate[];
 }
 
 export function InputBar({
@@ -53,6 +54,7 @@ export function InputBar({
   onToggleWakeWord,
   attachments,
   onAttachmentsChange,
+  promptTemplates,
 }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,7 +62,9 @@ export function InputBar({
 
   const menuOpen = value.startsWith("/") && !value.includes(" ");
   const query = menuOpen ? value.slice(1) : "";
-  const matches = SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
+  const builtinMatches = SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
+  const templateMatches = (promptTemplates ?? []).filter((t) => t.trigger.startsWith(query));
+  const matches = [...builtinMatches, ...templateMatches];
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
 
   useEffect(() => { setMenuActiveIdx(0); }, [query]);
@@ -94,6 +98,15 @@ export function InputBar({
   }
 
   function selectCommand(cmd: string) {
+    if (cmd.startsWith("/template:")) {
+      const trigger = cmd.slice("/template:".length);
+      const tmpl = promptTemplates?.find((t) => t.trigger === trigger);
+      if (tmpl) {
+        onChange(tmpl.prompt);
+        textareaRef.current?.focus();
+        return;
+      }
+    }
     onSlashCommand?.(cmd);
     onChange("");
     textareaRef.current?.focus();
@@ -103,7 +116,7 @@ export function InputBar({
     if (menuOpen && matches.length > 0) {
       if (event.key === "ArrowDown") { event.preventDefault(); setMenuActiveIdx((i) => (i + 1) % matches.length); return; }
       if (event.key === "ArrowUp") { event.preventDefault(); setMenuActiveIdx((i) => (i - 1 + matches.length) % matches.length); return; }
-      if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) selectCommand(sel.command); return; }
+      if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) { const cmd = "command" in sel ? sel.command : `/template:${sel.trigger}`; selectCommand(cmd); } return; }
       if (event.key === "Escape") { event.preventDefault(); onChange(""); return; }
     }
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSend(); }
@@ -122,6 +135,7 @@ export function InputBar({
         <SlashMenu
           query={query}
           activeIndex={menuActiveIdx}
+          promptTemplates={promptTemplates}
           onSelect={selectCommand}
           onSetActive={setMenuActiveIdx}
         />
