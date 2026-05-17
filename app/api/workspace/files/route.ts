@@ -9,17 +9,20 @@ function getRoot(): string {
   return activeWorkspaceRoot;
 }
 
-async function listRecursive(dir: string, base: string): Promise<{ path: string; name: string }[]> {
+type FileEntry = { path: string; name: string; type: "file" | "folder" };
+
+async function listRecursive(dir: string, base: string): Promise<FileEntry[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  const results: { path: string; name: string }[] = [];
+  const results: FileEntry[] = [];
   for (const entry of entries) {
     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
     const rel = path.relative(base, path.join(dir, entry.name));
     if (entry.isDirectory()) {
+      results.push({ path: rel, name: entry.name, type: "folder" });
       const nested = await listRecursive(path.join(dir, entry.name), base);
       results.push(...nested);
     } else {
-      results.push({ path: rel, name: entry.name });
+      results.push({ path: rel, name: entry.name, type: "file" });
     }
   }
   return results;

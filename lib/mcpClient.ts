@@ -180,7 +180,7 @@ class MCPClient {
       entry.pending.set(reqId, { resolve, reject, timer });
       const msg =
         JSON.stringify({ jsonrpc: "2.0", id: reqId, method, params }) + "\n";
-      entry.process.stdin!.write(msg);
+      entry.process.stdin!.write(msg); // stdin is pipe — guaranteed non-null by spawn options
     });
   }
 

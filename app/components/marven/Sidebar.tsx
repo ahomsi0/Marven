@@ -77,7 +77,7 @@ function ConvRow({
         {conv.name || "Untitled"}
       </span>
       {conv.mode === "agent" && (
-        <span className="mr-1 rounded-full border border-[#d19a66]/20 bg-[#d19a66]/08 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#d19a66]">
+        <span className="mr-1 rounded-full border border-[#d19a66]/20 bg-[#d19a66]/08 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#d19a66] transition-transform duration-150 group-hover:-translate-x-9">
           Agent
         </span>
       )}

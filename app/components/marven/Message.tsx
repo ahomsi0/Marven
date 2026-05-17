@@ -146,9 +146,9 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                 {message.attachments && message.attachments.length > 0 ? (
                   <div className="flex gap-3 items-start">
                     <div className="flex flex-col gap-1 shrink-0 max-h-32 overflow-y-auto">
-                      {message.attachments.map((att, i) => (
+                      {message.attachments.map((att) => (
                         <img
-                          key={i}
+                          key={`${att.name}-${att.base64.slice(-8)}`}
                           src={att.base64}
                           alt={att.name}
                           title={att.name}

@@ -160,20 +160,32 @@ function buildTree(files: WorkspaceFile[]): TreeNode[] {
   const root: TreeNode[] = [];
   const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
 
-  for (const file of sorted) {
-    const parts = file.path.split("/");
-    let currentChildren = root;
-    let currentPath = "";
-    for (let i = 0; i < parts.length - 1; i++) {
-      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
-      if (!dirs.has(currentPath)) {
-        const dir: TreeNode = { name: parts[i], path: currentPath, type: "folder", children: [] };
-        dirs.set(currentPath, dir);
-        currentChildren.push(dir);
+  function ensureDir(dirPath: string): TreeNode[] {
+    if (!dirPath) return root;
+    if (dirs.has(dirPath)) return dirs.get(dirPath)!.children;
+    const parts = dirPath.split("/");
+    let parent = root;
+    let cur = "";
+    for (const part of parts) {
+      cur = cur ? `${cur}/${part}` : part;
+      if (!dirs.has(cur)) {
+        const node: TreeNode = { name: part, path: cur, type: "folder", children: [] };
+        dirs.set(cur, node);
+        parent.push(node);
       }
-      currentChildren = dirs.get(currentPath)!.children;
+      parent = dirs.get(cur)!.children;
     }
-    currentChildren.push({ name: parts[parts.length - 1], path: file.path, type: "file", children: [] });
+    return parent;
+  }
+
+  for (const entry of sorted) {
+    if (entry.type === "folder") {
+      ensureDir(entry.path);
+      continue;
+    }
+    const parts = entry.path.split("/");
+    const parent = ensureDir(parts.slice(0, -1).join("/"));
+    parent.push({ name: parts[parts.length - 1], path: entry.path, type: "file", children: [] });
   }
 
   function sort(nodes: TreeNode[]): TreeNode[] {

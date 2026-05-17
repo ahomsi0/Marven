@@ -66,6 +66,7 @@ export interface ChatResponse {
 export interface WorkspaceFile {
   path: string;
   name: string;
+  type?: "file" | "folder";
 }
 
 export interface AgentWriteFile {
