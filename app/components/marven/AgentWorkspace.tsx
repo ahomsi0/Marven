@@ -14,6 +14,46 @@ import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 
+// Memory popover — uses position:fixed with viewport coordinates so it can
+// extend past the workspace's overflow-hidden bounds. Anchors to the bottom of
+// the trigger button; clamps to viewport edges so it never goes off-screen.
+function MemoryPopover({
+  anchor,
+  memory,
+  onClear,
+}: {
+  anchor: HTMLElement | null;
+  memory: string;
+  onClear: () => void;
+}) {
+  const rect = anchor?.getBoundingClientRect();
+  if (!rect) return null;
+  const width = 320;
+  // Right-align with the button but clamp so the left edge is never off-screen
+  const right = Math.max(8, window.innerWidth - rect.right);
+  const top = rect.bottom + 6;
+  return (
+    <div
+      className="fixed z-[60] rounded-md border border-[#333] bg-[#1e1e1e] shadow-xl"
+      style={{ right, top, width }}
+    >
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2">
+        <span className="text-[10px] uppercase tracking-widest text-[#888]">Agent Memory</span>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[10px] text-[#666] transition-colors hover:text-red-400"
+        >
+          Clear all
+        </button>
+      </div>
+      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-[#aaa]">
+        {memory}
+      </pre>
+    </div>
+  );
+}
+
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
   input: string;
@@ -371,37 +411,40 @@ export function AgentWorkspace({
         )}
 
         {memoryLineCount > 0 && (
-          <div className="relative" ref={memoryRef}>
+          <div ref={memoryRef}>
             <button
               type="button"
               onClick={() => setMemoryOpen((v) => !v)}
               title="Agent memory"
-              className="flex items-center gap-1 rounded border border-[#333] bg-[#252525] px-2 py-1 text-[10px] text-[#888] transition-colors hover:border-[#444] hover:text-[#bbb]"
+              className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] transition-colors ${
+                memoryOpen
+                  ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
+                  : "border-[#333] bg-[#252525] text-[#999] hover:border-[#444] hover:text-[#ccc]"
+              }`}
             >
-              🧠
-              <span className="text-[#666]">{memoryLineCount}</span>
+              {/* Three connected nodes — echoes the Marven logo's Y-shape */}
+              <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round">
+                <line x1="2.5" y1="3" x2="6" y2="6" />
+                <line x1="9.5" y1="3" x2="6" y2="6" />
+                <line x1="6" y1="6" x2="6" y2="10" />
+                <circle cx="2.5" cy="3" r="1.4" fill="currentColor" />
+                <circle cx="9.5" cy="3" r="1.4" fill="currentColor" />
+                <circle cx="6" cy="10" r="1.4" fill="currentColor" />
+                <circle cx="6" cy="6" r="1.4" fill="currentColor" />
+              </svg>
+              <span>{memoryLineCount}</span>
             </button>
 
             {memoryOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-[#333] bg-[#1e1e1e] shadow-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] uppercase tracking-widest text-[#555]">Agent Memory</span>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await fetch("/api/memory", { method: "DELETE" });
-                      setMemory("");
-                      setMemoryOpen(false);
-                    }}
-                    className="text-[10px] text-[#555] hover:text-red-400"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
-                  {memory}
-                </pre>
-              </div>
+              <MemoryPopover
+                anchor={memoryRef.current}
+                memory={memory}
+                onClear={async () => {
+                  await fetch("/api/memory", { method: "DELETE" });
+                  setMemory("");
+                  setMemoryOpen(false);
+                }}
+              />
             )}
           </div>
         )}
