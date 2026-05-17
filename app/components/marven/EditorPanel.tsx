@@ -331,6 +331,43 @@ export function EditorPanel({
 
   const tree = useMemo(() => buildTree(files), [files]);
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPaths(buildTree(files))));
+  const [creating, setCreating] = useState<"file" | "folder" | null>(null);
+  const [newName, setNewName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function handleCreateSubmit() {
+    const name = newName.trim();
+    if (!name || !workspaceRoot) { setCreating(null); setNewName(""); return; }
+    setCreateError(null);
+    try {
+      const res = await fetch("/api/workspace/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: workspaceRoot, path: name, type: creating }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCreateError(data.error ?? "Failed to create");
+        return;
+      }
+      setCreating(null);
+      setNewName("");
+      onRefreshFiles();
+      if (creating === "file") onSelectFile(name);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create");
+    }
+  }
+
+  function startCreate(type: "file" | "folder") {
+    setCreating(type);
+    setNewName("");
+    setCreateError(null);
+  }
+
+  function collapseAll() {
+    setOpenFolders(new Set());
+  }
 
   // When files change (e.g. new folder created), auto-open new folders
   useEffect(() => {
@@ -388,26 +425,84 @@ export function EditorPanel({
         {/* File explorer */}
         <div className="flex w-[220px] min-w-[220px] flex-col border-r border-[#333] bg-[#1a1a1a]">
           {/* Explorer header */}
-          <div className="flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2">
+          <div className="border-b border-[#2a2a2a] px-3 py-2">
             <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#555]">Explorer</span>
-            <button
-              type="button"
-              onClick={onRefreshFiles}
-              title="Refresh"
-              className="text-[#555] transition-colors hover:text-[#aaa]"
-            >
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
           </div>
           {/* Project root row */}
-          <div className="flex items-center gap-1 border-b border-[#2a2a2a] px-2 py-1.5">
+          <div className="group flex items-center gap-1 border-b border-[#2a2a2a] px-2 py-1.5">
             <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]" viewBox="0 0 20 20" fill="currentColor">
               <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
             </svg>
-            <span className="truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[#ccc]">{projectName}</span>
+            <span className="flex-1 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[#ccc]">{projectName}</span>
+            <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                onClick={() => startCreate("file")}
+                disabled={!workspaceRoot}
+                title="New file"
+                className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => startCreate("folder")}
+                disabled={!workspaceRoot}
+                title="New folder"
+                className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m-3-3h6m-9 8h12a2 2 0 002-2V8a2 2 0 00-2-2h-5l-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={onRefreshFiles}
+                title="Refresh"
+                className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66]"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={collapseAll}
+                disabled={openFolders.size === 0}
+                title="Collapse all folders"
+                className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
+                </svg>
+              </button>
+            </div>
           </div>
+          {creating && (
+            <div className="border-b border-[#2a2a2a] bg-[#1e1e1e] px-2 py-1">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-[#555]">{creating === "file" ? "📄" : "📁"}</span>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newName}
+                  onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); handleCreateSubmit(); }
+                    if (e.key === "Escape") { setCreating(null); setNewName(""); setCreateError(null); }
+                  }}
+                  onBlur={() => { if (!newName.trim()) { setCreating(null); setCreateError(null); } }}
+                  placeholder={creating === "file" ? "file.ts" : "folder-name"}
+                  className="w-full bg-transparent font-mono text-[11px] text-[#d4d4d4] outline-none placeholder:text-[#444]"
+                />
+              </div>
+              {createError && (
+                <p className="mt-0.5 font-mono text-[9px] text-red-400">{createError}</p>
+              )}
+            </div>
+          )}
           {/* Tree */}
           <div className="min-h-0 flex-1 overflow-y-auto py-1">
             {tree.length === 0 && (
