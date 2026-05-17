@@ -98,6 +98,10 @@ export async function POST(req: NextRequest) {
         ));
       };
 
+      const onProgress = (callId: string, chunk: string) => {
+        emit("tool_progress", { type: "tool_progress", callId, chunk });
+      };
+
       try {
         for await (const event of runAgentLoop({
           messages: history,
@@ -105,7 +109,8 @@ export async function POST(req: NextRequest) {
           workspaceRoot,
           memory: body.memory,
           providerStep,
-          executeToolFn: async (name, args, root) => {
+          onProgress,
+          executeToolFn: async (name, args, root, onProgressCb) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);
             if (mcpServerId) {
@@ -117,7 +122,7 @@ export async function POST(req: NextRequest) {
               }
             }
             // Built-in tools
-            return executeTool(name, args, root);
+            return executeTool(name, args, root, onProgressCb);
           },
         })) {
           emit(event.type, event);
