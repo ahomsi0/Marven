@@ -51,8 +51,23 @@ const PREFERRED_VOICES = [
   "Google US English",
 ];
 
-function pickVoice(): SpeechSynthesisVoice | null {
+function isArabic(text: string): boolean {
+  const arabic = text.match(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g);
+  if (!arabic || arabic.length === 0) return false;
+  const letters = text.match(/\p{L}/gu);
+  if (!letters || letters.length === 0) return true;
+  return arabic.length / letters.length > 0.25;
+}
+
+function pickVoice(text: string): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
+  if (isArabic(text)) {
+    return (
+      voices.find((v) => v.lang.startsWith("ar")) ??
+      voices.find((v) => /arab|maged|tarik|majed/i.test(v.name)) ??
+      null
+    );
+  }
   for (const name of PREFERRED_VOICES) {
     const match = voices.find((v) => v.name.includes(name));
     if (match) return match;
@@ -78,8 +93,13 @@ function speakFallback(text: string, onEnd?: () => void): void {
   };
 
   const go = () => {
-    const voice = pickVoice();
-    if (voice) utterance.voice = voice;
+    const voice = pickVoice(text);
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else if (isArabic(text)) {
+      utterance.lang = "ar";
+    }
     currentUtterance = utterance;
     window.speechSynthesis.speak(utterance);
   };
