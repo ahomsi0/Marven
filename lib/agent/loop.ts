@@ -1,6 +1,10 @@
 import type { AgentEvent, InternalMessage, ToolDefinition } from "@/types";
 import { executeTool } from "./tools";
 import type { ProviderStepResult } from "./groq";
+import { readFile } from "fs/promises";
+import path from "path";
+import { registerApproval } from "./approvals";
+import { isGitMutation } from "./tools";
 
 const MAX_ITERATIONS = 20;
 
@@ -33,6 +37,7 @@ interface LoopOptions {
     tools: ToolDefinition[],
   ) => Promise<ProviderStepResult>;
   executeToolFn?: typeof executeTool;
+  onProgress?: (callId: string, chunk: string) => void;
 }
 
 export async function* runAgentLoop(
@@ -45,6 +50,22 @@ export async function* runAgentLoop(
     { role: "system", content: makeSystemPrompt(workspaceRoot, options.memory) },
     ...options.messages,
   ];
+
+  const checkpointFiles = new Map<string, string | null>();
+
+  async function ensureCheckpoint(absPath: string): Promise<void> {
+    if (checkpointFiles.has(absPath)) return;
+    try {
+      const content = await readFile(absPath, "utf8");
+      if (content.length <= 1_000_000) {
+        checkpointFiles.set(absPath, content);
+      } else {
+        checkpointFiles.set(absPath, "<too large to snapshot>");
+      }
+    } catch {
+      checkpointFiles.set(absPath, null);
+    }
+  }
 
   let toolCallCount = 0;
 
@@ -96,9 +117,54 @@ export async function* runAgentLoop(
       args: result.args,
     });
 
+    // 1. Checkpoint files that are about to be modified
+    if (result.tool === "write_file") {
+      const rel = result.args.path as string | undefined;
+      if (rel) {
+        const abs = path.isAbsolute(rel) ? rel : path.join(workspaceRoot, rel);
+        await ensureCheckpoint(abs);
+        yield { type: "checkpoint", path: abs };
+      }
+    } else if (result.tool === "git_checkout") {
+      const target = result.args.target as string | undefined;
+      if (target) {
+        const abs = path.isAbsolute(target) ? target : path.join(workspaceRoot, target);
+        await ensureCheckpoint(abs);
+        if (checkpointFiles.get(abs) !== null) {
+          yield { type: "checkpoint", path: abs };
+        }
+      }
+    }
+
+    // 2. Approval gating for git mutation tools
+    if (isGitMutation(result.tool)) {
+      yield {
+        type: "pending_approval",
+        callId: result.callId,
+        tool: result.tool,
+        args: result.args,
+      };
+      const approved = await registerApproval(result.callId, 60_000);
+      if (!approved) {
+        const rejection = "Rejected by user.";
+        yield {
+          type: "tool_result",
+          callId: result.callId,
+          output: rejection,
+          truncated: false,
+        };
+        history.push({ role: "tool_result", callId: result.callId, content: rejection });
+        continue;
+      }
+    }
+
+    // 3. Execute tool with optional progress forwarding
     let output: string;
     try {
-      output = await exec(result.tool, result.args, workspaceRoot);
+      const progressCb = options.onProgress
+        ? (chunk: string) => options.onProgress!(result.callId, chunk)
+        : undefined;
+      output = await exec(result.tool, result.args, workspaceRoot, progressCb);
     } catch (err) {
       output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
     }
