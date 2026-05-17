@@ -9,6 +9,10 @@ import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { WorkspaceLanding } from "./WorkspaceLanding";
 import { SettingsModal } from "./SettingsModal";
+import { QuickOpenModal } from "./QuickOpenModal";
+import { CommandPalette } from "./CommandPalette";
+import type { PaletteCommand } from "./CommandPalette";
+import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
@@ -129,6 +133,8 @@ export function AgentWorkspace({
     return localStorage.getItem("marven-show-right") !== "false";
   });
   const [showDiff, setShowDiff] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [commandPalette, setCommandPalette] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -263,6 +269,30 @@ export function AgentWorkspace({
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   }
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEditorShortcuts({
+    onSave: onSaveFile,
+    onCloseTab: () => onCloseTab(activeTabIndex),
+    onToggleExplorer: () => setShowExplorer((v) => !v),
+    onToggleTerminal: () => setShowTerminal((v) => !v),
+    onToggleChat: () => setShowRightPanel((v) => !v),
+    onQuickOpen: () => setQuickOpen(true),
+    onCommandPalette: () => setCommandPalette(true),
+  });
+
+  // ── Command Palette commands list ────────────────────────────────────────
+  const paletteCommands: PaletteCommand[] = [
+    { label: "Save File", keybinding: "⌘S", action: onSaveFile },
+    { label: "Close Tab", keybinding: "⌘W", action: () => onCloseTab(activeTabIndex) },
+    { label: "Toggle Sidebar", keybinding: "⌘B", action: () => setShowExplorer((v) => !v) },
+    { label: "Toggle Terminal", keybinding: "⌃`", action: () => setShowTerminal((v) => !v) },
+    { label: "Toggle Chat", keybinding: "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
+    { label: "Open Quick File", keybinding: "⌘P", action: () => setQuickOpen(true) },
+    { label: "Open Settings", action: () => onOpenSettings?.() },
+    { label: "Open Folder", action: onOpenFolder },
+    { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
+  ];
 
   // Landing page when no workspace is open AND no settings tab is open
   const hasSettingsTab = openTabs.some((t) => t.kind === "settings");
@@ -431,6 +461,8 @@ export function AgentWorkspace({
             onSaveShortcuts={onSaveShortcuts}
             onSaveTemplates={onSaveTemplates}
             onSaveMCPServers={onSaveMCPServers}
+            onToggleChat={() => setShowRightPanel((v) => !v)}
+            onCommandPalette={() => setCommandPalette(true)}
           />
         </div>
 
@@ -484,6 +516,23 @@ export function AgentWorkspace({
           </>
         )}
       </div>
+
+      {/* Quick Open modal */}
+      {quickOpen && (
+        <QuickOpenModal
+          files={files}
+          onOpen={(path) => { onSelectFile(path); }}
+          onClose={() => setQuickOpen(false)}
+        />
+      )}
+
+      {/* Command Palette modal */}
+      {commandPalette && (
+        <CommandPalette
+          commands={paletteCommands}
+          onClose={() => setCommandPalette(false)}
+        />
+      )}
     </div>
   );
 }

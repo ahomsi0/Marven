@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
@@ -31,6 +31,9 @@ interface EditorPanelProps {
   onSaveShortcuts?: (shortcuts: CustomShortcut[]) => void;
   onSaveTemplates?: (templates: PromptTemplate[]) => void;
   onSaveMCPServers?: (servers: MCPServer[]) => void;
+  // Empty state action props
+  onToggleChat?: () => void;
+  onCommandPalette?: () => void;
 }
 
 // ── Tab type icon ──────────────────────────────────────────────────────────────
@@ -217,10 +220,13 @@ export function EditorPanel({
   onSaveShortcuts,
   onSaveTemplates,
   onSaveMCPServers,
+  onToggleChat,
+  onCommandPalette,
 }: EditorPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
@@ -264,7 +270,15 @@ export function EditorPanel({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Multi-tab strip */}
           {openTabs.length > 0 && (
-            <div className="flex items-stretch border-b border-[#333] bg-[#1a1a1a] overflow-x-auto">
+            <div
+              className="flex items-stretch border-b border-[#333] bg-[#1a1a1a] overflow-x-auto"
+              onDragLeave={(e) => {
+                // Only clear if leaving the tab strip entirely (not entering a child)
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragOverIndex(null);
+                }
+              }}
+            >
               {openTabs.map((tab, i) => {
                 const isActive = i === activeTabIndex;
                 const label = tab.kind === "settings" ? "Settings" : tab.path.split("/").pop() ?? tab.path;
@@ -281,18 +295,25 @@ export function EditorPanel({
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
+                      setDragOverIndex(i);
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
+                      setDragOverIndex(null);
                       const from = Number(e.dataTransfer.getData("text/plain"));
                       if (!isNaN(from)) onReorderTabs(from, i);
                     }}
+                    onDragEnd={() => setDragOverIndex(null)}
                     onClick={() => onSelectTab(i)}
                     className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-[#333] px-3 py-2 transition-colors ${
                       isActive ? "bg-[#1e1e1e]" : "bg-[#1a1a1a] hover:bg-[#1e1e1e]/50"
                     }`}
                     title={tab.kind === "file" ? tab.path : "Settings"}
                   >
+                    {/* Drop indicator — vertical gold line on left edge */}
+                    {dragOverIndex === i && (
+                      <span className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] bg-[#d19a66]" />
+                    )}
                     {tab.kind === "file" ? (
                       <TabFileIcon name={label} />
                     ) : (
@@ -313,7 +334,7 @@ export function EditorPanel({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
-                    {isActive && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#d19a66]" />}
+                    {isActive && <span className="absolute top-0 left-0 right-0 h-[2px] bg-[#d19a66]" />}
                   </div>
                 );
               })}
@@ -396,18 +417,30 @@ export function EditorPanel({
                 <MarvenLogo size={160} />
               </div>
               <div className="space-y-2 text-[12px] text-[#555]">
-                <div className="flex items-center justify-between gap-12">
+                <button
+                  type="button"
+                  onClick={onToggleChat}
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                >
                   <span>Open Chat</span>
                   <kbd className="font-mono text-[10px]">⌃⌘I</kbd>
-                </div>
-                <div className="flex items-center justify-between gap-12">
+                </button>
+                <button
+                  type="button"
+                  onClick={onCommandPalette}
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                >
                   <span>Show All Commands</span>
                   <kbd className="font-mono text-[10px]">⇧⌘P</kbd>
-                </div>
-                <div className="flex items-center justify-between gap-12">
+                </button>
+                <button
+                  type="button"
+                  onClick={onToggleTerminal}
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                >
                   <span>Toggle Terminal</span>
                   <kbd className="font-mono text-[10px]">⌃`</kbd>
-                </div>
+                </button>
               </div>
             </div>
           )}
