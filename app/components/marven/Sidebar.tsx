@@ -60,8 +60,8 @@ function ConvRow({
       type="button"
       className={`group relative flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left transition-colors ${
         isActive
-          ? "bg-[#2a2a2a] text-[#d4d4d4]"
-          : "text-[#888] hover:text-[#ccc] hover:bg-[#252525]"
+          ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
+          : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
       }`}
       onClick={onSelect}
     >
@@ -132,7 +132,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-[#1a1a1a] border-r border-[#333] transition-all duration-200 ${
+      className={`flex h-full flex-col bg-[var(--m-bg)] border-r border-[var(--m-border)] transition-all duration-200 ${
         isOpen ? "w-[220px] min-w-[220px]" : "w-0 min-w-0 overflow-hidden"
       }`}
     >
@@ -142,22 +142,22 @@ export function Sidebar({
           <div className="flex flex-col px-4 pb-3 pt-5">
             <div className="flex items-center gap-2">
               <MarvenLogo size={28} />
-              <span className="text-[15px] font-semibold text-[#d4d4d4]">
+              <span className="text-[15px] font-semibold text-[var(--m-text)]">
                 Marven
               </span>
             </div>
-            <span className="mt-0.5 text-[11px] text-[#555]">
+            <span className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
               assistant + agent
             </span>
           </div>
 
-          <div className="mx-3 mb-3 h-px bg-[#2a2a2a]" />
+          <div className="mx-3 mb-3 h-px bg-[var(--m-border-subtle)]" />
 
           {/* New chat */}
           <button
             type="button"
             onClick={onNewChat}
-            className="mx-3 mb-2 border border-[#383838] text-[#888] rounded-lg px-3 py-1.5 text-[12px] hover:border-[#555] hover:text-[#d4d4d4] hover:bg-[#252525] transition-all"
+            className="mx-3 mb-2 border border-[var(--m-border)] text-[var(--m-text-muted)] rounded-lg px-3 py-1.5 text-[12px] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] transition-all"
           >
             + New chat
           </button>
@@ -180,7 +180,7 @@ export function Sidebar({
                 placeholder="Search…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border border-[#2a2a2a] bg-[#161616] py-1.5 pl-7 pr-3 text-[11px] text-[#888] placeholder-[#444] outline-none focus:border-[#383838] focus:text-[#ccc]"
+                className="w-full rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-bg)] py-1.5 pl-7 pr-3 text-[11px] text-[var(--m-text-muted)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)] focus:text-[var(--m-text)]"
               />
               {searchQuery && (
                 <button
@@ -200,7 +200,7 @@ export function Sidebar({
             {isSearching ? (
               /* ── Search results (flat) ── */
               searchResults!.length === 0 ? (
-                <p className="px-2 py-2 text-[11px] text-[#555]">No results</p>
+                <p className="px-2 py-2 text-[11px] text-[var(--m-text-faint)]">No results</p>
               ) : (
                 searchResults!.map((conv) => (
                   <ConvRow
@@ -219,7 +219,7 @@ export function Sidebar({
                 {/* Pinned section */}
                 {pinnedConvs.length > 0 && (
                   <div className="mb-3">
-                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[#555]">
+                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">
                       Pinned
                     </p>
                     {pinnedConvs.map((conv) => (
@@ -237,11 +237,11 @@ export function Sidebar({
 
                 {/* Date-grouped unpinned conversations */}
                 {grouped!.length === 0 && pinnedConvs.length === 0 && (
-                  <p className="px-2 text-[12px] text-[#555]">No conversations yet</p>
+                  <p className="px-2 text-[12px] text-[var(--m-text-faint)]">No conversations yet</p>
                 )}
                 {grouped!.map(({ label, items }) => (
                   <div key={label} className="mb-3">
-                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[#555]">
+                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">
                       {label}
                     </p>
                     {items.map((conv) => (
@@ -261,11 +261,11 @@ export function Sidebar({
           </div>
 
           {/* Settings gear at bottom */}
-          <div className="border-t border-[#2a2a2a] px-3 py-3">
+          <div className="border-t border-[var(--m-border-subtle)] px-3 py-3">
             <button
               type="button"
               onClick={onOpenSettings}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] text-[#666] transition-colors hover:bg-[#252525] hover:text-[#999]"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
             >
               <svg
                 className="h-4 w-4 shrink-0"

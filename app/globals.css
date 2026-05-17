@@ -3,6 +3,34 @@
 @layer base {
   :root {
     color-scheme: dark;
+
+    /* Dark theme (default) */
+    --m-bg: #1a1a1a;
+    --m-surface: #1e1e1e;
+    --m-surface-2: #252525;
+    --m-surface-3: #2a2a2a;
+    --m-border: #333333;
+    --m-border-subtle: #2a2a2a;
+    --m-text: #d4d4d4;
+    --m-text-muted: #888888;
+    --m-text-faint: #555555;
+    --m-accent: #d19a66;
+    --m-accent-soft: rgba(209, 154, 102, 0.1);
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --m-bg: #fafafa;
+    --m-surface: #ffffff;
+    --m-surface-2: #f0f0f0;
+    --m-surface-3: #e6e6e6;
+    --m-border: #d4d4d4;
+    --m-border-subtle: #e6e6e6;
+    --m-text: #1f1f1f;
+    --m-text-muted: #6b6b6b;
+    --m-text-faint: #9a9a9a;
+    --m-accent: #b87a3f;
+    --m-accent-soft: rgba(184, 122, 63, 0.12);
   }
 
   * { box-sizing: border-box; }
@@ -11,8 +39,8 @@
   body {
     margin: 0;
     overflow: hidden;
-    background: #0a0a0b;
-    color: #e8e8ea;
+    background-color: var(--m-bg);
+    color: var(--m-text);
     font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -115,14 +143,14 @@
 
 /* Prose / markdown */
 .prose {
-  color: #d4d4d8;
+  color: var(--m-text);
   line-height: 1.8;
   max-width: none;
 }
 .prose p { margin: 0 0 0.75em; }
 .prose p:last-child { margin-bottom: 0; }
 .prose h1, .prose h2, .prose h3, .prose h4 {
-  color: #f0f0f2;
+  color: var(--m-text);
   font-weight: 600;
   margin: 1em 0 0.4em;
 }

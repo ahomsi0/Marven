@@ -144,7 +144,7 @@ export function InputBar({
           onSetActive={setMenuActiveIdx}
         />
       )}
-      <div className="rounded-2xl bg-[#252525] border border-[#383838] transition-all focus-within:border-[#555]">
+      <div className="rounded-2xl bg-[var(--m-surface-2)] border border-[var(--m-border)] transition-all focus-within:border-[var(--m-text-faint)]">
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
@@ -203,7 +203,7 @@ export function InputBar({
             }}
             placeholder={placeholder}
             disabled={isLoading}
-            className="max-h-36 min-h-[38px] flex-1 resize-none rounded-lg bg-transparent px-3 py-2 text-[13px] leading-6 text-[#d4d4d4] outline-none placeholder:text-[#555] disabled:opacity-60"
+            className="max-h-36 min-h-[38px] flex-1 resize-none rounded-lg bg-transparent px-3 py-2 text-[13px] leading-6 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] disabled:opacity-60"
             style={{ height: "auto" }}
           />
 
@@ -212,7 +212,7 @@ export function InputBar({
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             title="Attach image"
-            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#252525] border border-[#383838] text-[#777] transition-all hover:text-[#ccc] hover:bg-[#2a2a2a] disabled:opacity-30"
+            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -226,7 +226,7 @@ export function InputBar({
               className={`h-9 w-9 shrink-0 rounded-lg transition-all flex items-center justify-center ${
                 isListening
                   ? "bg-red-950/20 border border-red-700/40 text-red-400"
-                  : "bg-[#252525] border border-[#383838] text-[#777] hover:text-[#ccc] hover:bg-[#2a2a2a]"
+                  : "bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)]"
               }`}
               title={isListening ? "Stop listening" : "Start voice input"}
             >
@@ -253,7 +253,7 @@ export function InputBar({
         </div>
 
         {/* Bottom strip */}
-        <div className="flex items-center border-t border-[#2a2a2a] px-3 py-1">
+        <div className="flex items-center border-t border-[var(--m-border-subtle)] px-3 py-1">
           <GroupedModelDropdown
             provider={provider}
             selectedModel={selectedModel}
@@ -266,12 +266,12 @@ export function InputBar({
               type="button"
               onClick={onToggleSpeech}
               className={`px-1.5 py-0.5 text-[10px] transition-all ${
-                speechEnabled ? "text-[#d19a66]" : "text-[#484848] hover:text-[#888]"
+                speechEnabled ? "text-[var(--m-accent)]" : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
               {speechEnabled ? "Speech on" : "Speech off"}
             </button>
-            <span className="text-[#2e2e2e] text-[10px]">/</span>
+            <span className="text-[var(--m-border-subtle)] text-[10px]">/</span>
             <button
               type="button"
               onClick={onToggleWakeWord}
@@ -279,8 +279,8 @@ export function InputBar({
               title={voiceError ?? undefined}
               className={`px-1.5 py-0.5 text-[10px] transition-all disabled:opacity-30 ${
                 wakeEnabled
-                  ? voiceState === "command-listening" ? "text-[#f87171]" : "text-[#d19a66]"
-                  : "text-[#484848] hover:text-[#888]"
+                  ? voiceState === "command-listening" ? "text-[#f87171]" : "text-[var(--m-accent)]"
+                  : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
               {isVoiceSupported ? (wakeEnabled ? "Wake on" : "Wake off") : "Voice n/a"}

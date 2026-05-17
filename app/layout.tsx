@@ -20,6 +20,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("marven-theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch{}`,
+          }}
+        />
+      </head>
       <body className={inter.variable}>{children}</body>
     </html>
   );

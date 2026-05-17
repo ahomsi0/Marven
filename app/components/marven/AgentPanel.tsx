@@ -83,10 +83,10 @@ export function AgentPanel({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
+    <div className="flex h-full flex-col bg-[var(--m-bg)]">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !isRunning && (
-          <p className="text-[12px] text-[#555]">
+          <p className="text-[12px] text-[var(--m-text-faint)]">
             Open a folder and describe what you want to build or change.
           </p>
         )}
@@ -95,7 +95,7 @@ export function AgentPanel({
           {messages.map((msg) => (
             <div key={msg.id}>
               {msg.role === "user" ? (
-                <div className="rounded-md bg-[#252525] border border-[#383838] px-3 py-2 text-[12px] text-[#ccc]">
+                <div className="rounded-md bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[12px] text-[var(--m-text)]">
                   {msg.content}
                 </div>
               ) : (
@@ -104,7 +104,7 @@ export function AgentPanel({
                     <ToolCallCard key={tc.callId} toolCall={tc} onApprove={onApproveToolCall} />
                   ))}
                   {msg.content && (
-                    <div className="prose prose-invert prose-sm max-w-none text-[12px] text-[#ccc] [&_code]:bg-[#252525] [&_code]:text-[#d19a66] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#333]">
+                    <div className="prose prose-sm max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -138,10 +138,10 @@ export function AgentPanel({
           ))}
 
           {isRunning && messages[messages.length - 1]?.role !== "assistant" && (
-            <div className="flex items-center gap-2 text-[11px] text-[#666]">
+            <div className="flex items-center gap-2 text-[11px] text-[var(--m-text-muted)]">
               <span>Agent running</span>
               {[0, 1, 2].map((i) => (
-                <span key={i} className="inline-block h-1 w-1 rounded-full bg-[#555]" />
+                <span key={i} className="inline-block h-1 w-1 rounded-full bg-[var(--m-text-faint)]" />
               ))}
             </div>
           )}
@@ -156,7 +156,7 @@ export function AgentPanel({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-[#2a2a2a] bg-[#1a1a1a] px-3 pt-3 pb-2">
+      <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 pt-3 pb-2">
         <div className="relative flex items-end gap-2">
           {menuOpen && (
             <SlashMenu
@@ -175,7 +175,7 @@ export function AgentPanel({
             disabled={isRunning}
             rows={1}
             placeholder="Describe task... or / for commands"
-            className="min-h-[36px] flex-1 resize-none rounded-md border border-[#383838] bg-[#252525] px-3 py-2 text-[12px] text-[#ddd] placeholder-[#555] outline-none transition-colors focus:border-[#555] disabled:opacity-40"
+            className="min-h-[36px] flex-1 resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none transition-colors focus:border-[var(--m-text-faint)] disabled:opacity-40"
             style={{ maxHeight: 120, overflowY: "auto" }}
           />
           {isRunning ? (
@@ -194,7 +194,7 @@ export function AgentPanel({
               type="button"
               onClick={onSend}
               disabled={!input.trim()}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-[#383838] bg-[#252525] text-[#d19a66] transition-colors hover:border-[#d19a66]/50 disabled:opacity-30"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />

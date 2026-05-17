@@ -133,7 +133,7 @@ function TreeItem({
         <button
           type="button"
           onClick={() => onToggleFolder(node.path)}
-          className="flex w-full items-center gap-1 py-[2px] text-left text-[#bbb] transition-colors hover:bg-[#2a2a2a] hover:text-[#e0e0e0]"
+          className="flex w-full items-center gap-1 py-[2px] text-left text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)]"
           style={{ paddingLeft: pl }}
         >
           <svg
@@ -163,8 +163,8 @@ function TreeItem({
       title={node.path}
       className={`flex w-full items-center gap-1 py-[2px] text-left transition-colors text-[12px] ${
         isActive
-          ? "bg-[rgba(209,154,102,0.12)] text-[#d19a66]"
-          : "text-[#ccc] hover:bg-[#2a2a2a] hover:text-[#e0e0e0]"
+          ? "bg-[var(--m-accent-soft)] text-[var(--m-accent)]"
+          : "text-[var(--m-text)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)]"
       }`}
       style={{ paddingLeft: pl }}
     >
@@ -246,30 +246,30 @@ export function FileExplorer({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
+    <div className="flex h-full flex-col bg-[var(--m-bg)]">
       {/* Open folder button (replaces Explorer header) */}
-      <div className="border-b border-[#2a2a2a] px-3 py-3">
+      <div className="border-b border-[var(--m-border-subtle)] px-3 py-3">
         <button
           type="button"
           onClick={onOpenFolder}
-          className="flex w-full items-center gap-2 rounded-md border border-[#333] bg-[#252525] px-3 py-2 text-left transition-colors hover:border-[#555]"
+          className="flex w-full items-center gap-2 rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-left transition-colors hover:border-[var(--m-text-faint)]"
         >
           <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
           </svg>
           {folderName ? (
-            <span className="truncate text-[11px] text-[#ddd]">{folderName}</span>
+            <span className="truncate text-[11px] text-[var(--m-text)]">{folderName}</span>
           ) : (
-            <span className="text-[11px] text-[#888]">Open Folder...</span>
+            <span className="text-[11px] text-[var(--m-text-muted)]">Open Folder...</span>
           )}
           {workspaceRoot && (
-            <span className="ml-auto shrink-0 text-[9px] text-[#666]">change</span>
+            <span className="ml-auto shrink-0 text-[9px] text-[var(--m-text-muted)]">change</span>
           )}
         </button>
       </div>
 
       {/* Project root row */}
-      <div className="group flex items-center gap-1 border-b border-[#2a2a2a] px-2 py-1.5">
+      <div className="group flex items-center gap-1 border-b border-[var(--m-border-subtle)] px-2 py-1.5">
         <svg
           className="h-3 w-3 shrink-0 text-[#777]"
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
@@ -277,14 +277,14 @@ export function FileExplorer({
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
-        <span className="flex-1 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[#ccc]">{projectName}</span>
+        <span className="flex-1 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[var(--m-text)]">{projectName}</span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
             onClick={() => startCreate("file")}
             disabled={!workspaceRoot}
             title="New file"
-            className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+            className="rounded p-0.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-accent)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
@@ -295,7 +295,7 @@ export function FileExplorer({
             onClick={() => startCreate("folder")}
             disabled={!workspaceRoot}
             title="New folder"
-            className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+            className="rounded p-0.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-accent)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m-3-3h6m-9 8h12a2 2 0 002-2V8a2 2 0 00-2-2h-5l-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -305,7 +305,7 @@ export function FileExplorer({
             type="button"
             onClick={onRefreshFiles}
             title="Refresh"
-            className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66]"
+            className="rounded p-0.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-accent)]"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -316,7 +316,7 @@ export function FileExplorer({
             onClick={collapseAll}
             disabled={openFolders.size === 0}
             title="Collapse all folders"
-            className="rounded p-0.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#d19a66] disabled:opacity-30"
+            className="rounded p-0.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-accent)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
@@ -327,7 +327,7 @@ export function FileExplorer({
 
       {/* Inline create input */}
       {creating && (
-        <div className="border-b border-[#2a2a2a] bg-[#1e1e1e] px-2 py-1">
+        <div className="border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-2 py-1">
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-[#555]">{creating === "file" ? "📄" : "📁"}</span>
             <input
@@ -341,7 +341,7 @@ export function FileExplorer({
               }}
               onBlur={() => { if (!newName.trim()) { setCreating(null); setCreateError(null); } }}
               placeholder={creating === "file" ? "file.ts" : "folder-name"}
-              className="w-full bg-transparent font-mono text-[11px] text-[#d4d4d4] outline-none placeholder:text-[#444]"
+              className="w-full bg-transparent font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)]"
             />
           </div>
           {createError && (
@@ -353,7 +353,7 @@ export function FileExplorer({
       {/* Tree */}
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {tree.length === 0 && (
-          <p className="px-3 py-2 text-[10px] text-[#555]">No files</p>
+          <p className="px-3 py-2 text-[10px] text-[var(--m-text-faint)]">No files</p>
         )}
         {tree.map((node) => (
           <TreeItem

@@ -47,11 +47,11 @@ function MemoryPopover({
 
   return (
     <div
-      className="fixed z-[60] overflow-hidden rounded-lg border border-[#333] bg-[#1a1a1a] shadow-2xl"
+      className="fixed z-[60] overflow-hidden rounded-lg border border-[var(--m-border)] bg-[var(--m-bg)] shadow-2xl"
       style={{ left, top, width }}
     >
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1e1e1e] px-3 py-2.5">
-        <span className="text-[10px] font-medium uppercase tracking-widest text-[#888]">
+      <div className="flex items-center justify-between border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3 py-2.5">
+        <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--m-text-muted)]">
           Agent Memory
         </span>
         <button
@@ -62,18 +62,18 @@ function MemoryPopover({
           Clear all
         </button>
       </div>
-      <div className="max-h-72 overflow-y-auto divide-y divide-[#252525]">
+      <div className="max-h-72 overflow-y-auto divide-y divide-[var(--m-surface-2)]">
         {entries.length === 0 ? (
-          <p className="p-4 text-center text-[11px] text-[#555]">No memories yet.</p>
+          <p className="p-4 text-center text-[11px] text-[var(--m-text-faint)]">No memories yet.</p>
         ) : (
           entries.map((e, i) => (
             <div key={i} className="px-3 py-2.5">
               {e.timestamp && (
-                <div className="mb-1 text-[9px] uppercase tracking-wider text-[#555]">
+                <div className="mb-1 text-[9px] uppercase tracking-wider text-[var(--m-text-faint)]">
                   {formatRelativeTime(e.timestamp)}
                 </div>
               )}
-              <div className="text-[12px] leading-relaxed text-[#d4d4d4] break-words">
+              <div className="text-[12px] leading-relaxed text-[var(--m-text)] break-words">
                 {e.content}
               </div>
             </div>
@@ -103,7 +103,7 @@ function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; item
   const top = rect.bottom + 4;
   return (
     <div
-      className="fixed z-[60] overflow-hidden rounded-md border border-[#333] bg-[#1c1c1c] py-0.5 shadow-2xl"
+      className="fixed z-[60] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] py-0.5 shadow-2xl"
       style={{ right, top, width }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -113,14 +113,14 @@ function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; item
           type="button"
           disabled={it.disabled}
           onClick={() => { it.onClick(); onClose(); }}
-          className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[#d4d4d4] transition-colors hover:bg-[#252525] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center text-[#aaa]">
+          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center text-[var(--m-text-muted)]">
             {it.icon}
             {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1 w-1 rounded-full bg-[#5b9cf6]" />}
           </span>
           <span className="flex-1">{it.label}</span>
-          {it.hint && <span className="font-mono text-[8px] text-[#666]">{it.hint}</span>}
+          {it.hint && <span className="font-mono text-[8px] text-[var(--m-text-muted)]">{it.hint}</span>}
         </button>
       ))}
     </div>
@@ -447,9 +447,9 @@ export function AgentWorkspace({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1a1a1a]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--m-bg)]">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#161616] px-3 py-1">
+      <div className="flex items-center gap-2 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-1">
         {/* Panel toggles — VS Code style */}
         <button
           type="button"
@@ -552,7 +552,7 @@ export function AgentWorkspace({
             onClick={() => setViewMenuOpen((v) => !v)}
             title="View menu"
             className={`flex h-7 items-center gap-0.5 rounded px-1.5 transition-colors ${
-              viewMenuOpen ? "bg-[#252525] text-[#d4d4d4]" : "text-[#888] hover:bg-[#252525] hover:text-[#d4d4d4]"
+              viewMenuOpen ? "bg-[var(--m-surface-2)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
             }`}
           >
             <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
@@ -664,7 +664,7 @@ export function AgentWorkspace({
         {showExplorer && (
           <>
             <div
-              className="flex flex-col border-r border-[#333]"
+              className="flex flex-col border-r border-[var(--m-border)]"
               style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
             >
               <FileExplorer
@@ -735,18 +735,18 @@ export function AgentWorkspace({
               </div>
             </div>
             <div
-              className="flex flex-col border-l border-[#333]"
+              className="flex flex-col border-l border-[var(--m-border)]"
               style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
             >
           {showDiff ? (
             <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
           ) : (
             <>
-              <div className="flex items-center gap-2 border-b border-[#333] bg-[#1a1a1a] px-3 py-3">
-                <span className="rounded border border-[#333] bg-[#252525] px-2 py-1 text-[9px] uppercase tracking-wider text-[#888]">
+              <div className="flex items-center gap-2 border-b border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-3">
+                <span className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[9px] uppercase tracking-wider text-[var(--m-text-muted)]">
                   {provider}
                 </span>
-                <span className="truncate text-[10px] text-[#666]">{model}</span>
+                <span className="truncate text-[10px] text-[var(--m-text-muted)]">{model}</span>
               </div>
               <div className="min-h-0 flex-1">
                 <AgentPanel

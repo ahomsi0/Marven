@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
+import { useTheme } from "@/lib/theme";
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -180,16 +181,16 @@ function AboutLink({
         if (el?.openExternal) el.openExternal(href, "default");
         else window.open(href, "_blank", "noopener,noreferrer");
       }}
-      className="group flex items-start justify-between gap-3 rounded-lg border border-[#2a2a2a] bg-[#181818] px-4 py-3 text-left transition-all hover:border-[#d19a66]/30 hover:bg-[#1c1c1c]"
+      className="group flex items-start justify-between gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-3 text-left transition-all hover:border-[var(--m-accent)]/30 hover:bg-[var(--m-surface-2)]"
     >
       <div className="min-w-0">
-        <div className="text-[12px] font-medium text-[#d4d4d4] group-hover:text-[#d19a66]">
+        <div className="text-[12px] font-medium text-[var(--m-text)] group-hover:text-[var(--m-accent)]">
           {label}
         </div>
-        <div className="mt-0.5 truncate text-[10px] text-[#666]">{hint}</div>
+        <div className="mt-0.5 truncate text-[10px] text-[var(--m-text-muted)]">{hint}</div>
       </div>
       <svg
-        className="mt-0.5 h-3 w-3 shrink-0 text-[#444] transition-colors group-hover:text-[#d19a66]"
+        className="mt-0.5 h-3 w-3 shrink-0 text-[var(--m-text-faint)] transition-colors group-hover:text-[var(--m-accent)]"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -215,6 +216,7 @@ export function SettingsModal({
   onSaveMCPServers,
   inline = false,
 }: SettingsModalProps) {
+  const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [items, setItems] = useState<CustomShortcut[]>(
     shortcuts.map((s) => ({ ...s }))
@@ -423,7 +425,7 @@ export function SettingsModal({
   }
 
   const inputClass =
-    "w-full rounded-lg bg-[#252525] border border-[#383838] px-3 py-2 text-[13px] text-[#ccc] outline-none placeholder:text-[#555] focus:border-[#555] transition-colors";
+    "w-full rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[13px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-text-faint)] transition-colors";
 
   // ─── Page content renderer ───────────────────────────────────────────────
 
@@ -434,28 +436,28 @@ export function SettingsModal({
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
         {/* Page header */}
         <div className="mb-6">
-          <h2 className="text-[18px] font-semibold text-[#e0e0e0]">
+          <h2 className="text-[18px] font-semibold text-[var(--m-text)]">
             {meta.title}
           </h2>
-          <p className="mt-1 text-[12px] text-[#888]">{meta.description}</p>
+          <p className="mt-1 text-[12px] text-[var(--m-text-muted)]">{meta.description}</p>
         </div>
 
         {/* ── General ── */}
         {activePage === "general" && (
           <div className="space-y-5">
-            <div className="rounded-xl border border-[#2a2a2a] bg-[#181818] px-5 py-4">
+            <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
               <div className="flex items-center gap-4">
                 <MarvenLogo size={44} />
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[16px] font-semibold text-[#e0e0e0]">
+                    <span className="text-[16px] font-semibold text-[var(--m-text)]">
                       Marven
                     </span>
-                    <span className="rounded-full border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 font-mono text-[10px] text-[#d19a66]">
+                    <span className="rounded-full border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2 py-0.5 font-mono text-[10px] text-[var(--m-accent)]">
                       v{packageJson.version}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-[12px] text-[#777]">
+                  <p className="mt-0.5 text-[12px] text-[var(--m-text-muted)]">
                     Marven is a local AI desktop assistant. Your data stays on
                     your machine.
                   </p>
@@ -463,26 +465,42 @@ export function SettingsModal({
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#2a2a2a] bg-[#181818] divide-y divide-[#2a2a2a]">
-              <div className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="text-[13px] text-[#d4d4d4]">Theme</p>
-                  <p className="text-[11px] text-[#666]">
-                    More themes coming soon
-                  </p>
-                </div>
-                <span className="rounded border border-[#333] bg-[#252525] px-2.5 py-1 text-[11px] text-[#888]">
-                  Dark
-                </span>
+            {/* Theme selector */}
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <div className="mb-3">
+                <h3 className="text-[13px] font-medium text-[var(--m-text)]">Theme</h3>
+                <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">Choose how Marven looks.</p>
               </div>
+              <div className="flex gap-3">
+                {(["dark", "light"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTheme(t)}
+                    className={`flex-1 rounded-md border px-3 py-2 text-left transition-colors ${
+                      theme === t
+                        ? "border-[var(--m-accent)] bg-[var(--m-accent-soft)]"
+                        : "border-[var(--m-border)] bg-[var(--m-surface-2)] hover:border-[var(--m-text-faint)]"
+                    }`}
+                  >
+                    <div className="text-[12px] font-medium text-[var(--m-text)] capitalize">{t}</div>
+                    <div className="mt-0.5 text-[10px] text-[var(--m-text-faint)]">
+                      {t === "dark" ? "Easy on the eyes at night" : "High contrast, daytime"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] divide-y divide-[var(--m-border-subtle)]">
               <div className="flex items-center justify-between px-5 py-3">
                 <div>
-                  <p className="text-[13px] text-[#d4d4d4]">Voice &amp; speech</p>
-                  <p className="text-[11px] text-[#666]">
+                  <p className="text-[13px] text-[var(--m-text)]">Voice &amp; speech</p>
+                  <p className="text-[11px] text-[var(--m-text-muted)]">
                     Configure voice from the input bar
                   </p>
                 </div>
-                <span className="text-[11px] text-[#555]">Input bar</span>
+                <span className="text-[11px] text-[var(--m-text-faint)]">Input bar</span>
               </div>
             </div>
           </div>
@@ -492,15 +510,15 @@ export function SettingsModal({
         {activePage === "api-keys" && (
           <div className="space-y-5">
             {!electron && (
-              <div className="rounded-lg border border-[#383838] bg-[#252525] px-4 py-3">
-                <p className="font-mono text-[11px] text-[#666]">
+              <div className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] px-4 py-3">
+                <p className="font-mono text-[11px] text-[var(--m-text-muted)]">
                   API key settings are only available in the packaged app.
                 </p>
               </div>
             )}
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 Groq API Key
               </label>
               <input
@@ -511,13 +529,13 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Free at console.groq.com — powers cloud AI chat.
               </p>
             </div>
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 NVIDIA NIM API Key
               </label>
               <input
@@ -528,14 +546,14 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Free credits at build.nvidia.com — access llama-3.1-70b and
                 more.
               </p>
             </div>
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 OpenRouter API Key
               </label>
               <input
@@ -546,14 +564,14 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Free at openrouter.ai — access Gemma, Llama, Mistral &amp; more
                 at no cost.
               </p>
             </div>
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 OpenAI API Key
               </label>
               <input
@@ -564,14 +582,14 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Get yours at platform.openai.com — powers GPT-4o and GPT-4o
                 mini.
               </p>
             </div>
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 Anthropic API Key
               </label>
               <input
@@ -582,14 +600,14 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Get yours at console.anthropic.com — powers Claude Sonnet,
                 Haiku &amp; Opus.
               </p>
             </div>
 
             <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase mb-2">
+              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
                 Ollama URL
               </label>
               <input
@@ -600,7 +618,7 @@ export function SettingsModal({
                 disabled={!electron}
                 className={inputClass}
               />
-              <p className="mt-1.5 font-mono text-[10px] text-[#555]">
+              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
                 Default: http://localhost:11434 — only change if Ollama runs on
                 a different machine.
               </p>
@@ -622,14 +640,14 @@ export function SettingsModal({
         {activePage === "connectors" && (
           <div className="space-y-2">
             {mcpList.length === 0 && (
-              <p className="text-[12px] text-[#555] px-1">
+              <p className="text-[12px] text-[var(--m-text-faint)] px-1">
                 No MCP servers configured.
               </p>
             )}
             {mcpList.map((server) => (
               <div
                 key={server.id}
-                className="flex items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#161616] px-3 py-2"
+                className="flex items-center gap-2 rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-2"
               >
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
@@ -641,10 +659,10 @@ export function SettingsModal({
                   }}
                   title={mcpStatuses[server.id] ?? "unknown"}
                 />
-                <span className="text-[12px] text-[#d4d4d4] min-w-[80px]">
+                <span className="text-[12px] text-[var(--m-text)] min-w-[80px]">
                   {server.name}
                 </span>
-                <span className="flex-1 font-mono text-[10px] text-[#555] truncate">
+                <span className="flex-1 font-mono text-[10px] text-[var(--m-text-faint)] truncate">
                   {server.command}
                 </span>
                 <button
@@ -667,7 +685,7 @@ export function SettingsModal({
                       setMcpLoading(null);
                     }
                   }}
-                  className="text-[#555] hover:text-red-400 text-[12px] shrink-0 disabled:opacity-30"
+                  className="text-[var(--m-text-faint)] hover:text-red-400 text-[12px] shrink-0 disabled:opacity-30"
                 >
                   ×
                 </button>
@@ -678,23 +696,23 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={() => setShowAddMCP(true)}
-                className="mt-2 w-full rounded-md border border-dashed border-[#333] py-2 text-[11px] text-[#555] hover:border-[#555] hover:text-[#888]"
+                className="mt-2 w-full rounded-md border border-dashed border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               >
                 + Add server
               </button>
             ) : (
-              <div className="mt-2 rounded-md border border-[#333] bg-[#161616] p-3 space-y-2">
+              <div className="mt-2 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] p-3 space-y-2">
                 <input
                   value={newMcpName}
                   onChange={(e) => setNewMcpName(e.target.value)}
                   placeholder="Name (e.g. filesystem)"
-                  className="w-full rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                  className="w-full rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
                 <input
                   value={newMcpCommand}
                   onChange={(e) => setNewMcpCommand(e.target.value)}
                   placeholder="Command (e.g. npx @modelcontextprotocol/server-filesystem ~/)"
-                  className="w-full rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] font-mono text-[#d4d4d4] outline-none focus:border-[#555]"
+                  className="w-full rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] font-mono text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
                 {mcpError && (
                   <p className="text-[10px] text-red-400">{mcpError}</p>
@@ -708,7 +726,7 @@ export function SettingsModal({
                       setNewMcpCommand("");
                       setMcpError("");
                     }}
-                    className="text-[11px] text-[#555] hover:text-[#888] px-3 py-1"
+                    className="text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] px-3 py-1"
                   >
                     Cancel
                   </button>
@@ -808,14 +826,14 @@ export function SettingsModal({
                   className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 transition-all text-left ${
                     active
                       ? "border-[#d19a66]/50 bg-[#d19a66]/08"
-                      : "border-[#2a2a2a] bg-[#1e1e1e] hover:border-[#383838] hover:bg-[#252525]"
+                      : "border-[var(--m-border-subtle)] bg-[var(--m-surface)] hover:border-[var(--m-border)] hover:bg-[var(--m-surface-2)]"
                   }`}
                 >
                   <span
                     className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
                       active
                         ? "border-[#d19a66] bg-[#d19a66]/20"
-                        : "border-[#444]"
+                        : "border-[var(--m-border)]"
                     }`}
                   >
                     {active && (
@@ -825,12 +843,12 @@ export function SettingsModal({
                   <span className="flex-1 min-w-0">
                     <span
                       className={`block font-mono text-[12px] ${
-                        active ? "text-[#d19a66]" : "text-[#ccc]"
+                        active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"
                       }`}
                     >
                       {label}
                     </span>
-                    <span className="block font-mono text-[10px] text-[#555] mt-0.5">
+                    <span className="block font-mono text-[10px] text-[var(--m-text-faint)] mt-0.5">
                       {description}
                     </span>
                   </span>
@@ -865,8 +883,8 @@ export function SettingsModal({
                 Add New Shortcut
               </button>
             ) : (
-              <div className="mb-4 rounded-lg border border-[#383838] bg-[#252525] p-4 space-y-2.5">
-                <p className="font-mono text-[9px] text-[#666] uppercase tracking-[0.2em] mb-3">
+              <div className="mb-4 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4 space-y-2.5">
+                <p className="font-mono text-[9px] text-[var(--m-text-muted)] uppercase tracking-[0.2em] mb-3">
                   New Shortcut
                 </p>
                 <input
@@ -915,7 +933,7 @@ export function SettingsModal({
                       setAddTrigger("");
                       setAddUrl("");
                     }}
-                    className="rounded-lg px-4 py-2 font-mono text-[11px] text-[#555] transition-colors hover:text-[#d19a66/65]"
+                    className="rounded-lg px-4 py-2 font-mono text-[11px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
                   >
                     Cancel
                   </button>
@@ -925,7 +943,7 @@ export function SettingsModal({
 
             {items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="mb-3 text-[#555]">
+                <div className="mb-3 text-[var(--m-text-faint)]">
                   <svg
                     className="mx-auto h-8 w-8"
                     fill="none"
@@ -940,10 +958,10 @@ export function SettingsModal({
                     />
                   </svg>
                 </div>
-                <p className="font-mono text-[11px] tracking-wider text-[#555] uppercase">
+                <p className="font-mono text-[11px] tracking-wider text-[var(--m-text-faint)] uppercase">
                   No shortcuts yet.
                 </p>
-                <p className="font-mono text-[10px] text-[#555] mt-1">
+                <p className="font-mono text-[10px] text-[var(--m-text-faint)] mt-1">
                   Add your first one above.
                 </p>
               </div>
@@ -957,9 +975,9 @@ export function SettingsModal({
                     return (
                       <div
                         key={i}
-                        className="rounded-lg border border-[#383838] bg-[#252525] p-4 space-y-2.5"
+                        className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4 space-y-2.5"
                       >
-                        <p className="font-mono text-[9px] text-[#666] uppercase tracking-[0.2em] mb-3">
+                        <p className="font-mono text-[9px] text-[var(--m-text-muted)] uppercase tracking-[0.2em] mb-3">
                           Edit Shortcut
                         </p>
                         <input
@@ -1014,7 +1032,7 @@ export function SettingsModal({
                               setEditState(null);
                               setEditError("");
                             }}
-                            className="rounded-lg px-4 py-2 font-mono text-[11px] text-[#555] transition-colors hover:text-[#d19a66/65]"
+                            className="rounded-lg px-4 py-2 font-mono text-[11px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
                           >
                             Cancel
                           </button>
@@ -1026,19 +1044,19 @@ export function SettingsModal({
                   return (
                     <div
                       key={i}
-                      className="flex items-center gap-3 rounded-lg bg-[#252525] border border-[#2a2a2a] px-4 py-3"
+                      className="flex items-center gap-3 rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border-subtle)] px-4 py-3"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d19a66/10] border border-[#383838] font-mono text-[12px] font-medium text-[#d19a66]">
                         {avatarChar}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium text-[#ccc] truncate">
+                        <p className="text-[13px] font-medium text-[var(--m-text)] truncate">
                           {displayName}
                         </p>
-                        <p className="font-mono text-[10px] text-[#666] truncate">
+                        <p className="font-mono text-[10px] text-[var(--m-text-muted)] truncate">
                           {item.trigger}
                         </p>
-                        <p className="font-mono text-[10px] text-[#444] truncate">
+                        <p className="font-mono text-[10px] text-[var(--m-text-faint)] truncate">
                           {item.url}
                         </p>
                       </div>
@@ -1046,7 +1064,7 @@ export function SettingsModal({
                         <button
                           type="button"
                           onClick={() => startEdit(i)}
-                          className="rounded-lg p-1.5 text-[#555] transition-colors hover:bg-[#d19a66/08] hover:text-[#d19a66]"
+                          className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-accent-soft)] hover:text-[var(--m-accent)]"
                           aria-label="Edit shortcut"
                         >
                           <svg
@@ -1066,7 +1084,7 @@ export function SettingsModal({
                         <button
                           type="button"
                           onClick={() => handleDelete(i)}
-                          className="rounded-lg p-1.5 text-[#555] transition-colors hover:bg-red-950/30 hover:text-red-500/80"
+                          className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-red-950/30 hover:text-red-500/80"
                           aria-label="Delete shortcut"
                         >
                           <svg
@@ -1096,19 +1114,19 @@ export function SettingsModal({
         {activePage === "templates" && (
           <div className="space-y-2">
             {templates.length === 0 && (
-              <p className="text-[12px] text-[#555] px-1">
+              <p className="text-[12px] text-[var(--m-text-faint)] px-1">
                 No templates yet. Add one below.
               </p>
             )}
             {templates.map((t) => (
               <div
                 key={t.id}
-                className="flex items-start gap-2 rounded-md border border-[#2a2a2a] bg-[#161616] px-3 py-2"
+                className="flex items-start gap-2 rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-2"
               >
                 <span className="font-mono text-[12px] text-[#d19a66] min-w-[80px]">
                   /{t.trigger}
                 </span>
-                <span className="flex-1 text-[11px] text-[#666] truncate">
+                <span className="flex-1 text-[11px] text-[var(--m-text-muted)] truncate">
                   {t.label ?? t.prompt.slice(0, 60)}
                 </span>
                 <button
@@ -1118,7 +1136,7 @@ export function SettingsModal({
                     setTemplates(updated);
                     onSaveTemplates(updated);
                   }}
-                  className="text-[#555] hover:text-red-400 text-[12px] shrink-0"
+                  className="text-[var(--m-text-faint)] hover:text-red-400 text-[12px] shrink-0"
                 >
                   ×
                 </button>
@@ -1129,14 +1147,14 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={() => setShowAddTemplate(true)}
-                className="mt-2 w-full rounded-md border border-dashed border-[#333] py-2 text-[11px] text-[#555] hover:border-[#555] hover:text-[#888]"
+                className="mt-2 w-full rounded-md border border-dashed border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               >
                 + Add template
               </button>
             ) : (
-              <div className="mt-2 rounded-md border border-[#333] bg-[#161616] p-3 space-y-2">
+              <div className="mt-2 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] p-3 space-y-2">
                 <div className="flex gap-2">
-                  <div className="flex items-center rounded border border-[#333] bg-[#1e1e1e] px-2 text-[11px] text-[#555]">
+                  <div className="flex items-center rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 text-[11px] text-[var(--m-text-faint)]">
                     /
                   </div>
                   <input
@@ -1147,13 +1165,13 @@ export function SettingsModal({
                       )
                     }
                     placeholder="trigger"
-                    className="flex-1 rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                    className="flex-1 rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                   />
                   <input
                     value={newTemplateLabel}
                     onChange={(e) => setNewTemplateLabel(e.target.value)}
                     placeholder="Label (optional)"
-                    className="flex-1 rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                    className="flex-1 rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                   />
                 </div>
                 <textarea
@@ -1161,7 +1179,7 @@ export function SettingsModal({
                   onChange={(e) => setNewPrompt(e.target.value)}
                   placeholder="Prompt text…"
                   rows={3}
-                  className="w-full resize-none rounded border border-[#333] bg-[#1e1e1e] px-2 py-1.5 text-[11px] text-[#d4d4d4] outline-none focus:border-[#555]"
+                  className="w-full resize-none rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
                 {templateError && (
                   <p className="text-[10px] text-red-400">{templateError}</p>
@@ -1176,7 +1194,7 @@ export function SettingsModal({
                       setNewPrompt("");
                       setTemplateError("");
                     }}
-                    className="text-[11px] text-[#555] hover:text-[#888] px-3 py-1"
+                    className="text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] px-3 py-1"
                   >
                     Cancel
                   </button>
@@ -1230,21 +1248,21 @@ export function SettingsModal({
         {activePage === "commands" && (
           <div className="space-y-6">
             <div>
-              <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase">
+              <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase">
                 Slash Commands
               </h3>
-              <div className="rounded-lg border border-[#2a2a2a] overflow-hidden">
+              <div className="rounded-lg border border-[var(--m-border-subtle)] overflow-hidden">
                 {SLASH_REF.map((item, i) => (
                   <div
                     key={item.command}
                     className={`flex items-center gap-3 px-4 py-2.5 ${
-                      i < SLASH_REF.length - 1 ? "border-b border-[#2a2a2a]" : ""
+                      i < SLASH_REF.length - 1 ? "border-b border-[var(--m-border-subtle)]" : ""
                     }`}
                   >
                     <code className="min-w-[100px] font-mono text-[11px] text-[#d19a66]">
                       {item.command}
                     </code>
-                    <span className="text-[12px] text-[#888]">
+                    <span className="text-[12px] text-[var(--m-text-muted)]">
                       {item.description}
                     </span>
                   </div>
@@ -1253,26 +1271,26 @@ export function SettingsModal({
             </div>
 
             <div>
-              <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase">
+              <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase">
                 Natural Language
               </h3>
               <div className="space-y-3">
                 {NATURAL_LANGUAGE_SECTIONS.map((section) => (
                   <div key={section.heading}>
-                    <p className="mb-1.5 font-mono text-[9px] tracking-[0.15em] text-[#555] uppercase">
+                    <p className="mb-1.5 font-mono text-[9px] tracking-[0.15em] text-[var(--m-text-faint)] uppercase">
                       {section.heading}
                     </p>
-                    <div className="rounded-lg border border-[#2a2a2a] overflow-hidden">
+                    <div className="rounded-lg border border-[var(--m-border-subtle)] overflow-hidden">
                       {section.items.map((item, i) => (
                         <div
                           key={item}
                           className={`px-4 py-2 ${
                             i < section.items.length - 1
-                              ? "border-b border-[#2a2a2a]"
+                              ? "border-b border-[var(--m-border-subtle)]"
                               : ""
                           }`}
                         >
-                          <code className="font-mono text-[11px] text-[#888]">
+                          <code className="font-mono text-[11px] text-[var(--m-text-muted)]">
                             {item}
                           </code>
                         </div>
@@ -1288,24 +1306,24 @@ export function SettingsModal({
         {/* ── About ── */}
         {activePage === "about" && (
           <div className="space-y-5">
-            <div className="flex items-center gap-4 rounded-xl border border-[#2a2a2a] bg-gradient-to-br from-[rgba(209,154,102,0.04)] to-transparent px-5 py-4">
+            <div className="flex items-center gap-4 rounded-xl border border-[var(--m-border-subtle)] bg-gradient-to-br from-[rgba(209,154,102,0.04)] to-transparent px-5 py-4">
               <MarvenLogo size={44} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-[18px] font-semibold tracking-tight text-[#e0e0e0]">
+                  <h2 className="text-[18px] font-semibold tracking-tight text-[var(--m-text)]">
                     Marven
                   </h2>
                   <span className="rounded-full border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 font-mono text-[10px] text-[#d19a66]">
                     v{packageJson.version}
                   </span>
                 </div>
-                <p className="mt-0.5 text-[12px] text-[#777]">
+                <p className="mt-0.5 text-[12px] text-[var(--m-text-muted)]">
                   Local AI desktop assistant
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-[#2a2a2a] bg-[#181818] px-5 py-4">
+            <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg
@@ -1321,7 +1339,7 @@ export function SettingsModal({
                       d="M3 12a9 9 0 0115.91-5.79M21 12a9 9 0 01-15.91 5.79M3 7v5h5M21 17v-5h-5"
                     />
                   </svg>
-                  <span className="text-[11px] font-medium text-[#d4d4d4]">
+                  <span className="text-[11px] font-medium text-[var(--m-text)]">
                     Software updates
                   </span>
                 </div>
@@ -1340,17 +1358,17 @@ export function SettingsModal({
               </div>
 
               {updateStatus === "idle" && (
-                <p className="text-[11px] text-[#666]">
+                <p className="text-[11px] text-[var(--m-text-muted)]">
                   Marven checks for updates automatically when it starts.
                 </p>
               )}
               {updateStatus === "checking" && (
-                <p className="text-[11px] text-[#888]">
+                <p className="text-[11px] text-[var(--m-text-muted)]">
                   Checking for updates…
                 </p>
               )}
               {updateStatus === "up-to-date" && (
-                <p className="text-[11px] text-[#888]">
+                <p className="text-[11px] text-[var(--m-text-muted)]">
                   You&apos;re up to date — running the latest version.
                 </p>
               )}
@@ -1362,7 +1380,7 @@ export function SettingsModal({
 
               {(updateStatus === "progress" || updateStatus === "available") && (
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] text-[#888]">
+                  <div className="flex justify-between text-[10px] text-[var(--m-text-muted)]">
                     <span>
                       {updateStatus === "available"
                         ? `v${updateInfo?.version} — starting download…`
@@ -1374,7 +1392,7 @@ export function SettingsModal({
                       </span>
                     )}
                   </div>
-                  <div className="h-1 w-full overflow-hidden rounded-full bg-[#252525]">
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--m-surface-2)]">
                     <div
                       className="h-full rounded-full bg-[#d19a66] transition-all duration-300"
                       style={{ width: `${updateInfo?.percent ?? 0}%` }}
@@ -1382,7 +1400,7 @@ export function SettingsModal({
                   </div>
                   {updateStatus === "progress" &&
                     updateInfo?.bytesPerSecond && (
-                      <div className="flex justify-between font-mono text-[10px] text-[#555]">
+                      <div className="flex justify-between font-mono text-[10px] text-[var(--m-text-faint)]">
                         <span>
                           {((updateInfo.transferred ?? 0) / 1024 / 1024).toFixed(
                             1
@@ -1429,7 +1447,7 @@ export function SettingsModal({
               />
             </div>
 
-            <p className="pt-1 text-center text-[10px] text-[#444]">
+            <p className="pt-1 text-center text-[10px] text-[var(--m-text-faint)]">
               Made by Ahmad Homsi · AGPLv3 licensed
             </p>
           </div>
@@ -1442,10 +1460,10 @@ export function SettingsModal({
 
   function renderSidebar() {
     return (
-      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto bg-[#181818] border-r border-[#2a2a2a] py-4">
+      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto bg-[var(--m-surface)] border-r border-[var(--m-border-subtle)] py-4">
         {SECTIONS.map((section) => (
           <div key={section.heading} className="mb-4">
-            <p className="px-4 pb-2 pt-1 font-semibold text-[11px] tracking-[0.18em] text-[#d19a66]/85 uppercase">
+            <p className="px-4 pb-2 pt-1 font-semibold text-[11px] tracking-[0.18em] text-[var(--m-accent)]/85 uppercase">
               {section.heading}
             </p>
             {section.items.map((item) => {
@@ -1457,8 +1475,8 @@ export function SettingsModal({
                   onClick={() => setActivePage(item.id)}
                   className={`relative w-full text-left px-4 py-2 text-[13px] transition-colors ${
                     isActive
-                      ? "bg-[#252525] text-[#e0e0e0]"
-                      : "text-[#888] hover:bg-[#1e1e1e] hover:text-[#d4d4d4]"
+                      ? "bg-[var(--m-surface-2)] text-[var(--m-text)]"
+                      : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface)] hover:text-[var(--m-text)]"
                   }`}
                 >
                   {item.label}
@@ -1484,7 +1502,7 @@ export function SettingsModal({
 
   if (inline) {
     return (
-      <div className="flex h-full flex-col bg-[#1a1a1a] overflow-hidden">
+      <div className="flex h-full flex-col bg-[var(--m-bg)] overflow-hidden">
         {innerLayout}
       </div>
     );
@@ -1503,14 +1521,14 @@ export function SettingsModal({
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 m-auto flex h-[min(680px,92vh)] w-[min(880px,96vw)] flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] shadow-[0_0_60px_rgba(0,0,0,0.9)]">
+      <div className="relative z-10 m-auto flex h-[min(680px,92vh)] w-[min(880px,96vw)] flex-col overflow-hidden rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-bg)] shadow-[0_0_60px_rgba(0,0,0,0.9)]">
         {/* Top bar */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-[#2a2a2a] px-6 py-4">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-[#888] hover:text-[#d4d4d4] transition-colors"
+            className="text-[var(--m-text-muted)] hover:text-[var(--m-text)] transition-colors"
           >
             <svg
               className="h-4 w-4"
@@ -1526,7 +1544,7 @@ export function SettingsModal({
               />
             </svg>
           </button>
-          <h1 className="text-[15px] font-semibold text-[#e0e0e0]">
+          <h1 className="text-[15px] font-semibold text-[var(--m-text)]">
             Settings
           </h1>
         </div>

@@ -112,14 +112,14 @@ interface ChatLayoutProps {
 function TypingRow() {
   return (
     <div className="message-in flex justify-start">
-      <div className="border-l border-[#333] pl-3 py-2">
+      <div className="border-l border-[var(--m-border)] pl-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[#666]">
+          <span className="text-[11px] text-[var(--m-text-muted)]">
             Thinking
           </span>
-          <span className="dot-1 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
-          <span className="dot-2 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
-          <span className="dot-3 inline-block h-1.5 w-1.5 rounded-full bg-[#555]" />
+          <span className="dot-1 inline-block h-1.5 w-1.5 rounded-full bg-[var(--m-text-faint)]" />
+          <span className="dot-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--m-text-faint)]" />
+          <span className="dot-3 inline-block h-1.5 w-1.5 rounded-full bg-[var(--m-text-faint)]" />
         </div>
       </div>
     </div>
@@ -254,7 +254,7 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[#1a1a1a] text-[#d4d4d4]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--m-bg)] text-[var(--m-text)]">
       {/* TitleBar — draggable, frameless window controls */}
       <TitleBar />
 
@@ -276,7 +276,7 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="gold-gradient bg-[#1e1e1e] border-b border-[#333] px-6 pb-3 pt-3 sm:px-8">
+          <header className="gold-gradient bg-[var(--m-surface)] border-b border-[var(--m-border)] px-6 pb-3 pt-3 sm:px-8">
             <div className={`mx-auto w-full space-y-2.5 ${mode === "agent" ? "max-w-none" : "max-w-[920px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -284,7 +284,7 @@ export function ChatLayout({
                   <button
                     type="button"
                     onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-lg p-1.5 text-[#666] transition-colors hover:bg-[#2a2a2a] hover:text-[#999]"
+                    className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
                     aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                     title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                   >
@@ -295,12 +295,12 @@ export function ChatLayout({
 
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
-                      <h1 className="text-[17px] font-semibold text-[#d4d4d4]">
+                      <h1 className="text-[17px] font-semibold text-[var(--m-text)]">
                         {mode === "agent" ? "Marven Agent" : "Marven"}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
-                    <span className="text-[12px] text-[#666]">
+                    <span className="text-[12px] text-[var(--m-text-faint)]">
                       {mode === "agent" ? "File-aware workspace" : "AI Interface"}
                     </span>
                   </div>
@@ -314,7 +314,7 @@ export function ChatLayout({
                       onClick={handleExport}
                       title="Export as Markdown"
                       aria-label="Export conversation as Markdown"
-                      className="rounded-lg p-1.5 text-[#555] transition-colors hover:bg-[#2a2a2a] hover:text-[#999]"
+                      className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -329,12 +329,12 @@ export function ChatLayout({
                       onClick={() => setSystemPromptOpen((v) => !v)}
                       title="System prompt"
                       aria-label="Edit system prompt"
-                      className={`rounded-lg p-1.5 transition-colors hover:bg-[#2a2a2a] ${
+                      className={`rounded-lg p-1.5 transition-colors hover:bg-[var(--m-surface-3)] ${
                         conversationSystemPrompt
-                          ? "text-[#d19a66]"
+                          ? "text-[var(--m-accent)]"
                           : systemPromptOpen
-                          ? "text-[#999]"
-                          : "text-[#555] hover:text-[#999]"
+                          ? "text-[var(--m-text-muted)]"
+                          : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
                       }`}
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -343,7 +343,7 @@ export function ChatLayout({
                     </button>
                   )}
 
-                  <div className="text-[11px] text-[#666]">
+                  <div className="text-[11px] text-[var(--m-text-muted)]">
                     {tokenUsage.totalTokens.toLocaleString()} tokens
                   </div>
                 </div>
@@ -352,7 +352,7 @@ export function ChatLayout({
               {/* System prompt panel */}
               {mode === "chat" && systemPromptOpen && (
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="conv-system-prompt" className="text-[10px] uppercase tracking-wider text-[#555]">
+                  <label htmlFor="conv-system-prompt" className="text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
                     System prompt for this conversation
                   </label>
                   <textarea
@@ -361,7 +361,7 @@ export function ChatLayout({
                     placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert')"
                     value={conversationSystemPrompt}
                     onChange={(e) => onSystemPromptChange(e.target.value)}
-                    className="w-full resize-none rounded-lg border border-[#2a2a2a] bg-[#161616] px-3 py-2 text-[12px] text-[#ccc] placeholder-[#444] outline-none focus:border-[#383838]"
+                    className="w-full resize-none rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)]"
                   />
                 </div>
               )}
@@ -435,7 +435,7 @@ export function ChatLayout({
               >
                 <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
                   {messages.length === 0 && !isLoading && (
-                    <div className="message-in py-16 text-center text-[13px] text-[#555]">
+                    <div className="message-in py-16 text-center text-[13px] text-[var(--m-text-faint)]">
                       Start a conversation
                     </div>
                   )}
@@ -455,7 +455,7 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="bg-[#1e1e1e] border-t border-[#333] mt-auto px-6 pb-10 pt-3 sm:px-10 sm:pb-12">
+              <footer className="bg-[var(--m-surface)] border-t border-[var(--m-border)] mt-auto px-6 pb-10 pt-3 sm:px-10 sm:pb-12">
                 <div className="mx-auto w-full max-w-[720px]">
                   <InputBar
                     value={input}
@@ -480,7 +480,7 @@ export function ChatLayout({
                     onToggleSpeech={onToggleSpeech}
                     onToggleWakeWord={onToggleWakeWord}
                   />
-                  <p className="mt-2 text-center text-[10px] text-[#444]">
+                  <p className="mt-2 text-center text-[10px] text-[var(--m-text-faint)]">
                     Enter to send · Shift + Enter for new line
                   </p>
                 </div>

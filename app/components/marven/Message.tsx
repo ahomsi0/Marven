@@ -107,7 +107,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
         disabled={disabled}
         aria-label={title}
         title={title}
-        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#252525] border border-[#383838] text-[#777] shadow transition-all duration-150 hover:bg-[#2a2a2a] hover:text-[#ccc] disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] shadow transition-all duration-150 hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:cursor-not-allowed"
       >
         {children}
       </button>
@@ -130,20 +130,20 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                   if (e.key === "Escape") handleEditCancel();
                 }}
                 rows={3}
-                className="w-full resize-none rounded-2xl rounded-br-sm border border-[#d19a66]/40 bg-[#252525] px-4 py-3 text-[14px] text-[#d4d4d4] leading-7 outline-none focus:border-[#d19a66]/60"
+                className="w-full resize-none rounded-2xl rounded-br-sm border border-[var(--m-accent)]/40 bg-[var(--m-surface-2)] px-4 py-3 text-[14px] text-[var(--m-text)] leading-7 outline-none focus:border-[var(--m-accent)]/60"
               />
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={handleEditCancel}
-                  className="rounded-md border border-[#383838] px-3 py-1 text-[11px] text-[#666] hover:text-[#999]"
+                  className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleEditSave}
-                  className="rounded-md border border-[#d19a66]/30 bg-[#d19a66]/10 px-3 py-1 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20"
+                  className="rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-3 py-1 text-[11px] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20"
                 >
                   Save & Resend
                 </button>
@@ -152,7 +152,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           ) : (
             /* ── Display mode ── */
             <>
-              <div className="bg-[#252525] border border-[#383838] border-l border-l-[#d19a66]/20 rounded-2xl rounded-br-sm px-4 py-3">
+              <div className="bg-[var(--m-surface-2)] border border-[var(--m-border)] border-l border-l-[var(--m-accent)]/20 rounded-2xl rounded-br-sm px-4 py-3">
                 {message.attachments && message.attachments.length > 0 ? (
                   <div className="flex gap-3 items-start">
                     <div className="flex flex-col gap-1 shrink-0 max-h-32 overflow-y-auto">
@@ -167,13 +167,13 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                       ))}
                     </div>
                     {message.content && (
-                      <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
+                      <p className="text-[14px] text-[var(--m-text)] leading-7 whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
+                  <p className="text-[14px] text-[var(--m-text)] leading-7 whitespace-pre-wrap break-words">
                     {message.content}
                   </p>
                 )}
@@ -184,7 +184,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                 {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
               </div>
               {/* Timestamp shown on hover */}
-              <span className="mt-1 block text-right text-[10px] text-[#555] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <span className="mt-1 block text-right text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {timeLabel}
               </span>
             </>
@@ -198,8 +198,8 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>
 
-          <div className="pl-3 border-l border-[#333]">
-            <div className="text-[14px] text-[#d4d4d4] leading-7">
+          <div className="pl-3 border-l border-[var(--m-border)]">
+            <div className="text-[14px] text-[var(--m-text)] leading-7">
               {message.isStreaming && !message.content ? (
                 <span className="streaming-cursor" />
               ) : (
@@ -238,7 +238,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           </div>
 
           {/* Timestamp shown on hover */}
-          <span className="mt-1 block pl-4 text-left text-[10px] text-[#555] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <span className="mt-1 block pl-4 text-left text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {timeLabel}
           </span>
         </div>
