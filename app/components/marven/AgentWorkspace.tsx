@@ -84,6 +84,49 @@ function MemoryPopover({
   );
 }
 
+// View menu (top-right kebab) — quick access to panels, preview, tasks, plan.
+interface ViewMenuItem {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  hint?: string;
+  badge?: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; items: ViewMenuItem[]; onClose: () => void }) {
+  const rect = anchor?.getBoundingClientRect();
+  if (!rect) return null;
+  const width = 260;
+  const right = Math.max(8, window.innerWidth - rect.right);
+  const top = rect.bottom + 6;
+  return (
+    <div
+      className="fixed z-[60] overflow-hidden rounded-md border border-[#333] bg-[#1c1c1c] py-1 shadow-2xl"
+      style={{ right, top, width }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {items.map((it) => (
+        <button
+          key={it.key}
+          type="button"
+          disabled={it.disabled}
+          onClick={() => { it.onClick(); onClose(); }}
+          className="flex w-full items-center gap-3 px-3 py-2 text-left text-[12px] text-[#d4d4d4] transition-colors hover:bg-[#252525] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <span className="relative flex h-4 w-4 shrink-0 items-center justify-center text-[#aaa]">
+            {it.icon}
+            {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5b9cf6]" />}
+          </span>
+          <span className="flex-1">{it.label}</span>
+          {it.hint && <span className="font-mono text-[10px] text-[#666]">{it.hint}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function formatRelativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (isNaN(then)) return iso;
@@ -234,6 +277,18 @@ export function AgentWorkspace({
   const [memory, setMemory] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
   const memoryRef = useRef<HTMLDivElement>(null);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node)) {
+        setViewMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [viewMenuOpen]);
 
   function refreshMemory() {
     fetch("/api/memory")
@@ -489,6 +544,102 @@ export function AgentWorkspace({
             )}
           </div>
         )}
+
+        {/* View menu — top-right kebab */}
+        <div ref={viewMenuRef} className="ml-auto">
+          <button
+            type="button"
+            onClick={() => setViewMenuOpen((v) => !v)}
+            title="View menu"
+            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+              viewMenuOpen ? "bg-[#252525] text-[#d4d4d4]" : "text-[#888] hover:bg-[#252525] hover:text-[#d4d4d4]"
+            }`}
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+              <circle cx="8" cy="3.5" r="1.3" />
+              <circle cx="8" cy="8" r="1.3" />
+              <circle cx="8" cy="12.5" r="1.3" />
+            </svg>
+          </button>
+          {viewMenuOpen && (
+            <ViewMenu
+              anchor={viewMenuRef.current}
+              onClose={() => setViewMenuOpen(false)}
+              items={[
+                {
+                  key: "preview",
+                  label: "Preview",
+                  hint: "⇧⌘P",
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <polygon points="6 4 20 12 6 20 6 4" />
+                    </svg>
+                  ),
+                  onClick: () => onSlashCommand?.("/preview"),
+                },
+                {
+                  key: "diff",
+                  label: "Diff" + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
+                  hint: "⇧⌘D",
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="7" height="16" rx="1" />
+                      <rect x="14" y="4" width="7" height="16" rx="1" />
+                    </svg>
+                  ),
+                  disabled: !showRightPanel,
+                  onClick: () => { setShowDiff((v) => !v); if (!showRightPanel) setShowRightPanel(true); },
+                },
+                {
+                  key: "terminal",
+                  label: "Terminal",
+                  hint: "⌃`",
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l4 4-4 4M11 16h7" />
+                    </svg>
+                  ),
+                  onClick: () => setShowTerminal((v) => !v),
+                },
+                {
+                  key: "files",
+                  label: "Files",
+                  hint: "⇧⌘F",
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
+                    </svg>
+                  ),
+                  onClick: () => setShowExplorer((v) => !v),
+                },
+                {
+                  key: "tasks",
+                  label: "Background tasks",
+                  badge: isRunning,
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                  ),
+                  onClick: () => onSlashCommand?.("/tasks"),
+                },
+                {
+                  key: "plan",
+                  label: "Plan",
+                  icon: (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l1.5 1.5L13 4M9 12l1.5 1.5L13 11M9 19l1.5 1.5L13 18M17 5h4M17 12h4M17 19h4M4 5h.01M4 12h.01M4 19h.01" />
+                    </svg>
+                  ),
+                  onClick: () => onSlashCommand?.("/plan"),
+                },
+              ]}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
