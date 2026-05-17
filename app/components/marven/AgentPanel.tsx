@@ -46,6 +46,16 @@ export function AgentPanel({
   const query = menuOpen ? input.slice(1) : "";
   const matches = AGENT_SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
+  const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
+
+  useEffect(() => {
+    const electron = (window as any).marvenElectron;
+    if (electron?.getSettings) {
+      electron.getSettings().then((s: any) => {
+        if (s?.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
+      });
+    }
+  }, []);
 
   useEffect(() => { setMenuActiveIdx(0); }, [query]);
 
@@ -95,7 +105,29 @@ export function AgentPanel({
                   ))}
                   {msg.content && (
                     <div className="prose prose-invert prose-sm max-w-none text-[12px] text-[#ccc] [&_code]:bg-[#252525] [&_code]:text-[#d19a66] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#333]">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a
+                              href={href}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (!href) return;
+                                const electron = (window as any).marvenElectron;
+                                if (electron?.openExternal) {
+                                  electron.openExternal(href, preferredBrowser);
+                                } else {
+                                  window.open(href, "_blank", "noopener,noreferrer");
+                                }
+                              }}
+                              className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"
+                            >
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
                         {msg.content}
                       </ReactMarkdown>
                     </div>

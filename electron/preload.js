@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   openFolderDialog: () => ipcRenderer.invoke('dialog-open-folder'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  openExternal: (url, browser) => ipcRenderer.invoke('open-external', url, browser),
   getVersion: () => ipcRenderer.invoke('get-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

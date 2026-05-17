@@ -1,5 +1,6 @@
-const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const { exec } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
@@ -260,6 +261,29 @@ ipcMain.on('window-close', () => {
     isQuitting = true;
     app.quit();
   }
+});
+
+ipcMain.handle('open-external', async (_event, url, browser) => {
+  if (!browser || browser === 'default') {
+    return shell.openExternal(url);
+  }
+  const appName = {
+    chrome: 'Google Chrome',
+    firefox: 'Firefox',
+    safari: 'Safari',
+    edge: 'Microsoft Edge',
+    arc: 'Arc',
+  }[browser];
+  if (!appName) return shell.openExternal(url);
+  return new Promise((resolve) => {
+    exec(`open -a "${appName}" ${JSON.stringify(url)}`, (err) => {
+      if (err) {
+        shell.openExternal(url).finally(resolve);
+      } else {
+        resolve();
+      }
+    });
+  });
 });
 
 ipcMain.handle('dialog-open-folder', async () => {

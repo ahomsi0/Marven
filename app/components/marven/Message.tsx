@@ -17,6 +17,16 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
+  const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
+
+  useEffect(() => {
+    const electron = (window as any).marvenElectron;
+    if (electron?.getSettings) {
+      electron.getSettings().then((s: any) => {
+        if (s?.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (!isEditing) setEditValue(message.content);
@@ -194,7 +204,29 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                 <span className="streaming-cursor" />
               ) : (
                 <div className="prose">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ href, children }) => (
+                        <a
+                          href={href}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (!href) return;
+                            const electron = (window as any).marvenElectron;
+                            if (electron?.openExternal) {
+                              electron.openExternal(href, preferredBrowser);
+                            } else {
+                              window.open(href, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                          className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
                     {message.content}
                   </ReactMarkdown>
                   {message.isStreaming && (

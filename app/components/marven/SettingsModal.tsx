@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
+import packageJson from "@/package.json";
+import { MarvenLogo } from "./MarvenLogo";
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -14,7 +16,7 @@ interface SettingsModalProps {
   inline?: boolean;
 }
 
-type TabId = "shortcuts" | "commands" | "api-keys" | "templates" | "mcp";
+type TabId = "shortcuts" | "commands" | "api-keys" | "templates" | "mcp" | "browser" | "about";
 
 interface EditState {
   index: number;
@@ -91,6 +93,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
   const [anthropicKey, setAnthropicKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [keysSaved, setKeysSaved] = useState(false);
+  const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
   const [version, setVersion] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "available" | "progress" | "ready" | "error">("idle");
   const [updateInfo, setUpdateInfo] = useState<{ version?: string; percent?: number; transferred?: number; total?: number; bytesPerSecond?: number; message?: string } | null>(null);
@@ -105,6 +108,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
       if (s.openaiApiKey)     setOpenaiKey(s.openaiApiKey);
       if (s.anthropicApiKey)  setAnthropicKey(s.anthropicApiKey);
       if (s.ollamaUrl)        setOllamaUrl(s.ollamaUrl);
+      if (s.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -158,9 +162,17 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
       openaiApiKey: openaiKey.trim(),
       anthropicApiKey: anthropicKey.trim(),
       ollamaUrl: ollamaUrl.trim(),
+      preferredBrowser,
     });
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 2500);
+  }
+
+  async function handleSaveBrowser(choice: string) {
+    setPreferredBrowser(choice);
+    if (!electron) return;
+    const current = await electron.getSettings();
+    await electron.saveSettings({ ...current, preferredBrowser: choice });
   }
 
   async function handleCheckUpdates() {
@@ -277,7 +289,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
 
         {/* Tab bar */}
         <div className="flex border-b border-[#2a2a2a] px-5 shrink-0 bg-[#1e1e1e] overflow-x-auto">
-          {(["shortcuts", "commands", "api-keys", "templates", "mcp"] as TabId[]).map((tab) => (
+          {(["shortcuts", "commands", "api-keys", "templates", "mcp", "browser", "about"] as TabId[]).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -821,6 +833,147 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === "browser" && (
+            <div className="space-y-4">
+              <p className="font-mono text-[10px] text-[#555] leading-relaxed">
+                Choose which browser opens links from AI responses.
+              </p>
+
+              {(
+                [
+                  { id: "default", label: "Default", description: "System default browser" },
+                  { id: "chrome",  label: "Google Chrome", description: "google.com/chrome" },
+                  { id: "firefox", label: "Firefox", description: "mozilla.org/firefox" },
+                  { id: "safari",  label: "Safari", description: "Built-in macOS browser" },
+                  { id: "edge",    label: "Microsoft Edge", description: "microsoft.com/edge" },
+                  { id: "arc",     label: "Arc", description: "arc.net" },
+                ] as { id: string; label: string; description: string }[]
+              ).map(({ id, label, description }) => {
+                const active = preferredBrowser === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleSaveBrowser(id)}
+                    className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 transition-all text-left ${
+                      active
+                        ? "border-[#d19a66]/50 bg-[#d19a66]/08"
+                        : "border-[#2a2a2a] bg-[#1e1e1e] hover:border-[#383838] hover:bg-[#252525]"
+                    }`}
+                  >
+                    {/* Radio indicator */}
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        active ? "border-[#d19a66] bg-[#d19a66]/20" : "border-[#444]"
+                      }`}
+                    >
+                      {active && <span className="h-2 w-2 rounded-full bg-[#d19a66]" />}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className={`block font-mono text-[12px] ${active ? "text-[#d19a66]" : "text-[#ccc]"}`}>
+                        {label}
+                      </span>
+                      <span className="block font-mono text-[10px] text-[#555] mt-0.5">{description}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {activeTab === "about" && (
+            <div className="flex flex-col items-center gap-6 py-4">
+              {/* Logo + version */}
+              <div className="flex flex-col items-center gap-3">
+                <MarvenLogo size={56} />
+                <div className="text-center">
+                  <p className="font-mono text-[20px] font-bold text-[#d4d4d4] tracking-tight">Marven</p>
+                  <p className="font-mono text-[12px] text-[#555] mt-0.5">v{packageJson.version}</p>
+                </div>
+              </div>
+
+              {/* Update status */}
+              <div className="w-full rounded-lg border border-[#2a2a2a] bg-[#1e1e1e] p-4 space-y-3">
+                <p className="font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase">Software Update</p>
+
+                {/* Download progress bar */}
+                {(updateStatus === "progress" || updateStatus === "available") && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between font-mono text-[10px] text-[#888]">
+                      <span>{updateStatus === "available" ? `v${updateInfo?.version} — starting download…` : `Downloading v${updateInfo?.version}`}</span>
+                      {updateStatus === "progress" && <span>{updateInfo?.percent ?? 0}%</span>}
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-[#2a2a2a] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#d19a66] transition-all duration-300"
+                        style={{ width: `${updateInfo?.percent ?? 0}%` }}
+                      />
+                    </div>
+                    {updateStatus === "progress" && updateInfo?.bytesPerSecond && (
+                      <div className="flex justify-between font-mono text-[10px] text-[#555]">
+                        <span>{((updateInfo.transferred ?? 0) / 1024 / 1024).toFixed(1)} MB / {((updateInfo.total ?? 0) / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>{(updateInfo.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {updateStatus === "ready" && (
+                  <div className="space-y-2">
+                    <p className="font-mono text-[11px] text-[#d19a66]">v{updateInfo?.version} ready to install</p>
+                    <button
+                      type="button"
+                      onClick={() => electron?.installUpdate()}
+                      className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/20"
+                    >
+                      Restart &amp; Install
+                    </button>
+                  </div>
+                )}
+
+                {updateStatus === "up-to-date" && (
+                  <p className="font-mono text-[11px] text-[#555]">You&apos;re up to date.</p>
+                )}
+
+                {updateStatus === "error" && (
+                  <p className="font-mono text-[11px] text-red-400/70 break-all">{updateInfo?.message}</p>
+                )}
+
+                {(updateStatus === "idle" || updateStatus === "up-to-date" || updateStatus === "error") && (
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdates}
+                    disabled={!electron}
+                    className="w-full rounded-lg border border-[#383838] bg-[#252525] py-2 font-mono text-[11px] tracking-wider text-[#888] uppercase transition-all hover:bg-[#2a2a2a] hover:text-[#aaa] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Check for Updates
+                  </button>
+                )}
+
+                {updateStatus === "checking" && (
+                  <p className="font-mono text-[11px] text-[#555] text-center">Checking…</p>
+                )}
+              </div>
+
+              {/* GitHub releases link */}
+              <button
+                type="button"
+                onClick={() => {
+                  const url = "https://github.com/ahomsi/marven/releases";
+                  const el = (window as any).marvenElectron;
+                  if (el?.openExternal) {
+                    el.openExternal(url, "default");
+                  } else {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  }
+                }}
+                className="font-mono text-[11px] text-[#555] underline underline-offset-2 hover:text-[#888] transition-colors"
+              >
+                View release notes on GitHub
+              </button>
             </div>
           )}
 
