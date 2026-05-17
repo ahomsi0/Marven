@@ -3,32 +3,67 @@
 import { useState } from "react";
 import type { ToolCallState } from "@/types";
 
-const TOOL_ICONS: Record<string, string> = {
-  list_files: "📂",
-  read_file: "📄",
-  write_file: "✏️",
-  run_command: "⚡",
-  search_files: "🔍",
-};
+// Subtle gold-tinted SVG glyphs that match the rest of the workspace look
+function ToolGlyph({ tool }: { tool: string }) {
+  const cls = "h-3 w-3 shrink-0 text-[#d19a66]/70";
+  const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  switch (tool) {
+    case "list_files":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" /></svg>;
+    case "read_file":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>;
+    case "write_file":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>;
+    case "run_command":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M6.75 7.5l3 2.25-3 2.25M12.75 12.75h4.5" /><rect x="2.5" y="3" width="19" height="18" rx="2" /></svg>;
+    case "search_files":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="11" cy="11" r="6" /><path d="M20 20l-4-4" /></svg>;
+    case "web_search":
+    case "fetch_url":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>;
+    case "remember":
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>;
+    default:
+      if (tool.startsWith("git_")) {
+        return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="6" cy="18" r="2" /><path d="M6 8v8M8 18h8M18 16V8a2 2 0 00-2-2H8" /></svg>;
+      }
+      return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>;
+  }
+}
 
 interface ToolCallCardProps {
   toolCall: ToolCallState;
   onApprove?: (callId: string, accept: boolean) => void;
 }
 
+function basename(p: string): string {
+  return p.split("/").filter(Boolean).pop() ?? p;
+}
+
 function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown> | null }) {
   if (!args) return null;
-  if (tool === "read_file" || tool === "write_file") {
-    return <span className="text-[#888]">{String(args.path ?? "")}</span>;
+  if (tool === "read_file" || tool === "write_file" || tool === "list_files") {
+    const raw = String(args.path ?? "");
+    if (!raw) return null;
+    return <span className="truncate font-mono text-[10px] text-[#888]" title={raw}>{basename(raw) || raw}</span>;
   }
   if (tool === "run_command") {
-    return <span className="text-[#888] font-mono">{String(args.command ?? "").slice(0, 40)}</span>;
+    const cmd = String(args.command ?? "");
+    return <span className="truncate font-mono text-[10px] text-[#888]" title={cmd}>{cmd}</span>;
   }
   if (tool === "search_files") {
-    return <span className="text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
+    return <span className="truncate font-mono text-[10px] text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
   }
-  if (tool === "list_files") {
-    return <span className="text-[#888]">{String(args.path ?? ".")}</span>;
+  if (tool === "web_search") {
+    return <span className="truncate font-mono text-[10px] text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
+  }
+  if (tool === "fetch_url") {
+    const url = String(args.url ?? "");
+    return <span className="truncate font-mono text-[10px] text-[#888]" title={url}>{url.replace(/^https?:\/\//, "").split("/")[0]}</span>;
+  }
+  if (tool.startsWith("git_")) {
+    const message = String(args.message ?? args.target ?? args.name ?? args.path ?? "");
+    if (message) return <span className="truncate font-mono text-[10px] text-[#888]">{message}</span>;
   }
   return null;
 }
@@ -36,7 +71,6 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
 
 export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
-  const icon = TOOL_ICONS[tool] ?? "🔧";
 
   const isActive = status === "running";
   const isDone = status === "done";
@@ -47,29 +81,33 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
 
   return (
     <div
-      className={`overflow-hidden rounded-md border transition-colors ${
+      className={`overflow-hidden rounded-md border-l-2 transition-colors ${
         isActive
-          ? "border-[#3d3020] bg-[rgba(209,154,102,0.07)]"
-          : "border-[#333] bg-[#1e1e1e]"
+          ? "border-l-[#d19a66] bg-[rgba(209,154,102,0.04)]"
+          : isError
+          ? "border-l-red-500/60 bg-[#1e1e1e]"
+          : "border-l-[#3a3a3a] bg-[#1c1c1c] hover:bg-[#1e1e1e]"
       }`}
     >
       <button
         type="button"
         aria-expanded={canExpand ? expanded : undefined}
         disabled={!canExpand}
-        className={`flex w-full items-center gap-2 px-3 py-2 text-left bg-transparent border-0 ${canExpand ? "cursor-pointer" : "cursor-default"}`}
+        className={`flex w-full items-center gap-2 px-2.5 py-1 text-left bg-transparent border-0 ${canExpand ? "cursor-pointer" : "cursor-default"}`}
         onClick={() => setExpanded((v) => !v)}
       >
-        <span className="text-[11px]">{icon}</span>
+        <ToolGlyph tool={tool} />
         <span
-          className={`font-mono text-[11px] ${
-            isActive ? "text-[#d19a66]" : isDone ? "text-[#999]" : "text-[#777]"
+          className={`font-mono text-[10px] shrink-0 ${
+            isActive ? "text-[#d19a66]" : isDone ? "text-[#999]" : isError ? "text-red-400" : "text-[#777]"
           }`}
         >
           {tool}
         </span>
-        <ArgSummary tool={tool} args={args} />
-        <div className="ml-auto flex items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate">
+          <ArgSummary tool={tool} args={args} />
+        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {isActive && (
             <span className="flex gap-1">
               {[0, 1, 2].map((i) => (
@@ -81,13 +119,13 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
               ))}
             </span>
           )}
-          {isDone && <span className="text-[10px] text-[#666]">✓</span>}
+          {isDone && <span className="text-[10px] text-[#555]">✓</span>}
           {isError && <span className="text-[10px] text-red-500">✗</span>}
           {toolCall.status === "awaiting_approval" && <span className="text-[10px] text-[#d19a66]">⏸</span>}
           {toolCall.status === "rejected" && <span className="text-[10px] text-red-400">⊘</span>}
           {canExpand && (
-            <span className="text-[10px] text-[#444] ml-1">
-              {expanded ? "▲" : "▼"}
+            <span className="text-[9px] text-[#444]">
+              {expanded ? "▴" : "▾"}
             </span>
           )}
         </div>

@@ -336,7 +336,16 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentStreamMessages]);
 
-  function refreshFileBuffer(path: string) {
+  function toRelativePath(p: string): string {
+    if (!workspaceRoot) return p;
+    if (p.startsWith(workspaceRoot)) {
+      return p.slice(workspaceRoot.length).replace(/^\/+/, "");
+    }
+    return p;
+  }
+
+  function refreshFileBuffer(rawPath: string) {
+    const path = toRelativePath(rawPath);
     fetch("/api/workspace/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -346,12 +355,15 @@ export default function Home() {
       .then(({ ok, data }) => {
         if (!ok || typeof data?.content !== "string") return;
         setFileBuffers((prev) => {
-          // Only refresh if the buffer exists (file was open) AND the user hasn't typed
-          const existing = prev.get(path);
+          // Look up buffer under both the relative AND the raw path so we
+          // catch buffers opened from the explorer (relative) and ones the
+          // agent referenced absolutely.
+          const existing = prev.get(path) ?? prev.get(rawPath);
           if (!existing) return prev;
           if (existing.dirty) return prev;
           const next = new Map(prev);
           next.set(path, { content: data.content, dirty: false, loading: false });
+          if (rawPath !== path) next.set(rawPath, { content: data.content, dirty: false, loading: false });
           return next;
         });
       })
@@ -420,7 +432,10 @@ export default function Home() {
     setWorkspaceRoot(data.root ?? null);
   }
 
-  function openFileTab(path: string) {
+  function openFileTab(rawPath: string) {
+    const path = workspaceRoot && rawPath.startsWith(workspaceRoot)
+      ? rawPath.slice(workspaceRoot.length).replace(/^\/+/, "")
+      : rawPath;
     // If already open, just activate
     const existingIdx = openTabs.findIndex((t) => t.kind === "file" && t.path === path);
     if (existingIdx >= 0) {
