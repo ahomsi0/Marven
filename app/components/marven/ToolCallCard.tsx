@@ -13,6 +13,7 @@ const TOOL_ICONS: Record<string, string> = {
 
 interface ToolCallCardProps {
   toolCall: ToolCallState;
+  onApprove?: (callId: string, accept: boolean) => void;
 }
 
 function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown> | null }) {
@@ -33,7 +34,7 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
 }
 
 
-export function ToolCallCard({ toolCall }: ToolCallCardProps) {
+export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
   const icon = TOOL_ICONS[tool] ?? "🔧";
 
@@ -42,7 +43,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const isError = status === "error";
 
   const [expanded, setExpanded] = useState(false);
-  const canExpand = (isDone || isError) && output !== undefined;
+  const canExpand = output !== undefined || toolCall.liveOutput !== undefined;
 
   return (
     <div
@@ -73,7 +74,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             <span className="flex gap-1">
               {[0, 1, 2].map((i) => (
                 <span
-                  key={i}
+                  key={`dot-${i}`}
                   className="inline-block h-1 w-1 rounded-full bg-[#d19a66]"
                   style={{ opacity: 1 - i * 0.3 }}
                 />
@@ -82,6 +83,8 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           )}
           {isDone && <span className="text-[10px] text-[#666]">✓</span>}
           {isError && <span className="text-[10px] text-red-500">✗</span>}
+          {toolCall.status === "awaiting_approval" && <span className="text-[10px] text-[#d19a66]">⏸</span>}
+          {toolCall.status === "rejected" && <span className="text-[10px] text-red-400">⊘</span>}
           {canExpand && (
             <span className="text-[10px] text-[#444] ml-1">
               {expanded ? "▲" : "▼"}
@@ -89,6 +92,30 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           )}
         </div>
       </button>
+
+      {toolCall.status === "awaiting_approval" && (
+        <div className="border-t border-[#2a2a2a] px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-[10px] text-[#d19a66]">
+            Awaiting approval — this will modify your repository.
+          </span>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onApprove?.(toolCall.callId, false); }}
+              className="rounded-md border border-[#383838] px-2 py-0.5 text-[10px] text-[#888] hover:text-red-400 hover:border-red-400/40"
+            >
+              Reject
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onApprove?.(toolCall.callId, true); }}
+              className="rounded-md border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 text-[10px] text-[#d19a66] hover:bg-[#d19a66]/20"
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      )}
 
       {expanded && canExpand && (
         <div className="border-t border-[#2a2a2a] px-3 py-2 space-y-2">
@@ -100,6 +127,16 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
               </pre>
             </div>
           </div>
+          {toolCall.liveOutput && toolCall.status === "running" && (
+            <div>
+              <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Live</p>
+              <div className="overflow-y-auto max-h-[200px]">
+                <pre className="font-mono text-[10px] text-[#d19a66] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+                  {toolCall.liveOutput}
+                </pre>
+              </div>
+            </div>
+          )}
           <div>
             <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Output</p>
             <div className="overflow-y-auto max-h-[300px]">
