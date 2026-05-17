@@ -81,6 +81,28 @@ const NATURAL_LANGUAGE_SECTIONS = [
   },
 ];
 
+function AboutLink({ label, hint, href }: { label: string; hint: string; href: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const el = typeof window !== "undefined" ? (window as unknown as { marvenElectron?: { openExternal?: (u: string, b: string) => void } }).marvenElectron : null;
+        if (el?.openExternal) el.openExternal(href, "default");
+        else window.open(href, "_blank", "noopener,noreferrer");
+      }}
+      className="group flex items-start justify-between gap-3 rounded-lg border border-[#2a2a2a] bg-[#181818] px-4 py-3 text-left transition-all hover:border-[#d19a66]/30 hover:bg-[#1c1c1c]"
+    >
+      <div className="min-w-0">
+        <div className="text-[12px] font-medium text-[#d4d4d4] group-hover:text-[#d19a66]">{label}</div>
+        <div className="mt-0.5 truncate text-[10px] text-[#666]">{hint}</div>
+      </div>
+      <svg className="mt-0.5 h-3 w-3 shrink-0 text-[#444] transition-colors group-hover:text-[#d19a66]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+      </svg>
+    </button>
+  );
+}
+
 export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcpServers, onSaveTemplates, onSaveMCPServers, inline = false }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("shortcuts");
   const [items, setItems] = useState<CustomShortcut[]>(shortcuts.map((s) => ({ ...s })));
@@ -885,28 +907,62 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
           )}
 
           {activeTab === "about" && (
-            <div className="flex flex-col items-center gap-6 py-4">
-              {/* Logo + version */}
-              <div className="flex flex-col items-center gap-3">
-                <MarvenLogo size={56} />
-                <div className="text-center">
-                  <p className="font-mono text-[20px] font-bold text-[#d4d4d4] tracking-tight">Marven</p>
-                  <p className="font-mono text-[12px] text-[#555] mt-0.5">v{packageJson.version}</p>
+            <div className="space-y-5">
+              {/* Hero: logo + name + version chip */}
+              <div className="flex items-center gap-4 rounded-xl border border-[#2a2a2a] bg-gradient-to-br from-[rgba(209,154,102,0.04)] to-transparent px-5 py-4">
+                <MarvenLogo size={44} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-[18px] font-semibold tracking-tight text-[#e0e0e0]">Marven</h2>
+                    <span className="rounded-full border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 font-mono text-[10px] text-[#d19a66]">
+                      v{packageJson.version}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[12px] text-[#777]">Local AI desktop assistant</p>
                 </div>
               </div>
 
-              {/* Update status */}
-              <div className="w-full rounded-lg border border-[#2a2a2a] bg-[#1e1e1e] p-4 space-y-3">
-                <p className="font-mono text-[9px] tracking-[0.2em] text-[#555] uppercase">Software Update</p>
+              {/* Update card */}
+              <div className="rounded-xl border border-[#2a2a2a] bg-[#181818] px-5 py-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-3.5 w-3.5 text-[#d19a66]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 0115.91-5.79M21 12a9 9 0 01-15.91 5.79M3 7v5h5M21 17v-5h-5" />
+                    </svg>
+                    <span className="text-[11px] font-medium text-[#d4d4d4]">Software updates</span>
+                  </div>
+                  {(updateStatus === "idle" || updateStatus === "up-to-date" || updateStatus === "error") && (
+                    <button
+                      type="button"
+                      onClick={handleCheckUpdates}
+                      disabled={!electron}
+                      className="rounded-md border border-[#d19a66]/25 bg-[#d19a66]/8 px-3 py-1 text-[10px] text-[#d19a66] transition-colors hover:bg-[#d19a66]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Check now
+                    </button>
+                  )}
+                </div>
 
-                {/* Download progress bar */}
+                {updateStatus === "idle" && (
+                  <p className="text-[11px] text-[#666]">Marven checks for updates automatically when it starts.</p>
+                )}
+                {updateStatus === "checking" && (
+                  <p className="text-[11px] text-[#888]">Checking for updates…</p>
+                )}
+                {updateStatus === "up-to-date" && (
+                  <p className="text-[11px] text-[#888]">You&apos;re up to date — running the latest version.</p>
+                )}
+                {updateStatus === "error" && (
+                  <p className="text-[11px] text-red-400/80 break-all">{updateInfo?.message ?? "Update check failed."}</p>
+                )}
+
                 {(updateStatus === "progress" || updateStatus === "available") && (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between font-mono text-[10px] text-[#888]">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] text-[#888]">
                       <span>{updateStatus === "available" ? `v${updateInfo?.version} — starting download…` : `Downloading v${updateInfo?.version}`}</span>
-                      {updateStatus === "progress" && <span>{updateInfo?.percent ?? 0}%</span>}
+                      {updateStatus === "progress" && <span className="font-mono">{updateInfo?.percent ?? 0}%</span>}
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-[#2a2a2a] overflow-hidden">
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-[#252525]">
                       <div
                         className="h-full rounded-full bg-[#d19a66] transition-all duration-300"
                         style={{ width: `${updateInfo?.percent ?? 0}%` }}
@@ -914,7 +970,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
                     </div>
                     {updateStatus === "progress" && updateInfo?.bytesPerSecond && (
                       <div className="flex justify-between font-mono text-[10px] text-[#555]">
-                        <span>{((updateInfo.transferred ?? 0) / 1024 / 1024).toFixed(1)} MB / {((updateInfo.total ?? 0) / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>{((updateInfo.transferred ?? 0) / 1024 / 1024).toFixed(1)} / {((updateInfo.total ?? 0) / 1024 / 1024).toFixed(1)} MB</span>
                         <span>{(updateInfo.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s</span>
                       </div>
                     )}
@@ -923,57 +979,35 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
 
                 {updateStatus === "ready" && (
                   <div className="space-y-2">
-                    <p className="font-mono text-[11px] text-[#d19a66]">v{updateInfo?.version} ready to install</p>
+                    <p className="text-[11px] text-[#d19a66]">v{updateInfo?.version} is ready to install.</p>
                     <button
                       type="button"
                       onClick={() => electron?.installUpdate()}
-                      className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/20"
+                      className="w-full rounded-md border border-[#d19a66]/30 bg-[#d19a66]/10 py-1.5 text-[11px] text-[#d19a66] transition-all hover:bg-[#d19a66]/20"
                     >
-                      Restart &amp; Install
+                      Restart and install
                     </button>
                   </div>
                 )}
-
-                {updateStatus === "up-to-date" && (
-                  <p className="font-mono text-[11px] text-[#555]">You&apos;re up to date.</p>
-                )}
-
-                {updateStatus === "error" && (
-                  <p className="font-mono text-[11px] text-red-400/70 break-all">{updateInfo?.message}</p>
-                )}
-
-                {(updateStatus === "idle" || updateStatus === "up-to-date" || updateStatus === "error") && (
-                  <button
-                    type="button"
-                    onClick={handleCheckUpdates}
-                    disabled={!electron}
-                    className="w-full rounded-lg border border-[#383838] bg-[#252525] py-2 font-mono text-[11px] tracking-wider text-[#888] uppercase transition-all hover:bg-[#2a2a2a] hover:text-[#aaa] disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Check for Updates
-                  </button>
-                )}
-
-                {updateStatus === "checking" && (
-                  <p className="font-mono text-[11px] text-[#555] text-center">Checking…</p>
-                )}
               </div>
 
-              {/* GitHub releases link */}
-              <button
-                type="button"
-                onClick={() => {
-                  const url = "https://github.com/ahomsi/marven/releases";
-                  const el = (window as any).marvenElectron;
-                  if (el?.openExternal) {
-                    el.openExternal(url, "default");
-                  } else {
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  }
-                }}
-                className="font-mono text-[11px] text-[#555] underline underline-offset-2 hover:text-[#888] transition-colors"
-              >
-                View release notes on GitHub
-              </button>
+              {/* Links */}
+              <div className="grid grid-cols-2 gap-3">
+                <AboutLink
+                  label="Release notes"
+                  hint="Changelog on GitHub"
+                  href="https://github.com/ahomsi0/Marven/releases"
+                />
+                <AboutLink
+                  label="Source code"
+                  hint="github.com/ahomsi0/Marven"
+                  href="https://github.com/ahomsi0/Marven"
+                />
+              </div>
+
+              <p className="pt-1 text-center text-[10px] text-[#444]">
+                Made by Ahmad Homsi · MIT licensed
+              </p>
             </div>
           )}
 
