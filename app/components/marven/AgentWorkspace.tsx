@@ -41,6 +41,8 @@ interface AgentWorkspaceProps {
   onSaveFile: () => void;
   onRefreshFiles: () => void;
   checkpoints?: string[];
+  liveTerminalOutput?: string;
+  onApproveToolCall?: (callId: string, accept: boolean) => void;
 }
 
 function ViewMenu({
@@ -145,6 +147,8 @@ export function AgentWorkspace({
   onSaveFile,
   onRefreshFiles,
   checkpoints = [],
+  liveTerminalOutput,
+  onApproveToolCall,
 }: AgentWorkspaceProps) {
   const [showAgent, setShowAgent] = useState(true);
   const [showEditor, setShowEditor] = useState(true);
@@ -366,6 +370,7 @@ export function AgentWorkspace({
                 onSend={onSend}
                 onStop={onStop}
                 onSlashCommand={onSlashCommand}
+                onApproveToolCall={onApproveToolCall}
               />
             </div>
           </div>
@@ -393,7 +398,7 @@ export function AgentWorkspace({
               fileContent={fileContent}
               isFileLoading={isFileLoading}
               isFileDirty={isFileDirty}
-              terminalOutput={terminalOutput}
+              terminalOutput={liveTerminalOutput ?? terminalOutput}
               showTerminal={showTerminal}
               onToggleTerminal={() => setShowTerminal((v) => !v)}
               onSelectFile={onSelectFile}

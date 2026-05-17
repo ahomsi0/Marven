@@ -21,6 +21,7 @@ interface AgentPanelProps {
   onSend: () => void;
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
+  onApproveToolCall?: (callId: string, accept: boolean) => void;
 }
 
 export function AgentPanel({
@@ -36,6 +37,7 @@ export function AgentPanel({
   onSend,
   onStop,
   onSlashCommand,
+  onApproveToolCall,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,7 +91,7 @@ export function AgentPanel({
               ) : (
                 <div className="flex flex-col gap-2">
                   {(msg.toolCalls ?? []).map((tc) => (
-                    <ToolCallCard key={tc.callId} toolCall={tc} />
+                    <ToolCallCard key={tc.callId} toolCall={tc} onApprove={onApproveToolCall} />
                   ))}
                   {msg.content && (
                     <div className="prose prose-invert prose-sm max-w-none text-[12px] text-[#ccc] [&_code]:bg-[#252525] [&_code]:text-[#d19a66] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#333]">

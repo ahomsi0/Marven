@@ -203,7 +203,18 @@ export default function Home() {
   const [agentInput, setAgentInput] = useState("");
   const [agentTerminalOutput, setAgentTerminalOutput] = useState("");
 
-  const agentStream = useAgentStream({
+  const {
+    messages: agentStreamMessages,
+    isRunning: agentStreamIsRunning,
+    error: agentStreamError,
+    send: agentStreamSend,
+    stop: agentStreamStop,
+    clearMessages: agentStreamClearMessages,
+    injectAssistantMessage: agentStreamInjectAssistantMessage,
+    liveTerminalOutput,
+    checkpoints,
+    approve,
+  } = useAgentStream({
     provider,
     model: selectedModel,
     workspaceRoot,
@@ -293,7 +304,7 @@ export default function Home() {
   // Instant workspace refresh + auto-open when agent writes files
   const processedWriteCallsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const lastMsg = agentStream.messages[agentStream.messages.length - 1];
+    const lastMsg = agentStreamMessages[agentStreamMessages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
     const newDone = (lastMsg.toolCalls ?? []).filter(
       (tc) => tc.tool === "write_file" && tc.status === "done" && !processedWriteCallsRef.current.has(tc.callId)
@@ -304,7 +315,7 @@ export default function Home() {
     const lastWrite = newDone[newDone.length - 1];
     const writtenPath = lastWrite.args?.path as string | undefined;
     if (writtenPath) setSelectedAgentFilePath(writtenPath);
-  }, [agentStream.messages]);
+  }, [agentStreamMessages]);
 
   // ─── Helpers to mutate conversation messages ────────────────────────────────
   const upsertConversation = useCallback(
@@ -347,6 +358,16 @@ export default function Home() {
     setConversations((prev) => [...prev, conv]);
     setActiveConversationId(conv.id);
     return conv.id;
+  }
+
+  function autoRenameConversation(convId: string, firstMessage: string) {
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id !== convId) return c;
+        if (c.name !== "New chat" && c.name !== "New agent") return c;
+        return { ...c, name: firstMessage.slice(0, 35).trim() };
+      })
+    );
   }
 
   async function loadWorkspaceFiles() {
@@ -552,6 +573,7 @@ export default function Home() {
 
     if (activeMode === "agent") {
       const convId = ensureActiveConversation(text, "agent");
+      autoRenameConversation(convId, text);
       const userMsg = createMessage("user", text);
       addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -711,6 +733,7 @@ export default function Home() {
     const command = parseCommand(text, customShortcuts);
 
     const convId = ensureActiveConversation(text);
+    autoRenameConversation(convId, text);
     const userMsg = createMessage("user", text);
     if (chatAttachments.length > 0) {
       userMsg.attachments = [...chatAttachments];
@@ -1129,24 +1152,27 @@ export default function Home() {
         selectedAgentFileContent={selectedAgentFileContent}
         isAgentFileLoading={isAgentFileLoading}
         isAgentFileDirty={isAgentFileDirty}
-        agentMessages={agentStream.messages}
+        agentMessages={agentStreamMessages}
         agentInput={agentInput}
-        isAgentRunning={agentStream.isRunning}
-        agentError={agentStream.error}
+        isAgentRunning={agentStreamIsRunning}
+        agentError={agentStreamError}
         agentTerminalOutput={agentTerminalOutput}
+        liveTerminalOutput={liveTerminalOutput}
+        checkpoints={checkpoints}
+        onApproveToolCall={approve}
         onAgentInputChange={setAgentInput}
-        onAgentSend={() => { agentStream.send(agentInput); setAgentInput(""); }}
-        onAgentStop={agentStream.stop}
+        onAgentSend={() => { agentStreamSend(agentInput); setAgentInput(""); }}
+        onAgentStop={agentStreamStop}
         onAgentSlashCommand={(cmd) => {
           switch (cmd) {
             case "/clear":
-              agentStream.clearMessages();
+              agentStreamClearMessages();
               break;
             case "/refresh":
               loadWorkspaceFiles().catch(() => {});
               break;
             case "/help":
-              agentStream.injectAssistantMessage(
+              agentStreamInjectAssistantMessage(
                 "**Agent Commands**\n\n- `/clear` — clear this conversation\n- `/refresh` — reload the workspace file list\n- `/help` — show this message\n\nType a task like *\"add a dark mode toggle\"* or *\"refactor the auth module\"* and the agent will use tools to read, write, and run commands in your workspace."
               );
               break;

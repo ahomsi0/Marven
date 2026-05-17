@@ -57,6 +57,9 @@ interface ChatLayoutProps {
   isAgentRunning: boolean;
   agentError: string | null;
   agentTerminalOutput: string;
+  liveTerminalOutput?: string;
+  checkpoints?: string[];
+  onApproveToolCall?: (callId: string, accept: boolean) => void;
   onAgentInputChange: (v: string) => void;
   onAgentSend: () => void;
   onAgentStop: () => void;
@@ -141,6 +144,9 @@ export function ChatLayout({
   isAgentRunning,
   agentError,
   agentTerminalOutput,
+  liveTerminalOutput,
+  checkpoints,
+  onApproveToolCall,
   onAgentInputChange,
   onAgentSend,
   onAgentStop,
@@ -357,6 +363,9 @@ export function ChatLayout({
               isFileLoading={isAgentFileLoading ?? false}
               isFileDirty={isAgentFileDirty ?? false}
               terminalOutput={agentTerminalOutput}
+              liveTerminalOutput={liveTerminalOutput}
+              checkpoints={checkpoints}
+              onApproveToolCall={onApproveToolCall}
               onProviderChange={onProviderChange}
               onModelChange={onModelChange}
               onToggleSpeech={onToggleSpeech}
