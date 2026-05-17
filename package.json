@@ -100,6 +100,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "diff": "^9.0.0",
     "electron-updater": "^6.8.3",
     "next": "^15.5.15",
     "openai": "^6.38.0",
@@ -110,6 +111,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/diff": "^7.0.2",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

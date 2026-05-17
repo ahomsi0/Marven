@@ -5,6 +5,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { registerApproval } from "./approvals";
 import { isGitMutation } from "./tools";
+import { recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
 
 const MAX_ITERATIONS = 20;
 
@@ -51,19 +52,15 @@ export async function* runAgentLoop(
     ...options.messages,
   ];
 
-  const checkpointFiles = new Map<string, string | null>();
+  clearCheckpoints();
 
   async function ensureCheckpoint(absPath: string): Promise<void> {
-    if (checkpointFiles.has(absPath)) return;
+    if (getCheckpoint(absPath) !== undefined) return;
     try {
       const content = await readFile(absPath, "utf8");
-      if (content.length <= 1_000_000) {
-        checkpointFiles.set(absPath, content);
-      } else {
-        checkpointFiles.set(absPath, "<too large to snapshot>");
-      }
+      recordCheckpoint(absPath, content.length <= 1_000_000 ? content : "<too large to snapshot>");
     } catch {
-      checkpointFiles.set(absPath, null);
+      recordCheckpoint(absPath, null);
     }
   }
 
@@ -130,7 +127,7 @@ export async function* runAgentLoop(
       if (target) {
         const abs = path.isAbsolute(target) ? target : path.join(workspaceRoot, target);
         await ensureCheckpoint(abs);
-        if (checkpointFiles.get(abs) !== null) {
+        if (getCheckpoint(abs) !== null) {
           yield { type: "checkpoint", path: abs };
         }
       }
