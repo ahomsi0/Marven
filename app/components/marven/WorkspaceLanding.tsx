@@ -74,8 +74,7 @@ export function WorkspaceLanding({
           <span className="font-mono text-[28px] font-semibold tracking-wide text-[#ddd]">MARVEN</span>
         </div>
         <div className="mb-12 text-[13px] text-[#666]">
-          {version ? `Version ${version}` : "Local AI Desktop"} <span className="mx-1 text-[#333]">·</span>
-          <span className="text-[#d19a66]">Wave 5</span>
+          {version ? `Version ${version}` : "Local AI Desktop"}
         </div>
 
         {/* Action cards */}

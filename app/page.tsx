@@ -399,12 +399,13 @@ export default function Home() {
       setActiveTabIndex(existingIdx);
       return;
     }
-    // Append + activate
-    setOpenTabs((prev) => {
-      const next = [...prev, { kind: "file" as const, path }];
-      setActiveTabIndex(next.length - 1);
-      return next;
-    });
+    // Append + activate. Avoid calling another setter inside an updater (anti-pattern
+    // that breaks under strict-mode double-render). Compute the new length from the
+    // current snapshot before queuing the updates.
+    const newIndex = openTabs.length;
+    console.log("[openFileTab] opening", path, "as tab", newIndex);
+    setOpenTabs((prev) => [...prev, { kind: "file" as const, path }]);
+    setActiveTabIndex(newIndex);
     // Mark loading and fetch
     setFileBuffers((prev) => {
       const next = new Map(prev);
@@ -418,17 +419,21 @@ export default function Home() {
     })
       .then((r) => r.json())
       .then((data) => {
+        console.log("[openFileTab] fetch returned for", path, "→", { hasContent: typeof data?.content === "string", contentLength: data?.content?.length, error: data?.error });
         setFileBuffers((prev) => {
           const next = new Map(prev);
           const existing = next.get(path);
-          // Only update if the user hasn't already edited it
-          if (existing && !existing.dirty) {
+          console.log("[openFileTab] setter: existing buffer for", path, "→", existing ? { dirty: existing.dirty, loading: existing.loading } : "undefined");
+          // Update unless the user has already typed (dirty). If the buffer is gone
+          // (closed and reopened), still write the result.
+          if (!existing || !existing.dirty) {
             next.set(path, { content: data.content ?? "", dirty: false, loading: false });
           }
           return next;
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[openFileTab] fetch failed for", path, err);
         setFileBuffers((prev) => {
           const next = new Map(prev);
           next.set(path, { content: "", dirty: false, loading: false });
@@ -443,47 +448,43 @@ export default function Home() {
       setActiveTabIndex(existingIdx);
       return;
     }
-    setOpenTabs((prev) => {
-      const next = [...prev, { kind: "settings" as const }];
-      setActiveTabIndex(next.length - 1);
-      return next;
-    });
+    const newIndex = openTabs.length;
+    setOpenTabs((prev) => [...prev, { kind: "settings" as const }]);
+    setActiveTabIndex(newIndex);
   }
 
   function closeTab(index: number) {
-    setOpenTabs((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      setActiveTabIndex((curIdx) => {
-        if (next.length === 0) return -1;
-        if (index < curIdx) return curIdx - 1;
-        if (index === curIdx) return Math.min(curIdx, next.length - 1);
-        return curIdx;
-      });
-      return next;
+    setOpenTabs((prev) => prev.filter((_, i) => i !== index));
+    const newLength = openTabs.length - 1;
+    setActiveTabIndex((curIdx) => {
+      if (newLength <= 0) return -1;
+      if (index < curIdx) return curIdx - 1;
+      if (index === curIdx) return Math.min(curIdx, newLength - 1);
+      return curIdx;
     });
   }
 
   function reorderTabs(fromIndex: number, toIndex: number) {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= openTabs.length ||
+      toIndex >= openTabs.length
+    ) {
+      return;
+    }
     setOpenTabs((prev) => {
-      if (
-        fromIndex === toIndex ||
-        fromIndex < 0 ||
-        toIndex < 0 ||
-        fromIndex >= prev.length ||
-        toIndex >= prev.length
-      ) {
-        return prev;
-      }
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
-      setActiveTabIndex((curIdx) => {
-        if (curIdx === fromIndex) return toIndex;
-        if (fromIndex < curIdx && toIndex >= curIdx) return curIdx - 1;
-        if (fromIndex > curIdx && toIndex <= curIdx) return curIdx + 1;
-        return curIdx;
-      });
       return next;
+    });
+    setActiveTabIndex((curIdx) => {
+      if (curIdx === fromIndex) return toIndex;
+      if (fromIndex < curIdx && toIndex >= curIdx) return curIdx - 1;
+      if (fromIndex > curIdx && toIndex <= curIdx) return curIdx + 1;
+      return curIdx;
     });
   }
 
