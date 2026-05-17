@@ -147,6 +147,27 @@ export function AgentWorkspace({
   const [showEditor, setShowEditor] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
 
+  const [memory, setMemory] = useState("");
+  const [memoryOpen, setMemoryOpen] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/memory")
+      .then((r) => r.json())
+      .then((d) => setMemory(d.memory ?? ""))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning) {
+      fetch("/api/memory")
+        .then((r) => r.json())
+        .then((d) => setMemory(d.memory ?? ""))
+        .catch(() => {});
+    }
+  }, [isRunning]);
+
+  const memoryLineCount = memory ? memory.split("\n").filter((l) => l.trim()).length : 0;
+
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 320;
     return Math.max(420, Number(localStorage.getItem("marven-agent-width") ?? 320) || 320);
@@ -201,6 +222,42 @@ export function AgentWorkspace({
           onToggleEditor={() => setShowEditor((v) => !v)}
           onToggleTerminal={() => setShowTerminal((v) => !v)}
         />
+
+        {memoryLineCount > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMemoryOpen((v) => !v)}
+              title="Agent memory"
+              className="flex items-center gap-1 rounded border border-[#333] bg-[#252525] px-2 py-1 text-[10px] text-[#888] transition-colors hover:border-[#444] hover:text-[#bbb]"
+            >
+              🧠
+              <span className="text-[#666]">{memoryLineCount}</span>
+            </button>
+
+            {memoryOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-[#333] bg-[#1e1e1e] shadow-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] uppercase tracking-widest text-[#555]">Agent Memory</span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await fetch("/api/memory", { method: "DELETE" });
+                      setMemory("");
+                      setMemoryOpen(false);
+                    }}
+                    className="text-[10px] text-[#555] hover:text-red-400"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                  {memory}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
