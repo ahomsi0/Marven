@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
 
     const key = process.env.GROQ_API_KEY;
     if (!key) {
-      return NextResponse.json({ error: "No API key" }, { status: 500 });
+      return NextResponse.json(
+        { error: "No Groq API key — add one in Settings → API Keys" },
+        { status: 500 }
+      );
     }
 
     // Forward audio to Groq Whisper
@@ -39,8 +42,21 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const err = await res.text();
-      console.error("[STT] Groq error:", err);
-      return NextResponse.json({ text: "" }, { status: 500 });
+      console.error("[STT] Groq error:", res.status, err);
+      // Try to pull the actual message out of Groq's JSON response so the UI
+      // can surface something useful (instead of just "STT 500").
+      let message = `Groq STT ${res.status}`;
+      try {
+        const parsed = JSON.parse(err);
+        const msg = parsed?.error?.message ?? parsed?.error ?? parsed?.message;
+        if (typeof msg === "string" && msg) message = msg;
+      } catch { /* not JSON */ }
+      if (res.status === 401 || /invalid api key|unauthorized/i.test(message)) {
+        message = "Groq API key is invalid — check Settings → API Keys";
+      } else if (res.status === 429) {
+        message = "Groq STT rate-limited — wait a moment and try again";
+      }
+      return NextResponse.json({ error: message }, { status: 500 });
     }
 
     const data = await res.json();
