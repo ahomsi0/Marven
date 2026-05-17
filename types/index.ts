@@ -195,3 +195,7 @@ export interface DiffEntry {
   before: string | null;
   after: string | null;
 }
+
+export type EditorTab =
+  | { kind: "file"; path: string }
+  | { kind: "settings" };

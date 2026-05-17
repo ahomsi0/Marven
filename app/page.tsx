@@ -17,6 +17,7 @@ import type {
   MCPServer,
   PromptTemplate,
   ImageAttachment,
+  EditorTab,
 } from "@/types";
 import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
@@ -198,10 +199,19 @@ export default function Home() {
     try { return JSON.parse(localStorage.getItem("marven-recent-workspaces") ?? "[]"); }
     catch { return []; }
   });
-  const [selectedAgentFilePath, setSelectedAgentFilePath] = useState<string | null>(null);
-  const [selectedAgentFileContent, setSelectedAgentFileContent] = useState("");
-  const [isAgentFileLoading, setIsAgentFileLoading] = useState(false);
-  const [isAgentFileDirty, setIsAgentFileDirty] = useState(false);
+  // ─── Multi-tab editor state ─────────────────────────────────────────────────
+  const [openTabs, setOpenTabs] = useState<EditorTab[]>([]);
+  const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
+  const [fileBuffers, setFileBuffers] = useState<Map<string, { content: string; dirty: boolean; loading: boolean }>>(new Map());
+
+  // Derived state — backward compat with existing handlers
+  const activeTab = activeTabIndex >= 0 && activeTabIndex < openTabs.length ? openTabs[activeTabIndex] : null;
+  const activeFilePath = activeTab?.kind === "file" ? activeTab.path : null;
+  const activeBuffer = activeFilePath ? fileBuffers.get(activeFilePath) : null;
+  const selectedAgentFilePath = activeFilePath;
+  const selectedAgentFileContent = activeBuffer?.content ?? "";
+  const isAgentFileLoading = activeBuffer?.loading ?? false;
+  const isAgentFileDirty = activeBuffer?.dirty ?? false;
   const [folderInputVisible, setFolderInputVisible] = useState(false);
   const [folderInputValue, setFolderInputValue] = useState("");
 
@@ -301,10 +311,7 @@ export default function Home() {
     loadWorkspaceFiles().catch(() => {});
   }, [activeMode]);
 
-  useEffect(() => {
-    if (activeMode !== "agent" || !selectedAgentFilePath) return;
-    loadAgentFile(selectedAgentFilePath).catch(() => {});
-  }, [activeMode, selectedAgentFilePath]);
+  // (file loading is now handled inside openFileTab)
 
   // Instant workspace refresh + auto-open when agent writes files
   const processedWriteCallsRef = useRef<Set<string>>(new Set());
@@ -319,7 +326,8 @@ export default function Home() {
     loadWorkspaceFiles().catch(() => {});
     const lastWrite = newDone[newDone.length - 1];
     const writtenPath = lastWrite.args?.path as string | undefined;
-    if (writtenPath) setSelectedAgentFilePath(writtenPath);
+    if (writtenPath) openFileTab(writtenPath);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentStreamMessages]);
 
   // ─── Helpers to mutate conversation messages ────────────────────────────────
@@ -382,41 +390,121 @@ export default function Home() {
 
     setWorkspaceFiles(files);
     setWorkspaceRoot(data.root ?? null);
-    setSelectedAgentFilePath((prev) => {
-      if (prev && files.some((file) => file.path === prev)) return prev;
-      return files[0]?.path ?? null;
+  }
+
+  function openFileTab(path: string) {
+    // If already open, just activate
+    const existingIdx = openTabs.findIndex((t) => t.kind === "file" && t.path === path);
+    if (existingIdx >= 0) {
+      setActiveTabIndex(existingIdx);
+      return;
+    }
+    // Append + activate
+    setOpenTabs((prev) => {
+      const next = [...prev, { kind: "file" as const, path }];
+      setActiveTabIndex(next.length - 1);
+      return next;
+    });
+    // Mark loading and fetch
+    setFileBuffers((prev) => {
+      const next = new Map(prev);
+      next.set(path, { content: "", dirty: false, loading: true });
+      return next;
+    });
+    fetch("/api/workspace/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setFileBuffers((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(path);
+          // Only update if the user hasn't already edited it
+          if (existing && !existing.dirty) {
+            next.set(path, { content: data.content ?? "", dirty: false, loading: false });
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        setFileBuffers((prev) => {
+          const next = new Map(prev);
+          next.set(path, { content: "", dirty: false, loading: false });
+          return next;
+        });
+      });
+  }
+
+  function openSettingsTab() {
+    const existingIdx = openTabs.findIndex((t) => t.kind === "settings");
+    if (existingIdx >= 0) {
+      setActiveTabIndex(existingIdx);
+      return;
+    }
+    setOpenTabs((prev) => {
+      const next = [...prev, { kind: "settings" as const }];
+      setActiveTabIndex(next.length - 1);
+      return next;
     });
   }
 
-  async function loadAgentFile(path: string) {
-    setIsAgentFileLoading(true);
-    try {
-      const res = await fetch("/api/workspace/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
+  function closeTab(index: number) {
+    setOpenTabs((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      setActiveTabIndex((curIdx) => {
+        if (next.length === 0) return -1;
+        if (index < curIdx) return curIdx - 1;
+        if (index === curIdx) return Math.min(curIdx, next.length - 1);
+        return curIdx;
       });
-      const data = await res.json();
-      setSelectedAgentFileContent(data.content ?? "");
-      setIsAgentFileDirty(false);
-    } finally {
-      setIsAgentFileLoading(false);
-    }
+      return next;
+    });
+  }
+
+  function reorderTabs(fromIndex: number, toIndex: number) {
+    setOpenTabs((prev) => {
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= prev.length ||
+        toIndex >= prev.length
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      setActiveTabIndex((curIdx) => {
+        if (curIdx === fromIndex) return toIndex;
+        if (fromIndex < curIdx && toIndex >= curIdx) return curIdx - 1;
+        if (fromIndex > curIdx && toIndex <= curIdx) return curIdx + 1;
+        return curIdx;
+      });
+      return next;
+    });
   }
 
   async function saveAgentFile() {
-    if (!selectedAgentFilePath) return;
+    if (!activeFilePath || !activeBuffer) return;
 
     await fetch("/api/workspace/files", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        path: selectedAgentFilePath,
-        content: selectedAgentFileContent,
+        path: activeFilePath,
+        content: activeBuffer.content,
       }),
     });
 
-    setIsAgentFileDirty(false);
+    setFileBuffers((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(activeFilePath!);
+      if (existing) next.set(activeFilePath!, { ...existing, dirty: false });
+      return next;
+    });
     await loadWorkspaceFiles();
   }
 
@@ -620,8 +708,7 @@ export default function Home() {
         await loadWorkspaceFiles();
 
         if (changedFiles.length > 0) {
-          setSelectedAgentFilePath(changedFiles[0]);
-          await loadAgentFile(changedFiles[0]);
+          openFileTab(changedFiles[0]);
         }
       } catch {
         addMessageToConversation(
@@ -1217,26 +1304,33 @@ export default function Home() {
         onAttachmentsChange={setChatAttachments}
         onSlashCommand={handleSlashCommand}
         onSelectAgentFile={(path) => {
-          if (isAgentFileDirty) {
-            saveAgentFile().catch(() => {});
-          }
-          setSelectedAgentFilePath(path);
+          openFileTab(path);
         }}
         onAgentFileContentChange={(value) => {
-          setSelectedAgentFileContent(value);
-          setIsAgentFileDirty(true);
+          if (!activeFilePath) return;
+          setFileBuffers((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(activeFilePath) ?? { content: "", dirty: false, loading: false };
+            next.set(activeFilePath, { content: value, dirty: true, loading: existing.loading });
+            return next;
+          });
         }}
         onSaveAgentFile={() => {
           saveAgentFile().catch(() => {});
         }}
         onCloseAgentFile={() => {
-          setSelectedAgentFilePath(null);
-          setSelectedAgentFileContent("");
-          setIsAgentFileDirty(false);
+          if (activeTabIndex >= 0) closeTab(activeTabIndex);
         }}
         onRefreshAgentFiles={() => {
           loadWorkspaceFiles().catch(() => {});
         }}
+        openTabs={openTabs}
+        activeTabIndex={activeTabIndex}
+        fileBuffers={fileBuffers}
+        onSelectTab={setActiveTabIndex}
+        onCloseTab={closeTab}
+        onReorderTabs={reorderTabs}
+        onOpenSettings={openSettingsTab}
       />
       {profileLoaded && userProfile === null && (
         <SetupModal onSave={handleProfileSave} />

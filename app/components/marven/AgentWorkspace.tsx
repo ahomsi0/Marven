@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { AIProvider, WorkspaceFile, AgentMessage } from "@/types";
+import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { WorkspaceLanding } from "./WorkspaceLanding";
+import { SettingsModal } from "./SettingsModal";
 
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
@@ -49,7 +50,20 @@ interface AgentWorkspaceProps {
   onSelectRecent?: (path: string) => void;
   onOpenSettings?: () => void;
   appVersion?: string;
-  editorOverlay?: React.ReactNode;
+  // Multi-tab props
+  openTabs: EditorTab[];
+  activeTabIndex: number;
+  fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }>;
+  onSelectTab: (index: number) => void;
+  onCloseTab: (index: number) => void;
+  onReorderTabs: (from: number, to: number) => void;
+  // Settings tab props (needed when settings tab is active)
+  shortcuts: CustomShortcut[];
+  promptTemplates: PromptTemplate[];
+  mcpServers: MCPServer[];
+  onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
+  onSaveTemplates: (templates: PromptTemplate[]) => void;
+  onSaveMCPServers: (servers: MCPServer[]) => void;
 }
 
 export function AgentWorkspace({
@@ -92,7 +106,18 @@ export function AgentWorkspace({
   onSelectRecent,
   onOpenSettings,
   appVersion,
-  editorOverlay,
+  openTabs,
+  activeTabIndex,
+  fileBuffers,
+  onSelectTab,
+  onCloseTab,
+  onReorderTabs,
+  shortcuts,
+  promptTemplates,
+  mcpServers,
+  onSaveShortcuts,
+  onSaveTemplates,
+  onSaveMCPServers,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -239,8 +264,9 @@ export function AgentWorkspace({
     document.body.style.userSelect = "none";
   }
 
-  // Landing page when no workspace is open AND no overlay (e.g. settings tab) is active
-  if (!workspaceRoot && !editorOverlay) {
+  // Landing page when no workspace is open AND no settings tab is open
+  const hasSettingsTab = openTabs.some((t) => t.kind === "settings");
+  if (!workspaceRoot && !hasSettingsTab) {
     return (
       <WorkspaceLanding
         recentWorkspaces={recentWorkspaces}
@@ -381,21 +407,31 @@ export function AgentWorkspace({
 
         {/* Middle — Editor (always shown, flexes to fill) */}
         <div className="min-h-0 min-w-0 flex-1">
-          {editorOverlay ?? (
-            <EditorPanel
-              workspaceRoot={workspaceRoot}
-              selectedFilePath={selectedFilePath}
-              fileContent={fileContent}
-              isFileLoading={isFileLoading}
-              isFileDirty={isFileDirty}
-              terminalOutput={liveTerminalOutput ?? terminalOutput}
-              showTerminal={showTerminal}
-              onToggleTerminal={() => setShowTerminal((v) => !v)}
-              onFileContentChange={onFileContentChange}
-              onSaveFile={onSaveFile}
-              onCloseFile={onCloseFile}
-            />
-          )}
+          <EditorPanel
+            workspaceRoot={workspaceRoot}
+            selectedFilePath={selectedFilePath}
+            fileContent={fileContent}
+            isFileLoading={isFileLoading}
+            isFileDirty={isFileDirty}
+            terminalOutput={liveTerminalOutput ?? terminalOutput}
+            showTerminal={showTerminal}
+            onToggleTerminal={() => setShowTerminal((v) => !v)}
+            onFileContentChange={onFileContentChange}
+            onSaveFile={onSaveFile}
+            onCloseFile={onCloseFile}
+            openTabs={openTabs}
+            activeTabIndex={activeTabIndex}
+            fileBuffers={fileBuffers}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
+            shortcuts={shortcuts}
+            promptTemplates={promptTemplates}
+            mcpServers={mcpServers}
+            onSaveShortcuts={onSaveShortcuts}
+            onSaveTemplates={onSaveTemplates}
+            onSaveMCPServers={onSaveMCPServers}
+          />
         </div>
 
         {/* Right — Chat or Diff */}
