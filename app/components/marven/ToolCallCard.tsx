@@ -83,10 +83,10 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
     <div
       className={`overflow-hidden rounded-md border-l-2 transition-colors ${
         isActive
-          ? "border-l-[#d19a66] bg-[rgba(209,154,102,0.04)]"
+          ? "border-l-[#d19a66] bg-[rgba(209,154,102,0.05)]"
           : isError
           ? "border-l-red-500/60 bg-[#1e1e1e]"
-          : "border-l-[#3a3a3a] bg-[#1c1c1c] hover:bg-[#1e1e1e]"
+          : "border-l-[#d19a66]/35 bg-[#1c1c1c] hover:bg-[#1e1e1e]"
       }`}
     >
       <button
@@ -98,8 +98,8 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       >
         <ToolGlyph tool={tool} />
         <span
-          className={`font-mono text-[10px] shrink-0 ${
-            isActive ? "text-[#d19a66]" : isDone ? "text-[#999]" : isError ? "text-red-400" : "text-[#777]"
+          className={`text-[11px] shrink-0 tracking-tight ${
+            isActive ? "text-[#d19a66]" : isDone ? "text-[#bbb]" : isError ? "text-red-400" : "text-[#888]"
           }`}
         >
           {tool}
