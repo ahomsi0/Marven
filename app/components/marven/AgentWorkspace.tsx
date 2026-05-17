@@ -7,6 +7,7 @@ import { WorkspaceBar } from "./WorkspaceBar";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
+import { FileExplorer } from "./FileExplorer";
 
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
@@ -45,75 +46,6 @@ interface AgentWorkspaceProps {
   onApproveToolCall?: (callId: string, accept: boolean) => void;
 }
 
-function ViewMenu({
-  showAgent, showEditor, showTerminal,
-  onToggleAgent, onToggleEditor, onToggleTerminal,
-}: {
-  showAgent: boolean; showEditor: boolean; showTerminal: boolean;
-  onToggleAgent: () => void; onToggleEditor: () => void; onToggleTerminal: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
-
-  const items = [
-    { label: "Agent", active: showAgent, toggle: onToggleAgent },
-    { label: "Editor", active: showEditor, toggle: onToggleEditor },
-    { label: "Terminal", active: showTerminal, toggle: onToggleTerminal },
-  ];
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded border border-[#333] bg-[#252525] px-2 py-1 text-[10px] text-[#888] transition-colors hover:border-[#444] hover:text-[#bbb]"
-      >
-        <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
-        </svg>
-        View
-        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-36 rounded-md border border-[#333] bg-[#1e1e1e] py-1 shadow-lg">
-          {items.map(({ label, active, toggle }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => { toggle(); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[11px] transition-colors hover:bg-[#252525]"
-            >
-              <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${active ? "border-[#d19a66] bg-[#d19a66]/20" : "border-[#444]"}`}>
-                {active && (
-                  <svg className="h-2 w-2 text-[#d19a66]" fill="currentColor" viewBox="0 0 12 12">
-                    <path d="M10 3L5 8.5 2 5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  </svg>
-                )}
-              </span>
-              <span className={active ? "text-[#ccc]" : "text-[#666]"}>{label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function AgentWorkspace({
   messages,
   input,
@@ -150,9 +82,9 @@ export function AgentWorkspace({
   liveTerminalOutput,
   onApproveToolCall,
 }: AgentWorkspaceProps) {
-  const [showAgent, setShowAgent] = useState(true);
   const [showEditor, setShowEditor] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
+  const [showDiff, setShowDiff] = useState(false);
 
   const [memory, setMemory] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -165,12 +97,10 @@ export function AgentWorkspace({
       .catch(() => {});
   }
 
-  // Load memory on mount
   useEffect(() => {
     refreshMemory();
   }, []);
 
-  // Refresh after each agent run completes (skip initial mount)
   const hasMounted = useRef(false);
   useEffect(() => {
     if (!hasMounted.current) {
@@ -182,7 +112,6 @@ export function AgentWorkspace({
     }
   }, [isRunning]);
 
-  // Close memory popover on click outside
   useEffect(() => {
     if (!memoryOpen) return;
     function handleOutside(e: MouseEvent) {
@@ -196,33 +125,25 @@ export function AgentWorkspace({
 
   const memoryLineCount = memory ? memory.split("\n").filter((l) => l.trim()).length : 0;
 
-  const [agentWidth, setAgentWidth] = useState(() => {
-    if (typeof window === "undefined") return 320;
-    return Math.max(420, Number(localStorage.getItem("marven-agent-width") ?? 320) || 320);
+  // ── Explorer panel (left) drag ────────────────────────────────────────────
+  const [explorerWidth, setExplorerWidth] = useState(() => {
+    if (typeof window === "undefined") return 240;
+    return Math.min(500, Math.max(180, Number(localStorage.getItem("marven-explorer-width") ?? 240) || 240));
   });
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(0);
-
-  const [showDiff, setShowDiff] = useState(false);
-  const [diffWidth, setDiffWidth] = useState(() => {
-    if (typeof window === "undefined") return 360;
-    return Number(localStorage.getItem("marven-diff-width") ?? 360);
-  });
-  const isDraggingDiff = useRef(false);
-  const diffStartX = useRef(0);
-  const diffStartWidth = useRef(0);
+  const isExplorerDragging = useRef(false);
+  const explorerDragStartX = useRef(0);
+  const explorerDragStartWidth = useRef(0);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
-      if (!isDragging.current) return;
-      const delta = e.clientX - dragStartX.current;
-      const next = Math.min(600, Math.max(420, dragStartWidth.current + delta));
-      setAgentWidth(next);
+      if (!isExplorerDragging.current) return;
+      const delta = e.clientX - explorerDragStartX.current;
+      const next = Math.min(500, Math.max(180, explorerDragStartWidth.current + delta));
+      setExplorerWidth(next);
     }
     function onMouseUp() {
-      if (!isDragging.current) return;
-      isDragging.current = false;
+      if (!isExplorerDragging.current) return;
+      isExplorerDragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
@@ -235,22 +156,40 @@ export function AgentWorkspace({
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("marven-agent-width", String(agentWidth));
-  }, [agentWidth]);
+    localStorage.setItem("marven-explorer-width", String(explorerWidth));
+  }, [explorerWidth]);
+
+  function startExplorerDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    isExplorerDragging.current = true;
+    explorerDragStartX.current = e.clientX;
+    explorerDragStartWidth.current = explorerWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  // ── Right panel drag ──────────────────────────────────────────────────────
+  const [rightWidth, setRightWidth] = useState(() => {
+    if (typeof window === "undefined") return 380;
+    return Math.min(700, Math.max(280, Number(localStorage.getItem("marven-right-width") ?? 380) || 380));
+  });
+  const isRightDragging = useRef(false);
+  const rightDragStartX = useRef(0);
+  const rightDragStartWidth = useRef(0);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
-      if (!isDraggingDiff.current) return;
-      const delta = diffStartX.current - e.clientX;
-      const next = Math.min(700, Math.max(240, diffStartWidth.current + delta));
-      setDiffWidth(next);
+      if (!isRightDragging.current) return;
+      const delta = rightDragStartX.current - e.clientX;
+      const next = Math.min(700, Math.max(280, rightDragStartWidth.current + delta));
+      setRightWidth(next);
     }
     function onMouseUp() {
-      if (!isDraggingDiff.current) return;
-      isDraggingDiff.current = false;
+      if (!isRightDragging.current) return;
+      isRightDragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      localStorage.setItem("marven-diff-width", String(diffWidth));
+      localStorage.setItem("marven-right-width", String(rightWidth));
     }
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -258,38 +197,42 @@ export function AgentWorkspace({
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [diffWidth]);
+  }, [rightWidth]);
 
-  function startDiffDrag(e: React.MouseEvent) {
+  function startRightDrag(e: React.MouseEvent) {
     e.preventDefault();
-    isDraggingDiff.current = true;
-    diffStartX.current = e.clientX;
-    diffStartWidth.current = diffWidth;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }
-
-  function startDrag(e: React.MouseEvent) {
-    e.preventDefault();
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartWidth.current = agentWidth;
+    isRightDragging.current = true;
+    rightDragStartX.current = e.clientX;
+    rightDragStartWidth.current = rightWidth;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1a1a1a]">
-      {/* Panel toggle toolbar */}
+      {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#161616] px-3 py-1">
-        <ViewMenu
-          showAgent={showAgent}
-          showEditor={showEditor}
-          showTerminal={showTerminal}
-          onToggleAgent={() => setShowAgent((v) => !v)}
-          onToggleEditor={() => setShowEditor((v) => !v)}
-          onToggleTerminal={() => setShowTerminal((v) => !v)}
-        />
+        <button
+          type="button"
+          onClick={() => setShowEditor((v) => !v)}
+          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+            showEditor ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          }`}
+          title="Toggle editor"
+        >
+          Editor
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowTerminal((v) => !v)}
+          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+            showTerminal ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          }`}
+          title="Toggle terminal"
+        >
+          Terminal
+        </button>
 
         <button
           type="button"
@@ -340,59 +283,35 @@ export function AgentWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left — Agent panel */}
-        {showAgent && (
-          <div
-            className="flex flex-col overflow-hidden border-r border-[#333]"
-            style={
-              showEditor
-                ? { width: agentWidth, minWidth: agentWidth, flexShrink: 0 }
-                : { flex: 1 }
-            }
-          >
-            <WorkspaceBar
-              workspaceRoot={workspaceRoot}
-              provider={provider}
-              model={model}
-              onOpenFolder={onOpenFolder}
-            />
-            <div className="min-h-0 flex-1">
-              <AgentPanel
-                messages={messages}
-                input={input}
-                isRunning={isRunning}
-                error={error}
-                provider={provider as import("@/types").AIProvider}
-                selectedModel={model}
-                onProviderChange={onProviderChange}
-                onModelChange={onModelChange}
-                onInputChange={onInputChange}
-                onSend={onSend}
-                onStop={onStop}
-                onSlashCommand={onSlashCommand}
-                onApproveToolCall={onApproveToolCall}
-              />
-            </div>
-          </div>
-        )}
+        {/* Left — File Explorer */}
+        <div
+          className="flex flex-col border-r border-[#333]"
+          style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
+        >
+          <FileExplorer
+            files={files}
+            workspaceRoot={workspaceRoot}
+            selectedFilePath={selectedFilePath}
+            onSelectFile={onSelectFile}
+            onRefreshFiles={onRefreshFiles}
+          />
+        </div>
 
-        {/* Drag handle — only when both panels visible */}
-        {showAgent && showEditor && (
-          <div
-            onMouseDown={startDrag}
-            className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/30 active:bg-[#d19a66]/50 transition-colors"
-          >
-            <div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-            </div>
+        {/* Drag handle 1 — between Explorer and Editor */}
+        <div
+          onMouseDown={startExplorerDrag}
+          className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+          title="Drag to resize"
+        >
+          <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
           </div>
-        )}
+        </div>
 
-        {/* Right — Editor panel */}
+        {/* Middle — Editor */}
         {showEditor && (
           <div className="min-h-0 min-w-0 flex-1">
             <EditorPanel
-              files={files}
               workspaceRoot={workspaceRoot}
               selectedFilePath={selectedFilePath}
               fileContent={fileContent}
@@ -401,36 +320,58 @@ export function AgentWorkspace({
               terminalOutput={liveTerminalOutput ?? terminalOutput}
               showTerminal={showTerminal}
               onToggleTerminal={() => setShowTerminal((v) => !v)}
-              onSelectFile={onSelectFile}
               onFileContentChange={onFileContentChange}
               onSaveFile={onSaveFile}
-              onRefreshFiles={onRefreshFiles}
             />
           </div>
         )}
 
-        {/* Diff drag handle — only when both editor and diff visible */}
-        {showDiff && showEditor && (
-          <div
-            onMouseDown={startDiffDrag}
-            className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-            title="Drag to resize"
-          >
-            <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-            </div>
+        {/* Drag handle 2 — between Editor and Right panel */}
+        <div
+          onMouseDown={startRightDrag}
+          className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+          title="Drag to resize"
+        >
+          <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
           </div>
-        )}
+        </div>
 
-        {/* Far right — Diff panel */}
-        {showDiff && (
-          <div
-            className="flex flex-col border-l border-[#333]"
-            style={{ width: diffWidth, minWidth: diffWidth }}
-          >
+        {/* Right — Chat or Diff */}
+        <div
+          className="flex flex-col border-l border-[#333]"
+          style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
+        >
+          {showDiff ? (
             <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
-          </div>
-        )}
+          ) : (
+            <>
+              <WorkspaceBar
+                workspaceRoot={workspaceRoot}
+                provider={provider}
+                model={model}
+                onOpenFolder={onOpenFolder}
+              />
+              <div className="min-h-0 flex-1">
+                <AgentPanel
+                  messages={messages}
+                  input={input}
+                  isRunning={isRunning}
+                  error={error}
+                  provider={provider as import("@/types").AIProvider}
+                  selectedModel={model}
+                  onProviderChange={onProviderChange}
+                  onModelChange={onModelChange}
+                  onInputChange={onInputChange}
+                  onSend={onSend}
+                  onStop={onStop}
+                  onSlashCommand={onSlashCommand}
+                  onApproveToolCall={onApproveToolCall}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
