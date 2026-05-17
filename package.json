@@ -89,7 +89,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Marven-Setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github",

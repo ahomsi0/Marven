@@ -61,6 +61,7 @@ jobs:
             dist/*.exe
             dist/*.exe.blockmap
             dist/*.AppImage
+            dist/*.zip
             dist/latest*.yml
           if-no-files-found: warn
           retention-days: 7
@@ -90,6 +91,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.exe.blockmap
             artifacts/**/*.AppImage
+            artifacts/**/*.zip
             artifacts/**/latest*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
