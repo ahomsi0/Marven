@@ -146,11 +146,22 @@ export type InternalMessage =
   | { role: "assistant_tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { role: "tool_result"; callId: string; content: string };
 
-export type AgentEventType = "tool_call" | "tool_result" | "text_delta" | "done" | "error";
+export type AgentEventType =
+  | "tool_call"
+  | "tool_result"
+  | "tool_progress"
+  | "pending_approval"
+  | "checkpoint"
+  | "text_delta"
+  | "done"
+  | "error";
 
 export type AgentEvent =
   | { type: "tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { type: "tool_result"; callId: string; output: string; truncated: boolean }
+  | { type: "tool_progress"; callId: string; chunk: string }
+  | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown> }
+  | { type: "checkpoint"; path: string }
   | { type: "text_delta"; delta: string }
   | { type: "done"; toolCallCount: number }
   | { type: "error"; code: string; message: string; suggestions?: string[] };
@@ -173,6 +184,13 @@ export interface ToolCallState {
   callId: string;
   tool: string;
   args: Record<string, unknown>;
-  status: "pending" | "running" | "done" | "error";
+  status: "pending" | "running" | "awaiting_approval" | "done" | "error" | "rejected";
   output?: string;
+  liveOutput?: string;
+}
+
+export interface DiffEntry {
+  path: string;
+  before: string | null;
+  after: string | null;
 }
