@@ -346,6 +346,12 @@ export function AgentWorkspace({
             <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
           ) : (
             <>
+              <div className="flex items-center gap-2 border-b border-[#333] bg-[#1a1a1a] px-3 py-3">
+                <span className="rounded border border-[#333] bg-[#252525] px-2 py-1 text-[9px] uppercase tracking-wider text-[#888]">
+                  {provider}
+                </span>
+                <span className="truncate text-[10px] text-[#666]">{model}</span>
+              </div>
               <div className="min-h-0 flex-1">
                 <AgentPanel
                   messages={messages}
