@@ -738,10 +738,15 @@ export default function Home() {
       resumeWakeWord();
     }
     setIsSpeakingNow(true);
+    // If the conversation's system prompt is in Arabic OR mentions "arabic",
+    // force Arabic voice even when the response text itself looks English.
+    const sp = (activeConversation?.systemPrompt ?? "").trim();
+    const forceLang: "ar" | undefined =
+      sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     speak(text, () => {
       setIsSpeakingNow(false);
       resumeWakeWord();
-    });
+    }, forceLang ? { forceLang } : undefined);
   }
 
   // ─── Profile save handler ──────────────────────────────────────────────────
@@ -1038,7 +1043,11 @@ export default function Home() {
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
           const extra = activeConversation?.systemPrompt?.trim();
-          return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
+          // User-supplied instructions go FIRST and are repeated at the END for
+          // weaker models — small LLMs anchor on the start and end of context.
+          return extra
+            ? `### PRIORITY INSTRUCTIONS (always follow these):\n${extra}\n\n---\n\n${base}\n\n---\n\nREMINDER: ${extra}`
+            : base;
         })(),
       };
 

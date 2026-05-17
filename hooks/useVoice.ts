@@ -23,10 +23,10 @@ function preferredMime() {
   return "";
 }
 
-async function transcribeBlob(blob: Blob, prompt?: string): Promise<string> {
+async function transcribeBlob(blob: Blob, prompt?: string): Promise<{ text: string; error?: string }> {
   if (blob.size < 200) {
     console.warn("[stt] blob too small:", blob.size, "bytes — skipping");
-    return "";
+    return { text: "" };
   }
   const ext  = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
   const form = new FormData();
@@ -37,14 +37,21 @@ async function transcribeBlob(blob: Blob, prompt?: string): Promise<string> {
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       console.error("[stt] API error", res.status, errText);
-      return "";
+      let message = `STT ${res.status}`;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.error) message = parsed.error;
+      } catch { /* not json */ }
+      if (res.status === 500 && /api key/i.test(message)) {
+        message = "Groq API key missing — add it in Settings → API Keys";
+      }
+      return { text: "", error: message };
     }
     const data = await res.json();
-    const text = (data.text ?? "").trim();
-    return text;
+    return { text: (data.text ?? "").trim() };
   } catch (e) {
     console.error("[stt] fetch error:", e);
-    return "";
+    return { text: "", error: e instanceof Error ? e.message : "network error" };
   }
 }
 
@@ -197,9 +204,14 @@ export function useVoice(
               startRec();
 
               transcribeBlob(blob, "Hey Marven, Hey Marvin")
-                .then(text => {
+                .then(({ text, error }) => {
                   if (!wakeActiveRef.current) return;
                   wakeChecking.current = false;
+                  if (error) {
+                    console.error("[wake] transcribe error:", error);
+                    setVoiceError(error);
+                    return;
+                  }
                   console.log("[wake] whisper →", JSON.stringify(text));
                   setLastHeard(text || "(empty)");
 
@@ -272,8 +284,9 @@ export function useVoice(
         cmdChunksRef.current = [];
         onInterimRef.current?.("");
 
-        const text  = await transcribeBlob(blob);
-        const clean = text.trim();
+        const result = await transcribeBlob(blob);
+        if (result.error) setVoiceError(result.error);
+        const clean = (result.text ?? "").trim();
         const cmd   = hasWakeWord(clean) ? stripWakeWord(clean) : clean;
         if (cmd.length > 1) onCommandRef.current(cmd);
 

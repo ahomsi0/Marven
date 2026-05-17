@@ -24,7 +24,7 @@ function isArabic(text: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { text?: string; voice?: string };
+  let body: { text?: string; voice?: string; forceLang?: "ar" | "en" };
   try {
     body = await req.json();
   } catch {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const text = body.text?.trim();
   if (!text) return NextResponse.json({ error: "No text" }, { status: 400 });
 
-  const arabic = isArabic(text);
+  const arabic = body.forceLang === "ar" || (body.forceLang !== "en" && isArabic(text));
   const defaultVoice = arabic ? "Maged" : "Daniel";
   const voice = body.voice ?? defaultVoice;
   const tmpDir = os.tmpdir();

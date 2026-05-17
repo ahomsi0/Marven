@@ -51,7 +51,7 @@ const PREFERRED_VOICES = [
   "Google US English",
 ];
 
-function isArabic(text: string): boolean {
+export function isArabic(text: string): boolean {
   const arabic = text.match(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g);
   if (!arabic || arabic.length === 0) return false;
   const letters = text.match(/\p{L}/gu);
@@ -112,7 +112,7 @@ function speakFallback(text: string, onEnd?: () => void): void {
 }
 
 // ─── Primary: macOS say → MP3 via /api/tts ───────────────────────────────────
-export async function speak(text: string, onEnd?: () => void): Promise<void> {
+export async function speak(text: string, onEnd?: () => void, opts?: { forceLang?: "ar" | "en" }): Promise<void> {
   if (typeof window === "undefined") return;
 
   // Cancel whatever is playing
@@ -129,7 +129,7 @@ export async function speak(text: string, onEnd?: () => void): Promise<void> {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clean }),
+      body: JSON.stringify({ text: clean, forceLang: opts?.forceLang }),
     });
 
     if (!res.ok) throw new Error(`TTS API ${res.status}`);
