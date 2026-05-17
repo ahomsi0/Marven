@@ -9,6 +9,7 @@ interface FileExplorerProps {
   selectedFilePath: string | null;
   onSelectFile: (path: string) => void;
   onRefreshFiles: () => void;
+  onOpenFolder: () => void;
 }
 
 // ── File tree ─────────────────────────────────────────────────────────────────
@@ -179,7 +180,9 @@ export function FileExplorer({
   selectedFilePath,
   onSelectFile,
   onRefreshFiles,
+  onOpenFolder,
 }: FileExplorerProps) {
+  const folderName = workspaceRoot?.split("/").filter(Boolean).pop() ?? null;
   const tree = useMemo(() => buildTree(files), [files]);
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPaths(buildTree(files))));
   const [creating, setCreating] = useState<"file" | "folder" | null>(null);
@@ -242,9 +245,25 @@ export function FileExplorer({
 
   return (
     <div className="flex h-full flex-col bg-[#1a1a1a]">
-      {/* Explorer header */}
-      <div className="border-b border-[#2a2a2a] px-3 py-2">
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#555]">Explorer</span>
+      {/* Open folder button (replaces Explorer header) */}
+      <div className="border-b border-[#2a2a2a] px-3 py-3">
+        <button
+          type="button"
+          onClick={onOpenFolder}
+          className="flex w-full items-center gap-2 rounded-md border border-[#333] bg-[#252525] px-3 py-2 text-left transition-colors hover:border-[#555]"
+        >
+          <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
+          </svg>
+          {folderName ? (
+            <span className="truncate text-[11px] text-[#ddd]">{folderName}</span>
+          ) : (
+            <span className="text-[11px] text-[#888]">Open Folder...</span>
+          )}
+          {workspaceRoot && (
+            <span className="ml-auto shrink-0 text-[9px] text-[#666]">change</span>
+          )}
+        </button>
       </div>
 
       {/* Project root row */}

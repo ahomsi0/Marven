@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { AIProvider, WorkspaceFile, AgentMessage } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
-import { WorkspaceBar } from "./WorkspaceBar";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
@@ -294,6 +293,7 @@ export function AgentWorkspace({
             selectedFilePath={selectedFilePath}
             onSelectFile={onSelectFile}
             onRefreshFiles={onRefreshFiles}
+            onOpenFolder={onOpenFolder}
           />
         </div>
 
@@ -346,12 +346,6 @@ export function AgentWorkspace({
             <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
           ) : (
             <>
-              <WorkspaceBar
-                workspaceRoot={workspaceRoot}
-                provider={provider}
-                model={model}
-                onOpenFolder={onOpenFolder}
-              />
               <div className="min-h-0 flex-1">
                 <AgentPanel
                   messages={messages}
