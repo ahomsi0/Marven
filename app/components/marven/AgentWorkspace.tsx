@@ -30,6 +30,7 @@ interface AgentWorkspaceProps {
   files: WorkspaceFile[];
   selectedFilePath: string | null;
   fileContent: string;
+  fileError?: string | null;
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
@@ -86,6 +87,7 @@ export function AgentWorkspace({
   files,
   selectedFilePath,
   fileContent,
+  fileError,
   isFileLoading,
   isFileDirty,
   terminalOutput,
@@ -441,6 +443,7 @@ export function AgentWorkspace({
             workspaceRoot={workspaceRoot}
             selectedFilePath={selectedFilePath}
             fileContent={fileContent}
+            fileError={fileError ?? null}
             isFileLoading={isFileLoading}
             isFileDirty={isFileDirty}
             terminalOutput={liveTerminalOutput ?? terminalOutput}

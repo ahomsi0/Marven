@@ -202,7 +202,7 @@ export default function Home() {
   // ─── Multi-tab editor state ─────────────────────────────────────────────────
   const [openTabs, setOpenTabs] = useState<EditorTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
-  const [fileBuffers, setFileBuffers] = useState<Map<string, { content: string; dirty: boolean; loading: boolean }>>(new Map());
+  const [fileBuffers, setFileBuffers] = useState<Map<string, { content: string; dirty: boolean; loading: boolean; error?: string }>>(new Map());
 
   // Derived state — backward compat with existing handlers
   const activeTab = activeTabIndex >= 0 && activeTabIndex < openTabs.length ? openTabs[activeTabIndex] : null;
@@ -212,6 +212,7 @@ export default function Home() {
   const selectedAgentFileContent = activeBuffer?.content ?? "";
   const isAgentFileLoading = activeBuffer?.loading ?? false;
   const isAgentFileDirty = activeBuffer?.dirty ?? false;
+  const selectedAgentFileError = activeBuffer?.error ?? null;
   const [folderInputVisible, setFolderInputVisible] = useState(false);
   const [folderInputValue, setFolderInputValue] = useState("");
 
@@ -417,26 +418,29 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
     })
-      .then((r) => r.json())
-      .then((data) => {
-        console.log("[openFileTab] fetch returned for", path, "→", { hasContent: typeof data?.content === "string", contentLength: data?.content?.length, error: data?.error });
+      .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }))
+      .then(({ ok, status, data }) => {
+        const errorMsg = !ok
+          ? `${status}: ${data?.error ?? "request failed"}`
+          : (typeof data?.content !== "string" ? (data?.error ?? "no content in response") : null);
         setFileBuffers((prev) => {
           const next = new Map(prev);
           const existing = next.get(path);
-          console.log("[openFileTab] setter: existing buffer for", path, "→", existing ? { dirty: existing.dirty, loading: existing.loading } : "undefined");
-          // Update unless the user has already typed (dirty). If the buffer is gone
-          // (closed and reopened), still write the result.
           if (!existing || !existing.dirty) {
-            next.set(path, { content: data.content ?? "", dirty: false, loading: false });
+            next.set(path, {
+              content: typeof data?.content === "string" ? data.content : "",
+              dirty: false,
+              loading: false,
+              error: errorMsg ?? undefined,
+            });
           }
           return next;
         });
       })
       .catch((err) => {
-        console.error("[openFileTab] fetch failed for", path, err);
         setFileBuffers((prev) => {
           const next = new Map(prev);
-          next.set(path, { content: "", dirty: false, loading: false });
+          next.set(path, { content: "", dirty: false, loading: false, error: err instanceof Error ? err.message : String(err) });
           return next;
         });
       });
@@ -1248,6 +1252,7 @@ export default function Home() {
         workspaceRoot={workspaceRoot}
         selectedAgentFilePath={selectedAgentFilePath}
         selectedAgentFileContent={selectedAgentFileContent}
+        selectedAgentFileError={selectedAgentFileError}
         isAgentFileLoading={isAgentFileLoading}
         isAgentFileDirty={isAgentFileDirty}
         agentMessages={agentStreamMessages}

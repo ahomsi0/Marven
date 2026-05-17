@@ -51,6 +51,7 @@ interface ChatLayoutProps {
   workspaceRoot: string | null;
   selectedAgentFilePath: string | null;
   selectedAgentFileContent: string;
+  selectedAgentFileError?: string | null;
   isAgentFileLoading: boolean;
   isAgentFileDirty: boolean;
   agentMessages: AgentMessage[];
@@ -150,6 +151,7 @@ export function ChatLayout({
   workspaceRoot,
   selectedAgentFilePath,
   selectedAgentFileContent,
+  selectedAgentFileError,
   isAgentFileLoading,
   isAgentFileDirty,
   agentMessages,
@@ -388,6 +390,7 @@ export function ChatLayout({
               files={agentFiles}
               selectedFilePath={selectedAgentFilePath ?? null}
               fileContent={selectedAgentFileContent ?? ""}
+              fileError={selectedAgentFileError ?? null}
               isFileLoading={isAgentFileLoading ?? false}
               isFileDirty={isAgentFileDirty ?? false}
               terminalOutput={agentTerminalOutput}

@@ -9,6 +9,7 @@ interface EditorPanelProps {
   workspaceRoot: string | null;
   selectedFilePath: string | null;
   fileContent: string;
+  fileError?: string | null;
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
@@ -200,6 +201,7 @@ export function EditorPanel({
   workspaceRoot,
   selectedFilePath,
   fileContent,
+  fileError,
   isFileLoading,
   isFileDirty,
   terminalOutput,
@@ -374,6 +376,11 @@ export function EditorPanel({
           ) : selectedFilePath ? (
             /* File editor */
             <>
+            {fileError && (
+              <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 font-mono text-[11px] text-red-400">
+                File error: {fileError}
+              </div>
+            )}
             {/* Code area — highlighted pre + transparent textarea overlay */}
             <div className="flex min-h-0 flex-1 overflow-hidden">
               {/* Line numbers */}
