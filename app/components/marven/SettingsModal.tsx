@@ -895,7 +895,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
       }}
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-[420px] max-w-full bg-[#1a1a1a] border-l border-[#333] flex flex-col shadow-[0_0_40px_rgba(0,0,0,0.8)] z-10">
+      <div className="fixed right-0 top-0 h-full w-[min(760px,92vw)] bg-[#1a1a1a] border-l border-[#333] flex flex-col shadow-[0_0_40px_rgba(0,0,0,0.8)] z-10">
         {body}
       </div>
     </div>
