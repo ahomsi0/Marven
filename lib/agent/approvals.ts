@@ -9,6 +9,13 @@ const pending = new Map<string, Pending>();
 
 export function registerApproval(callId: string, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
+    // Clean up any prior registration for this callId
+    const existing = pending.get(callId);
+    if (existing) {
+      clearTimeout(existing.timer);
+      existing.resolve(false);
+      pending.delete(callId);
+    }
     const timer = setTimeout(() => {
       if (pending.has(callId)) {
         pending.delete(callId);

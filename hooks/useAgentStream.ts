@@ -118,11 +118,12 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
             setLiveTerminalOutput("");
             updateLastAssistant((msg) => ({
               ...msg,
-              toolCalls: (msg.toolCalls ?? []).map((tc) =>
-                tc.callId === event.callId
-                  ? { ...tc, status: "done" as const, output: event.output }
-                  : tc
-              ),
+              toolCalls: (msg.toolCalls ?? []).map((tc) => {
+                if (tc.callId !== event.callId) return tc;
+                const nextStatus: ToolCallState["status"] =
+                  tc.status === "awaiting_approval" ? "rejected" : "done";
+                return { ...tc, status: nextStatus, output: event.output };
+              }),
             }));
           }
 

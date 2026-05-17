@@ -32,4 +32,12 @@ describe("approvals", () => {
   it("resolveApproval is a no-op for unknown callId", () => {
     expect(() => resolveApproval("nope", true)).not.toThrow();
   });
+
+  it("collision: second register clears prior timer and rejects prior promise", async () => {
+    const p1 = registerApproval("call-collision", 1000);
+    const p2 = registerApproval("call-collision", 1000);  // collides
+    resolveApproval("call-collision", true);
+    await expect(p1).resolves.toBe(false);  // prior rejected
+    await expect(p2).resolves.toBe(true);   // current accepted
+  });
 });
