@@ -1542,7 +1542,7 @@ export function SettingsModal({
       <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto bg-[#181818] border-r border-[#2a2a2a] py-4">
         {SECTIONS.map((section) => (
           <div key={section.heading} className="mb-4">
-            <p className="px-4 pb-2 pt-1 font-semibold text-[11px] tracking-[0.18em] text-[#888] uppercase">
+            <p className="px-4 pb-2 pt-1 font-semibold text-[11px] tracking-[0.18em] text-[#d19a66]/85 uppercase">
               {section.heading}
             </p>
             {section.items.map((item) => {
