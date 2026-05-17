@@ -93,6 +93,7 @@ interface ChatLayoutProps {
   onSelectAgentFile: (path: string) => void;
   onAgentFileContentChange: (value: string) => void;
   onSaveAgentFile: () => void;
+  onCloseAgentFile?: () => void;
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
   onRetryMessage: (id: string) => void;
@@ -183,6 +184,7 @@ export function ChatLayout({
   onSelectAgentFile,
   onAgentFileContentChange,
   onSaveAgentFile,
+  onCloseAgentFile,
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
@@ -388,6 +390,7 @@ export function ChatLayout({
               onSelectFile={onSelectAgentFile}
               onFileContentChange={onAgentFileContentChange}
               onSaveFile={onSaveAgentFile}
+              onCloseFile={onCloseAgentFile}
               onRefreshFiles={onRefreshAgentFiles}
             />
           ) : (

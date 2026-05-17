@@ -14,6 +14,38 @@ interface EditorPanelProps {
   onToggleTerminal: () => void;
   onFileContentChange: (value: string) => void;
   onSaveFile: () => void;
+  onCloseFile?: () => void;
+}
+
+// ── Tab type icon ──────────────────────────────────────────────────────────────
+
+function TabFileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "html") {
+    return <span className="font-mono text-[12px] font-bold text-[#e67e22]">&lt;&gt;</span>;
+  }
+  if (ext === "css" || ext === "scss") {
+    return <span className="font-mono text-[12px] font-bold text-[#ec4899]">#</span>;
+  }
+  if (ext === "json") {
+    return <span className="font-mono text-[12px] font-bold text-[#eab308]">{"{}"}</span>;
+  }
+  if (ext === "md" || ext === "mdx") {
+    return <span className="font-mono text-[10px] font-bold text-[#5b9cf6]">MD</span>;
+  }
+  if (ext === "ts" || ext === "tsx") {
+    return <span className="font-mono text-[10px] font-bold text-[#3b82f6]">TS</span>;
+  }
+  if (ext === "js" || ext === "jsx") {
+    return <span className="font-mono text-[10px] font-bold text-[#eab308]">JS</span>;
+  }
+  if (ext === "py") {
+    return <span className="font-mono text-[10px] font-bold text-[#3b82f6]">PY</span>;
+  }
+  if (["png","jpg","jpeg","gif","svg","webp","ico"].includes(ext)) {
+    return <span className="font-mono text-[10px] font-bold text-[#a855f7]">IMG</span>;
+  }
+  return <span className="font-mono text-[10px] font-bold text-[#888]">{ext ? ext.toUpperCase().slice(0, 3) : "·"}</span>;
 }
 
 // ── Syntax highlighting ────────────────────────────────────────────────────────
@@ -156,6 +188,7 @@ export function EditorPanel({
   onToggleTerminal,
   onFileContentChange,
   onSaveFile,
+  onCloseFile,
 }: EditorPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
@@ -201,14 +234,27 @@ export function EditorPanel({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {/* Tab bar */}
             <div className="flex items-stretch border-b border-[#333] bg-[#1a1a1a]">
-              <div className="flex items-center gap-1.5 border-r border-[#333] bg-[#1e1e1e] px-4 py-2 font-mono" title={selectedFilePath}>
-                {relativeFilePath.includes("/") && (
-                  <span className="text-[10px] text-[#555]">
-                    {relativeFilePath.slice(0, relativeFilePath.lastIndexOf("/") + 1)}
-                  </span>
-                )}
-                <span className="text-[11px] text-[#aaa]">{activeFileName}</span>
+              <div
+                className="relative flex items-center gap-2 border-r border-[#333] bg-[#1e1e1e] px-3 py-2"
+                title={relativeFilePath || selectedFilePath}
+              >
+                <TabFileIcon name={activeFileName ?? ""} />
+                <span className="italic text-[12px] text-[#d4d4d4]">{activeFileName}</span>
                 {isFileDirty && <span className="text-[#d19a66] text-[10px]">●</span>}
+                {onCloseFile && (
+                  <button
+                    type="button"
+                    onClick={onCloseFile}
+                    aria-label="Close file"
+                    className="ml-1 flex h-4 w-4 items-center justify-center rounded text-[#666] transition-colors hover:bg-[#383838] hover:text-[#d4d4d4]"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+                {/* Gold underline (active tab indicator) */}
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#d19a66]" />
               </div>
               <div className="ml-auto flex items-center gap-2 px-3">
                 {isFileDirty && (

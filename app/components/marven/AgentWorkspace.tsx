@@ -40,6 +40,7 @@ interface AgentWorkspaceProps {
   onSelectFile: (path: string) => void;
   onFileContentChange: (value: string) => void;
   onSaveFile: () => void;
+  onCloseFile?: () => void;
   onRefreshFiles: () => void;
   checkpoints?: string[];
   liveTerminalOutput?: string;
@@ -81,6 +82,7 @@ export function AgentWorkspace({
   onSelectFile,
   onFileContentChange,
   onSaveFile,
+  onCloseFile,
   onRefreshFiles,
   checkpoints = [],
   liveTerminalOutput,
@@ -388,6 +390,7 @@ export function AgentWorkspace({
             onToggleTerminal={() => setShowTerminal((v) => !v)}
             onFileContentChange={onFileContentChange}
             onSaveFile={onSaveFile}
+            onCloseFile={onCloseFile}
           />
         </div>
 

@@ -1229,6 +1229,11 @@ export default function Home() {
         onSaveAgentFile={() => {
           saveAgentFile().catch(() => {});
         }}
+        onCloseAgentFile={() => {
+          setSelectedAgentFilePath(null);
+          setSelectedAgentFileContent("");
+          setIsAgentFileDirty(false);
+        }}
         onRefreshAgentFiles={() => {
           loadWorkspaceFiles().catch(() => {});
         }}
