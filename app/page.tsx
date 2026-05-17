@@ -314,7 +314,7 @@ export default function Home() {
 
   // (file loading is now handled inside openFileTab)
 
-  // Instant workspace refresh + auto-open when agent writes files
+  // Instant workspace refresh + auto-open + buffer refresh when agent writes files
   const processedWriteCallsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const lastMsg = agentStreamMessages[agentStreamMessages.length - 1];
@@ -325,11 +325,38 @@ export default function Home() {
     if (newDone.length === 0) return;
     newDone.forEach((tc) => processedWriteCallsRef.current.add(tc.callId));
     loadWorkspaceFiles().catch(() => {});
-    const lastWrite = newDone[newDone.length - 1];
-    const writtenPath = lastWrite.args?.path as string | undefined;
-    if (writtenPath) openFileTab(writtenPath);
+    // For every file the agent just wrote, re-fetch its content into the buffer so
+    // the open tab reflects the new on-disk state (skip when user has unsaved edits)
+    const writtenPaths = newDone
+      .map((tc) => tc.args?.path as string | undefined)
+      .filter((p): p is string => !!p);
+    writtenPaths.forEach((p) => refreshFileBuffer(p));
+    const lastWritten = writtenPaths[writtenPaths.length - 1];
+    if (lastWritten) openFileTab(lastWritten);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentStreamMessages]);
+
+  function refreshFileBuffer(path: string) {
+    fetch("/api/workspace/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    })
+      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then(({ ok, data }) => {
+        if (!ok || typeof data?.content !== "string") return;
+        setFileBuffers((prev) => {
+          // Only refresh if the buffer exists (file was open) AND the user hasn't typed
+          const existing = prev.get(path);
+          if (!existing) return prev;
+          if (existing.dirty) return prev;
+          const next = new Map(prev);
+          next.set(path, { content: data.content, dirty: false, loading: false });
+          return next;
+        });
+      })
+      .catch(() => {});
+  }
 
   // ─── Helpers to mutate conversation messages ────────────────────────────────
   const upsertConversation = useCallback(
