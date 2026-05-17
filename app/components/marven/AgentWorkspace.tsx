@@ -49,6 +49,7 @@ interface AgentWorkspaceProps {
   onSelectRecent?: (path: string) => void;
   onOpenSettings?: () => void;
   appVersion?: string;
+  editorOverlay?: React.ReactNode;
 }
 
 export function AgentWorkspace({
@@ -91,6 +92,7 @@ export function AgentWorkspace({
   onSelectRecent,
   onOpenSettings,
   appVersion,
+  editorOverlay,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -237,8 +239,8 @@ export function AgentWorkspace({
     document.body.style.userSelect = "none";
   }
 
-  // Landing page when no workspace is open
-  if (!workspaceRoot) {
+  // Landing page when no workspace is open AND no overlay (e.g. settings tab) is active
+  if (!workspaceRoot && !editorOverlay) {
     return (
       <WorkspaceLanding
         recentWorkspaces={recentWorkspaces}
@@ -379,19 +381,21 @@ export function AgentWorkspace({
 
         {/* Middle — Editor (always shown, flexes to fill) */}
         <div className="min-h-0 min-w-0 flex-1">
-          <EditorPanel
-            workspaceRoot={workspaceRoot}
-            selectedFilePath={selectedFilePath}
-            fileContent={fileContent}
-            isFileLoading={isFileLoading}
-            isFileDirty={isFileDirty}
-            terminalOutput={liveTerminalOutput ?? terminalOutput}
-            showTerminal={showTerminal}
-            onToggleTerminal={() => setShowTerminal((v) => !v)}
-            onFileContentChange={onFileContentChange}
-            onSaveFile={onSaveFile}
-            onCloseFile={onCloseFile}
-          />
+          {editorOverlay ?? (
+            <EditorPanel
+              workspaceRoot={workspaceRoot}
+              selectedFilePath={selectedFilePath}
+              fileContent={fileContent}
+              isFileLoading={isFileLoading}
+              isFileDirty={isFileDirty}
+              terminalOutput={liveTerminalOutput ?? terminalOutput}
+              showTerminal={showTerminal}
+              onToggleTerminal={() => setShowTerminal((v) => !v)}
+              onFileContentChange={onFileContentChange}
+              onSaveFile={onSaveFile}
+              onCloseFile={onCloseFile}
+            />
+          )}
         </div>
 
         {/* Right — Chat or Diff */}

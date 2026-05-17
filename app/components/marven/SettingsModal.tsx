@@ -11,6 +11,7 @@ interface SettingsModalProps {
   mcpServers: MCPServer[];
   onSaveTemplates: (templates: PromptTemplate[]) => void;
   onSaveMCPServers: (servers: MCPServer[]) => void;
+  inline?: boolean;
 }
 
 type TabId = "shortcuts" | "commands" | "api-keys" | "templates" | "mcp";
@@ -78,7 +79,7 @@ const NATURAL_LANGUAGE_SECTIONS = [
   },
 ];
 
-export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcpServers, onSaveTemplates, onSaveMCPServers }: SettingsModalProps) {
+export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcpServers, onSaveTemplates, onSaveMCPServers, inline = false }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("shortcuts");
   const [items, setItems] = useState<CustomShortcut[]>(shortcuts.map((s) => ({ ...s })));
 
@@ -249,22 +250,9 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
 
   const inputClass = "w-full rounded-lg bg-[#252525] border border-[#383838] px-3 py-2 text-[13px] text-[#ccc] outline-none placeholder:text-[#555] focus:border-[#555] transition-colors";
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Right panel */}
-      <div className="fixed right-0 top-0 h-full w-[420px] max-w-full bg-[#1a1a1a] border-l border-[#333] flex flex-col shadow-[0_0_40px_rgba(0,0,0,0.8)] z-10">
-        {/* Header */}
+  const body = (
+    <>
+      {!inline && (
         <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0 border-b border-[#2a2a2a]">
           <div>
             <h2 className="font-mono text-[13px] font-bold tracking-[0.15em] text-[#d19a66] uppercase">
@@ -285,6 +273,7 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
             </svg>
           </button>
         </div>
+      )}
 
         {/* Tab bar */}
         <div className="flex border-b border-[#2a2a2a] px-5 shrink-0 bg-[#1e1e1e] overflow-x-auto">
@@ -887,6 +876,27 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
             </div>
           )}
         </div>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div className="flex h-full flex-col bg-[#1a1a1a] overflow-hidden">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-[420px] max-w-full bg-[#1a1a1a] border-l border-[#333] flex flex-col shadow-[0_0_40px_rgba(0,0,0,0.8)] z-10">
+        {body}
       </div>
     </div>
   );
