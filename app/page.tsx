@@ -330,40 +330,48 @@ export default function Home() {
     const writtenPaths = newDone
       .map((tc) => tc.args?.path as string | undefined)
       .filter((p): p is string => !!p);
-    writtenPaths.forEach((p) => refreshFileBuffer(p));
+    // Capture the current workspaceRoot at the moment the write completed so
+    // any later state changes (e.g. server hot-reload race) don't strand us
+    // with the wrong root when normalizing paths.
+    const rootSnapshot = workspaceRoot;
+    writtenPaths.forEach((p) => refreshFileBuffer(p, rootSnapshot));
     const lastWritten = writtenPaths[writtenPaths.length - 1];
     if (lastWritten) openFileTab(lastWritten);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentStreamMessages]);
 
-  function toRelativePath(p: string): string {
-    if (!workspaceRoot) return p;
-    if (p.startsWith(workspaceRoot)) {
-      return p.slice(workspaceRoot.length).replace(/^\/+/, "");
+  function toRelativePath(p: string, root: string | null): string {
+    if (!root) return p;
+    if (p.startsWith(root)) {
+      return p.slice(root.length).replace(/^\/+/, "");
     }
     return p;
   }
 
-  function refreshFileBuffer(rawPath: string) {
-    const path = toRelativePath(rawPath);
+  function refreshFileBuffer(rawPath: string, root: string | null = workspaceRoot) {
+    const rel = toRelativePath(rawPath, root);
+    const basename = rawPath.split("/").filter(Boolean).pop() ?? rawPath;
     fetch("/api/workspace/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path: rel }),
     })
       .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
       .then(({ ok, data }) => {
         if (!ok || typeof data?.content !== "string") return;
         setFileBuffers((prev) => {
-          // Look up buffer under both the relative AND the raw path so we
-          // catch buffers opened from the explorer (relative) and ones the
-          // agent referenced absolutely.
-          const existing = prev.get(path) ?? prev.get(rawPath);
+          // Try multiple lookup keys: the relative path, the raw (possibly absolute)
+          // path, and the basename. Whichever one matches, refresh that buffer.
+          const existing =
+            prev.get(rel) ?? prev.get(rawPath) ?? prev.get(basename) ?? null;
           if (!existing) return prev;
           if (existing.dirty) return prev;
           const next = new Map(prev);
-          next.set(path, { content: data.content, dirty: false, loading: false });
-          if (rawPath !== path) next.set(rawPath, { content: data.content, dirty: false, loading: false });
+          const fresh = { content: data.content, dirty: false, loading: false };
+          // Update under every key the buffer might be reachable by.
+          next.set(rel, fresh);
+          if (rawPath !== rel) next.set(rawPath, fresh);
+          if (basename !== rel && basename !== rawPath) next.set(basename, fresh);
           return next;
         });
       })
@@ -424,12 +432,26 @@ export default function Home() {
   }
 
   async function loadWorkspaceFiles() {
-    const res = await fetch("/api/workspace/files");
-    const data = await res.json();
-    const files: WorkspaceFile[] = data.files ?? [];
+    let res = await fetch("/api/workspace/files");
+    let data = await res.json();
 
+    // If the server forgot the workspace root (e.g. dev-mode hot reload) but the
+    // client still knows it, re-set it server-side and refetch. Keeps the agent
+    // workspace from collapsing back to the landing page after agent writes.
+    if (!data.root && workspaceRoot) {
+      await fetch("/api/workspace/files", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: workspaceRoot }),
+      });
+      res = await fetch("/api/workspace/files");
+      data = await res.json();
+    }
+
+    const files: WorkspaceFile[] = data.files ?? [];
     setWorkspaceFiles(files);
-    setWorkspaceRoot(data.root ?? null);
+    // Only adopt the server's root if it provided one — never wipe a known client root
+    if (data.root) setWorkspaceRoot(data.root);
   }
 
   function openFileTab(rawPath: string) {
