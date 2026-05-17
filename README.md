@@ -2,7 +2,7 @@
 
 > A local AI desktop assistant — your data, your machine.
 
-Marven is a desktop app that combines a multi-provider AI chat with a VS Code–style coding agent. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Files, conversations, and memory stay on your machine.
+Marven is a desktop app that combines a multi-provider AI chat with a full coding agent — file-aware, with a built-in editor, terminal, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Files, conversations, and memory stay on your machine.
 
 [![License: AGPLv3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ahomsi0/Marven)](https://github.com/ahomsi0/Marven/releases/latest)
@@ -20,7 +20,7 @@ Marven is a desktop app that combines a multi-provider AI chat with a VS Code–
 - **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc.
 
 ### Agent mode
-- **VS Code–style layout**: file explorer · multi-tab editor · chat panel, all resizable
+- **Three-pane layout**: file explorer · multi-tab editor · chat panel, all resizable
 - **Multi-tab editor** with drag-reorder and per-tab buffer cache
 - **Built-in tools**: `read_file`, `write_file`, `list_files`, `search_files`, `run_command`, `web_search`, `fetch_url`, `remember`
 - **Git tools** with approval gating: `git_status`, `git_diff`, `git_log`, `git_commit`, `git_branch`, `git_checkout`
