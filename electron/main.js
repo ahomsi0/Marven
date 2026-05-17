@@ -7,6 +7,39 @@ const path = require('path');
 
 const isDev = !app.isPackaged;
 
+// Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
+// Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
+// nvm dirs, etc. — so `npm`, `node`, `yarn`, etc. aren't found and the agent's
+// run_command fails to start dev servers. fix-path queries the user's login
+// shell for the real PATH and merges it into process.env.PATH.
+try {
+  const fixPath = require('fix-path');
+  // Default export shape — fix-path v5 returns a function
+  if (typeof fixPath === 'function') fixPath();
+  else if (typeof fixPath.default === 'function') fixPath.default();
+} catch (err) {
+  console.warn('[Marven] fix-path failed (continuing with raw PATH):', err && err.message);
+}
+
+// Also splice in common Homebrew / nvm paths defensively, in case fix-path
+// missed something or the shell config doesn't expose them.
+{
+  const extras = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/local/sbin',
+    path.join(process.env.HOME || '', '.nvm/current/bin'),
+    path.join(process.env.HOME || '', '.volta/bin'),
+    path.join(process.env.HOME || '', '.bun/bin'),
+    path.join(process.env.HOME || '', '.cargo/bin'),
+  ].filter(Boolean);
+  const have = (process.env.PATH || '').split(':');
+  const merged = [...have];
+  for (const p of extras) if (p && !have.includes(p)) merged.push(p);
+  process.env.PATH = merged.join(':');
+}
+
 function waitForPort(port, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
