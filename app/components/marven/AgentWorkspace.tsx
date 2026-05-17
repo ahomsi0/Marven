@@ -551,14 +551,16 @@ export function AgentWorkspace({
             type="button"
             onClick={() => setViewMenuOpen((v) => !v)}
             title="View menu"
-            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+            className={`flex h-7 items-center gap-0.5 rounded px-1.5 transition-colors ${
               viewMenuOpen ? "bg-[#252525] text-[#d4d4d4]" : "text-[#888] hover:bg-[#252525] hover:text-[#d4d4d4]"
             }`}
           >
-            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
-              <circle cx="8" cy="3.5" r="1.3" />
-              <circle cx="8" cy="8" r="1.3" />
-              <circle cx="8" cy="12.5" r="1.3" />
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="5.5" y1="3.5" x2="5.5" y2="12.5" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 6 8 10 12 6" />
             </svg>
           </button>
           {viewMenuOpen && (
