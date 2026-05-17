@@ -81,9 +81,28 @@ export function AgentWorkspace({
   liveTerminalOutput,
   onApproveToolCall,
 }: AgentWorkspaceProps) {
-  const [showEditor, setShowEditor] = useState(true);
+  const [showExplorer, setShowExplorer] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("marven-show-explorer") !== "false";
+  });
   const [showTerminal, setShowTerminal] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("marven-show-right") !== "false";
+  });
   const [showDiff, setShowDiff] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("marven-show-explorer", String(showExplorer));
+    }
+  }, [showExplorer]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("marven-show-right", String(showRightPanel));
+    }
+  }, [showRightPanel]);
 
   const [memory, setMemory] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -211,38 +230,61 @@ export function AgentWorkspace({
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1a1a1a]">
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#161616] px-3 py-1">
+        {/* Panel toggles — VS Code style */}
         <button
           type="button"
-          onClick={() => setShowEditor((v) => !v)}
-          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
-            showEditor ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          onClick={() => setShowExplorer((v) => !v)}
+          className={`rounded p-1 transition-colors ${
+            showExplorer ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
           }`}
-          title="Toggle editor"
+          title={showExplorer ? "Hide file explorer" : "Show file explorer"}
         >
-          Editor
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
+            <rect x="1.5" y="2.5" width="4" height="11" fill="currentColor" />
+          </svg>
         </button>
 
         <button
           type="button"
           onClick={() => setShowTerminal((v) => !v)}
-          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
-            showTerminal ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          className={`rounded p-1 transition-colors ${
+            showTerminal ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
           }`}
-          title="Toggle terminal"
+          title={showTerminal ? "Hide terminal" : "Show terminal"}
         >
-          Terminal
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
+            <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" />
+          </svg>
         </button>
 
         <button
           type="button"
-          onClick={() => setShowDiff((v) => !v)}
-          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
-            showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          onClick={() => setShowRightPanel((v) => !v)}
+          className={`rounded p-1 transition-colors ${
+            showRightPanel ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
           }`}
-          title="Toggle diff panel"
+          title={showRightPanel ? "Hide chat panel" : "Show chat panel"}
         >
-          Diff{checkpoints.length > 0 ? ` (${checkpoints.length})` : ""}
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
+            <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" />
+          </svg>
         </button>
+
+        {checkpoints.length > 0 && showRightPanel && (
+          <button
+            type="button"
+            onClick={() => setShowDiff((v) => !v)}
+            className={`ml-1 rounded px-2 py-0.5 text-[10px] transition-colors ${
+              showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+            }`}
+            title="Toggle diff panel"
+          >
+            Diff ({checkpoints.length})
+          </button>
+        )}
 
         {memoryLineCount > 0 && (
           <div className="relative" ref={memoryRef}>
@@ -283,65 +325,67 @@ export function AgentWorkspace({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left — File Explorer */}
-        <div
-          className="flex flex-col border-r border-[#333]"
-          style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
-        >
-          <FileExplorer
-            files={files}
+        {showExplorer && (
+          <>
+            <div
+              className="flex flex-col border-r border-[#333]"
+              style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
+            >
+              <FileExplorer
+                files={files}
+                workspaceRoot={workspaceRoot}
+                selectedFilePath={selectedFilePath}
+                onSelectFile={onSelectFile}
+                onRefreshFiles={onRefreshFiles}
+                onOpenFolder={onOpenFolder}
+              />
+            </div>
+            {/* Drag handle 1 — between Explorer and Editor */}
+            <div
+              onMouseDown={startExplorerDrag}
+              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+              title="Drag to resize"
+            >
+              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Middle — Editor (always shown, flexes to fill) */}
+        <div className="min-h-0 min-w-0 flex-1">
+          <EditorPanel
             workspaceRoot={workspaceRoot}
             selectedFilePath={selectedFilePath}
-            onSelectFile={onSelectFile}
-            onRefreshFiles={onRefreshFiles}
-            onOpenFolder={onOpenFolder}
+            fileContent={fileContent}
+            isFileLoading={isFileLoading}
+            isFileDirty={isFileDirty}
+            terminalOutput={liveTerminalOutput ?? terminalOutput}
+            showTerminal={showTerminal}
+            onToggleTerminal={() => setShowTerminal((v) => !v)}
+            onFileContentChange={onFileContentChange}
+            onSaveFile={onSaveFile}
           />
         </div>
 
-        {/* Drag handle 1 — between Explorer and Editor */}
-        <div
-          onMouseDown={startExplorerDrag}
-          className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-          title="Drag to resize"
-        >
-          <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-          </div>
-        </div>
-
-        {/* Middle — Editor */}
-        {showEditor && (
-          <div className="min-h-0 min-w-0 flex-1">
-            <EditorPanel
-              workspaceRoot={workspaceRoot}
-              selectedFilePath={selectedFilePath}
-              fileContent={fileContent}
-              isFileLoading={isFileLoading}
-              isFileDirty={isFileDirty}
-              terminalOutput={liveTerminalOutput ?? terminalOutput}
-              showTerminal={showTerminal}
-              onToggleTerminal={() => setShowTerminal((v) => !v)}
-              onFileContentChange={onFileContentChange}
-              onSaveFile={onSaveFile}
-            />
-          </div>
-        )}
-
-        {/* Drag handle 2 — between Editor and Right panel */}
-        <div
-          onMouseDown={startRightDrag}
-          className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-          title="Drag to resize"
-        >
-          <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-          </div>
-        </div>
-
         {/* Right — Chat or Diff */}
-        <div
-          className="flex flex-col border-l border-[#333]"
-          style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
-        >
+        {showRightPanel && (
+          <>
+            {/* Drag handle 2 — between Editor and Right panel */}
+            <div
+              onMouseDown={startRightDrag}
+              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+              title="Drag to resize"
+            >
+              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
+              </div>
+            </div>
+            <div
+              className="flex flex-col border-l border-[#333]"
+              style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
+            >
           {showDiff ? (
             <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
           ) : (
@@ -371,7 +415,9 @@ export function AgentWorkspace({
               </div>
             </>
           )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
