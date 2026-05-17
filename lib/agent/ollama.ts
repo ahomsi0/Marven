@@ -5,9 +5,57 @@ const OLLAMA_BASE = "http://localhost:11434";
 
 interface JsonToolCall { name: string; args: Record<string, unknown> }
 
-function extractJsonToolCall(text: string): JsonToolCall | null {
+// Known tool names — used to validate function-call-syntax extractions
+// so we don't mistake random `someFunc({...})` Markdown for a tool invocation.
+const KNOWN_TOOLS = new Set([
+  "list_files", "read_file", "write_file", "run_command", "search_files",
+  "web_search", "fetch_url", "remember",
+  "git_status", "git_diff", "git_log", "git_commit", "git_branch", "git_checkout",
+]);
+
+export function extractJsonToolCall(text: string): JsonToolCall | null {
+  // First, try function-call syntax that qwen2.5-coder loves to emit:
+  //   run_command({"command": "..."})
+  //   read_file({"path": "foo.ts"})
+  // We look for `toolName(` followed by a balanced-brace JSON object then `)`.
+  const fnCallRe = /\b([a-z_][a-z0-9_]*)\s*\(\s*(\{)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = fnCallRe.exec(text))) {
+    const name = m[1];
+    if (!KNOWN_TOOLS.has(name)) continue;
+    // Find the matching closing brace by depth-tracking from the opening `{`
+    const braceStart = m.index + m[0].length - 1;
+    let depth = 0;
+    let inStr = false;
+    let strCh = "";
+    let escaped = false;
+    for (let i = braceStart; i < text.length; i++) {
+      const c = text[i];
+      if (inStr) {
+        if (escaped) { escaped = false; continue; }
+        if (c === "\\") { escaped = true; continue; }
+        if (c === strCh) inStr = false;
+        continue;
+      }
+      if (c === '"' || c === "'") { inStr = true; strCh = c; continue; }
+      if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            const args = JSON.parse(text.slice(braceStart, i + 1));
+            if (args && typeof args === "object" && !Array.isArray(args)) {
+              return { name, args: args as Record<string, unknown> };
+            }
+          } catch { /* fall through to standard JSON form */ }
+          break;
+        }
+      }
+    }
+  }
+
+  // Then try the `{"name": "tool", "arguments": {...}}` JSON form.
   // Use brace-depth tracking to find the first complete top-level JSON object.
-  // A greedy regex fails when the model outputs multiple JSON blobs separated by text.
   let depth = 0;
   let start = -1;
   for (let i = 0; i < text.length; i++) {
@@ -21,7 +69,6 @@ function extractJsonToolCall(text: string): JsonToolCall | null {
           const obj = JSON.parse(text.slice(start, i + 1));
           const name = typeof obj.name === "string" ? obj.name : null;
           if (!name) { start = -1; continue; }
-          // Support both "arguments" and "args" keys
           const args = (obj.arguments ?? obj.args ?? {}) as Record<string, unknown>;
           if (typeof args !== "object" || Array.isArray(args)) { start = -1; continue; }
           return { name, args };
