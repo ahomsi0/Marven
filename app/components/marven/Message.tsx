@@ -143,9 +143,28 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
             /* ── Display mode ── */
             <>
               <div className="bg-[#252525] border border-[#383838] border-l border-l-[#d19a66]/20 rounded-2xl rounded-br-sm px-4 py-3">
-                <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
-                  {message.content}
-                </p>
+                {message.attachments && message.attachments.length > 0 ? (
+                  <div className="flex gap-3 items-start">
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {message.attachments.map((att, i) => (
+                        <img
+                          key={i}
+                          src={att.base64}
+                          alt={att.name}
+                          title={att.name}
+                          className="w-12 h-12 rounded object-cover border border-[#444]"
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
+                      {message.content}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
+                    {message.content}
+                  </p>
+                )}
               </div>
               {/* Action bar — left of bubble, visible on hover */}
               <div className="absolute right-full top-1 mr-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
