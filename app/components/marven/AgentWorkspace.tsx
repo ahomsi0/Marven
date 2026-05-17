@@ -149,22 +149,43 @@ export function AgentWorkspace({
 
   const [memory, setMemory] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const memoryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  function refreshMemory() {
     fetch("/api/memory")
       .then((r) => r.json())
       .then((d) => setMemory(d.memory ?? ""))
       .catch(() => {});
+  }
+
+  // Load memory on mount
+  useEffect(() => {
+    refreshMemory();
   }, []);
 
+  // Refresh after each agent run completes (skip initial mount)
+  const hasMounted = useRef(false);
   useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
     if (!isRunning) {
-      fetch("/api/memory")
-        .then((r) => r.json())
-        .then((d) => setMemory(d.memory ?? ""))
-        .catch(() => {});
+      refreshMemory();
     }
   }, [isRunning]);
+
+  // Close memory popover on click outside
+  useEffect(() => {
+    if (!memoryOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (memoryRef.current && !memoryRef.current.contains(e.target as Node)) {
+        setMemoryOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [memoryOpen]);
 
   const memoryLineCount = memory ? memory.split("\n").filter((l) => l.trim()).length : 0;
 
@@ -224,7 +245,7 @@ export function AgentWorkspace({
         />
 
         {memoryLineCount > 0 && (
-          <div className="relative">
+          <div className="relative" ref={memoryRef}>
             <button
               type="button"
               onClick={() => setMemoryOpen((v) => !v)}
