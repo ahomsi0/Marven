@@ -6,6 +6,7 @@ import type { VoiceState } from "@/hooks/useVoice";
 import { WorkspaceBar } from "./WorkspaceBar";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
+import { DiffPanel } from "./DiffPanel";
 
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
@@ -39,6 +40,7 @@ interface AgentWorkspaceProps {
   onFileContentChange: (value: string) => void;
   onSaveFile: () => void;
   onRefreshFiles: () => void;
+  checkpoints?: string[];
 }
 
 function ViewMenu({
@@ -142,6 +144,7 @@ export function AgentWorkspace({
   onFileContentChange,
   onSaveFile,
   onRefreshFiles,
+  checkpoints = [],
 }: AgentWorkspaceProps) {
   const [showAgent, setShowAgent] = useState(true);
   const [showEditor, setShowEditor] = useState(true);
@@ -197,6 +200,15 @@ export function AgentWorkspace({
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
 
+  const [showDiff, setShowDiff] = useState(false);
+  const [diffWidth, setDiffWidth] = useState(() => {
+    if (typeof window === "undefined") return 360;
+    return Number(localStorage.getItem("marven-diff-width") ?? 360);
+  });
+  const isDraggingDiff = useRef(false);
+  const diffStartX = useRef(0);
+  const diffStartWidth = useRef(0);
+
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!isDragging.current) return;
@@ -222,6 +234,37 @@ export function AgentWorkspace({
     localStorage.setItem("marven-agent-width", String(agentWidth));
   }, [agentWidth]);
 
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDraggingDiff.current) return;
+      const delta = diffStartX.current - e.clientX;
+      const next = Math.min(700, Math.max(240, diffStartWidth.current + delta));
+      setDiffWidth(next);
+    }
+    function onMouseUp() {
+      if (!isDraggingDiff.current) return;
+      isDraggingDiff.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      localStorage.setItem("marven-diff-width", String(diffWidth));
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [diffWidth]);
+
+  function startDiffDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    isDraggingDiff.current = true;
+    diffStartX.current = e.clientX;
+    diffStartWidth.current = diffWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
     isDragging.current = true;
@@ -243,6 +286,17 @@ export function AgentWorkspace({
           onToggleEditor={() => setShowEditor((v) => !v)}
           onToggleTerminal={() => setShowTerminal((v) => !v)}
         />
+
+        <button
+          type="button"
+          onClick={() => setShowDiff((v) => !v)}
+          className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+            showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+          }`}
+          title="Toggle diff panel"
+        >
+          Diff{checkpoints.length > 0 ? ` (${checkpoints.length})` : ""}
+        </button>
 
         {memoryLineCount > 0 && (
           <div className="relative" ref={memoryRef}>
@@ -347,6 +401,29 @@ export function AgentWorkspace({
               onSaveFile={onSaveFile}
               onRefreshFiles={onRefreshFiles}
             />
+          </div>
+        )}
+
+        {/* Diff drag handle — only when both editor and diff visible */}
+        {showDiff && showEditor && (
+          <div
+            onMouseDown={startDiffDrag}
+            className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+            title="Drag to resize"
+          >
+            <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
+            </div>
+          </div>
+        )}
+
+        {/* Far right — Diff panel */}
+        {showDiff && (
+          <div
+            className="flex flex-col border-l border-[#333]"
+            style={{ width: diffWidth, minWidth: diffWidth }}
+          >
+            <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
           </div>
         )}
       </div>
