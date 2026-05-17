@@ -1552,10 +1552,10 @@ export function SettingsModal({
                   key={item.id}
                   type="button"
                   onClick={() => setActivePage(item.id)}
-                  className={`relative w-full text-left px-4 py-2 text-[13px] transition-colors border-l-2 ${
+                  className={`relative w-full text-left px-4 py-2 text-[13px] transition-colors ${
                     isActive
-                      ? "bg-[#252525] text-[#e0e0e0] border-[#d19a66]"
-                      : "text-[#888] hover:bg-[#1e1e1e] hover:text-[#d4d4d4] border-transparent"
+                      ? "bg-[#252525] text-[#e0e0e0]"
+                      : "text-[#888] hover:bg-[#1e1e1e] hover:text-[#d4d4d4]"
                   }`}
                 >
                   {item.label}
