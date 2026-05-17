@@ -145,7 +145,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
               <div className="bg-[#252525] border border-[#383838] border-l border-l-[#d19a66]/20 rounded-2xl rounded-br-sm px-4 py-3">
                 {message.attachments && message.attachments.length > 0 ? (
                   <div className="flex gap-3 items-start">
-                    <div className="flex flex-col gap-1 shrink-0">
+                    <div className="flex flex-col gap-1 shrink-0 max-h-32 overflow-y-auto">
                       {message.attachments.map((att, i) => (
                         <img
                           key={i}
@@ -156,9 +156,11 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                         />
                       ))}
                     </div>
-                    <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
-                      {message.content}
-                    </p>
+                    {message.content && (
+                      <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
+                        {message.content}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-[14px] text-[#d4d4d4] leading-7 whitespace-pre-wrap break-words">
