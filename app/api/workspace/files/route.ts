@@ -11,15 +11,24 @@ function getRoot(): string {
 
 type FileEntry = { path: string; name: string; type: "file" | "folder" };
 
-async function listRecursive(dir: string, base: string): Promise<FileEntry[]> {
+// Folders we show in the tree but don't recurse into (their contents are listed
+// shallowly — one level deep — so the user can see they exist without exploding
+// the listing on huge dependency directories).
+const SHALLOW_DIRS = new Set([
+  "node_modules", ".git", ".next", "dist", "build", ".turbo", ".vercel",
+  ".cache", "target", "vendor", ".venv", "__pycache__",
+]);
+
+async function listRecursive(dir: string, base: string, shallow = false): Promise<FileEntry[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const results: FileEntry[] = [];
   for (const entry of entries) {
-    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
     const rel = path.relative(base, path.join(dir, entry.name));
     if (entry.isDirectory()) {
       results.push({ path: rel, name: entry.name, type: "folder" });
-      const nested = await listRecursive(path.join(dir, entry.name), base);
+      if (shallow) continue;
+      const childShallow = SHALLOW_DIRS.has(entry.name);
+      const nested = await listRecursive(path.join(dir, entry.name), base, childShallow);
       results.push(...nested);
     } else {
       results.push({ path: rel, name: entry.name, type: "file" });
