@@ -399,7 +399,7 @@ export function EditorPanel({
                 <pre
                   ref={preRef}
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 overflow-auto px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
+                  className="pointer-events-none absolute inset-0 overflow-hidden px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
                   style={{ margin: 0, background: "transparent", color: "#d4d4d4" }}
                   dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
                 />
@@ -411,7 +411,7 @@ export function EditorPanel({
                   onScroll={syncScroll}
                   disabled={isFileLoading}
                   spellCheck={false}
-                  className="absolute inset-0 h-full w-full resize-none border-0 bg-transparent px-4 py-3 font-mono text-[12px] leading-7 outline-none disabled:opacity-40"
+                  className="marven-scroll absolute inset-0 h-full w-full resize-none border-0 bg-transparent px-4 py-3 font-mono text-[12px] leading-7 outline-none disabled:opacity-40"
                   style={{ color: "transparent", caretColor: "#ddd", overflow: "auto" }}
                 />
               </div>

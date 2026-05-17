@@ -29,15 +29,35 @@
     color: #fff;
   }
 
-  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-corner { background: transparent; }
   ::-webkit-scrollbar-thumb {
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(209, 154, 102, 0.35);
   }
+}
+
+/* Marven-scrollbar — applied to scroll areas that should auto-hide their bars
+   when the content doesn't actually need scrolling. */
+.marven-scroll {
+  scrollbar-gutter: stable;
+}
+.marven-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.marven-scroll::-webkit-scrollbar-track { background: transparent; }
+.marven-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: transparent;
+}
+.marven-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+.marven-scroll::-webkit-scrollbar-thumb:hover,
+.marven-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(209, 154, 102, 0.35);
 }
 
 /* Dot bounce */
