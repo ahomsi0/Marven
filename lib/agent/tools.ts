@@ -260,10 +260,49 @@ function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
   });
 }
 
+async function streamShellCommand(
+  command: string,
+  cwd: string,
+  onChunk: (chunk: string) => void,
+  timeoutMs = 30_000,
+): Promise<string> {
+  return new Promise((resolve) => {
+    let acc = "";
+    let killed = false;
+    const child = spawn("sh", ["-c", command], { cwd });
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+
+    const handle = (buf: Buffer) => {
+      const chunk = buf.toString("utf8");
+      acc += chunk;
+      onChunk(chunk);
+    };
+    child.stdout.on("data", handle);
+    child.stderr.on("data", handle);
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const suffix = killed
+        ? `\n[killed: timed out after ${timeoutMs}ms]`
+        : code === 0 ? "" : `\n[exit code: ${code}]`;
+      resolve((acc + suffix).slice(0, 8000));
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve(`Command failed to start: ${err.message}`);
+    });
+  });
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  workspaceRoot: string
+  workspaceRoot: string,
+  onProgress?: (chunk: string) => void,
 ): Promise<string> {
   switch (name) {
     case "list_files": {
@@ -340,12 +379,8 @@ export async function executeTool(
         return `Server process launched. Try: http://localhost:3000 or http://localhost:5173`;
       }
 
-      try {
-        const { stdout, stderr } = await execAsync(cmd, { cwd, timeout: 30_000 });
-        return (stdout + stderr).trim() || "(no output)";
-      } catch (err) {
-        return `Error: ${(err as Error).message}`;
-      }
+      const output = await streamShellCommand(cmd, cwd, (chunk) => onProgress?.(chunk));
+      return output || "(no output)";
     }
 
     case "search_files": {

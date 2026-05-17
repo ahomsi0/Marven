@@ -75,7 +75,7 @@ describe("executeTool – run_command blocks dangerous patterns", () => {
 
   it("runs safe commands", async () => {
     const result = await executeTool("run_command", { command: "echo hello" }, tmpDir);
-    expect(result).toBe("hello");
+    expect(result.trim()).toBe("hello");
   });
 });
 
