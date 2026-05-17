@@ -32,30 +32,6 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
   return null;
 }
 
-const URL_RE = /(https?:\/\/[^\s]+)/;
-
-function OutputWithLinks({ output }: { output: string }) {
-  const parts = output.split(URL_RE);
-  return (
-    <p className="font-mono text-[10px] text-[#888] leading-5 whitespace-pre-wrap break-all line-clamp-3">
-      {parts.map((part, i) =>
-        URL_RE.test(part) ? (
-          <a
-            key={i}
-            href={part}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#d19a66] underline underline-offset-2 hover:text-[#e0b07a]"
-          >
-            {part}
-          </a>
-        ) : (
-          part
-        )
-      )}
-    </p>
-  );
-}
 
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
@@ -76,9 +52,12 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           : "border-[#333] bg-[#1e1e1e]"
       }`}
     >
-      <div
-        className={`flex items-center gap-2 px-3 py-2 ${canExpand ? "cursor-pointer" : ""}`}
-        onClick={() => canExpand && setExpanded((v) => !v)}
+      <button
+        type="button"
+        aria-expanded={canExpand ? expanded : undefined}
+        disabled={!canExpand}
+        className={`flex w-full items-center gap-2 px-3 py-2 text-left bg-transparent border-0 ${canExpand ? "cursor-pointer" : "cursor-default"}`}
+        onClick={() => setExpanded((v) => !v)}
       >
         <span className="text-[11px]">{icon}</span>
         <span
@@ -109,15 +88,17 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             </span>
           )}
         </div>
-      </div>
+      </button>
 
       {expanded && canExpand && (
         <div className="border-t border-[#2a2a2a] px-3 py-2 space-y-2">
           <div>
             <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Input</p>
-            <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2 overflow-x-auto">
-              {JSON.stringify(args, null, 2)}
-            </pre>
+            <div className="overflow-y-auto max-h-[200px]">
+              <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+                {JSON.stringify(args, null, 2)}
+              </pre>
+            </div>
           </div>
           <div>
             <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Output</p>
