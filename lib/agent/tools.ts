@@ -5,6 +5,12 @@ import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
 import { appendMemory } from "@/lib/memoryClient";
+import { runGit } from "./git";
+
+const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
+export function isGitMutation(toolName: string): boolean {
+  return GIT_MUTATION_TOOLS.has(toolName);
+}
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -99,6 +105,69 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         content: { type: "string", description: "The information to save to memory." },
       },
       required: ["content"],
+    },
+  },
+  {
+    name: "git_status",
+    description: "Show the working tree status of the current workspace (porcelain v1 format).",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "git_diff",
+    description: "Show unstaged changes. If `path` is provided, diff only that file.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Optional file path relative to workspace root" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "git_log",
+    description: "Show the last 10 commits as a one-line summary.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "git_commit",
+    description: "Stage all changes and create a commit with the given message. Requires user approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The commit message" },
+      },
+      required: ["message"],
+    },
+  },
+  {
+    name: "git_branch",
+    description: "Create a new branch (if create=true) or switch to an existing one. Requires user approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The branch name" },
+        create: { type: "boolean", description: "If true, create the branch before switching" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "git_checkout",
+    description: "Restore a file from HEAD or switch to a branch. Requires user approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "A branch name or file path" },
+      },
+      required: ["target"],
     },
   },
 ];
@@ -329,6 +398,8 @@ export async function executeTool(
         if (!/^https?:\/\//i.test(url)) {
           return `Fetch failed: only http:// and https:// URLs are supported.`;
         }
+        // SSRF note: loopback/LAN addresses are reachable on a desktop app.
+        // Accepted risk — the AI is a trusted local agent with workspace access.
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
         const res = await fetch(url, { signal: controller.signal });
@@ -357,6 +428,38 @@ export async function executeTool(
       } catch (err) {
         return `Remember failed: ${err instanceof Error ? err.message : String(err)}`;
       }
+    }
+
+    case "git_status":
+      return runGit(["status", "--porcelain=v1"], workspaceRoot);
+
+    case "git_diff": {
+      const path = (args.path as string | undefined)?.trim();
+      return runGit(path ? ["diff", "--", path] : ["diff"], workspaceRoot);
+    }
+
+    case "git_log":
+      return runGit(["log", "--oneline", "-10"], workspaceRoot);
+
+    case "git_commit": {
+      const message = (args.message as string | undefined)?.trim();
+      if (!message) return "git_commit failed: message is required.";
+      const addOut = await runGit(["add", "-A"], workspaceRoot);
+      if (addOut.startsWith("Git error:") || addOut.startsWith("Not a git repository") || addOut.startsWith("Git is not installed")) return addOut;
+      return runGit(["commit", "-m", message], workspaceRoot);
+    }
+
+    case "git_branch": {
+      const branchName = (args.name as string | undefined)?.trim();
+      if (!branchName) return "git_branch failed: name is required.";
+      const create = args.create === true;
+      return runGit(create ? ["checkout", "-b", branchName] : ["checkout", branchName], workspaceRoot);
+    }
+
+    case "git_checkout": {
+      const target = (args.target as string | undefined)?.trim();
+      if (!target) return "git_checkout failed: target is required.";
+      return runGit(["checkout", target], workspaceRoot);
     }
 
     default:

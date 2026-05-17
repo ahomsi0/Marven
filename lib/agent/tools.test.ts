@@ -16,8 +16,8 @@ afterEach(async () => {
 });
 
 describe("TOOL_DEFINITIONS", () => {
-  it("exports 8 tools", () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(8);
+  it("exports 14 tools", () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(14);
     const names = TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toContain("list_files");
     expect(names).toContain("read_file");
@@ -27,6 +27,12 @@ describe("TOOL_DEFINITIONS", () => {
     expect(names).toContain("web_search");
     expect(names).toContain("fetch_url");
     expect(names).toContain("remember");
+    expect(names).toContain("git_status");
+    expect(names).toContain("git_diff");
+    expect(names).toContain("git_log");
+    expect(names).toContain("git_commit");
+    expect(names).toContain("git_branch");
+    expect(names).toContain("git_checkout");
   });
 });
 
