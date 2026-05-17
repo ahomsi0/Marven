@@ -94,20 +94,22 @@ function fileIconColor(name: string): string {
 
 function FileIcon({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  const color = fileIconColor(name);
-  const label =
-    ext === "ts" ? "TS" : ext === "tsx" ? "TS" :
-    ext === "js" ? "JS" : ext === "jsx" ? "JS" :
-    ext === "json" ? "{}" :
-    ext === "css" || ext === "scss" ? "CSS" :
-    ext === "html" ? "HTML" :
-    ext === "md" || ext === "mdx" ? "MD" :
-    ext === "py" ? "PY" :
-    ext === "yml" || ext === "yaml" ? "YML" :
-    ["png","jpg","jpeg","gif","svg","webp","ico"].includes(ext) ? "IMG" :
-    ext ? ext.toUpperCase().slice(0, 3) : "·";
+  // Symbol-based icons matching VS Code's compact style — keeps widths predictable
+  // so file names align with folder names in the tree.
+  let label: string;
+  let color: string;
+  let size = "text-[10px]";
+  if (ext === "html") { label = "<>"; color = "#e67e22"; }
+  else if (ext === "css" || ext === "scss") { label = "#"; color = "#ec4899"; size = "text-[12px]"; }
+  else if (ext === "json") { label = "{}"; color = "#eab308"; }
+  else if (ext === "md" || ext === "mdx") { label = "MD"; color = "#5b9cf6"; }
+  else if (ext === "ts" || ext === "tsx") { label = "TS"; color = "#3b82f6"; }
+  else if (ext === "js" || ext === "jsx") { label = "JS"; color = "#eab308"; }
+  else if (ext === "py") { label = "PY"; color = "#3b82f6"; }
+  else if (["png","jpg","jpeg","gif","svg","webp","ico"].includes(ext)) { label = "·"; color = "#a855f7"; size = "text-[12px]"; }
+  else { label = "·"; color = "#888"; size = "text-[12px]"; }
   return (
-    <span className="w-5 shrink-0 text-right font-mono text-[8px] font-bold leading-none" style={{ color }}>
+    <span className={`inline-flex h-3 w-3 shrink-0 items-center justify-center font-mono ${size} font-bold leading-none`} style={{ color }}>
       {label}
     </span>
   );
@@ -164,7 +166,7 @@ function TreeItem({
           ? "bg-[rgba(209,154,102,0.12)] text-[#d19a66]"
           : "text-[#ccc] hover:bg-[#2a2a2a] hover:text-[#e0e0e0]"
       }`}
-      style={{ paddingLeft: pl + 14 }}
+      style={{ paddingLeft: pl }}
     >
       <FileIcon name={node.name} />
       <span className="truncate font-mono text-[12px] leading-5">{node.name}</span>
