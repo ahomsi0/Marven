@@ -764,11 +764,18 @@ export function SettingsModal({ shortcuts, onSave, onClose, promptTemplates, mcp
                     disabled={mcpLoading === server.id}
                     onClick={async () => {
                       setMcpLoading(server.id);
-                      await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "stop", server }) });
-                      const updated = mcpList.filter((s) => s.id !== server.id);
-                      setMcpList(updated);
-                      onSaveMCPServers(updated);
-                      setMcpLoading(null);
+                      try {
+                        await fetch("/api/mcp", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "stop", server }),
+                        });
+                        const updated = mcpList.filter((s) => s.id !== server.id);
+                        setMcpList(updated);
+                        onSaveMCPServers(updated);
+                      } finally {
+                        setMcpLoading(null);
+                      }
                     }}
                     className="text-[#555] hover:text-red-400 text-[12px] shrink-0 disabled:opacity-30"
                   >×</button>
