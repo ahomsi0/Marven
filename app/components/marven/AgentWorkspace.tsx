@@ -577,7 +577,18 @@ export function AgentWorkspace({
                       <polygon points="6 4 20 12 6 20 6 4" />
                     </svg>
                   ),
-                  onClick: () => onSlashCommand?.("/preview"),
+                  onClick: () => {
+                    // Open the active HTML file in the external browser via the file:// protocol
+                    const tab = activeTabIndex >= 0 ? openTabs[activeTabIndex] : null;
+                    if (tab?.kind === "file") {
+                      const abs = tab.path.startsWith("/") ? tab.path : `${workspaceRoot ?? ""}/${tab.path}`;
+                      const url = `file://${abs}`;
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const el = (window as any).marvenElectron;
+                      if (el?.openExternal) el.openExternal(url, "default");
+                      else window.open(url, "_blank", "noopener,noreferrer");
+                    }
+                  },
                 },
                 {
                   key: "diff",
@@ -618,6 +629,8 @@ export function AgentWorkspace({
                   key: "tasks",
                   label: "Background tasks",
                   badge: isRunning,
+                  hint: "soon",
+                  disabled: true,
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -626,17 +639,19 @@ export function AgentWorkspace({
                       <rect x="14" y="14" width="7" height="7" rx="1" />
                     </svg>
                   ),
-                  onClick: () => onSlashCommand?.("/tasks"),
+                  onClick: () => {},
                 },
                 {
                   key: "plan",
                   label: "Plan",
+                  hint: "soon",
+                  disabled: true,
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l1.5 1.5L13 4M9 12l1.5 1.5L13 11M9 19l1.5 1.5L13 18M17 5h4M17 12h4M17 19h4M4 5h.01M4 12h.01M4 19h.01" />
                     </svg>
                   ),
-                  onClick: () => onSlashCommand?.("/plan"),
+                  onClick: () => {},
                 },
               ]}
             />
