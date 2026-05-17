@@ -367,16 +367,22 @@ export async function executeTool(
         // If command has an explicit port, wait for that one
         if (explicitPort) {
           const port = parseInt(explicitPort[1]);
-          const alive = await waitForPort(port, 4000);
-          if (alive) return `Server started.\nOpen: http://localhost:${port}`;
-          return `Server launching on port ${port}. Open: http://localhost:${port}`;
+          const alive = await waitForPort(port, 8000);
+          const url = `http://localhost:${port}`;
+          return alive
+            ? `SERVER READY. Tell the user the URL is ${url}\n\nLive URL: ${url}`
+            : `SERVER STARTING on port ${port}. Tell the user the URL is ${url}\n\nLive URL: ${url}`;
         }
 
         // No explicit port — probe common dev server ports (Vite=5173, CRA/Next=3000, webpack=8080, etc.)
+        // Use a longer scan window — npm start can take 10s+ on first run / cold caches.
         const COMMON_PORTS = [3000, 3001, 5173, 4200, 8080, 8000, 4000];
-        const port = await waitForFirstPort(COMMON_PORTS, 5000);
-        if (port) return `Server started.\nOpen: http://localhost:${port}`;
-        return `Server process launched. Try: http://localhost:3000 or http://localhost:5173`;
+        const port = await waitForFirstPort(COMMON_PORTS, 15000);
+        if (port) {
+          const url = `http://localhost:${port}`;
+          return `SERVER READY. Tell the user the URL is ${url}\n\nLive URL: ${url}`;
+        }
+        return `SERVER LAUNCHING (port not detected within 15s). Tell the user to open http://localhost:3000 (most likely) or http://localhost:5173.\n\nLive URL: http://localhost:3000`;
       }
 
       const output = await streamShellCommand(cmd, cwd, (chunk) => onProgress?.(chunk));

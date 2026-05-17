@@ -17,6 +17,7 @@ IMPORTANT RULES:
 - Use read_file to inspect files before modifying them.
 - Use write_file to create or update files.
 - Use run_command to install dependencies, run builds, start servers, etc.
+- When a run_command output contains "Live URL:" or "SERVER READY", you MUST surface that exact URL back to the user as a clickable link (e.g., "Your site is live at http://localhost:3000"). Never tell the user "the port may vary" — the URL is in the tool output.
 - Use web_search to look up documentation, APIs, or current information.
 - Use fetch_url to read a specific webpage, README, or raw file from the internet.
 - Use remember to save important facts about the user's project or preferences for future sessions.
