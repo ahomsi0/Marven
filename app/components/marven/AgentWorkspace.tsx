@@ -15,8 +15,8 @@ import type { PaletteCommand } from "./CommandPalette";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 
 // Memory popover — uses position:fixed with viewport coordinates so it can
-// extend past the workspace's overflow-hidden bounds. Anchors to the bottom of
-// the trigger button; clamps to viewport edges so it never goes off-screen.
+// extend past the workspace's overflow-hidden bounds. Anchors at the LEFT edge
+// of the trigger button and drops down to the right.
 function MemoryPopover({
   anchor,
   memory,
@@ -28,30 +28,71 @@ function MemoryPopover({
 }) {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return null;
-  const width = 320;
-  // Right-align with the button but clamp so the left edge is never off-screen
-  const right = Math.max(8, window.innerWidth - rect.right);
+  const width = 340;
+  // Left-align with the button; clamp so the right edge stays on-screen.
+  const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
   const top = rect.bottom + 6;
+
+  // Parse memory entries — each starts with "- [ISO timestamp] content"
+  const entries = memory
+    .split(/\n\s*\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const m = entry.match(/^-\s*\[([^\]]+)\]\s*([\s\S]*)$/);
+      return m
+        ? { timestamp: m[1], content: m[2].trim() }
+        : { timestamp: null, content: entry.replace(/^-\s*/, "") };
+    });
+
   return (
     <div
-      className="fixed z-[60] rounded-md border border-[#333] bg-[#1e1e1e] shadow-xl"
-      style={{ right, top, width }}
+      className="fixed z-[60] overflow-hidden rounded-lg border border-[#333] bg-[#1a1a1a] shadow-2xl"
+      style={{ left, top, width }}
     >
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-widest text-[#888]">Agent Memory</span>
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1e1e1e] px-3 py-2.5">
+        <span className="text-[10px] font-medium uppercase tracking-widest text-[#888]">
+          Agent Memory
+        </span>
         <button
           type="button"
           onClick={onClear}
-          className="text-[10px] text-[#666] transition-colors hover:text-red-400"
+          className="rounded px-1.5 py-0.5 text-[10px] text-[#666] transition-colors hover:bg-red-500/10 hover:text-red-400"
         >
           Clear all
         </button>
       </div>
-      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-relaxed text-[#aaa]">
-        {memory}
-      </pre>
+      <div className="max-h-72 overflow-y-auto divide-y divide-[#252525]">
+        {entries.length === 0 ? (
+          <p className="p-4 text-center text-[11px] text-[#555]">No memories yet.</p>
+        ) : (
+          entries.map((e, i) => (
+            <div key={i} className="px-3 py-2.5">
+              {e.timestamp && (
+                <div className="mb-1 text-[9px] uppercase tracking-wider text-[#555]">
+                  {formatRelativeTime(e.timestamp)}
+                </div>
+              )}
+              <div className="text-[12px] leading-relaxed text-[#d4d4d4] break-words">
+                {e.content}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return iso;
+  const diffSec = Math.round((Date.now() - then) / 1000);
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.round(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.round(diffSec / 3600)}h ago`;
+  if (diffSec < 604800) return `${Math.round(diffSec / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 interface AgentWorkspaceProps {
