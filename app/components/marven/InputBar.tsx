@@ -6,6 +6,8 @@ import type { AIProvider, ImageAttachment, PromptTemplate } from "@/types";
 import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
 import { GroupedModelDropdown } from "@/app/components/marven/GroupedModelDropdown";
 
+const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
 interface InputBarProps {
   value: string;
@@ -91,7 +93,9 @@ export function InputBar({
   }
 
   async function addFiles(files: FileList | File[]) {
-    const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const imageFiles = Array.from(files).filter(
+      (f) => ALLOWED_MIME_TYPES.includes(f.type as typeof ALLOWED_MIME_TYPES[number]) && f.size <= MAX_BYTES
+    );
     if (!imageFiles.length) return;
     const newAttachments = await Promise.all(imageFiles.map(fileToAttachment));
     onAttachmentsChange?.([...(attachments ?? []), ...newAttachments]);
@@ -119,7 +123,7 @@ export function InputBar({
       if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) { const cmd = "command" in sel ? sel.command : `/template:${sel.trigger}`; selectCommand(cmd); } return; }
       if (event.key === "Escape") { event.preventDefault(); onChange(""); return; }
     }
-    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSend(); }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (value.trim() || (attachments && attachments.length > 0)) onSend(); }
   }
 
   return (
@@ -158,7 +162,7 @@ export function InputBar({
         {attachments && attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pt-2">
             {attachments.map((att, i) => (
-              <div key={i} className="relative">
+              <div key={`${att.name}-${att.base64.slice(-8)}`} className="relative">
                 <img
                   src={att.base64}
                   alt={att.name}
@@ -239,7 +243,7 @@ export function InputBar({
           <button
             type="button"
             onClick={onSend}
-            disabled={isLoading || !value.trim()}
+            disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0))}
             className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
