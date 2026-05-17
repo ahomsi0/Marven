@@ -361,24 +361,16 @@ export default function Home() {
   function refreshFileBuffer(rawPath: string, root: string | null = workspaceRoot) {
     const rel = toRelativePath(rawPath, root);
     const basename = rawPath.split("/").filter(Boolean).pop() ?? rawPath;
-    fetch("/api/workspace/files", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: rel }),
-    })
-      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+    readWorkspaceFile(rel, root)
       .then(({ ok, data }) => {
         if (!ok || typeof data?.content !== "string") return;
         setFileBuffers((prev) => {
-          // Try multiple lookup keys: the relative path, the raw (possibly absolute)
-          // path, and the basename. Whichever one matches, refresh that buffer.
           const existing =
             prev.get(rel) ?? prev.get(rawPath) ?? prev.get(basename) ?? null;
           if (!existing) return prev;
           if (existing.dirty) return prev;
           const next = new Map(prev);
           const fresh = { content: data.content, dirty: false, loading: false };
-          // Update under every key the buffer might be reachable by.
           next.set(rel, fresh);
           if (rawPath !== rel) next.set(rawPath, fresh);
           if (basename !== rel && basename !== rawPath) next.set(basename, fresh);
@@ -441,6 +433,33 @@ export default function Home() {
     );
   }
 
+  // POST /api/workspace/files (file read) with auto-recovery if the server has
+  // forgotten the workspace root. Re-PATCHes the known client root once and
+  // retries. Returns { ok, status, data } from the (possibly second) attempt.
+  async function readWorkspaceFile(relPath: string, root: string | null) {
+    const doRead = async () => {
+      const r = await fetch("/api/workspace/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: relPath }),
+      });
+      const d = await r.json().catch(() => ({}));
+      return { ok: r.ok, status: r.status, data: d };
+    };
+    const first = await doRead();
+    if (first.ok) return first;
+    const recoverableRoot = root ?? workspaceRoot;
+    if (recoverableRoot && first.data?.error && /workspace/i.test(first.data.error)) {
+      await fetch("/api/workspace/files", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: recoverableRoot }),
+      });
+      return doRead();
+    }
+    return first;
+  }
+
   async function loadWorkspaceFiles() {
     let res = await fetch("/api/workspace/files");
     let data = await res.json();
@@ -487,12 +506,7 @@ export default function Home() {
       next.set(path, { content: "", dirty: false, loading: true });
       return next;
     });
-    fetch("/api/workspace/files", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
-    })
-      .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }))
+    readWorkspaceFile(path, workspaceRoot)
       .then(({ ok, status, data }) => {
         const errorMsg = !ok
           ? `${status}: ${data?.error ?? "request failed"}`
