@@ -60,6 +60,9 @@ interface ChatLayoutProps {
   liveTerminalOutput?: string;
   checkpoints?: string[];
   onApproveToolCall?: (callId: string, accept: boolean) => void;
+  recentWorkspaces?: string[];
+  onSelectRecent?: (path: string) => void;
+  appVersion?: string;
   onAgentInputChange: (v: string) => void;
   onAgentSend: () => void;
   onAgentStop: () => void;
@@ -147,6 +150,9 @@ export function ChatLayout({
   liveTerminalOutput,
   checkpoints,
   onApproveToolCall,
+  recentWorkspaces,
+  onSelectRecent,
+  appVersion,
   onAgentInputChange,
   onAgentSend,
   onAgentStop,
@@ -366,6 +372,10 @@ export function ChatLayout({
               liveTerminalOutput={liveTerminalOutput}
               checkpoints={checkpoints}
               onApproveToolCall={onApproveToolCall}
+              recentWorkspaces={recentWorkspaces}
+              onSelectRecent={onSelectRecent}
+              onOpenSettings={() => setSettingsOpen(true)}
+              appVersion={appVersion}
               onProviderChange={onProviderChange}
               onModelChange={onModelChange}
               onToggleSpeech={onToggleSpeech}

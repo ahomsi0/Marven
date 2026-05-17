@@ -7,6 +7,7 @@ import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
+import { WorkspaceLanding } from "./WorkspaceLanding";
 
 interface AgentWorkspaceProps {
   messages: AgentMessage[];
@@ -43,6 +44,10 @@ interface AgentWorkspaceProps {
   checkpoints?: string[];
   liveTerminalOutput?: string;
   onApproveToolCall?: (callId: string, accept: boolean) => void;
+  recentWorkspaces?: string[];
+  onSelectRecent?: (path: string) => void;
+  onOpenSettings?: () => void;
+  appVersion?: string;
 }
 
 export function AgentWorkspace({
@@ -80,6 +85,10 @@ export function AgentWorkspace({
   checkpoints = [],
   liveTerminalOutput,
   onApproveToolCall,
+  recentWorkspaces = [],
+  onSelectRecent,
+  onOpenSettings,
+  appVersion,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -224,6 +233,19 @@ export function AgentWorkspace({
     rightDragStartWidth.current = rightWidth;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+  }
+
+  // Landing page when no workspace is open
+  if (!workspaceRoot) {
+    return (
+      <WorkspaceLanding
+        recentWorkspaces={recentWorkspaces}
+        version={appVersion}
+        onOpenFolder={onOpenFolder}
+        onSelectRecent={(p) => onSelectRecent?.(p)}
+        onOpenSettings={() => onOpenSettings?.()}
+      />
+    );
   }
 
   return (

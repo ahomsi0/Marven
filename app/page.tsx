@@ -193,6 +193,11 @@ export default function Home() {
   // ─── Agent workspace ────────────────────────────────────────────────────────
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem("marven-recent-workspaces") ?? "[]"); }
+    catch { return []; }
+  });
   const [selectedAgentFilePath, setSelectedAgentFilePath] = useState<string | null>(null);
   const [selectedAgentFileContent, setSelectedAgentFileContent] = useState("");
   const [isAgentFileLoading, setIsAgentFileLoading] = useState(false);
@@ -424,6 +429,11 @@ export default function Home() {
     if (res.ok) {
       setWorkspaceRoot(folderPath);
       await loadWorkspaceFiles();
+      setRecentWorkspaces((prev) => {
+        const next = [folderPath, ...prev.filter((p) => p !== folderPath)].slice(0, 25);
+        try { localStorage.setItem("marven-recent-workspaces", JSON.stringify(next)); } catch {}
+        return next;
+      });
     }
   }
 
@@ -1160,6 +1170,9 @@ export default function Home() {
         liveTerminalOutput={liveTerminalOutput}
         checkpoints={checkpoints}
         onApproveToolCall={approve}
+        recentWorkspaces={recentWorkspaces}
+        onSelectRecent={openWorkspaceFolder}
+        appVersion="1.6.0"
         onAgentInputChange={setAgentInput}
         onAgentSend={() => { agentStreamSend(agentInput); setAgentInput(""); }}
         onAgentStop={agentStreamStop}
