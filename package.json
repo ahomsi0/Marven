@@ -1,6 +1,6 @@
 {
   "name": "marven",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {

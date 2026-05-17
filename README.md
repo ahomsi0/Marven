@@ -4,7 +4,7 @@
 
 Marven is a desktop app that combines a multi-provider AI chat with a VS Code–style coding agent. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Files, conversations, and memory stay on your machine.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPLv3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ahomsi0/Marven)](https://github.com/ahomsi0/Marven/releases/latest)
 
 ---
@@ -150,6 +150,8 @@ Continuous releases are published to GitHub via a `v*` tag push. The CI builds M
 
 ## License
 
-[MIT](LICENSE) — see the LICENSE file for the full text. In short: do whatever you want with this, just keep the copyright notice. No warranty.
+[AGPLv3](LICENSE) — see the LICENSE file for the full text.
+
+**In short:** you can run, study, modify, and distribute Marven freely — but any modifications you distribute (or run as a network service) must also be released under AGPLv3 with the source code available. This protects against proprietary forks or rebranded clones. No warranty.
 
 Made by Ahmad Homsi.

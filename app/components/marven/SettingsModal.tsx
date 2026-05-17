@@ -1527,7 +1527,7 @@ export function SettingsModal({
             </div>
 
             <p className="pt-1 text-center text-[10px] text-[#444]">
-              Made by Ahmad Homsi · MIT licensed
+              Made by Ahmad Homsi · AGPLv3 licensed
             </p>
           </div>
         )}
