@@ -98,7 +98,7 @@ interface ViewMenuItem {
 function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; items: ViewMenuItem[]; onClose: () => void }) {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return null;
-  const width = 210;
+  const width = 180;
   const right = Math.max(8, window.innerWidth - rect.right);
   const top = rect.bottom + 4;
   return (
@@ -113,14 +113,14 @@ function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; item
           type="button"
           disabled={it.disabled}
           onClick={() => { it.onClick(); onClose(); }}
-          className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[11px] text-[#d4d4d4] transition-colors hover:bg-[#252525] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[#d4d4d4] transition-colors hover:bg-[#252525] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[#aaa]">
+          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center text-[#aaa]">
             {it.icon}
-            {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5b9cf6]" />}
+            {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1 w-1 rounded-full bg-[#5b9cf6]" />}
           </span>
           <span className="flex-1">{it.label}</span>
-          {it.hint && <span className="font-mono text-[9px] text-[#666]">{it.hint}</span>}
+          {it.hint && <span className="font-mono text-[8px] text-[#666]">{it.hint}</span>}
         </button>
       ))}
     </div>
@@ -573,7 +573,7 @@ export function AgentWorkspace({
                   label: "Preview",
                   hint: "⇧⌘P",
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <polygon points="6 4 20 12 6 20 6 4" />
                     </svg>
                   ),
@@ -584,7 +584,7 @@ export function AgentWorkspace({
                   label: "Diff" + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
                   hint: "⇧⌘D",
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <rect x="3" y="4" width="7" height="16" rx="1" />
                       <rect x="14" y="4" width="7" height="16" rx="1" />
                     </svg>
@@ -597,7 +597,7 @@ export function AgentWorkspace({
                   label: "Terminal",
                   hint: "⌃`",
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l4 4-4 4M11 16h7" />
                     </svg>
                   ),
@@ -608,7 +608,7 @@ export function AgentWorkspace({
                   label: "Files",
                   hint: "⇧⌘F",
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
                     </svg>
                   ),
@@ -619,7 +619,7 @@ export function AgentWorkspace({
                   label: "Background tasks",
                   badge: isRunning,
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <rect x="3" y="3" width="7" height="7" rx="1" />
                       <rect x="14" y="3" width="7" height="7" rx="1" />
                       <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -632,7 +632,7 @@ export function AgentWorkspace({
                   key: "plan",
                   label: "Plan",
                   icon: (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l1.5 1.5L13 4M9 12l1.5 1.5L13 11M9 19l1.5 1.5L13 18M17 5h4M17 12h4M17 19h4M4 5h.01M4 12h.01M4 19h.01" />
                     </svg>
                   ),
