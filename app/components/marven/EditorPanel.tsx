@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import { MarvenLogo } from "./MarvenLogo";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -261,10 +262,9 @@ export function EditorPanel({
         ) : (
           /* Empty editor state — watermark + shortcuts */
           <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-[#1e1e1e]">
-            <svg className="h-32 w-32 text-[#222]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M4 4h16v16H4z" />
-              <path d="M7 8h4v2H7zM7 12h10v2H7zM7 16h6v2H7z" fill="#1a1a1a" />
-            </svg>
+            <div className="opacity-15">
+              <MarvenLogo size={160} />
+            </div>
             <div className="space-y-2 text-[12px] text-[#555]">
               <div className="flex items-center justify-between gap-12">
                 <span>Open Chat</span>
