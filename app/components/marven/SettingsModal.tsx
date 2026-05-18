@@ -517,52 +517,51 @@ export function SettingsModal({
                     >
                       {/* Mini app mockup */}
                       <div
-                        className="flex h-[88px] w-full overflow-hidden"
+                        className="flex h-[56px] w-full overflow-hidden"
                         style={{ background: t.bg }}
                       >
                         {/* Left sidebar */}
                         <div
-                          className="flex w-1/4 flex-col gap-1 p-1.5"
+                          className="flex w-1/4 flex-col gap-0.5 p-1"
                           style={{ background: t.surface, borderRight: `1px solid ${t.border}` }}
                         >
-                          <div className="h-1 w-3/4 rounded-sm" style={{ background: t.text, opacity: 0.7 }} />
-                          <div className="h-1 w-1/2 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
-                          <div className="h-1 w-2/3 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
+                          <div className="h-[2px] w-3/4 rounded-sm" style={{ background: t.text, opacity: 0.7 }} />
+                          <div className="h-[2px] w-1/2 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
+                          <div className="h-[2px] w-2/3 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
                         </div>
                         {/* Editor */}
-                        <div className="flex flex-1 flex-col gap-1 p-1.5">
-                          <div className="flex gap-1">
-                            <div className="h-1.5 w-6 rounded-sm" style={{ background: t.surface2 }} />
-                            <div className="h-1.5 w-1.5 rounded-sm" style={{ background: "#d19a66" }} />
+                        <div className="flex flex-1 flex-col gap-0.5 p-1">
+                          <div className="flex gap-0.5">
+                            <div className="h-1 w-3 rounded-sm" style={{ background: t.surface2 }} />
+                            <div className="h-1 w-1 rounded-sm" style={{ background: "#d19a66" }} />
                           </div>
-                          <div className="mt-1 space-y-0.5">
-                            <div className="h-0.5 w-4/5" style={{ background: t.text, opacity: 0.7 }} />
-                            <div className="h-0.5 w-3/5" style={{ background: t.muted, opacity: 0.6 }} />
-                            <div className="h-0.5 w-2/3" style={{ background: t.text, opacity: 0.7 }} />
-                            <div className="h-0.5 w-1/2" style={{ background: t.muted, opacity: 0.6 }} />
+                          <div className="mt-0.5 space-y-[1px]">
+                            <div className="h-[1px] w-4/5" style={{ background: t.text, opacity: 0.7 }} />
+                            <div className="h-[1px] w-3/5" style={{ background: t.muted, opacity: 0.6 }} />
+                            <div className="h-[1px] w-2/3" style={{ background: t.text, opacity: 0.7 }} />
                           </div>
                         </div>
                         {/* Right panel */}
                         <div
-                          className="w-1/4 p-1.5"
+                          className="w-1/4 p-1"
                           style={{ background: t.surface, borderLeft: `1px solid ${t.border}` }}
                         >
-                          <div className="h-1 w-full rounded-sm" style={{ background: t.muted, opacity: 0.5 }} />
+                          <div className="h-[2px] w-full rounded-sm" style={{ background: t.muted, opacity: 0.5 }} />
                         </div>
                       </div>
                       {/* Label bar */}
                       <div
-                        className={`flex items-center justify-between border-t px-3 py-1.5 ${
+                        className={`flex items-center justify-between border-t px-2.5 py-1 ${
                           active
                             ? "border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10"
                             : "border-[var(--m-border-subtle)] bg-[var(--m-surface)]"
                         }`}
                       >
-                        <span className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                        <span className={`text-[11px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
                           {t.label}
                         </span>
                         {active && (
-                          <svg className="h-3 w-3 text-[var(--m-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                          <svg className="h-2.5 w-2.5 text-[var(--m-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                           </svg>
                         )}
