@@ -128,7 +128,7 @@ Or skip the project entirely — **+ New chat** for plain conversation, voice co
 
 Project layout:
 
-```
+
 app/
   api/             # Next.js API routes — chat, agent, workspace, mcp, memory, tts, stt
   components/marven/  # All UI components
@@ -138,7 +138,7 @@ lib/
   *.ts             # Shared helpers (speak, storage, memory, mcp client, etc.)
 electron/          # Electron main + preload
 docs/superpowers/  # Design specs & implementation plans (waves 1–5)
-```
+
 
 ---
 

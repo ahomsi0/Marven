@@ -19,6 +19,7 @@ import type {
   PromptTemplate,
   ImageAttachment,
   EditorTab,
+  AgentMessage,
 } from "@/types";
 import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
@@ -219,6 +220,13 @@ export default function Home() {
 
   const [agentInput, setAgentInput] = useState("");
   const [agentTerminalOutput, setAgentTerminalOutput] = useState("");
+  // Per-conversation cache of agent stream messages. The useAgentStream hook
+  // holds a single bucket of messages; without this, switching between agent
+  // conversations would show the wrong thread.
+  const agentMessagesByConvRef = useRef<Map<string, AgentMessage[]>>(new Map());
+  // The conversation whose messages are currently in the agent stream — used to
+  // detect when we need to save/restore.
+  const lastAgentConvIdRef = useRef<string | null>(null);
 
   const {
     messages: agentStreamMessages,
@@ -227,6 +235,7 @@ export default function Home() {
     send: agentStreamSend,
     stop: agentStreamStop,
     clearMessages: agentStreamClearMessages,
+    loadMessages: agentStreamLoadMessages,
     injectAssistantMessage: agentStreamInjectAssistantMessage,
     liveTerminalOutput,
     checkpoints,
@@ -312,6 +321,25 @@ export default function Home() {
     if (activeMode !== "agent") return;
     loadWorkspaceFiles().catch(() => {});
   }, [activeMode]);
+
+  // Save the active conversation's agent messages whenever they change so we
+  // can restore them when the user switches between agent conversations.
+  useEffect(() => {
+    if (activeMode !== "agent" || !activeConversationId) return;
+    agentMessagesByConvRef.current.set(activeConversationId, agentStreamMessages);
+  }, [agentStreamMessages, activeConversationId, activeMode]);
+
+  // When the active conversation changes (or we enter agent mode), swap the
+  // stream's messages to match the new conversation.
+  useEffect(() => {
+    if (activeMode !== "agent") return;
+    if (activeConversationId === lastAgentConvIdRef.current) return;
+    lastAgentConvIdRef.current = activeConversationId;
+    const saved = activeConversationId
+      ? agentMessagesByConvRef.current.get(activeConversationId) ?? []
+      : [];
+    agentStreamLoadMessages(saved);
+  }, [activeConversationId, activeMode, agentStreamLoadMessages]);
 
   // (file loading is now handled inside openFileTab)
 

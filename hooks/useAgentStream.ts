@@ -196,6 +196,15 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     setError(null);
   }, []);
 
+  // Used when switching between agent conversations — restores the full
+  // message thread of the conversation we're switching to.
+  const loadMessages = useCallback((next: AgentMessage[]) => {
+    setMessages(next);
+    setError(null);
+    setLiveTerminalOutput("");
+    setCheckpoints([]);
+  }, []);
+
   const injectAssistantMessage = useCallback((content: string) => {
     const msg: AgentMessage = {
       id: `sys-${Date.now()}`,
@@ -215,7 +224,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
   }, []);
 
   return {
-    messages, isRunning, error, send, stop, clearMessages, injectAssistantMessage,
+    messages, isRunning, error, send, stop, clearMessages, loadMessages, injectAssistantMessage,
     liveTerminalOutput, checkpoints, approve,
   };
 }
