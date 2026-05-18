@@ -1,40 +1,94 @@
 # Marven
 
-> A local AI desktop assistant — your data, your machine.
+> A local AI desktop assistant + full-featured code editor.
 
-Marven is a desktop app that combines a multi-provider AI chat with a full coding agent — file-aware, with a built-in editor, terminal, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Files, conversations, and memory stay on your machine.
+Marven is a desktop app that combines a multi-provider AI chat with a complete coding agent — file-aware, with a CodeMirror 6 editor, a real interactive terminal, global search, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama.
 
 [![License: AGPLv3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ahomsi0/Marven)](https://github.com/ahomsi0/Marven/releases/latest)
 
 ---
 
+## Privacy — what stays on your machine
+
+Always local (regardless of which provider you pick):
+
+- **Your files** — only loaded when you open them, or when an agent reads/writes them as part of a task you initiated
+- **Conversation history, settings, memory entries, recent workspaces** — stored in localStorage and a JSON settings file in your app data dir
+- **API keys** — kept in the settings JSON, never sent anywhere except as the `Authorization` header to the provider you chose
+
+What leaves your machine depends on which provider is selected:
+
+| Provider | Where your prompts / code / audio go |
+|---|---|
+| **Ollama** | Nowhere — runs entirely on your machine |
+| **Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM** | To that provider's API (subject to their data-retention policy) |
+| **"Hey Marven" voice** | Audio is sent to **Groq Whisper** for transcription |
+| **`fetch_url` / `web_search` agent tools** | The URL or query you ask for is fetched / sent to DuckDuckGo |
+
+If full privacy matters, use **Ollama** locally for chat/agent and turn off the wake word.
+
+---
+
 ## Features
 
-### Chat mode
-- **Six providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, Ollama (local)
-- **Conversation management**: pin, search, per-conversation system prompt, markdown export
-- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice)
-- **Image attachments** for vision-capable models (paperclip, paste, drag-drop)
-- **Slash commands** + user-defined prompt templates
-- **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc.
+### Editor (v2.0+)
+- **CodeMirror 6** with syntax for 14 languages: JS/TS/JSX/TSX, Python, HTML, CSS/SCSS, JSON, Markdown/MDX, YAML, Rust, Java, C/C++, PHP, SQL, XML
+- **Multi-cursor** editing, **code folding**, **bracket matching**, smart indent
+- **Light + dark syntax themes** that follow the app theme
+- **⌘F find / ⌘⌥F replace** with match highlighting, ⌘G next, Esc to close
+- **⌘⇧F global search** — grep across the workspace with click-to-open + line jump
+- **⌘K inline AI edit** — select code, describe a change, AI rewrites the selection (Cursor-style)
+- **⌘P quick file open** with fuzzy filename search
+- **⌘⇧P command palette** for all editor actions
+- **Multi-tab editor** with drag-reorder and per-tab buffer cache
+- **Format-on-save** via Prettier (toggle in Settings → General)
+- **Breadcrumbs** showing path segments
+
+### Real interactive terminal (v2.0+)
+- **xterm.js + node-pty** — type into it, run commands, see ANSI colors, use REPLs/TUIs (vim, top, etc.)
+- One PTY per workspace, opens in your shell with your `$PATH`
 
 ### Agent mode
 - **Three-pane layout**: file explorer · multi-tab editor · chat panel, all resizable
-- **Multi-tab editor** with drag-reorder and per-tab buffer cache
 - **Built-in tools**: `read_file`, `write_file`, `list_files`, `search_files`, `run_command`, `web_search`, `fetch_url`, `remember`
 - **Git tools** with approval gating: `git_status`, `git_diff`, `git_log`, `git_commit`, `git_branch`, `git_checkout`
 - **Diff viewer** with per-file revert (checkpoint snapshots before agent writes)
-- **Live terminal** streaming `run_command` output line-by-line
 - **MCP server support** (filesystem, GitHub, databases, anything that speaks Model Context Protocol)
 - **Persistent memory** — `remember` tool stores facts across sessions
-- **Live preview** — open the active HTML file in your chosen browser
+- **Per-conversation workspace** — each "New agent" remembers its own folder, open tabs, and message history
+- **Live preview** — open HTML, Markdown, or image files in your chosen browser
+- **Background tasks panel** with elapsed time + Stop button
+
+### Chat mode
+- **Six providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, Ollama (local)
+- **Conversation management**: pin, search by title, per-conversation system prompt, markdown export
+- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice). Wake word uses Groq Whisper — needs a Groq key.
+- **Image attachments** for vision-capable models (paperclip, paste, drag-drop) — non-vision providers get a graceful note
+- **Slash commands** + user-defined prompt templates
+- **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc. (macOS only)
 
 ### System
-- **Keyboard shortcuts**: ⌘S save · ⌘W close tab · ⌘B sidebar · ⌃` terminal · ⌃⌘I chat panel · ⌘P quick file open · ⌘⇧P command palette
-- **Quick file open** (⌘P) and **command palette** (⌘⇧P) for fuzzy navigation
+- **Light + dark themes** with theme-tracked CSS variables
 - **External browser routing** — AI-given links open in your preferred browser (Chrome / Firefox / Safari / Edge / Arc)
 - **Auto-updater** via `electron-updater` (checks GitHub Releases on launch)
+
+### Keyboard shortcuts
+| Shortcut | Action |
+|---|---|
+| ⌘S | Save current file (formats first if Format-on-save is enabled) |
+| ⌘W | Close active tab |
+| ⌘B | Toggle file explorer |
+| ⌃` | Toggle terminal |
+| ⌃⌘I | Toggle chat panel |
+| ⌘P | Quick file open (fuzzy) |
+| ⌘⇧P | Command palette |
+| ⌘⇧F | Global search |
+| ⌘F | Find in current file |
+| ⌘⌥F | Find and replace |
+| ⌘G / ⌘⇧G | Next / previous match |
+| ⌘K | Inline AI edit (with code selected) |
+| ⌘, | Open Settings |
 
 ---
 
@@ -42,7 +96,7 @@ Marven is a desktop app that combines a multi-provider AI chat with a full codin
 
 ### Download a release (recommended)
 
-Grab the latest installer for your platform from the [**Releases page**](https://github.com/ahomsi0/Marven/releases/latest):
+Grab the latest installer from the [**Releases page**](https://github.com/ahomsi0/Marven/releases/latest):
 
 | Platform | File |
 |---|---|
@@ -60,11 +114,11 @@ chmod +x Marven-*.AppImage
 ./Marven-*.AppImage
 ```
 
-The app will check for updates automatically on every launch.
+The app auto-updates on launch.
 
 ### Build from source
 
-Requires **Node.js 20+** and **npm**.
+Requires **Node.js 20+** and **npm**. The `node-pty` dependency uses a prebuilt native binding — most platforms work out of the box.
 
 ```bash
 git clone https://github.com/ahomsi0/Marven.git
@@ -84,7 +138,7 @@ Built artifacts land in `dist/`.
 
 ## First-time setup
 
-Open Settings (⌘, or the sidebar gear) and head to **Integrations → API Keys**:
+Open Settings (⌘, or the sidebar gear) and go to **Integrations → API Keys**:
 
 | Provider | Where to get a key | Free tier |
 |---|---|---|
@@ -95,7 +149,7 @@ Open Settings (⌘, or the sidebar gear) and head to **Integrations → API Keys
 | **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com) | Limited free credits |
 | **Ollama** | [ollama.com](https://ollama.com) — install locally | Free, fully offline |
 
-You only need **one** to get started. Voice ("Hey Marven") uses the Groq Whisper API, so a Groq key is required for that feature.
+You only need **one** to get started. Voice features ("Hey Marven", dictation) use **Groq Whisper**, so a Groq key is required for them. If Groq blocks `whisper-large-v3-turbo` for your org, Marven falls back to `whisper-large-v3` and `distil-whisper-large-v3-en` automatically.
 
 ### Picking a model
 
@@ -103,18 +157,19 @@ You only need **one** to get started. Voice ("Hey Marven") uses the Groq Whisper
 - **Cheap + fast**: Llama 3.1 8B on Groq, Gemma 3 27B on OpenRouter
 - **Fully local**: Ollama with `qwen2.5-coder` or `llama3.1` (8B+ params for reliable tool use)
 
-Smaller models (≤3B) tend to narrate tool calls instead of executing them. Marven includes fallback parsers for known quirks (e.g., qwen2.5-coder's function-call syntax) but a stronger model will always be more reliable.
+Smaller models (≤3B) tend to narrate tool calls instead of executing them. Marven has fallback parsers for known quirks (e.g., qwen2.5-coder's function-call syntax), but a stronger model is always more reliable.
 
 ---
 
 ## Quick start
 
-1. **Launch Marven.** Choose **Open project** on the landing page (or **Clone repo** to pull from a Git URL).
-2. **Pick agent mode** from the sidebar (+ New agent) once your folder is open.
-3. Type something like *"add a hello world button to index.html"* — the agent reads, writes, and surfaces the changes inline.
-4. Run *`npm start`* and the agent will detect the live URL and hand it back to you as a clickable link routed through your preferred browser.
+1. **Launch Marven.** Choose **Open project** on the landing page (or **Clone repo** to pull from Git).
+2. **Pick agent mode** from the sidebar (+ New agent).
+3. Try *"add a hello world button to index.html"* — the agent reads, writes, and surfaces the changes live in the editor.
+4. Run *`npm start`* and the agent detects the live URL and gives you a clickable link routed through your chosen browser.
+5. Or open the terminal panel (⌃`) and type commands yourself — it's a real shell.
 
-Or skip the project entirely — **+ New chat** for plain conversation, voice commands, image questions, etc.
+Or skip the project — **+ New chat** for plain conversation, voice commands, image questions, etc.
 
 ---
 
@@ -122,29 +177,33 @@ Or skip the project entirely — **+ New chat** for plain conversation, voice co
 
 - **Next.js 15** (App Router) — runs in-process inside Electron
 - **Electron 41** — desktop window + IPC + auto-updater
+- **CodeMirror 6** — code editor with multi-language support
+- **xterm.js + node-pty** — real interactive terminal
 - **TypeScript** end-to-end
-- **Tailwind CSS v4** for styling
-- **Vitest** for tests (60+ unit tests cover the agent loop, tool parsers, helpers)
+- **Tailwind CSS v4** with CSS-variable theme tokens
+- **Vitest** — 67+ tests covering the agent loop, tool parsers, helpers
 
 Project layout:
 
-
+```
 app/
-  api/             # Next.js API routes — chat, agent, workspace, mcp, memory, tts, stt
-  components/marven/  # All UI components
-hooks/             # React hooks (useVoice, useAgentStream, useEditorShortcuts)
+  api/                  # Next.js API routes — chat, agent, workspace, mcp, memory, tts, stt, search
+  components/marven/    # All UI components
+hooks/                  # React hooks (useVoice, useAgentStream, useEditorShortcuts)
 lib/
-  agent/           # Agent loop, tool definitions, provider clients (groq/openai/anthropic/ollama/...)
-  *.ts             # Shared helpers (speak, storage, memory, mcp client, etc.)
-electron/          # Electron main + preload
-docs/superpowers/  # Design specs & implementation plans (waves 1–5)
-
+  agent/                # Agent loop, tool definitions, provider clients
+  formatOnSave.ts       # Prettier wrapper
+  theme.ts              # Theme hook + localStorage persistence
+  workspaceState.ts     # Shared API-route module state
+electron/               # Electron main + preload (incl. PTY manager)
+docs/superpowers/       # Design specs & implementation plans
+```
 
 ---
 
 ## Releases
 
-Continuous releases are published to GitHub via a `v*` tag push. The CI builds Mac DMG, Windows EXE, and Linux AppImage in parallel and uploads them to a single release. See [`.github/workflows/build.yml`](.github/workflows/build.yml).
+Continuous releases publish via a `v*` tag push. CI builds Mac DMG, Windows EXE, and Linux AppImage in parallel and assembles them into one release. See [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ---
 
@@ -152,6 +211,6 @@ Continuous releases are published to GitHub via a `v*` tag push. The CI builds M
 
 [AGPLv3](LICENSE) — see the LICENSE file for the full text.
 
-**In short:** you can run, study, modify, and distribute Marven freely — but any modifications you distribute (or run as a network service) must also be released under AGPLv3 with the source code available. This protects against proprietary forks or rebranded clones. No warranty.
+**In short:** you can run, study, modify, and distribute Marven freely — but any modifications you distribute (or run as a network service) must also be released under AGPLv3 with source code available. This protects against proprietary forks or rebranded clones. No warranty.
 
 Made by Ahmad Homsi.

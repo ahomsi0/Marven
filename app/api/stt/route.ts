@@ -23,22 +23,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Forward audio to Groq Whisper
+    // Forward audio to Groq Whisper. Try models in fallback order in case one
+    // is blocked at the org level or temporarily unavailable.
     const prompt = formData.get("prompt") as string | null;
-    const groqForm = new FormData();
-    groqForm.append("file", audio, audio.name || "audio.webm");
-    groqForm.append("model", "whisper-large-v3-turbo");
-    groqForm.append("response_format", "json");
-    groqForm.append("language", "en");
-    groqForm.append("temperature", "0");
-    // initial_prompt biases Whisper toward expected vocabulary
-    if (prompt) groqForm.append("prompt", prompt);
+    const audioBytes = await audio.arrayBuffer();
 
-    const res = await fetch(GROQ_STT_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}` },
-      body: groqForm,
-    });
+    const MODEL_FALLBACKS = [
+      "whisper-large-v3-turbo",       // fastest, best quality (preferred)
+      "whisper-large-v3",             // slower, more accurate
+      "distil-whisper-large-v3-en",   // English only, very fast (last resort)
+    ];
+
+    let res: Response | null = null;
+    let lastError = "";
+    for (const model of MODEL_FALLBACKS) {
+      const groqForm = new FormData();
+      groqForm.append("file", new File([audioBytes], audio.name || "audio.webm", { type: audio.type }), audio.name || "audio.webm");
+      groqForm.append("model", model);
+      groqForm.append("response_format", "json");
+      groqForm.append("language", "en");
+      groqForm.append("temperature", "0");
+      if (prompt) groqForm.append("prompt", prompt);
+
+      const attempt = await fetch(GROQ_STT_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}` },
+        body: groqForm,
+      });
+      if (attempt.ok) { res = attempt; break; }
+      // If it's an org-block / model-unavailable error, try the next model.
+      const body = await attempt.text();
+      lastError = body;
+      const isModelBlocked = /blocked at the organization|model.*(not available|unavailable|not found)|invalid_request_error.*model/i.test(body);
+      if (!isModelBlocked) {
+        // Real error (auth, rate limit, etc.) — don't retry other models
+        res = attempt;
+        // Re-create the response so downstream can still read it
+        const rebuilt = new Response(body, { status: attempt.status, headers: attempt.headers });
+        res = rebuilt;
+        break;
+      }
+      // Otherwise loop and try the next fallback model
+    }
+    if (!res) {
+      return NextResponse.json(
+        { error: `All Whisper models blocked for your Groq org. Enable one at https://console.groq.com/settings/limits` },
+        { status: 500 }
+      );
+    }
 
     if (!res.ok) {
       const err = await res.text();
