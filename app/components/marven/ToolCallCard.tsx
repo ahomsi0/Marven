@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ToolCallState } from "@/types";
+
+const APPROVAL_TIMEOUT_SECONDS = 60;
 
 // Subtle gold-tinted SVG glyphs that match the rest of the workspace look
 function ToolGlyph({ tool }: { tool: string }) {
@@ -79,6 +81,29 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = output !== undefined || toolCall.liveOutput !== undefined;
 
+  // 60-second countdown shown while awaiting approval. Resets whenever status
+  // re-enters awaiting_approval; clears on unmount or status change. When the
+  // counter reaches 0 we stop ticking — the agent loop auto-rejects via its
+  // own timeout in registerApproval, and the next status update reflects it.
+  const [approvalSecondsLeft, setApprovalSecondsLeft] = useState<number>(APPROVAL_TIMEOUT_SECONDS);
+  useEffect(() => {
+    if (status !== "awaiting_approval") {
+      setApprovalSecondsLeft(APPROVAL_TIMEOUT_SECONDS);
+      return;
+    }
+    setApprovalSecondsLeft(APPROVAL_TIMEOUT_SECONDS);
+    const id = setInterval(() => {
+      setApprovalSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(id);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [status]);
+
   return (
     <div
       className={`overflow-hidden rounded-md border-l-2 transition-colors ${
@@ -146,7 +171,9 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       {toolCall.status === "awaiting_approval" && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
           <span className="text-[10px] text-[#d19a66]">
-            Awaiting approval — this will modify your repository.
+            {approvalSecondsLeft > 0
+              ? `Awaiting approval — ${approvalSecondsLeft}s remaining`
+              : "Awaiting approval — timed out"}
           </span>
           <div className="flex gap-1.5">
             <button

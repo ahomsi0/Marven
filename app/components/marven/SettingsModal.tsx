@@ -296,12 +296,17 @@ export function SettingsModal({
 
   useEffect(() => {
     if (activePage !== "connectors") return;
-    fetch("/api/mcp")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.status) setMcpStatuses(data.status);
-      })
-      .catch(() => {});
+    const fetchStatus = () => {
+      fetch("/api/mcp")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.status) setMcpStatuses(data.status);
+        })
+        .catch(() => {});
+    };
+    fetchStatus();
+    const id = setInterval(fetchStatus, 10_000);
+    return () => clearInterval(id);
   }, [activePage]);
 
   // Add shortcut form state

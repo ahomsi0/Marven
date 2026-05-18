@@ -10,6 +10,7 @@ export interface EditorShortcutsOptions {
   onToggleChat: () => void;
   onQuickOpen: () => void;
   onCommandPalette: () => void;
+  onOpenSettings: () => void;
   enabled?: boolean;
 }
 
@@ -26,6 +27,7 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onToggleChat,
     onQuickOpen,
     onCommandPalette,
+    onOpenSettings,
     enabled = true,
   } = opts;
 
@@ -42,6 +44,13 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
       const mod = isMac ? e.metaKey : e.ctrlKey;
       const ctrl = e.ctrlKey;
       const shift = e.shiftKey;
+
+      // Cmd/Ctrl + , — Open Settings (always fires)
+      if (mod && e.key === ",") {
+        e.preventDefault();
+        onOpenSettings();
+        return;
+      }
 
       // Cmd/Ctrl + Shift + P — Command Palette (always fires)
       if (mod && shift && e.key === "p") {
@@ -116,5 +125,6 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onToggleChat,
     onQuickOpen,
     onCommandPalette,
+    onOpenSettings,
   ]);
 }

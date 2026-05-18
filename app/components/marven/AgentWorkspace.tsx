@@ -14,6 +14,83 @@ import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 
+// Background tasks popover — mirrors MemoryPopover's position:fixed pattern so
+// it can extend past the workspace's overflow-hidden bounds. Anchors at the
+// LEFT edge of the trigger and drops down to the right.
+function BackgroundTasksPopover({
+  anchor,
+  isRunning,
+  startedAt,
+  onStop,
+}: {
+  anchor: HTMLElement | null;
+  isRunning: boolean;
+  startedAt: number | null;
+  onStop: () => void;
+}) {
+  // Re-render every second while open so the elapsed clock advances.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const rect = anchor?.getBoundingClientRect();
+  if (!rect) return null;
+  const width = 280;
+  const right = Math.max(8, window.innerWidth - rect.right);
+  const top = rect.bottom + 6;
+
+  const elapsedSec =
+    isRunning && startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+  const elapsedLabel = formatElapsed(elapsedSec);
+
+  return (
+    <div
+      className="fixed z-[60] overflow-hidden rounded-lg border border-[var(--m-border)] bg-[var(--m-bg)] shadow-2xl"
+      style={{ right, top, width }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3 py-2.5">
+        <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--m-text-muted)]">
+          Background tasks
+        </span>
+      </div>
+      <div className="divide-y divide-[var(--m-surface-2)]">
+        {isRunning ? (
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--m-accent)] opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--m-accent)]" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] text-[var(--m-text)]">Agent run in progress</div>
+              <div className="font-mono text-[10px] text-[var(--m-text-muted)]">{elapsedLabel}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onStop}
+              className="shrink-0 rounded-md border border-[var(--m-border)] px-2 py-0.5 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-red-400/40 hover:text-red-400"
+            >
+              Stop
+            </button>
+          </div>
+        ) : (
+          <p className="p-4 text-center text-[11px] text-[var(--m-text-faint)]">
+            No active background tasks.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatElapsed(seconds: number): string {
+  const mm = Math.floor(seconds / 60);
+  const ss = seconds % 60;
+  return `${mm.toString().padStart(2, "0")}:${ss.toString().padStart(2, "0")}`;
+}
+
 // Memory popover — uses position:fixed with viewport coordinates so it can
 // extend past the workspace's overflow-hidden bounds. Anchors at the LEFT edge
 // of the trigger button and drops down to the right.
@@ -279,6 +356,23 @@ export function AgentWorkspace({
   const memoryRef = useRef<HTMLDivElement>(null);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const tasksRef = useRef<HTMLDivElement>(null);
+  const agentRunStartedAtRef = useRef<number | null>(null);
+  const wasRunningRef = useRef(false);
+
+  // Track the start time of an agent run so the Background tasks popover can
+  // display elapsed time. Flip false → true: stamp now. Flip true → false:
+  // clear. (We don't reset when transitioning false→false.)
+  useEffect(() => {
+    if (isRunning && !wasRunningRef.current) {
+      agentRunStartedAtRef.current = Date.now();
+    } else if (!isRunning && wasRunningRef.current) {
+      agentRunStartedAtRef.current = null;
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+
   useEffect(() => {
     if (!viewMenuOpen) return;
     function handleOutside(e: MouseEvent) {
@@ -289,6 +383,17 @@ export function AgentWorkspace({
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [viewMenuOpen]);
+
+  useEffect(() => {
+    if (!tasksOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (tasksRef.current && !tasksRef.current.contains(e.target as Node)) {
+        setTasksOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [tasksOpen]);
 
   function refreshMemory() {
     fetch("/api/memory")
@@ -417,6 +522,7 @@ export function AgentWorkspace({
     onToggleChat: () => setShowRightPanel((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
     onCommandPalette: () => setCommandPalette(true),
+    onOpenSettings: () => onOpenSettings?.(),
   });
 
   // ── Command Palette commands list ────────────────────────────────────────
@@ -547,6 +653,7 @@ export function AgentWorkspace({
 
         {/* View menu — top-right kebab */}
         <div ref={viewMenuRef} className="ml-auto">
+          <div ref={tasksRef}>
           <button
             type="button"
             onClick={() => setViewMenuOpen((v) => !v)}
@@ -577,16 +684,33 @@ export function AgentWorkspace({
                     </svg>
                   ),
                   onClick: () => {
-                    // Open the active HTML file in the external browser via the file:// protocol
+                    // Open the active file in the external browser via file://
+                    // for previewable kinds (HTML, Markdown, common image formats,
+                    // SVG). Browsers handle .md inconsistently but at least the
+                    // user sees something. Anything else is a silent no-op.
                     const tab = activeTabIndex >= 0 ? openTabs[activeTabIndex] : null;
-                    if (tab?.kind === "file") {
-                      const abs = tab.path.startsWith("/") ? tab.path : `${workspaceRoot ?? ""}/${tab.path}`;
-                      const url = `file://${abs}`;
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const el = (window as any).marvenElectron;
-                      if (el?.openExternal) el.openExternal(url, "default");
-                      else window.open(url, "_blank", "noopener,noreferrer");
-                    }
+                    if (tab?.kind !== "file") return;
+                    const ext = tab.path.split(".").pop()?.toLowerCase();
+                    const previewable = new Set([
+                      "html",
+                      "htm",
+                      "md",
+                      "mdx",
+                      "png",
+                      "jpg",
+                      "jpeg",
+                      "gif",
+                      "webp",
+                      "svg",
+                      "ico",
+                    ]);
+                    if (!ext || !previewable.has(ext)) return;
+                    const abs = tab.path.startsWith("/") ? tab.path : `${workspaceRoot ?? ""}/${tab.path}`;
+                    const url = `file://${abs}`;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const el = (window as any).marvenElectron;
+                    if (el?.openExternal) el.openExternal(url, "default");
+                    else window.open(url, "_blank", "noopener,noreferrer");
                   },
                 },
                 {
@@ -628,8 +752,6 @@ export function AgentWorkspace({
                   key: "tasks",
                   label: "Background tasks",
                   badge: isRunning,
-                  hint: "soon",
-                  disabled: true,
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -638,23 +760,26 @@ export function AgentWorkspace({
                       <rect x="14" y="14" width="7" height="7" rx="1" />
                     </svg>
                   ),
-                  onClick: () => {},
-                },
-                {
-                  key: "plan",
-                  label: "Plan",
-                  hint: "soon",
-                  disabled: true,
-                  icon: (
-                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l1.5 1.5L13 4M9 12l1.5 1.5L13 11M9 19l1.5 1.5L13 18M17 5h4M17 12h4M17 19h4M4 5h.01M4 12h.01M4 19h.01" />
-                    </svg>
-                  ),
-                  onClick: () => {},
+                  onClick: () => {
+                    setViewMenuOpen(false);
+                    setTasksOpen(true);
+                  },
                 },
               ]}
             />
           )}
+          {tasksOpen && (
+            <BackgroundTasksPopover
+              anchor={tasksRef.current}
+              isRunning={isRunning}
+              startedAt={agentRunStartedAtRef.current}
+              onStop={() => {
+                onStop();
+                setTasksOpen(false);
+              }}
+            />
+          )}
+          </div>
         </div>
       </div>
 
