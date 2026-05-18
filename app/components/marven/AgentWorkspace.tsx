@@ -338,6 +338,13 @@ export function AgentWorkspace({
   const [showDiff, setShowDiff] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [commandPalette, setCommandPalette] = useState(false);
+  // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
+  // useEditorShortcuts can drive it. EditorPanel reads the props and renders
+  // the bar + highlight overlay; navigation/replace actions stay inside the
+  // panel via a ref-exposed action set.
+  const [findOpen, setFindOpen] = useState(false);
+  const [replaceVisible, setReplaceVisible] = useState(false);
+  const findActionsRef = useRef<{ next: () => void; prev: () => void; focus: () => void } | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -523,6 +530,20 @@ export function AgentWorkspace({
     onQuickOpen: () => setQuickOpen(true),
     onCommandPalette: () => setCommandPalette(true),
     onOpenSettings: () => onOpenSettings?.(),
+    onFind: () => {
+      setFindOpen(true);
+      setReplaceVisible(false);
+      // If already open, refocus the search input + select its text. Schedule
+      // after state updates flush so the EditorPanel's ref is hooked up.
+      requestAnimationFrame(() => findActionsRef.current?.focus());
+    },
+    onFindAndReplace: () => {
+      setFindOpen(true);
+      setReplaceVisible(true);
+      requestAnimationFrame(() => findActionsRef.current?.focus());
+    },
+    onFindNext: () => findActionsRef.current?.next(),
+    onFindPrev: () => findActionsRef.current?.prev(),
   });
 
   // ── Command Palette commands list ────────────────────────────────────────
@@ -533,6 +554,8 @@ export function AgentWorkspace({
     { label: "Toggle Terminal", keybinding: "⌃`", action: () => setShowTerminal((v) => !v) },
     { label: "Toggle Chat", keybinding: "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
     { label: "Open Quick File", keybinding: "⌘P", action: () => setQuickOpen(true) },
+    { label: "Find", keybinding: "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { label: "Find and Replace", keybinding: "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
@@ -842,6 +865,11 @@ export function AgentWorkspace({
             onSaveMCPServers={onSaveMCPServers}
             onToggleChat={() => setShowRightPanel((v) => !v)}
             onCommandPalette={() => setCommandPalette(true)}
+            findOpen={findOpen}
+            replaceVisible={replaceVisible}
+            onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
+            onToggleReplace={() => setReplaceVisible((v) => !v)}
+            findActionsRef={findActionsRef}
           />
         </div>
 

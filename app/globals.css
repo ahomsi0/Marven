@@ -88,6 +88,20 @@
   background: rgba(209, 154, 102, 0.35);
 }
 
+/* Editor find/replace — match highlight markers. Rendered on a transparent
+   text layer that mirrors the syntax-highlight <pre>. Body text is invisible;
+   only the <mark> backgrounds show through. */
+.m-match {
+  background: rgba(209, 154, 102, 0.28);
+  border-radius: 2px;
+  color: transparent;
+  box-shadow: 0 0 0 1px rgba(209, 154, 102, 0.32);
+}
+.m-match.active {
+  background: rgba(209, 154, 102, 0.55);
+  box-shadow: 0 0 0 1px rgba(209, 154, 102, 0.7);
+}
+
 /* Dot bounce */
 @keyframes dot-bounce {
   0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }

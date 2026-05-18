@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo, type MutableRefObject } from "react";
 import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
@@ -35,6 +35,13 @@ interface EditorPanelProps {
   // Empty state action props
   onToggleChat?: () => void;
   onCommandPalette?: () => void;
+  // Find / Replace bar — state lifted to AgentWorkspace so ⌘F shortcuts can
+  // drive it. The ref lets the parent invoke navigation/focus.
+  findOpen?: boolean;
+  replaceVisible?: boolean;
+  onCloseFind?: () => void;
+  onToggleReplace?: () => void;
+  findActionsRef?: MutableRefObject<{ next: () => void; prev: () => void; focus: () => void } | null>;
 }
 
 // ── Tab type icon ──────────────────────────────────────────────────────────────
@@ -224,11 +231,23 @@ export function EditorPanel({
   onSaveMCPServers,
   onToggleChat,
   onCommandPalette,
+  findOpen = false,
+  replaceVisible = false,
+  onCloseFind,
+  onToggleReplace,
+  findActionsRef,
 }: EditorPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
+  const findOverlayRef = useRef<HTMLPreElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Find / Replace state — query strings and current active match index.
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
 
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
@@ -246,14 +265,163 @@ export function EditorPanel({
     const ta = textareaRef.current;
     const pre = preRef.current;
     const gut = gutterRef.current;
+    const overlay = findOverlayRef.current;
     if (!ta) return;
     if (pre) { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+    if (overlay) { overlay.scrollTop = ta.scrollTop; overlay.scrollLeft = ta.scrollLeft; }
     if (gut) gut.scrollTop = ta.scrollTop;
   }, []);
 
   useEffect(() => {
     syncScroll();
   }, [fileContent, syncScroll]);
+
+  // ── Find / Replace ───────────────────────────────────────────────────────
+  // Compute substring matches case-insensitively. Empty query → no matches.
+  // We do NOT use regex on the user input — treat the query as literal text.
+  const matches = useMemo<Array<{ start: number; end: number }>>(() => {
+    if (!findQuery || isFileLoading) return [];
+    const hay = fileContent.toLowerCase();
+    const needle = findQuery.toLowerCase();
+    if (!needle) return [];
+    const out: Array<{ start: number; end: number }> = [];
+    let i = 0;
+    while (i <= hay.length - needle.length) {
+      const idx = hay.indexOf(needle, i);
+      if (idx === -1) break;
+      out.push({ start: idx, end: idx + needle.length });
+      i = idx + needle.length;
+      // Cap to avoid pathological cases (e.g. searching "a" in a huge buffer).
+      if (out.length >= 5000) break;
+    }
+    return out;
+  }, [findQuery, fileContent, isFileLoading]);
+  const totalMatches = matches.length;
+
+  // Clamp activeMatch when the matches array shrinks.
+  useEffect(() => {
+    if (totalMatches === 0) {
+      if (activeMatch !== 0) setActiveMatch(0);
+    } else if (activeMatch >= totalMatches) {
+      setActiveMatch(totalMatches - 1);
+    }
+  }, [totalMatches, activeMatch]);
+
+  // Build the overlay HTML — same text as the editor, with <mark> wrapped
+  // around each match. Body text is rendered transparent via .m-match's
+  // parent rule. Active match gets a stronger background.
+  const findOverlayHtml = useMemo(() => {
+    if (!findOpen || totalMatches === 0) return "";
+    const parts: string[] = [];
+    let cursor = 0;
+    matches.forEach((m, idx) => {
+      if (m.start > cursor) parts.push(esc(fileContent.slice(cursor, m.start)));
+      const cls = idx === activeMatch ? "m-match active" : "m-match";
+      parts.push(`<mark class="${cls}">${esc(fileContent.slice(m.start, m.end))}</mark>`);
+      cursor = m.end;
+    });
+    if (cursor < fileContent.length) parts.push(esc(fileContent.slice(cursor)));
+    return parts.join("");
+  }, [findOpen, matches, activeMatch, fileContent, totalMatches]);
+
+  // Scroll the active match into view by computing its row from newlines.
+  const scrollMatchIntoView = useCallback((index: number) => {
+    const ta = textareaRef.current;
+    if (!ta || index < 0 || index >= matches.length) return;
+    const lineHeight = 28; // matches `leading-7` (1.75rem at 16px root)
+    const offset = matches[index].start;
+    const linesBefore = (fileContent.slice(0, offset).match(/\n/g) || []).length;
+    const matchTop = linesBefore * lineHeight;
+    const viewportH = ta.clientHeight;
+    const desired = matchTop - viewportH / 2 + lineHeight / 2;
+    ta.scrollTop = Math.max(0, desired);
+    syncScroll();
+  }, [matches, fileContent, syncScroll]);
+
+  const goToNext = useCallback(() => {
+    if (totalMatches === 0) return;
+    const next = (activeMatch + 1) % totalMatches;
+    setActiveMatch(next);
+    scrollMatchIntoView(next);
+  }, [totalMatches, activeMatch, scrollMatchIntoView]);
+
+  const goToPrev = useCallback(() => {
+    if (totalMatches === 0) return;
+    const prev = (activeMatch - 1 + totalMatches) % totalMatches;
+    setActiveMatch(prev);
+    scrollMatchIntoView(prev);
+  }, [totalMatches, activeMatch, scrollMatchIntoView]);
+
+  const replaceOne = useCallback(() => {
+    if (totalMatches === 0) return;
+    const m = matches[activeMatch];
+    const newContent = fileContent.slice(0, m.start) + replaceQuery + fileContent.slice(m.end);
+    onFileContentChange(newContent);
+    // Stay on the same index — what was at N+1 slots into N after splice. The
+    // clamp effect handles the case where we replaced the last match. The
+    // recomputed `matches` array (via the fileContent change) will refresh
+    // the overlay highlight to the new active position.
+  }, [totalMatches, matches, activeMatch, replaceQuery, fileContent, onFileContentChange]);
+
+  const replaceAll = useCallback(() => {
+    if (totalMatches === 0) return;
+    // Walk backwards so earlier indices stay valid as we splice.
+    let next = fileContent;
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const m = matches[i];
+      next = next.slice(0, m.start) + replaceQuery + next.slice(m.end);
+    }
+    onFileContentChange(next);
+    setActiveMatch(0);
+  }, [totalMatches, matches, replaceQuery, fileContent, onFileContentChange]);
+
+  // Publish actions for the parent (AgentWorkspace) to drive via shortcuts.
+  useEffect(() => {
+    if (!findActionsRef) return;
+    findActionsRef.current = {
+      next: goToNext,
+      prev: goToPrev,
+      focus: () => {
+        const el = findInputRef.current;
+        if (!el) return;
+        el.focus();
+        el.select();
+      },
+    };
+    return () => {
+      if (findActionsRef) findActionsRef.current = null;
+    };
+  }, [findActionsRef, goToNext, goToPrev]);
+
+  // When the find bar opens, focus its input. When it closes, clear the
+  // active match index so subsequent re-opens start from the top.
+  useEffect(() => {
+    if (findOpen) {
+      // Defer so the input has mounted.
+      requestAnimationFrame(() => {
+        const el = findInputRef.current;
+        if (el) { el.focus(); el.select(); }
+      });
+    } else {
+      setActiveMatch(0);
+    }
+  }, [findOpen]);
+
+  // When activeMatch changes (e.g. via ⌘G outside the bar), scroll it in view.
+  useEffect(() => {
+    if (findOpen && totalMatches > 0) {
+      scrollMatchIntoView(activeMatch);
+    }
+    // We only want this to fire on activeMatch changes, not on every match
+    // recomputation — otherwise typing in the find input would force-scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMatch]);
+
+  function closeFindAndReturnFocus() {
+    onCloseFind?.();
+    // Return focus to the editor textarea.
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }
 
   // Detect language label for status bar
   const langLabel = ["ts", "tsx"].includes(fileExt)
@@ -355,6 +523,126 @@ export function EditorPanel({
             </div>
           )}
 
+          {/* Find / Replace bar — slides in above the editor when active */}
+          {findOpen && selectedFilePath && !isSettingsTabActive && (
+            <div className="flex flex-col gap-1.5 border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3 py-2">
+              {/* Find row */}
+              <div className="flex items-center gap-1.5">
+                {/* Toggle for replace row — chevron */}
+                <button
+                  type="button"
+                  onClick={onToggleReplace}
+                  title={replaceVisible ? "Hide replace" : "Show replace"}
+                  className="rounded p-0.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
+                >
+                  <svg className="h-3 w-3 transition-transform" style={{ transform: replaceVisible ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 4 10 8 6 12" />
+                  </svg>
+                </button>
+
+                <input
+                  ref={findInputRef}
+                  value={findQuery}
+                  onChange={(e) => setFindQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (e.shiftKey) goToPrev();
+                      else goToNext();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeFindAndReturnFocus();
+                    }
+                  }}
+                  placeholder="Find"
+                  spellCheck={false}
+                  className="w-48 rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+                />
+                <button
+                  type="button"
+                  onClick={goToPrev}
+                  disabled={totalMatches === 0}
+                  title="Previous match (Shift+Enter / ⇧⌘G)"
+                  className="rounded p-1 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="4 10 8 6 12 10" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNext}
+                  disabled={totalMatches === 0}
+                  title="Next match (Enter / ⌘G)"
+                  className="rounded p-1 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
+                </button>
+                <span className="min-w-[64px] font-mono text-[10px] text-[var(--m-text-muted)] tabular-nums">
+                  {totalMatches > 0
+                    ? `${activeMatch + 1} of ${totalMatches}`
+                    : findQuery
+                    ? "No matches"
+                    : ""}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={closeFindAndReturnFocus}
+                  title="Close (Esc)"
+                  className="ml-auto rounded p-1 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Replace row */}
+              {replaceVisible && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-[18px]" />{/* spacer to align with chevron above */}
+                  <input
+                    value={replaceQuery}
+                    onChange={(e) => setReplaceQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        replaceOne();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        closeFindAndReturnFocus();
+                      }
+                    }}
+                    placeholder="Replace"
+                    spellCheck={false}
+                    className="w-48 rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+                  />
+                  <button
+                    type="button"
+                    onClick={replaceOne}
+                    disabled={totalMatches === 0}
+                    title="Replace current match"
+                    className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:hover:border-[var(--m-border)] disabled:hover:text-[var(--m-text-muted)]"
+                  >
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={replaceAll}
+                    disabled={totalMatches === 0}
+                    title="Replace all matches"
+                    className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:hover:border-[var(--m-border)] disabled:hover:text-[var(--m-text-muted)]"
+                  >
+                    All
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Content area — depends on active tab */}
           {isSettingsTabActive ? (
             /* Settings tab content */
@@ -403,6 +691,19 @@ export function EditorPanel({
                   style={{ margin: 0, background: "transparent", color: "var(--m-text)" }}
                   dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
                 />
+                {/* Find match highlight overlay — only visible when find is open
+                   and there's a query. Same font / padding / line-height as the
+                   syntax pre so positions align pixel-perfectly. Body text is
+                   transparent; only <mark> backgrounds show through. */}
+                {findOpen && findOverlayHtml && (
+                  <pre
+                    ref={findOverlayRef}
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 overflow-hidden px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
+                    style={{ margin: 0, background: "transparent", color: "transparent" }}
+                    dangerouslySetInnerHTML={{ __html: findOverlayHtml }}
+                  />
+                )}
                 {/* Editable layer */}
                 <textarea
                   ref={textareaRef}

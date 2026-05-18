@@ -11,6 +11,10 @@ export interface EditorShortcutsOptions {
   onQuickOpen: () => void;
   onCommandPalette: () => void;
   onOpenSettings: () => void;
+  onFind?: () => void;
+  onFindAndReplace?: () => void;
+  onFindNext?: () => void;
+  onFindPrev?: () => void;
   enabled?: boolean;
 }
 
@@ -28,6 +32,10 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onQuickOpen,
     onCommandPalette,
     onOpenSettings,
+    onFind,
+    onFindAndReplace,
+    onFindNext,
+    onFindPrev,
     enabled = true,
   } = opts;
 
@@ -110,6 +118,52 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
         }
       }
 
+      // Find/Replace shortcuts — fire even from inputs so reopening refocuses.
+      // Cmd/Ctrl + Option/Alt + F — Open Find AND Replace (mac & linux),
+      // also accept Cmd/Ctrl + Shift + H as a Windows-style alias.
+      if (mod && e.altKey && (e.key === "f" || e.key === "F" || e.key === "ƒ")) {
+        if (onFindAndReplace) {
+          e.preventDefault();
+          onFindAndReplace();
+          return;
+        }
+      }
+      if (mod && shift && (e.key === "h" || e.key === "H")) {
+        if (onFindAndReplace) {
+          e.preventDefault();
+          onFindAndReplace();
+          return;
+        }
+      }
+
+      // Cmd/Ctrl + F — Open Find
+      if (mod && !shift && !e.altKey && e.key === "f") {
+        if (onFind) {
+          e.preventDefault();
+          onFind();
+          return;
+        }
+      }
+
+      // Cmd/Ctrl + G — Next match; Cmd/Ctrl + Shift + G — Prev match.
+      // Fires even from inputs so the find input's Enter/Shift+Enter can be
+      // complemented by ⌘G outside the find bar.
+      if (mod && !e.altKey && (e.key === "g" || e.key === "G")) {
+        if (shift) {
+          if (onFindPrev) {
+            e.preventDefault();
+            onFindPrev();
+            return;
+          }
+        } else {
+          if (onFindNext) {
+            e.preventDefault();
+            onFindNext();
+            return;
+          }
+        }
+      }
+
       // Skip remaining combos when focused in an input/textarea/contenteditable
       if (inInput) return;
     }
@@ -126,5 +180,9 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onQuickOpen,
     onCommandPalette,
     onOpenSettings,
+    onFind,
+    onFindAndReplace,
+    onFindNext,
+    onFindPrev,
   ]);
 }
