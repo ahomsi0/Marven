@@ -44,6 +44,7 @@ interface ChatLayoutProps {
   isVoiceSupported: boolean;
   voiceState: VoiceState;
   speechEnabled: boolean;
+  sttProvider: "local" | "groq" | null;
   isSpeakingNow: boolean;
   tokenUsage: TokenUsage;
   customShortcuts: CustomShortcut[];
@@ -144,6 +145,7 @@ export function ChatLayout({
   isVoiceSupported,
   voiceState,
   speechEnabled,
+  sttProvider,
   isSpeakingNow,
   tokenUsage,
   customShortcuts,
@@ -466,6 +468,7 @@ export function ChatLayout({
                     selectedModel={selectedModel}
                     speechEnabled={speechEnabled}
                     wakeEnabled={wakeEnabled}
+                    sttProvider={sttProvider}
                     voiceError={voiceError}
                     lastHeard={lastHeard}
                     attachments={chatAttachments}

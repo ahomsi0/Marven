@@ -6,9 +6,12 @@ import { blobToFloat32Mono16k, getLocalSttPipeline } from "@/lib/localStt";
 export type VoiceState = "idle" | "wake-listening" | "command-listening";
 export type SttProvider = "groq" | "local";
 
-// Wide net — catches common Whisper mishearings
+// Wake match — must be at the START of the transcription (no scattered match
+// in mid-sentence). "hey/ok/okay" prefix optional but recommended; the name
+// itself is constrained to plausible mishearings of "Marven" (marvin, mervin)
+// so we stop triggering on "Martin", "maven", or "Marvell" in regular speech.
 const WAKE_WORD_REGEX =
-  /\b(?:hey|hi|ok|okay|oi)\s*[,.]?\s*(?:marv(?:en|in|an|yn|ell?|el)|maven|martin|marven)\b/i;
+  /^\s*[,.!?]*\s*(?:(?:hey|ok|okay)\s*[,.]?\s*)?(?:marv|merv)(?:en|in|yn|on|an)?\b/i;
 
 const SPEECH_THRESHOLD = 0.006; // RMS above = speaking
 const SPEECH_END_MS    = 600;   // ms of silence that ends an utterance
@@ -30,7 +33,10 @@ async function transcribeBlob(
   prompt?: string,
   provider: SttProvider = "groq",
 ): Promise<{ text: string; error?: string }> {
-  if (blob.size < 200) {
+  // ~1 KB is roughly half a second of Opus audio. Below that Groq's STT often
+  // rejects the upload with "could not process file - is it a valid media
+  // file?" — silently skip so we don't show a confusing dev-overlay error.
+  if (blob.size < 1024) {
     console.warn("[stt] blob too small:", blob.size, "bytes — skipping");
     return { text: "" };
   }
@@ -87,6 +93,9 @@ export function useVoice(
   const [wakeEnabled, setWakeEnabled] = useState(false);
   const [voiceError, setVoiceError]   = useState<string | null>(null);
   const [lastHeard, setLastHeard]     = useState<string>("");
+  // Mirror of sttProviderRef.current as React state so consumers (e.g. the
+  // InputBar badge) re-render when the user flips the setting.
+  const [sttProvider, setSttProvider] = useState<SttProvider>("local");
 
   const wakeEnabledRef = useRef(false);
   const onCommandRef   = useRef(onCommand);           onCommandRef.current   = onCommand;
@@ -105,7 +114,9 @@ export function useVoice(
 
     const load = () => {
       electron.getSettings().then((s: { voiceSttProvider?: string }) => {
-        sttProviderRef.current = s?.voiceSttProvider === "groq" ? "groq" : "local";
+        const next: SttProvider = s?.voiceSttProvider === "groq" ? "groq" : "local";
+        sttProviderRef.current = next;
+        setSttProvider(next);
       }).catch(() => { /* keep default */ });
     };
     load();
@@ -406,5 +417,5 @@ export function useVoice(
     wakeEnabledRef.current = false; stopWakeListener(); stopCommandCapture();
   }, [stopWakeListener, stopCommandCapture]);
 
-  return { voiceState, isSupported, wakeEnabled, voiceError, lastHeard, toggleWakeWord, startManualListen, pauseVoiceCapture, resumeWakeWord };
+  return { voiceState, isSupported, wakeEnabled, voiceError, lastHeard, sttProvider, toggleWakeWord, startManualListen, pauseVoiceCapture, resumeWakeWord };
 }

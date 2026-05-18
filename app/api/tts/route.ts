@@ -42,6 +42,9 @@ export async function POST(req: NextRequest) {
   const txtFile = path.join(tmpDir, `${id}.txt`);
   const aiffFile = path.join(tmpDir, `${id}.aiff`);
   const mp3File = path.join(tmpDir, `${id}.mp3`);
+  const m4aFile = path.join(tmpDir, `${id}.m4a`);
+  let outPath = "";
+  let outMime = "";
 
   try {
     // Write to file — avoids shell-injection and CLI length limits
@@ -56,8 +59,8 @@ export async function POST(req: NextRequest) {
         await execAsync(`say -v "${v}" -f "${txtFile}" -o "${aiffFile}"`);
         generated = true;
         break;
-      } catch {
-        // try next voice
+      } catch (e) {
+        console.warn(`[tts] say -v ${v} failed:`, e instanceof Error ? e.message : e);
       }
     }
 
@@ -65,23 +68,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No suitable voice found" }, { status: 500 });
     }
 
-    // Convert AIFF → MP3 using macOS built-in afconvert (no ffmpeg needed)
-    await execAsync(`afconvert "${aiffFile}" "${mp3File}" -d mp3 -f 'MPG3'`);
+    // Try MP3 first (broadly compatible). macOS 15+ removed MP3 encoding from
+    // afconvert, so fall back to AAC/m4a — every browser <audio> supports it.
+    try {
+      await execAsync(`afconvert "${aiffFile}" "${mp3File}" -d mp3 -f 'MPG3'`);
+      outPath = mp3File;
+      outMime = "audio/mpeg";
+    } catch (mp3Err) {
+      console.warn("[tts] mp3 encode failed, falling back to AAC:", mp3Err instanceof Error ? mp3Err.message : mp3Err);
+      // AAC in an MPEG-4 container — afconvert ships forever on macOS.
+      await execAsync(`afconvert "${aiffFile}" "${m4aFile}" -d aac -f m4af`);
+      outPath = m4aFile;
+      outMime = "audio/mp4";
+    }
 
-    const buffer = fs.readFileSync(mp3File);
+    const buffer = fs.readFileSync(outPath);
 
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": outMime,
         "Content-Length": String(buffer.length),
         "Cache-Control": "no-store",
       },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "TTS failed";
+    console.error("[tts] failed:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   } finally {
-    for (const f of [txtFile, aiffFile, mp3File]) {
+    for (const f of [txtFile, aiffFile, mp3File, m4aFile]) {
       try { fs.unlinkSync(f); } catch { /* already gone */ }
     }
   }

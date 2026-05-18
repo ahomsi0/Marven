@@ -40,6 +40,7 @@ export function getLocalSttPipeline(
   if (!pipelinePromise) {
     pipelinePromise = (async () => {
       try {
+        console.log("[localStt] loading transformers.js…");
         // Dynamic import — keeps the heavy onnxruntime-web out of the SSR
         // bundle and the initial client chunk. Only fetched once the user
         // actually triggers local STT.
@@ -51,14 +52,29 @@ export function getLocalSttPipeline(
         env.allowLocalModels = false;
         env.allowRemoteModels = true;
 
+        console.log("[localStt] fetching whisper-tiny.en (wasm/fp32)…");
         activeProgressCb?.({ status: "loading", message: "Loading model…" });
 
+        // Pin the backend + precision. The transformers.js default tries WebGPU
+        // first, which pulls a quantized Whisper variant whose scale tensors
+        // are sometimes missing from the ONNX bundle ("Missing required scale:
+        // model.decoder.embed_tokens.weight_merged_0_scale"). WASM + fp32 is
+        // the well-trodden path: a bit slower on capable GPUs but reliable,
+        // and whisper-tiny is small enough that latency stays comfortable.
         const pipe = await pipeline(
           "automatic-speech-recognition",
           MODEL_ID,
           {
+            device: "wasm",
+            dtype: "fp32",
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             progress_callback: (data: any) => {
+              if (data?.status === "progress" && data?.total) {
+                const pct = ((data.loaded / data.total) * 100).toFixed(0);
+                console.log(`[localStt] ${data.file}: ${pct}% (${(data.loaded/1024/1024).toFixed(1)} / ${(data.total/1024/1024).toFixed(1)} MB)`);
+              } else if (data?.status === "ready") {
+                console.log("[localStt] file ready:", data?.file ?? "(unnamed)");
+              }
               if (!activeProgressCb) return;
               if (data?.status === "progress") {
                 activeProgressCb({
@@ -71,9 +87,11 @@ export function getLocalSttPipeline(
                 activeProgressCb({ status: "ready" });
               }
             },
-          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
         );
 
+        console.log("[localStt] pipeline ready — Whisper local is live");
         activeProgressCb?.({ status: "ready" });
 
         return async (audio: Float32Array) => {

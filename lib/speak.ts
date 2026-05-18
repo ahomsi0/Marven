@@ -19,6 +19,11 @@ let currentAudio: HTMLAudioElement | null = null;
 let currentObjectUrl: string | null = null;
 // Fallback: Web Speech API utterance
 let currentUtterance: SpeechSynthesisUtterance | null = null;
+// Monotonic token — every call to speak() bumps it. If a fetch resolves
+// after a newer call has started, we drop its audio so two TTS plays can't
+// overlap (was causing the assistant to "speak twice" when two replies fired
+// in rapid succession).
+let speakToken = 0;
 
 function cleanupAudio() {
   if (currentAudio) {
@@ -115,9 +120,10 @@ function speakFallback(text: string, onEnd?: () => void): void {
 export async function speak(text: string, onEnd?: () => void, opts?: { forceLang?: "ar" | "en" }): Promise<void> {
   if (typeof window === "undefined") return;
 
-  // Cancel whatever is playing
+  // Cancel whatever is playing AND invalidate any in-flight fetches.
   cleanupAudio();
   cleanupSpeechSynthesis();
+  const myToken = ++speakToken;
 
   const clean = cleanForSpeech(text);
   if (!clean) {
@@ -135,6 +141,10 @@ export async function speak(text: string, onEnd?: () => void, opts?: { forceLang
     if (!res.ok) throw new Error(`TTS API ${res.status}`);
 
     const blob = await res.blob();
+    // If another speak() was called while we were fetching, drop this audio
+    // entirely — playing it now would overlap with the newer reply.
+    if (myToken !== speakToken) return;
+
     const url = URL.createObjectURL(blob);
     currentObjectUrl = url;
 
@@ -142,11 +152,13 @@ export async function speak(text: string, onEnd?: () => void, opts?: { forceLang
     currentAudio = audio;
 
     audio.onended = () => {
+      if (myToken !== speakToken) return;
       cleanupAudio();
       onEnd?.();
     };
 
     audio.onerror = () => {
+      if (myToken !== speakToken) return;
       cleanupAudio();
       speakFallback(clean, onEnd);
     };
@@ -154,6 +166,7 @@ export async function speak(text: string, onEnd?: () => void, opts?: { forceLang
     await audio.play();
   } catch {
     // API unavailable (e.g. server not running) — fall back gracefully
+    if (myToken !== speakToken) return;
     speakFallback(clean, onEnd);
   }
 }

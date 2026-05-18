@@ -775,8 +775,10 @@ export default function Home() {
     wakeEnabled,
     voiceError,
     lastHeard,
+    sttProvider,
     toggleWakeWord,
     startManualListen,
+    pauseVoiceCapture,
     resumeWakeWord,
   } = useVoice(
     (text) => sendVoiceCommandRef.current(text),
@@ -820,9 +822,10 @@ export default function Home() {
 
   function speakReply(text: string) {
     if (!speechEnabledRef.current) return;
-    if (wakeEnabled) {
-      resumeWakeWord();
-    }
+    // Pause the wake listener while we speak — otherwise the mic picks up our
+    // own TTS audio, transcribes it, and re-triggers wake every few seconds.
+    // We resume in the onEnd callback below.
+    if (wakeEnabled) pauseVoiceCapture();
     setIsSpeakingNow(true);
     // If the conversation's system prompt is in Arabic OR mentions "arabic",
     // force Arabic voice even when the response text itself looks English.
@@ -831,7 +834,7 @@ export default function Home() {
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     speak(text, () => {
       setIsSpeakingNow(false);
-      resumeWakeWord();
+      if (wakeEnabled) resumeWakeWord();
     }, forceLang ? { forceLang } : undefined);
   }
 
@@ -1428,6 +1431,7 @@ export default function Home() {
         isVoiceSupported={isSupported}
         voiceState={voiceState}
         speechEnabled={speechEnabled}
+        sttProvider={sttProvider}
         isSpeakingNow={isSpeakingNow}
         tokenUsage={tokenUsage}
         customShortcuts={customShortcuts}

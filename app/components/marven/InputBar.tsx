@@ -19,6 +19,7 @@ interface InputBarProps {
   selectedModel: string;
   speechEnabled: boolean;
   wakeEnabled: boolean;
+  sttProvider?: "local" | "groq" | null;
   voiceError: string | null;
   lastHeard: string;
   onChange: (value: string) => void;
@@ -44,6 +45,7 @@ export function InputBar({
   selectedModel,
   speechEnabled,
   wakeEnabled,
+  sttProvider,
   voiceError,
   lastHeard,
   onChange,
@@ -262,6 +264,14 @@ export function InputBar({
           />
 
           <div className="ml-auto flex items-center">
+            {isVoiceSupported && sttProvider && (
+              <span
+                title={sttProvider === "local" ? "Speech-to-text runs on this machine" : "Speech-to-text runs on Groq Cloud"}
+                className="mr-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
+              >
+                {sttProvider === "local" ? "Local" : "Groq"}
+              </span>
+            )}
             <button
               type="button"
               onClick={onToggleSpeech}
