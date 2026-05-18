@@ -4,9 +4,32 @@ import type { ParsedCommand } from "@/types";
 
 const execAsync = promisify(exec);
 
+const IS_WIN = process.platform === "win32";
+
+// Cross-platform "open something" — uses `start` on Windows, `open` on macOS,
+// `xdg-open` on Linux. The empty "" first arg to `start` is required because
+// start treats the first quoted argument as a window title.
+function openCmd(target: string): string {
+  if (IS_WIN) return `start "" "${target}"`;
+  if (process.platform === "darwin") return `open "${target}"`;
+  return `xdg-open "${target}"`;
+}
+
+function openAppCmd(appName: string): string {
+  // On Windows, `start` against an app name resolves Start-Menu entries and
+  // PATH executables (e.g. `start "" "Spotify"` or `start "" "chrome"`).
+  if (IS_WIN) return `start "" "${appName}"`;
+  if (process.platform === "darwin") return `open -a "${appName}"`;
+  // Linux: assume the app is on PATH; spawn it detached. xdg-open won't help
+  // for arbitrary app names.
+  return `${appName} &`;
+}
+
 /**
- * Executes a parsed command on macOS.
+ * Executes a parsed command.
  * Only handles known, safe command types — no arbitrary shell execution.
+ * App / website / search commands work cross-platform; the rest of the
+ * natural-language actions (volume, media, screenshots…) are macOS-only.
  */
 export async function executeCommand(
   command: ParsedCommand
@@ -14,15 +37,14 @@ export async function executeCommand(
   switch (command.type) {
     case "open-website": {
       const url = command.payload;
-      await execAsync(`open "${url}"`);
-      // Derive a readable name from the URL for the response message
+      await execAsync(openCmd(url));
       const name = new URL(url).hostname.replace(/^www\./, "");
       return `Opening ${name}.`;
     }
 
     case "open-app": {
       const appName = command.payload;
-      await execAsync(`open -a "${appName}"`);
+      await execAsync(openAppCmd(appName));
       return `Launching ${appName}.`;
     }
 
@@ -30,7 +52,7 @@ export async function executeCommand(
       const query = command.payload;
       const encoded = encodeURIComponent(query);
       const searchUrl = `https://www.google.com/search?q=${encoded}`;
-      await execAsync(`open "${searchUrl}"`);
+      await execAsync(openCmd(searchUrl));
       return `Searching Google for "${query}".`;
     }
 

@@ -106,7 +106,15 @@ export async function POST(req: NextRequest) {
 
       case "open-app": {
         const appName = (payload ?? "").replace(/['"]/g, "");
-        await execAsync(`open -a "${appName}"`);
+        // Cross-platform: `start ""` on Windows resolves Start-Menu and PATH
+        // entries; `open -a` is macOS; xdg-open is a best-effort on Linux.
+        const cmd =
+          process.platform === "win32"
+            ? `start "" "${appName}"`
+            : process.platform === "darwin"
+            ? `open -a "${appName}"`
+            : `xdg-open "${appName}"`;
+        await execAsync(cmd);
         return NextResponse.json({ ok: true, message: `Opening ${appName}.` });
       }
 
