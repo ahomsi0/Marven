@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-
-let activeWorkspaceRoot: string | null = null;
+import { getActiveWorkspaceRoot, setActiveWorkspaceRoot } from "@/lib/workspaceState";
 
 function getRoot(): string {
-  if (!activeWorkspaceRoot) throw new Error("No workspace folder open.");
-  return activeWorkspaceRoot;
+  const root = getActiveWorkspaceRoot();
+  if (!root) throw new Error("No workspace folder open.");
+  return root;
 }
 
 type FileEntry = { path: string; name: string; type: "file" | "folder" };
@@ -38,6 +38,7 @@ async function listRecursive(dir: string, base: string, shallow = false): Promis
 }
 
 export async function GET() {
+  const activeWorkspaceRoot = getActiveWorkspaceRoot();
   if (!activeWorkspaceRoot) {
     return NextResponse.json({ root: null, files: [] });
   }
@@ -60,7 +61,7 @@ export async function PATCH(req: NextRequest) {
     if (!stat?.isDirectory()) {
       return NextResponse.json({ error: `"${root}" is not a valid directory` }, { status: 400 });
     }
-    activeWorkspaceRoot = root;
+    setActiveWorkspaceRoot(root);
     return NextResponse.json({ ok: true, root });
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });

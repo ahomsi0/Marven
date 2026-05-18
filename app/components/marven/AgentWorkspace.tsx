@@ -7,11 +7,13 @@ import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
+import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
 import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
+import type { CodeEditorActions } from "./CodeEditor";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 
 // Background tasks popover — mirrors MemoryPopover's position:fixed pattern so
@@ -350,6 +352,19 @@ export function AgentWorkspace({
     focus: () => void;
     triggerInlineEdit: () => void;
   } | null>(null);
+  // Global search (⌘⇧F) — when true, the left column shows GlobalSearchPanel
+  // instead of FileExplorer. We restore the explorer when closed.
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Handle on the underlying CodeEditor so we can scroll to a specific line
+  // after the global-search panel triggers a file open.
+  const editorActionsRef = useRef<CodeEditorActions | null>(null);
+  // Pending jump from a global-search click. Held in state (not just a ref) so
+  // that re-clicking a match in the SAME file fires the effect again — refs
+  // don't trigger re-renders. The token bumps on each request to force the
+  // effect to re-evaluate even when path/line/col are identical.
+  const [pendingJump, setPendingJump] = useState<
+    { path: string; line: number; col: number; token: number } | null
+  >(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -550,7 +565,60 @@ export function AgentWorkspace({
     onFindNext: () => findActionsRef.current?.next(),
     onFindPrev: () => findActionsRef.current?.prev(),
     onInlineEdit: () => findActionsRef.current?.triggerInlineEdit(),
+    onGlobalSearch: () => {
+      // Toggle the panel. Also force the explorer column visible when opening
+      // so the panel has somewhere to render.
+      setGlobalSearchOpen((v) => {
+        const next = !v;
+        if (next) setShowExplorer(true);
+        return next;
+      });
+    },
   });
+
+  // ── Global-search match-click flow ───────────────────────────────────────
+  // When the user clicks a search result, we (1) open the file via the
+  // existing onSelectFile prop and (2) stash the target line in state. The
+  // effect below watches selectedFilePath + the buffer's loading state and
+  // fires scrollToLine once both line up. The `token` field ensures repeat
+  // clicks on the SAME line still trigger the effect.
+  const jumpTokenRef = useRef(0);
+  function handleSelectMatch(relPath: string, line: number, col: number) {
+    jumpTokenRef.current += 1;
+    setPendingJump({ path: relPath, line, col, token: jumpTokenRef.current });
+    onSelectFile(relPath);
+  }
+
+  // selectedFilePath is the absolute or workspace-relative path stored by the
+  // parent; the search panel emits the relative path it got from grep. We
+  // compare by suffix so either form matches.
+  const isPendingPathActive =
+    pendingJump && selectedFilePath
+      ? selectedFilePath === pendingJump.path ||
+        selectedFilePath.endsWith("/" + pendingJump.path) ||
+        (workspaceRoot && selectedFilePath === workspaceRoot + "/" + pendingJump.path)
+      : false;
+
+  // Look up the loading state of the active buffer. The Map's key is the same
+  // path that appears in openTabs — either the workspace-relative form or the
+  // absolute form depending on how the file was opened.
+  const activeBufferKey = selectedFilePath ?? "";
+  const activeBuffer = fileBuffers.get(activeBufferKey);
+  const isActiveBufferLoading = activeBuffer?.loading ?? false;
+
+  useEffect(() => {
+    if (!pendingJump) return;
+    if (!isPendingPathActive) return;
+    if (isActiveBufferLoading) return;
+    // Defer one frame so the CodeEditor's value-update effect has dispatched
+    // its setState into the view.
+    const id = requestAnimationFrame(() => {
+      editorActionsRef.current?.scrollToLine(pendingJump.line, pendingJump.col);
+      editorActionsRef.current?.focus();
+      setPendingJump(null);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pendingJump, isPendingPathActive, isActiveBufferLoading]);
 
   // ── Command Palette commands list ────────────────────────────────────────
   const paletteCommands: PaletteCommand[] = [
@@ -562,6 +630,7 @@ export function AgentWorkspace({
     { label: "Open Quick File", keybinding: "⌘P", action: () => setQuickOpen(true) },
     { label: "Find", keybinding: "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Find and Replace", keybinding: "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { label: "Search files", keybinding: "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
     { label: "Inline AI Edit (selection)", keybinding: "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
@@ -770,13 +839,29 @@ export function AgentWorkspace({
                 {
                   key: "files",
                   label: "Files",
-                  hint: "⇧⌘F",
+                  hint: "⌘B",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
                     </svg>
                   ),
                   onClick: () => setShowExplorer((v) => !v),
+                },
+                {
+                  key: "search",
+                  label: "Search files",
+                  hint: "⇧⌘F",
+                  icon: (
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="7" />
+                      <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setViewMenuOpen(false);
+                    setGlobalSearchOpen(true);
+                    setShowExplorer(true);
+                  },
                 },
                 {
                   key: "tasks",
@@ -814,21 +899,30 @@ export function AgentWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left — File Explorer */}
+        {/* Left — File Explorer OR Global Search (mutually exclusive in
+            the explorer column). Search panel takes over when ⌘⇧F is
+            active; closing it (Esc / ✕) restores the explorer. */}
         {showExplorer && (
           <>
             <div
               className="flex flex-col border-r border-[var(--m-border)]"
               style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
             >
-              <FileExplorer
-                files={files}
-                workspaceRoot={workspaceRoot}
-                selectedFilePath={selectedFilePath}
-                onSelectFile={onSelectFile}
-                onRefreshFiles={onRefreshFiles}
-                onOpenFolder={onOpenFolder}
-              />
+              {globalSearchOpen ? (
+                <GlobalSearchPanel
+                  onClose={() => setGlobalSearchOpen(false)}
+                  onSelectMatch={handleSelectMatch}
+                />
+              ) : (
+                <FileExplorer
+                  files={files}
+                  workspaceRoot={workspaceRoot}
+                  selectedFilePath={selectedFilePath}
+                  onSelectFile={onSelectFile}
+                  onRefreshFiles={onRefreshFiles}
+                  onOpenFolder={onOpenFolder}
+                />
+              )}
             </div>
             {/* Drag handle 1 — between Explorer and Editor */}
             <div
@@ -877,6 +971,7 @@ export function AgentWorkspace({
             onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
             onToggleReplace={() => setReplaceVisible((v) => !v)}
             findActionsRef={findActionsRef}
+            editorActionsRef={editorActionsRef}
             provider={provider as import("@/types").AIProvider}
             model={model}
           />

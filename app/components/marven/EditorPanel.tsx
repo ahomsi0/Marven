@@ -54,6 +54,9 @@ interface EditorPanelProps {
     focus: () => void;
     triggerInlineEdit: () => void;
   } | null>;
+  // Direct handle on the underlying CodeEditor actions. Used by parents that
+  // need to drive the editor (e.g. global-search jumping to a specific line).
+  editorActionsRef?: MutableRefObject<CodeEditorActions | null>;
   // ⌘K inline edit — provider/model are needed to drive the API call.
   provider?: AIProvider;
   model?: string;
@@ -123,6 +126,7 @@ export function EditorPanel({
   onCloseFind,
   onToggleReplace,
   findActionsRef,
+  editorActionsRef: externalEditorActionsRef,
   provider = "groq",
   model = "",
 }: EditorPanelProps) {
@@ -617,6 +621,11 @@ export function EditorPanel({
                     onSave={onSaveFile}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
+                      // Mirror the handle outward so parents (AgentWorkspace)
+                      // can drive scrollToLine after global-search clicks.
+                      if (externalEditorActionsRef) {
+                        externalEditorActionsRef.current = actions;
+                      }
                     }}
                   />
                 )}

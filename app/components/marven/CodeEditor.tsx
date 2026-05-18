@@ -33,6 +33,12 @@ export interface CodeEditorActions {
   focus: () => void;
   /** Scroll a character offset into view (used by Find for next/prev). */
   scrollToPos: (pos: number) => void;
+  /** Scroll a 1-based line number into view, optionally placing the cursor at
+   * `col` (1-based) on that line. Used by the global-search panel to jump to
+   * a specific match. */
+  scrollToLine: (line: number, col?: number) => void;
+  /** Set the editor's selection range. Both offsets are character positions. */
+  setSelection: (from: number, to: number) => void;
   /** Get a [from, to) range corresponding to the Nth match of `query` (case-insensitive). */
   findRange: (query: string, occurrence: number) => { from: number; to: number } | null;
   /** Get current full document text. */
@@ -333,6 +339,33 @@ export function CodeEditor({
           const clamped = Math.max(0, Math.min(pos, v.state.doc.length));
           v.dispatch({
             effects: EditorView.scrollIntoView(clamped, { y: "center" }),
+          });
+        },
+        scrollToLine: (line, col) => {
+          const v = viewRef.current;
+          if (!v) return;
+          const totalLines = v.state.doc.lines;
+          // Clamp to a valid 1-based line. CodeMirror's doc.line is 1-indexed.
+          const safeLine = Math.max(1, Math.min(line, totalLines));
+          const lineInfo = v.state.doc.line(safeLine);
+          // Place cursor at col (1-based). Default col=1 → line start. Clamp to
+          // the line's actual length so we never overshoot when col is stale.
+          const lineLen = lineInfo.to - lineInfo.from;
+          const safeCol = Math.max(1, Math.min(col ?? 1, lineLen + 1));
+          const cursor = lineInfo.from + (safeCol - 1);
+          v.dispatch({
+            selection: { anchor: cursor },
+            effects: EditorView.scrollIntoView(cursor, { y: "center" }),
+          });
+        },
+        setSelection: (from, to) => {
+          const v = viewRef.current;
+          if (!v) return;
+          const docLen = v.state.doc.length;
+          const safeFrom = Math.max(0, Math.min(from, docLen));
+          const safeTo = Math.max(0, Math.min(to, docLen));
+          v.dispatch({
+            selection: { anchor: safeFrom, head: safeTo },
           });
         },
         findRange: (query, occurrence) => {

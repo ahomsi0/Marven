@@ -18,6 +18,9 @@ export interface EditorShortcutsOptions {
   // ⌘K inline AI edit — fires even when textarea/input has focus so the user
   // can select code, press ⌘K, and trigger the prompt without losing focus.
   onInlineEdit?: () => void;
+  // ⌘⇧F global search across the workspace — fires even from inputs so users
+  // can pop the panel open from anywhere.
+  onGlobalSearch?: () => void;
   enabled?: boolean;
 }
 
@@ -40,6 +43,7 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindNext,
     onFindPrev,
     onInlineEdit,
+    onGlobalSearch,
     enabled = true,
   } = opts;
 
@@ -140,6 +144,17 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
         }
       }
 
+      // Cmd/Ctrl + Shift + F — Global search across the workspace. Must come
+      // BEFORE the plain ⌘F handler below so we don't fall through. Fires from
+      // inputs too so users can pop it open while typing anywhere.
+      if (mod && shift && !e.altKey && (e.key === "f" || e.key === "F")) {
+        if (onGlobalSearch) {
+          e.preventDefault();
+          onGlobalSearch();
+          return;
+        }
+      }
+
       // Cmd/Ctrl + F — Open Find
       if (mod && !shift && !e.altKey && e.key === "f") {
         if (onFind) {
@@ -201,5 +216,6 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindNext,
     onFindPrev,
     onInlineEdit,
+    onGlobalSearch,
   ]);
 }
