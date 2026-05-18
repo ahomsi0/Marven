@@ -197,6 +197,16 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
+  // Frameless windows skip the default menu, so ⌥⌘I/F12 aren't wired. Bind
+  // them explicitly so DevTools is reachable for debugging.
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isToggleDevTools =
+      (input.key === 'I' && input.alt && (input.meta || input.control)) ||
+      input.key === 'F12';
+    if (isToggleDevTools) mainWindow.webContents.toggleDevTools();
+  });
+
   // Auto-grant microphone so SpeechRecognition (wake word) works.
   // Both handlers are required — check fires before request.
   mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
@@ -383,8 +393,16 @@ ipcMain.handle('pty-start', (event, args) => {
     resolvedCwd = process.env.HOME;
   }
 
+  // Launch as a login shell on Unix — what Terminal.app/iTerm2 do. Without
+  // this, zsh launched from an Electron subprocess on macOS sometimes decides
+  // it's non-interactive and exits cleanly (exitCode 0) the moment it starts,
+  // which leaves the user with a "shell that won't echo." -l also makes the
+  // shell source /etc/zprofile and ~/.zprofile so PATH and other login-time
+  // env vars are set correctly inside the PTY.
+  const shellArgs = process.platform === 'win32' ? [] : ['-l'];
+
   try {
-    const p = pty.spawn(shell, [], {
+    const p = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: Math.max(20, Math.floor(cols || 80)),
       rows: Math.max(5, Math.floor(rows || 24)),
@@ -413,8 +431,11 @@ ipcMain.handle('pty-start', (event, args) => {
 ipcMain.on('pty-write', (_e, args) => {
   const { id, data } = args || {};
   const p = ptys.get(id);
-  if (!p) return;
-  try { p.write(data); } catch {}
+  if (!p) {
+    console.warn('[Marven] pty-write: no PTY for id', id, '(known ids:', [...ptys.keys()], ')');
+    return;
+  }
+  try { p.write(data); } catch (err) { console.error('[Marven] pty.write failed:', err && err.message); }
 });
 
 ipcMain.on('pty-resize', (_e, args) => {

@@ -78,8 +78,12 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
     term.open(containerRef.current);
     // Run fit on the next frame — opening synchronously can leave the
     // container without measured layout, which makes fit.fit() throw.
+    // Focus afterwards so keystrokes reach the PTY without an extra click;
+    // without this xterm's hidden textarea may not be the active element when
+    // the panel opens, so typing goes wherever the editor focus was.
     requestAnimationFrame(() => {
       try { fit.fit(); } catch {}
+      try { term.focus(); } catch {}
     });
     termRef.current = term;
     fitRef.current = fit;
@@ -130,6 +134,18 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       bridge.ptyWrite({ id: ptyId, data });
     });
 
+    // Defensive: refocus xterm's hidden textarea if it loses focus to a sibling
+    // element. Without this, clicking near the terminal can leave keystrokes
+    // landing on the editor or sidebar instead of the shell.
+    const onContainerKeyDown = () => {
+      const ta = containerRef.current?.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
+      const isInTerm = ta && (document.activeElement === ta || containerRef.current?.contains(document.activeElement));
+      if (!isInTerm) {
+        try { ta?.focus(); } catch {}
+      }
+    };
+    containerRef.current.addEventListener("keydown", onContainerKeyDown);
+
     // Forward terminal resize → PTY (so the shell's $COLUMNS/$LINES match)
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       bridge.ptyResize({ id: ptyId, cols, rows });
@@ -145,6 +161,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
     return () => {
       disposed = true;
       ro.disconnect();
+      containerRef.current?.removeEventListener("keydown", onContainerKeyDown);
       try { keyDisposable.dispose(); } catch {}
       try { resizeDisposable.dispose(); } catch {}
       unsubData?.();
@@ -169,6 +186,11 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
     <div
       ref={containerRef}
       className="h-full w-full overflow-hidden"
+      onMouseDown={() => {
+        // Refocus xterm on any click in the panel — keeps "click terminal,
+        // start typing" working even after focus drifts to the editor or sidebar.
+        try { termRef.current?.focus(); } catch {}
+      }}
       style={{
         // xterm renders against its own theme; this background fills any gap
         // before xterm mounts so we don't flash the panel's surface color.

@@ -56,14 +56,24 @@ function ConvRow({
   onPin: () => void;
 }) {
   return (
-    <button
-      type="button"
+    // role=button + keyboard handler instead of a real <button>, because the
+    // pin/delete actions inside need to be their own buttons and HTML doesn't
+    // allow <button> inside <button> (hydration error).
+    <div
+      role="button"
+      tabIndex={0}
       className={`group relative flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left transition-colors ${
         isActive
           ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
           : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
       }`}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
       {conv.pinned && (
         <span className="mr-1.5 text-[#d19a66]/60">
@@ -106,7 +116,7 @@ function ConvRow({
       >
         ×
       </button>
-    </button>
+    </div>
   );
 }
 
