@@ -73,7 +73,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice). Defaults to a fully-local Whisper-tiny model (~150MB, downloaded once) so no API key is needed; switch to Groq Whisper in Settings → General if you'd prefer cloud speed.
 - **Image attachments** for vision-capable models (paperclip, paste, drag-drop) — non-vision providers get a graceful note
 - **Slash commands** + user-defined prompt templates
-- **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc. (macOS only)
+- **Natural-language actions**: "open Spotify", "open github", "what's the weather", "set a timer", "search Google for…", etc. App / website / search commands work on macOS, Windows, and Linux (Windows uses `start`, Linux uses `xdg-open`). Volume / media / screenshot / DND commands are macOS-only for now.
 
 ### Local voice (v2.1+)
 - **Offline by default** — "Hey Marven" is transcribed on your machine using Whisper-tiny.en running in WASM via `transformers.js`. The ~145MB model downloads once on first use and is cached in IndexedDB.
