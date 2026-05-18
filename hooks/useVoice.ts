@@ -6,12 +6,12 @@ import { blobToFloat32Mono16k, getLocalSttPipeline } from "@/lib/localStt";
 export type VoiceState = "idle" | "wake-listening" | "command-listening";
 export type SttProvider = "groq" | "local";
 
-// Wake match — must be at the START of the transcription (no scattered match
-// in mid-sentence). "hey/ok/okay" prefix optional but recommended; the name
-// itself is constrained to plausible mishearings of "Marven" (marvin, mervin)
-// so we stop triggering on "Martin", "maven", or "Marvell" in regular speech.
+// Wake match — must be at the START of the transcription AND must include
+// the "hey/ok/okay" prefix. Making the prefix required (was optional) cuts
+// almost all false-wakes: Whisper-tiny tends to hallucinate "Marvin" from
+// silence or ambient noise, which used to be enough on its own to fire.
 const WAKE_WORD_REGEX =
-  /^\s*[,.!?]*\s*(?:(?:hey|ok|okay)\s*[,.]?\s*)?(?:marv|merv)(?:en|in|yn|on|an)?\b/i;
+  /^\s*[,.!?]*\s*(?:hey|ok|okay)\s*[,.]?\s*(?:marv|merv)(?:en|in|yn|on|an)?\b/i;
 
 const SPEECH_THRESHOLD = 0.006; // RMS above = speaking
 const SPEECH_END_MS    = 600;   // ms of silence that ends an utterance
