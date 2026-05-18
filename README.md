@@ -23,10 +23,11 @@ What leaves your machine depends on which provider is selected:
 |---|---|
 | **Ollama** | Nowhere — runs entirely on your machine |
 | **Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM** | To that provider's API (subject to their data-retention policy) |
-| **"Hey Marven" voice** | Audio is sent to **Groq Whisper** for transcription |
+| **"Hey Marven" voice (Local)** | Nowhere — runs entirely on your machine after first model download |
+| **"Hey Marven" voice (Groq)** | Audio is sent to **Groq Whisper** for transcription |
 | **`fetch_url` / `web_search` agent tools** | The URL or query you ask for is fetched / sent to DuckDuckGo |
 
-If full privacy matters, use **Ollama** locally for chat/agent and turn off the wake word.
+If full privacy matters, use **Ollama** locally for chat/agent and the **Local** voice option (default).
 
 ---
 
@@ -63,10 +64,14 @@ If full privacy matters, use **Ollama** locally for chat/agent and turn off the 
 ### Chat mode
 - **Six providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, Ollama (local)
 - **Conversation management**: pin, search by title, per-conversation system prompt, markdown export
-- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice). Wake word uses Groq Whisper — needs a Groq key.
+- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice). Defaults to a fully-local Whisper-tiny model (~150MB, downloaded once) so no API key is needed; switch to Groq Whisper in Settings → General if you'd prefer cloud speed.
 - **Image attachments** for vision-capable models (paperclip, paste, drag-drop) — non-vision providers get a graceful note
 - **Slash commands** + user-defined prompt templates
 - **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc. (macOS only)
+
+### Local voice (v2.1+)
+- **Offline by default** — "Hey Marven" is transcribed on your machine using Whisper-tiny.en running in WASM via `transformers.js`. The ~150MB model downloads once on first use and is cached in IndexedDB.
+- Switch to Groq Whisper for lower latency in **Settings → General → Voice recognition**.
 
 ### System
 - **Light + dark themes** with theme-tracked CSS variables
@@ -149,7 +154,7 @@ Open Settings (⌘, or the sidebar gear) and go to **Integrations → API Keys**
 | **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com) | Limited free credits |
 | **Ollama** | [ollama.com](https://ollama.com) — install locally | Free, fully offline |
 
-You only need **one** to get started. Voice features ("Hey Marven", dictation) use **Groq Whisper**, so a Groq key is required for them. If Groq blocks `whisper-large-v3-turbo` for your org, Marven falls back to `whisper-large-v3` and `distil-whisper-large-v3-en` automatically.
+You only need **one** to get started. Voice features ("Hey Marven", dictation) default to a local Whisper-tiny model that runs on your machine — no API key required. If you'd rather use Groq's cloud Whisper (lower latency), flip the provider in **Settings → General → Voice recognition** and make sure your Groq key is filled in. If Groq blocks `whisper-large-v3-turbo` for your org, Marven falls back to `whisper-large-v3` and `distil-whisper-large-v3-en` automatically.
 
 ### Picking a model
 

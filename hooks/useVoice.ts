@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { blobToFloat32Mono16k, getLocalSttPipeline } from "@/lib/localStt";
 
 export type VoiceState = "idle" | "wake-listening" | "command-listening";
+export type SttProvider = "groq" | "local";
 
 // Wide net — catches common Whisper mishearings
 const WAKE_WORD_REGEX =
@@ -23,11 +25,31 @@ function preferredMime() {
   return "";
 }
 
-async function transcribeBlob(blob: Blob, prompt?: string): Promise<{ text: string; error?: string }> {
+async function transcribeBlob(
+  blob: Blob,
+  prompt?: string,
+  provider: SttProvider = "groq",
+): Promise<{ text: string; error?: string }> {
   if (blob.size < 200) {
     console.warn("[stt] blob too small:", blob.size, "bytes — skipping");
     return { text: "" };
   }
+
+  // ── Local Whisper via transformers.js (WASM, fully offline after first model
+  //    download). Falls back to the Groq path on unexpected failure so the user
+  //    still has a chance to hear a response. ──
+  if (provider === "local") {
+    try {
+      const audio = await blobToFloat32Mono16k(blob);
+      const pipe  = await getLocalSttPipeline();
+      const { text } = await pipe(audio);
+      return { text };
+    } catch (e) {
+      console.error("[stt] local STT failed:", e);
+      return { text: "", error: e instanceof Error ? e.message : "local STT failed" };
+    }
+  }
+
   const ext  = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
   const form = new FormData();
   form.append("audio", new File([blob], `audio.${ext}`, { type: blob.type }));
@@ -70,6 +92,30 @@ export function useVoice(
   const onCommandRef   = useRef(onCommand);           onCommandRef.current   = onCommand;
   const onWakeRef      = useRef(onWakeWordDetected);  onWakeRef.current      = onWakeWordDetected;
   const onInterimRef   = useRef(onInterimTranscript); onInterimRef.current   = onInterimTranscript;
+
+  // ── STT provider preference ───────────────────────────────────────────────
+  // Default to "local" — wake-word transcription runs on the user's machine
+  // unless they opt back into Groq Cloud. Loaded from Electron settings on
+  // mount and refreshed when settings-changed events fire.
+  const sttProviderRef = useRef<SttProvider>("local");
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = typeof window !== "undefined" ? (window as any).marvenElectron : null;
+    if (!electron?.getSettings) return;
+
+    const load = () => {
+      electron.getSettings().then((s: { voiceSttProvider?: string }) => {
+        sttProviderRef.current = s?.voiceSttProvider === "groq" ? "groq" : "local";
+      }).catch(() => { /* keep default */ });
+    };
+    load();
+
+    // Listen for in-app settings changes so flipping the provider in Settings
+    // takes effect without a reload.
+    const handler = () => load();
+    window.addEventListener("marven:settings-changed", handler);
+    return () => window.removeEventListener("marven:settings-changed", handler);
+  }, []);
 
   // ── Wake state ────────────────────────────────────────────────────────────
   const wakeActiveRef  = useRef(false);
@@ -203,7 +249,7 @@ export function useVoice(
               // Start the next recorder immediately so we never miss audio
               startRec();
 
-              transcribeBlob(blob, "Hey Marven, Hey Marvin")
+              transcribeBlob(blob, "Hey Marven, Hey Marvin", sttProviderRef.current)
                 .then(({ text, error }) => {
                   if (!wakeActiveRef.current) return;
                   wakeChecking.current = false;
@@ -284,7 +330,7 @@ export function useVoice(
         cmdChunksRef.current = [];
         onInterimRef.current?.("");
 
-        const result = await transcribeBlob(blob);
+        const result = await transcribeBlob(blob, undefined, sttProviderRef.current);
         if (result.error) setVoiceError(result.error);
         const clean = (result.text ?? "").trim();
         const cmd   = hasWakeWord(clean) ? stripWakeWord(clean) : clean;

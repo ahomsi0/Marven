@@ -6,6 +6,9 @@ import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
+import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
+
+type SttProviderId = "local" | "groq";
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -236,6 +239,13 @@ export function SettingsModal({
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [keysSaved, setKeysSaved] = useState(false);
   const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
+
+  // STT provider preference + model status — surfaced under General → Voice.
+  // Default to "local" so first-time users get an offline-capable experience
+  // without needing to plug in a Groq API key first.
+  const [sttProvider, setSttProvider] = useState<SttProviderId>("local");
+  const [modelStatus, setModelStatus] = useState<string | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<
     | "idle"
@@ -267,6 +277,8 @@ export function SettingsModal({
       if (s.anthropicApiKey) setAnthropicKey(s.anthropicApiKey);
       if (s.ollamaUrl) setOllamaUrl(s.ollamaUrl);
       if (s.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
+      if (s.voiceSttProvider === "groq") setSttProvider("groq");
+      else setSttProvider("local");
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -327,7 +339,11 @@ export function SettingsModal({
 
   async function handleSaveKeys() {
     if (!electron) return;
+    // Merge with current settings so we don't clobber unrelated keys like
+    // voiceSttProvider, custom shortcuts, etc.
+    const current = await electron.getSettings();
     await electron.saveSettings({
+      ...current,
       groqApiKey: groqKey.trim(),
       nimApiKey: nimKey.trim(),
       openrouterApiKey: openrouterKey.trim(),
@@ -345,6 +361,46 @@ export function SettingsModal({
     if (!electron) return;
     const current = await electron.getSettings();
     await electron.saveSettings({ ...current, preferredBrowser: choice });
+  }
+
+  async function handleSttProviderChange(choice: SttProviderId) {
+    setSttProvider(choice);
+    setModelStatus(null);
+    if (electron) {
+      const current = await electron.getSettings();
+      await electron.saveSettings({ ...current, voiceSttProvider: choice });
+    }
+    // Let useVoice (and any other listeners) pick up the change without
+    // requiring a full app reload.
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+  }
+
+  async function handlePreloadModel() {
+    if (modelLoading) return;
+    setModelLoading(true);
+    setModelStatus("Preparing model…");
+    try {
+      await getLocalSttPipeline((p: LocalSttProgress) => {
+        if (p.status === "downloading" && p.total) {
+          const pct = Math.round(((p.loaded ?? 0) / p.total) * 100);
+          const mb  = ((p.loaded ?? 0) / 1024 / 1024).toFixed(1);
+          const tot = (p.total / 1024 / 1024).toFixed(1);
+          const file = p.file ? ` ${p.file}` : "";
+          setModelStatus(`Downloading${file}… ${pct}% (${mb}/${tot} MB)`);
+        } else if (p.status === "loading") {
+          setModelStatus(p.message ?? "Loading model…");
+        } else if (p.status === "ready") {
+          setModelStatus("Ready to use offline.");
+        } else if (p.status === "error") {
+          setModelStatus(p.message ? `Error: ${p.message}` : "Failed to load model.");
+        }
+      });
+      setModelStatus("Ready to use offline.");
+    } catch (err) {
+      setModelStatus(err instanceof Error ? `Error: ${err.message}` : "Failed to load model.");
+    } finally {
+      setModelLoading(false);
+    }
   }
 
   async function handleCheckUpdates() {
@@ -573,6 +629,82 @@ export function SettingsModal({
               </div>
             </div>
 
+            {/* Voice recognition — picks where "Hey Marven" audio is
+                transcribed. Local uses Whisper-tiny.en in-browser via
+                transformers.js (no key required, model downloads once). */}
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Voice recognition</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
+                Where &quot;Hey Marven&quot; audio is transcribed.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  {
+                    id: "local" as const,
+                    label: "Local",
+                    hint: "On your machine • Free • Whisper-tiny",
+                    icon: (
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                        <rect x="3" y="4" width="18" height="12" rx="2" />
+                        <path strokeLinecap="round" d="M8 20h8M12 16v4" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    id: "groq" as const,
+                    label: "Groq Cloud",
+                    hint: "Faster • Requires API key",
+                    icon: (
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 014-4 5 5 0 019.584-1A4.5 4.5 0 0119 19H7a4 4 0 01-4-4z" />
+                      </svg>
+                    ),
+                  },
+                ]).map((opt) => {
+                  const active = sttProvider === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSttProviderChange(opt.id)}
+                      aria-pressed={active}
+                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-left transition-all ${
+                        active
+                          ? "border-[var(--m-accent)] bg-[var(--m-accent)]/5"
+                          : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
+                      }`}
+                    >
+                      <span className={`flex items-center gap-2 text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                        {opt.icon}
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-[var(--m-text-faint)]">{opt.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {sttProvider === "local" && (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-[var(--m-text-muted)]">
+                    {modelStatus ?? "Model downloads (~150MB) on first use, then runs offline."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handlePreloadModel}
+                    disabled={modelLoading}
+                    className="shrink-0 rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {modelLoading ? "Loading…" : "Preload model"}
+                  </button>
+                </div>
+              )}
+              {sttProvider === "groq" && (
+                <p className="mt-2 text-[10px] text-[var(--m-text-muted)]">
+                  Requires a Groq API key in Integrations → API Keys. Audio is sent to Groq Whisper.
+                </p>
+              )}
+            </div>
+
             {/* Format on save toggle */}
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
@@ -602,18 +734,6 @@ export function SettingsModal({
                     }`}
                   />
                 </button>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] divide-y divide-[var(--m-border-subtle)]">
-              <div className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="text-[13px] text-[var(--m-text)]">Voice &amp; speech</p>
-                  <p className="text-[11px] text-[var(--m-text-muted)]">
-                    Configure voice from the input bar
-                  </p>
-                </div>
-                <span className="text-[11px] text-[var(--m-text-faint)]">Input bar</span>
               </div>
             </div>
           </div>
