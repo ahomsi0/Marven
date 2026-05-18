@@ -66,14 +66,14 @@ export function WorkspaceLanding({
   const displayedRecents = expandedRecents ? recentWorkspaces : recentWorkspaces.slice(0, 5);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 items-start justify-center overflow-y-auto bg-[#1a1a1a] px-8 py-20">
+    <div className="flex h-full min-h-0 flex-1 items-start justify-center overflow-y-auto bg-[var(--m-bg)] px-8 py-20">
       <div className="w-full max-w-[760px]">
         {/* Brand */}
         <div className="mb-3 flex items-center gap-3">
           <MarvenLogo size={48} />
-          <span className="font-mono text-[28px] font-semibold tracking-wide text-[#ddd]">MARVEN</span>
+          <span className="font-mono text-[28px] font-semibold tracking-wide text-[var(--m-text)]">MARVEN</span>
         </div>
-        <div className="mb-12 text-[13px] text-[#666]">Local AI Desktop</div>
+        <div className="mb-12 text-[13px] text-[var(--m-text-faint)]">Local AI Desktop</div>
 
         {/* Action cards */}
         <div className="mb-10 grid grid-cols-3 gap-3">
@@ -109,8 +109,8 @@ export function WorkspaceLanding({
 
         {/* Clone form */}
         {showCloneForm && (
-          <div className="mb-10 rounded-lg border border-[#333] bg-[#1e1e1e] p-3">
-            <div className="mb-2 text-[11px] uppercase tracking-widest text-[#666]">Clone repository</div>
+          <div className="mb-10 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-3">
+            <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--m-text-faint)]">Clone repository</div>
             <div className="flex gap-2">
               <input
                 autoFocus
@@ -123,7 +123,7 @@ export function WorkspaceLanding({
                 }}
                 placeholder="https://github.com/user/repo.git"
                 disabled={cloning}
-                className="flex-1 rounded-md border border-[#383838] bg-[#252525] px-3 py-2 font-mono text-[12px] text-[#d4d4d4] outline-none focus:border-[#d19a66]/50 disabled:opacity-50"
+                className="flex-1 rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[12px] text-[var(--m-text)] outline-none focus:border-[#d19a66]/50 disabled:opacity-50"
               />
               <button
                 type="button"
@@ -137,7 +137,7 @@ export function WorkspaceLanding({
                 type="button"
                 onClick={() => { setShowCloneForm(false); setCloneUrl(""); setCloneError(null); }}
                 disabled={cloning}
-                className="rounded-md border border-[#383838] px-3 py-2 text-[11px] text-[#888] hover:text-[#ccc]"
+                className="rounded-md border border-[var(--m-border)] px-3 py-2 text-[11px] text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
               >
                 Cancel
               </button>
@@ -145,8 +145,8 @@ export function WorkspaceLanding({
             {cloneError && (
               <p className="mt-2 font-mono text-[10px] text-red-400">{cloneError}</p>
             )}
-            <p className="mt-2 text-[10px] text-[#555]">
-              Clones into <code className="font-mono text-[10px] text-[#777]">~/Marven-Workspaces</code> by default.
+            <p className="mt-2 text-[10px] text-[var(--m-text-faint)]">
+              Clones into <code className="font-mono text-[10px] text-[var(--m-text-muted)]">~/Marven-Workspaces</code> by default.
             </p>
           </div>
         )}
@@ -154,7 +154,7 @@ export function WorkspaceLanding({
         {/* Recent projects */}
         <div>
           <div className="mb-3 flex items-baseline justify-between">
-            <span className="text-[13px] text-[#888]">Recent projects</span>
+            <span className="text-[13px] text-[var(--m-text-muted)]">Recent projects</span>
             {recentWorkspaces.length > 5 && (
               <button
                 type="button"
@@ -166,7 +166,7 @@ export function WorkspaceLanding({
             )}
           </div>
           {recentWorkspaces.length === 0 ? (
-            <p className="text-[12px] text-[#555]">No recent projects yet — open one to get started.</p>
+            <p className="text-[12px] text-[var(--m-text-faint)]">No recent projects yet — open one to get started.</p>
           ) : (
             <ul className="flex flex-col">
               {displayedRecents.map((p) => {
@@ -176,10 +176,10 @@ export function WorkspaceLanding({
                     <button
                       type="button"
                       onClick={() => onSelectRecent(p)}
-                      className="group flex w-full items-baseline justify-between gap-4 rounded-md px-3 py-2 text-left transition-colors hover:bg-[#252525]"
+                      className="group flex w-full items-baseline justify-between gap-4 rounded-md px-3 py-2 text-left transition-colors hover:bg-[var(--m-surface-2)]"
                     >
-                      <span className="truncate text-[13px] text-[#d4d4d4] group-hover:text-[#d19a66]">{name}</span>
-                      <span className="truncate font-mono text-[11px] text-[#555]">{parent}</span>
+                      <span className="truncate text-[13px] text-[var(--m-text)] group-hover:text-[#d19a66]">{name}</span>
+                      <span className="truncate font-mono text-[11px] text-[var(--m-text-faint)]">{parent}</span>
                     </button>
                   </li>
                 );
@@ -197,10 +197,10 @@ function ActionCard({ icon, label, onClick }: { icon: React.ReactNode; label: st
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-start gap-3 rounded-lg border border-[#333] bg-[#1e1e1e] px-4 py-4 text-left transition-colors hover:border-[#d19a66]/40 hover:bg-[#252525]"
+      className="flex flex-col items-start gap-3 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] px-4 py-4 text-left transition-colors hover:border-[#d19a66]/40 hover:bg-[var(--m-surface-2)]"
     >
       <span className="text-[#d19a66]">{icon}</span>
-      <span className="text-[13px] text-[#d4d4d4]">{label}</span>
+      <span className="text-[13px] text-[var(--m-text)]">{label}</span>
     </button>
   );
 }

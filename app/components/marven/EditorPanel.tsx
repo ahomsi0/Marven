@@ -266,14 +266,14 @@ export function EditorPanel({
   const isSettingsTabActive = activeTab?.kind === "settings";
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-[#1e1e1e]">
+    <div className="flex h-full min-w-0 flex-col bg-[var(--m-surface)]">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Editor */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Multi-tab strip */}
           {openTabs.length > 0 && (
             <div
-              className="flex items-stretch border-b border-[#333] bg-[#1a1a1a] overflow-x-auto"
+              className="flex items-stretch border-b border-[var(--m-border)] bg-[var(--m-bg)] overflow-x-auto"
               onDragLeave={(e) => {
                 // Only clear if leaving the tab strip entirely (not entering a child)
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -307,8 +307,8 @@ export function EditorPanel({
                     }}
                     onDragEnd={() => setDragOverIndex(null)}
                     onClick={() => onSelectTab(i)}
-                    className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-[#333] px-3 py-2 transition-colors ${
-                      isActive ? "bg-[#1e1e1e]" : "bg-[#1a1a1a] hover:bg-[#1e1e1e]/50"
+                    className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-[var(--m-border)] px-3 py-2 transition-colors ${
+                      isActive ? "bg-[var(--m-surface)]" : "bg-[var(--m-bg)] hover:bg-[var(--m-surface)]/50"
                     }`}
                     title={tab.kind === "file" ? tab.path : "Settings"}
                   >
@@ -324,13 +324,13 @@ export function EditorPanel({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     )}
-                    <span className={`italic text-[12px] ${isActive ? "text-[#d4d4d4]" : "text-[#888]"}`}>{label}</span>
+                    <span className={`italic text-[12px] ${isActive ? "text-[var(--m-text)]" : "text-[var(--m-text-muted)]"}`}>{label}</span>
                     {isDirty && <span className="text-[#d19a66] text-[10px]">●</span>}
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onCloseTab(i); }}
                       aria-label={`Close ${label}`}
-                      className="ml-1 flex h-4 w-4 items-center justify-center rounded text-[#666] transition-colors hover:bg-[#383838] hover:text-[#d4d4d4]"
+                      className="ml-1 flex h-4 w-4 items-center justify-center rounded text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-border)] hover:text-[var(--m-text)]"
                     >
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -346,7 +346,7 @@ export function EditorPanel({
                   <button
                     type="button"
                     onClick={onSaveFile}
-                    className="rounded border border-[#444] px-2 py-1 text-[10px] text-[#aaa] transition-colors hover:border-[#666] hover:text-[#ddd]"
+                    className="rounded border border-[var(--m-border)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)]"
                   >
                     Save
                   </button>
@@ -358,7 +358,7 @@ export function EditorPanel({
           {/* Content area — depends on active tab */}
           {isSettingsTabActive ? (
             /* Settings tab content */
-            <div className="min-h-0 flex-1 overflow-hidden bg-[#1a1a1a]">
+            <div className="min-h-0 flex-1 overflow-hidden bg-[var(--m-bg)]">
               <SettingsModal
                 inline
                 shortcuts={shortcuts}
@@ -386,7 +386,7 @@ export function EditorPanel({
               {/* Line numbers */}
               <div
                 ref={gutterRef}
-                className="w-10 shrink-0 select-none overflow-hidden border-r border-[#2a2a2a] bg-[#1a1a1a] py-3 pr-2 text-right font-mono text-[11px] leading-7 text-[#555]"
+                className="w-10 shrink-0 select-none overflow-hidden border-r border-[var(--m-border-subtle)] bg-[var(--m-bg)] py-3 pr-2 text-right font-mono text-[11px] leading-7 text-[var(--m-text-faint)]"
               >
                 {Array.from({ length: lineCount }, (_, i) => (
                   <div key={i}>{i + 1}</div>
@@ -419,15 +419,15 @@ export function EditorPanel({
             </>
           ) : (
             /* Empty editor state — watermark + shortcuts */
-            <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-[#1e1e1e]">
+            <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-[var(--m-surface)]">
               <div className="opacity-15">
                 <MarvenLogo size={160} />
               </div>
-              <div className="space-y-2 text-[12px] text-[#555]">
+              <div className="space-y-2 text-[12px] text-[var(--m-text-faint)]">
                 <button
                   type="button"
                   onClick={onToggleChat}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Open Chat</span>
                   <kbd className="font-mono text-[10px]">⌃⌘I</kbd>
@@ -435,7 +435,7 @@ export function EditorPanel({
                 <button
                   type="button"
                   onClick={onCommandPalette}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Show All Commands</span>
                   <kbd className="font-mono text-[10px]">⇧⌘P</kbd>
@@ -443,7 +443,7 @@ export function EditorPanel({
                 <button
                   type="button"
                   onClick={onToggleTerminal}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[#252525] hover:text-[#888]"
+                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Toggle Terminal</span>
                   <kbd className="font-mono text-[10px]">⌃`</kbd>
@@ -455,23 +455,23 @@ export function EditorPanel({
       </div>
 
       {/* Terminal */}
-      <div className={`border-t border-[#333] bg-[#161616] ${showTerminal ? "h-[120px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
+      <div className={`border-t border-[var(--m-border)] bg-[var(--m-bg)] ${showTerminal ? "h-[120px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
         <div
-          className="flex h-7 cursor-pointer items-center gap-3 border-b border-[#2a2a2a] px-3"
+          className="flex h-7 cursor-pointer items-center gap-3 border-b border-[var(--m-border-subtle)] px-3"
           onClick={onToggleTerminal}
         >
-          <span className="text-[9px] uppercase tracking-[0.2em] text-[#666]">Terminal</span>
-          <span className="text-[9px] text-[#555]">{showTerminal ? "▾" : "▸"}</span>
+          <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-faint)]">Terminal</span>
+          <span className="text-[9px] text-[var(--m-text-faint)]">{showTerminal ? "▾" : "▸"}</span>
         </div>
         {showTerminal && (
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-6 text-[#aaa] whitespace-pre-wrap">
-            {terminalOutput || <span className="text-[#444]">No output yet.</span>}
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-6 text-[var(--m-text-muted)] whitespace-pre-wrap">
+            {terminalOutput || <span className="text-[var(--m-text-faint)]">No output yet.</span>}
           </div>
         )}
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between border-t border-[#333] bg-[#1a1a1a] px-3 py-1 font-mono text-[9px] text-[#666]">
+      <div className="flex items-center justify-between border-t border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-1 font-mono text-[9px] text-[var(--m-text-faint)]">
         <span>{projectName}</span>
         <div className="flex gap-4">
           <span>{activeFileName ?? "—"}</span>
