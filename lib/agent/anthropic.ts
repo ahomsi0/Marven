@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 /** Extract system prompt and convert remaining messages to Anthropic format. */
 function toAnthropicMessages(messages: InternalMessage[]): {
@@ -92,6 +93,10 @@ export async function anthropicAgentStep(
 
   // Text response
   const textBlock = response.content.find((b) => b.type === "text");
-  const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
-  return { type: "text", content: text.trim() };
+  const text = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+  const narrated = parseNarratedToolCall(text);
+  if (narrated) {
+    return { type: "tool_call", callId: `anthropic-narrated-${Date.now()}`, tool: narrated.tool, args: narrated.args };
+  }
+  return { type: "text", content: text };
 }

@@ -1,4 +1,5 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
+import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -76,20 +77,21 @@ export async function groqAgentStep(
       throw new Error("Rate limit reached. Too many retries — try again in a moment.");
     }
 
-    // Llama models sometimes output <function=name>{...}</function> (native format)
-    // instead of OpenAI tool_calls JSON. Groq returns 400 with the raw output in
+    // Llama models sometimes narrate the tool call as text instead of using
+    // OpenAI tool_calls JSON. Groq returns 400 with the raw output in
     // failed_generation — parse it ourselves so the loop can continue.
     if (res.status === 400) {
       try {
         const parsed = JSON.parse(text);
         const raw: string = parsed?.error?.failed_generation ?? "";
-        const match = raw.match(/<function=(\w+)>([\s\S]*?)<\/function>/);
-        if (match) {
-          const tool = match[1];
-          const callId = `groq-fallback-${Date.now()}`;
-          let args: Record<string, unknown> = {};
-          try { args = JSON.parse(match[2]); } catch { /* ignore */ }
-          return { type: "tool_call", callId, tool, args };
+        const narrated = parseNarratedToolCall(raw);
+        if (narrated) {
+          return {
+            type: "tool_call",
+            callId: `groq-fallback-${Date.now()}`,
+            tool: narrated.tool,
+            args: narrated.args,
+          };
         }
       } catch { /* ignore */ }
     }
@@ -107,5 +109,12 @@ export async function groqAgentStep(
     return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
   }
 
-  return { type: "text", content: (choice?.message?.content as string ?? "").trim() };
+  const content = (choice?.message?.content as string ?? "").trim();
+  // Successful response but the model narrated a tool call inside the text.
+  // Recover so the user doesn't have to copy-paste the call themselves.
+  const narrated = parseNarratedToolCall(content);
+  if (narrated) {
+    return { type: "tool_call", callId: `groq-narrated-${Date.now()}`, tool: narrated.tool, args: narrated.args };
+  }
+  return { type: "text", content };
 }

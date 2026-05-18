@@ -1,5 +1,6 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -68,5 +69,10 @@ export async function openrouterAgentStep(
     return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
   }
 
-  return { type: "text", content: (choice?.message?.content as string ?? "").trim() };
+  const content = (choice?.message?.content as string ?? "").trim();
+  const narrated = parseNarratedToolCall(content);
+  if (narrated) {
+    return { type: "tool_call", callId: `openrouter-narrated-${Date.now()}`, tool: narrated.tool, args: narrated.args };
+  }
+  return { type: "text", content };
 }

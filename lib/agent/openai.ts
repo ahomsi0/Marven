@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 function toOpenAIMessages(
   messages: InternalMessage[]
@@ -77,5 +78,10 @@ export async function openaiAgentStep(
     }
   }
 
-  return { type: "text", content: (choice.message.content ?? "").trim() };
+  const content = (choice.message.content ?? "").trim();
+  const narrated = parseNarratedToolCall(content);
+  if (narrated) {
+    return { type: "tool_call", callId: `openai-narrated-${Date.now()}`, tool: narrated.tool, args: narrated.args };
+  }
+  return { type: "text", content };
 }

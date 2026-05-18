@@ -275,6 +275,17 @@ async function snapshotOpenPorts(ports: number[]): Promise<Set<number>> {
   return new Set(results.filter((r) => r.open).map((r) => r.p));
 }
 
+// Pick an interpreter that exists on the host. On Unix we use `sh -c`, on
+// Windows we use `cmd.exe /d /s /c` — sh is not installed by default and the
+// previous hardcoded "sh" call simply failed silently on Windows, leaving
+// `npm start` and friends unable to launch from the agent.
+function shellInvocation(command: string): { shell: string; args: string[] } {
+  if (process.platform === "win32") {
+    return { shell: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", command] };
+  }
+  return { shell: "sh", args: ["-c", command] };
+}
+
 async function streamShellCommand(
   command: string,
   cwd: string,
@@ -284,7 +295,8 @@ async function streamShellCommand(
   return new Promise((resolve) => {
     let acc = "";
     let killed = false;
-    const child = spawn("sh", ["-c", command], { cwd });
+    const { shell, args } = shellInvocation(command);
+    const child = spawn(shell, args, { cwd, windowsHide: true });
     const timer = setTimeout(() => {
       killed = true;
       child.kill("SIGKILL");
@@ -380,11 +392,16 @@ export async function executeTool(
         const alreadyOpen = explicitPort ? new Set<number>() : await snapshotOpenPorts(portsToWatch);
 
         // Pipe stdio so we can read the URL the server prints. Detached + unref
-        // means the child survives this request handler returning.
-        const child = spawn("sh", ["-c", cmd], {
+        // means the child survives this request handler returning. Pick a shell
+        // that actually exists on the host (sh on Unix, cmd.exe on Windows) —
+        // hardcoding "sh" used to silently fail on Windows so npm start never
+        // ran and the user got an empty localhost page.
+        const { shell, args: shellArgs } = shellInvocation(cmd);
+        const child = spawn(shell, shellArgs, {
           cwd,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
         });
         child.unref();
 

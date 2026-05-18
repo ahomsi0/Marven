@@ -1,5 +1,6 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
@@ -189,6 +190,13 @@ export async function ollamaAgentStep(
   if (jsonFallback) {
     const callId = `ollama-fb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return { type: "tool_call", callId, tool: jsonFallback.name, args: jsonFallback.args };
+  }
+
+  // Last-resort: catch <function=...>{}</function> and <function(...)>{}</function>
+  // narration from models that ignored the OpenAI-style tool spec entirely.
+  const narrated = parseNarratedToolCall(text);
+  if (narrated) {
+    return { type: "tool_call", callId: `ollama-narrated-${Date.now()}`, tool: narrated.tool, args: narrated.args };
   }
 
   return { type: "text", content: text };
