@@ -1,8 +1,8 @@
 # Marven
 
-> A local AI desktop assistant + full-featured code editor.
+> An AI desktop assistant + full-featured code editor. Local-first when you choose Ollama; cloud providers optional.
 
-Marven is a desktop app that combines a multi-provider AI chat with a complete coding agent — file-aware, with a CodeMirror 6 editor, a real interactive terminal, global search, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama.
+Marven is a desktop app that combines a multi-provider AI chat with a complete coding agent — file-aware, with a CodeMirror 6 editor, a real interactive terminal, global search, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Your files, settings, and memory always stay on your machine; only your chosen AI provider sees prompts and (if you use voice) audio.
 
 [![License: AGPLv3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ahomsi0/Marven)](https://github.com/ahomsi0/Marven/releases/latest)

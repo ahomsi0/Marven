@@ -468,8 +468,9 @@ export function SettingsModal({
                     </span>
                   </div>
                   <p className="mt-0.5 text-[12px] text-[var(--m-text-muted)]">
-                    Marven is a local AI desktop assistant. Your data stays on
-                    your machine.
+                    AI desktop assistant. Files, settings, and memory stay
+                    local. Prompts and audio go to the provider you pick (or
+                    fully local with Ollama).
                   </p>
                 </div>
               </div>
