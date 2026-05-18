@@ -37,6 +37,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **CodeMirror 6** with syntax for 14 languages: JS/TS/JSX/TSX, Python, HTML, CSS/SCSS, JSON, Markdown/MDX, YAML, Rust, Java, C/C++, PHP, SQL, XML
 - **Multi-cursor** editing, **code folding**, **bracket matching**, smart indent
 - **Light + dark syntax themes** that follow the app theme
+- Editor background matches the app chrome (no `oneDark` blue tint), and the active-line + bracket highlights are off so the code reads as one calm surface
 - **⌘F find / ⌘⌥F replace** with match highlighting, ⌘G next, Esc to close
 - **⌘⇧F global search** — grep across the workspace with click-to-open + line jump
 - **⌘K inline AI edit** — select code, describe a change, AI rewrites the selection (Cursor-style)
@@ -56,11 +57,13 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 ### Agent mode
 - **Three-pane layout**: file explorer · multi-tab editor · chat panel, all resizable
 - **Built-in tools**: `read_file`, `write_file`, `list_files`, `search_files`, `run_command`, `web_search`, `fetch_url`, `remember`
+- **Cross-platform `run_command`** — uses `sh -c` on Unix and `cmd.exe /d /s /c` on Windows so `npm start` / dev servers actually launch from the agent on Windows
+- **Narrated tool-call recovery** — when smaller open-weights models (e.g. `llama-3.1-8b-instant`) write `<function(name){…}</function>` or `<tool_call>…</tool_call>` as text instead of using the OpenAI tool-call format, every provider client (Groq, OpenAI, Anthropic, OpenRouter, NIM, Ollama) recognises the narration and executes the call anyway
 - **Git tools** with approval gating: `git_status`, `git_diff`, `git_log`, `git_commit`, `git_branch`, `git_checkout`
 - **Diff viewer** with per-file revert (checkpoint snapshots before agent writes)
 - **MCP server support** (filesystem, GitHub, databases, anything that speaks Model Context Protocol)
 - **Persistent memory** — `remember` tool stores facts across sessions
-- **Per-conversation workspace** — each "New agent" remembers its own folder, open tabs, and message history
+- **Per-conversation workspace** — each "New agent" remembers its own folder, open tabs, and message history (and new agents now start fresh — no stale workspace leaking through)
 - **Live preview** — open HTML, Markdown, or image files in your chosen browser
 - **Background tasks panel** with elapsed time + Stop button
 
