@@ -49,6 +49,9 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 ### Real interactive terminal (v2.0+)
 - **xterm.js + node-pty** — type into it, run commands, see ANSI colors, use REPLs/TUIs (vim, top, etc.)
 - One PTY per workspace, opens in your shell with your `$PATH`
+- Launches as a **login shell** on Unix so `.zprofile` / `.bash_profile` get sourced and zsh stays in interactive mode
+- Shell fallback chain (`$SHELL` → `/bin/zsh` → `/bin/bash` → `/bin/sh`) so a broken `$SHELL` env var doesn't brick the terminal
+- node-pty `spawn-helper` permissions auto-fixed on `npm install` (npm sometimes drops the executable bit during tarball extraction)
 
 ### Agent mode
 - **Three-pane layout**: file explorer · multi-tab editor · chat panel, all resizable
@@ -70,8 +73,11 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **Natural-language actions**: "what's the weather", "take a screenshot", "set a timer", "open Spotify", etc. (macOS only)
 
 ### Local voice (v2.1+)
-- **Offline by default** — "Hey Marven" is transcribed on your machine using Whisper-tiny.en running in WASM via `transformers.js`. The ~150MB model downloads once on first use and is cached in IndexedDB.
+- **Offline by default** — "Hey Marven" is transcribed on your machine using Whisper-tiny.en running in WASM via `transformers.js`. The ~145MB model downloads once on first use and is cached in IndexedDB.
+- WASM + fp32 backend is pinned so the model loads reliably across machines (the default WebGPU path occasionally ships a quantized variant whose scale tensors are missing).
 - Switch to Groq Whisper for lower latency in **Settings → General → Voice recognition**.
+- The input bar shows a **LOCAL** or **GROQ** chip so you can tell at a glance which backend is handling voice.
+- Wake listener pauses automatically while Marven is speaking, so the mic doesn't pick up the TTS audio and re-trigger itself.
 
 ### System
 - **Light + dark themes** with theme-tracked CSS variables
@@ -94,6 +100,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 | ⌘G / ⌘⇧G | Next / previous match |
 | ⌘K | Inline AI edit (with code selected) |
 | ⌘, | Open Settings |
+| ⌥⌘I / F12 | Toggle DevTools (for debugging) |
 
 ---
 
