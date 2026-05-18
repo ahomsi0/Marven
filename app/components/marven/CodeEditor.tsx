@@ -163,10 +163,6 @@ const lightTheme = EditorView.theme(
     ".cm-cursor": {
       borderLeftColor: "#1f1f1f",
     },
-    ".cm-matchingBracket, .cm-nonmatchingBracket": {
-      backgroundColor: "rgba(209, 154, 102, 0.15)",
-      outline: "1px solid rgba(209, 154, 102, 0.4)",
-    },
     ".cm-searchMatch": {
       backgroundColor: "rgba(234, 179, 8, 0.30)",
     },
@@ -204,6 +200,17 @@ const lightHighlight = HighlightStyle.define([
 
 // Common typography extension applied in both themes — sets the font family,
 // font size, line height, padding to match the previous textarea overlay.
+// Suppress the bracket-matching highlight added by basicSetup → bracketMatching().
+// Loaded AFTER the theme compartment so it overrides both oneDark and the
+// custom light theme rules.
+const disableBracketHighlight = EditorView.theme({
+  ".cm-matchingBracket, .cm-nonmatchingBracket": {
+    backgroundColor: "transparent",
+    outline: "none",
+    color: "inherit",
+  },
+});
+
 const typographyTheme = EditorView.theme({
   "&": {
     height: "100%",
@@ -292,6 +299,7 @@ export function CodeEditor({
       EditorView.lineWrapping,
       typographyTheme,
       themeCompartment.current.of(themeExt),
+      disableBracketHighlight,
       langCompartment.current.of(langExt ?? []),
       readOnlyCompartment.current.of(
         readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
