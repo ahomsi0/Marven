@@ -475,30 +475,101 @@ export function SettingsModal({
               </div>
             </div>
 
-            {/* Theme selector */}
-            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
-              <div className="mb-3">
-                <h3 className="text-[13px] font-medium text-[var(--m-text)]">Theme</h3>
-                <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">Choose how Marven looks.</p>
-              </div>
-              <div className="flex gap-3">
-                {(["dark", "light"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTheme(t)}
-                    className={`flex-1 rounded-md border px-3 py-2 text-left transition-colors ${
-                      theme === t
-                        ? "border-[var(--m-accent)] bg-[var(--m-accent-soft)]"
-                        : "border-[var(--m-border)] bg-[var(--m-surface-2)] hover:border-[var(--m-text-faint)]"
-                    }`}
-                  >
-                    <div className="text-[12px] font-medium text-[var(--m-text)] capitalize">{t}</div>
-                    <div className="mt-0.5 text-[10px] text-[var(--m-text-faint)]">
-                      {t === "dark" ? "Easy on the eyes at night" : "High contrast, daytime"}
-                    </div>
-                  </button>
-                ))}
+            {/* Theme selector — visual preview tiles */}
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Appearance</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">Choose how Marven looks.</p>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  {
+                    id: "dark" as const,
+                    label: "Dark",
+                    bg: "#1a1a1a",
+                    surface: "#1e1e1e",
+                    surface2: "#252525",
+                    border: "#333",
+                    text: "#d4d4d4",
+                    muted: "#888",
+                  },
+                  {
+                    id: "light" as const,
+                    label: "Light",
+                    bg: "#fafafa",
+                    surface: "#ffffff",
+                    surface2: "#f0f0f0",
+                    border: "#d4d4d4",
+                    text: "#1f1f1f",
+                    muted: "#6b6b6b",
+                  },
+                ]).map((t) => {
+                  const active = theme === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTheme(t.id)}
+                      aria-pressed={active}
+                      className={`group relative overflow-hidden rounded-lg border-2 transition-all ${
+                        active
+                          ? "border-[var(--m-accent)]"
+                          : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
+                      }`}
+                    >
+                      {/* Mini app mockup */}
+                      <div
+                        className="flex h-[88px] w-full overflow-hidden"
+                        style={{ background: t.bg }}
+                      >
+                        {/* Left sidebar */}
+                        <div
+                          className="flex w-1/4 flex-col gap-1 p-1.5"
+                          style={{ background: t.surface, borderRight: `1px solid ${t.border}` }}
+                        >
+                          <div className="h-1 w-3/4 rounded-sm" style={{ background: t.text, opacity: 0.7 }} />
+                          <div className="h-1 w-1/2 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
+                          <div className="h-1 w-2/3 rounded-sm" style={{ background: t.muted, opacity: 0.6 }} />
+                        </div>
+                        {/* Editor */}
+                        <div className="flex flex-1 flex-col gap-1 p-1.5">
+                          <div className="flex gap-1">
+                            <div className="h-1.5 w-6 rounded-sm" style={{ background: t.surface2 }} />
+                            <div className="h-1.5 w-1.5 rounded-sm" style={{ background: "#d19a66" }} />
+                          </div>
+                          <div className="mt-1 space-y-0.5">
+                            <div className="h-0.5 w-4/5" style={{ background: t.text, opacity: 0.7 }} />
+                            <div className="h-0.5 w-3/5" style={{ background: t.muted, opacity: 0.6 }} />
+                            <div className="h-0.5 w-2/3" style={{ background: t.text, opacity: 0.7 }} />
+                            <div className="h-0.5 w-1/2" style={{ background: t.muted, opacity: 0.6 }} />
+                          </div>
+                        </div>
+                        {/* Right panel */}
+                        <div
+                          className="w-1/4 p-1.5"
+                          style={{ background: t.surface, borderLeft: `1px solid ${t.border}` }}
+                        >
+                          <div className="h-1 w-full rounded-sm" style={{ background: t.muted, opacity: 0.5 }} />
+                        </div>
+                      </div>
+                      {/* Label bar */}
+                      <div
+                        className={`flex items-center justify-between border-t px-3 py-1.5 ${
+                          active
+                            ? "border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10"
+                            : "border-[var(--m-border-subtle)] bg-[var(--m-surface)]"
+                        }`}
+                      >
+                        <span className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                          {t.label}
+                        </span>
+                        {active && (
+                          <svg className="h-3 w-3 text-[var(--m-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
