@@ -1,6 +1,6 @@
 {
   "name": "marven",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {
@@ -39,14 +39,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": ".next/static",
-        "to": "nextjs-server/.next/static"
-      },
-      {
-        "from": "public",
-        "to": "nextjs-server/public"
       }
     ],
     "mac": {
