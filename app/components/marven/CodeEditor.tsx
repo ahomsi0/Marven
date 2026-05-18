@@ -198,16 +198,34 @@ const lightHighlight = HighlightStyle.define([
   { tag: t.strong, fontWeight: "bold" },
 ]);
 
-// Common typography extension applied in both themes — sets the font family,
-// font size, line height, padding to match the previous textarea overlay.
-// Suppress the bracket-matching highlight added by basicSetup → bracketMatching().
 // Loaded AFTER the theme compartment so it overrides both oneDark and the
-// custom light theme rules.
+// custom light theme rules. Three things this does:
+//   1. Suppress the bracket-matching highlight (chunky gray box on `>`/`}`)
+//   2. Suppress the active-line highlight (tinted strip across the cursor row)
+//   3. Force the editor background to match Marven's app background — oneDark
+//      paints a blue-ish #282c34 by default that reads as a "highlight" next
+//      to the darker app chrome.
 const disableBracketHighlight = EditorView.theme({
+  "&": {
+    backgroundColor: "var(--m-surface) !important",
+  },
+  ".cm-content": {
+    backgroundColor: "var(--m-surface) !important",
+  },
+  ".cm-gutters": {
+    backgroundColor: "var(--m-surface) !important",
+    borderRight: "none !important",
+  },
   ".cm-matchingBracket, .cm-nonmatchingBracket": {
-    backgroundColor: "transparent",
-    outline: "none",
-    color: "inherit",
+    backgroundColor: "transparent !important",
+    outline: "none !important",
+    color: "inherit !important",
+  },
+  "&.cm-focused .cm-activeLine, .cm-activeLine": {
+    backgroundColor: "transparent !important",
+  },
+  "&.cm-focused .cm-activeLineGutter, .cm-activeLineGutter": {
+    backgroundColor: "transparent !important",
   },
 });
 

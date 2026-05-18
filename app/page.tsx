@@ -324,11 +324,6 @@ export default function Home() {
     }
   }, [conversations]);
 
-  useEffect(() => {
-    if (activeMode !== "agent") return;
-    loadWorkspaceFiles().catch(() => {});
-  }, [activeMode]);
-
   // Save the active conversation's agent messages whenever they change so we
   // can restore them when the user switches between agent conversations.
   useEffect(() => {
