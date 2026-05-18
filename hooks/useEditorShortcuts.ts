@@ -15,6 +15,9 @@ export interface EditorShortcutsOptions {
   onFindAndReplace?: () => void;
   onFindNext?: () => void;
   onFindPrev?: () => void;
+  // ⌘K inline AI edit — fires even when textarea/input has focus so the user
+  // can select code, press ⌘K, and trigger the prompt without losing focus.
+  onInlineEdit?: () => void;
   enabled?: boolean;
 }
 
@@ -36,6 +39,7 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindAndReplace,
     onFindNext,
     onFindPrev,
+    onInlineEdit,
     enabled = true,
   } = opts;
 
@@ -145,6 +149,18 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
         }
       }
 
+      // Cmd/Ctrl + K — Inline AI edit on the current textarea selection.
+      // Fires even when focus is inside the editor textarea (that's where the
+      // selection lives). We require a non-shift, non-alt K so it doesn't
+      // collide with other ⌘K-prefixed editor chords (none defined yet).
+      if (mod && !shift && !e.altKey && (e.key === "k" || e.key === "K")) {
+        if (onInlineEdit) {
+          e.preventDefault();
+          onInlineEdit();
+          return;
+        }
+      }
+
       // Cmd/Ctrl + G — Next match; Cmd/Ctrl + Shift + G — Prev match.
       // Fires even from inputs so the find input's Enter/Shift+Enter can be
       // complemented by ⌘G outside the find bar.
@@ -184,5 +200,6 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindAndReplace,
     onFindNext,
     onFindPrev,
+    onInlineEdit,
   ]);
 }

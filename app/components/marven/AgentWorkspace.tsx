@@ -344,7 +344,12 @@ export function AgentWorkspace({
   // panel via a ref-exposed action set.
   const [findOpen, setFindOpen] = useState(false);
   const [replaceVisible, setReplaceVisible] = useState(false);
-  const findActionsRef = useRef<{ next: () => void; prev: () => void; focus: () => void } | null>(null);
+  const findActionsRef = useRef<{
+    next: () => void;
+    prev: () => void;
+    focus: () => void;
+    triggerInlineEdit: () => void;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -544,6 +549,7 @@ export function AgentWorkspace({
     },
     onFindNext: () => findActionsRef.current?.next(),
     onFindPrev: () => findActionsRef.current?.prev(),
+    onInlineEdit: () => findActionsRef.current?.triggerInlineEdit(),
   });
 
   // ── Command Palette commands list ────────────────────────────────────────
@@ -556,6 +562,7 @@ export function AgentWorkspace({
     { label: "Open Quick File", keybinding: "⌘P", action: () => setQuickOpen(true) },
     { label: "Find", keybinding: "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Find and Replace", keybinding: "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { label: "Inline AI Edit (selection)", keybinding: "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
@@ -870,6 +877,8 @@ export function AgentWorkspace({
             onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
             onToggleReplace={() => setReplaceVisible((v) => !v)}
             findActionsRef={findActionsRef}
+            provider={provider as import("@/types").AIProvider}
+            model={model}
           />
         </div>
 

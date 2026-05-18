@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo, type MutableRefObject } from "react";
-import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
+import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate, AIProvider } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
+import { InlineEditPrompt } from "./InlineEditPrompt";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -41,7 +42,18 @@ interface EditorPanelProps {
   replaceVisible?: boolean;
   onCloseFind?: () => void;
   onToggleReplace?: () => void;
-  findActionsRef?: MutableRefObject<{ next: () => void; prev: () => void; focus: () => void } | null>;
+  // editorActionsRef — same ref as the old findActionsRef but with inline-edit
+  // trigger added. Renamed via interface but kept name on the prop for
+  // backward compat with callers.
+  findActionsRef?: MutableRefObject<{
+    next: () => void;
+    prev: () => void;
+    focus: () => void;
+    triggerInlineEdit: () => void;
+  } | null>;
+  // ⌘K inline edit — provider/model are needed to drive the API call.
+  provider?: AIProvider;
+  model?: string;
 }
 
 // ── Tab type icon ──────────────────────────────────────────────────────────────
@@ -236,6 +248,8 @@ export function EditorPanel({
   onCloseFind,
   onToggleReplace,
   findActionsRef,
+  provider = "groq",
+  model = "",
 }: EditorPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
@@ -248,6 +262,22 @@ export function EditorPanel({
   const [findQuery, setFindQuery] = useState("");
   const [replaceQuery, setReplaceQuery] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
+
+  // ⌘K Inline AI edit state. We capture the selection's character offsets at
+  // trigger time so that even if the textarea loses focus to the prompt
+  // input, we still know what range to splice.
+  const [inlineEdit, setInlineEdit] = useState<{
+    selection: string;
+    start: number;
+    end: number;
+  } | null>(null);
+  // Brief floating tooltip when the user presses ⌘K without a selection.
+  const [noSelectionHint, setNoSelectionHint] = useState(false);
+  useEffect(() => {
+    if (!noSelectionHint) return;
+    const t = setTimeout(() => setNoSelectionHint(false), 3000);
+    return () => clearTimeout(t);
+  }, [noSelectionHint]);
 
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
@@ -375,6 +405,49 @@ export function EditorPanel({
     setActiveMatch(0);
   }, [totalMatches, matches, replaceQuery, fileContent, onFileContentChange]);
 
+  // Accept the AI rewrite — splice `replacement` into `fileContent` at the
+  // captured offsets. We deliberately do NOT manipulate trailing newlines:
+  // the spec calls for preserving the file's existing trailing-newline
+  // behavior, which means treating the replacement as a verbatim substitution
+  // for the selected range.
+  const acceptInlineEdit = useCallback((replacement: string) => {
+    if (!inlineEdit) return;
+    const next =
+      fileContent.slice(0, inlineEdit.start) +
+      replacement +
+      fileContent.slice(inlineEdit.end);
+    onFileContentChange(next);
+    setInlineEdit(null);
+    // Return focus to the textarea after the prompt closes.
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [inlineEdit, fileContent, onFileContentChange]);
+
+  const rejectInlineEdit = useCallback(() => {
+    setInlineEdit(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  // ⌘K Inline edit trigger — reads the textarea's current selection. If empty
+  // (no actual range highlighted), surface the "Select code first" hint and
+  // bail. Otherwise capture the [start, end) range + text and open the bar.
+  const triggerInlineEdit = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta || !selectedFilePath || isFileLoading) return;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? 0;
+    if (end <= start) {
+      setNoSelectionHint(true);
+      return;
+    }
+    const sel = fileContent.slice(start, end);
+    if (!sel) {
+      setNoSelectionHint(true);
+      return;
+    }
+    setNoSelectionHint(false);
+    setInlineEdit({ selection: sel, start, end });
+  }, [selectedFilePath, isFileLoading, fileContent]);
+
   // Publish actions for the parent (AgentWorkspace) to drive via shortcuts.
   useEffect(() => {
     if (!findActionsRef) return;
@@ -387,11 +460,12 @@ export function EditorPanel({
         el.focus();
         el.select();
       },
+      triggerInlineEdit,
     };
     return () => {
       if (findActionsRef) findActionsRef.current = null;
     };
-  }, [findActionsRef, goToNext, goToPrev]);
+  }, [findActionsRef, goToNext, goToPrev, triggerInlineEdit]);
 
   // When the find bar opens, focus its input. When it closes, clear the
   // active match index so subsequent re-opens start from the top.
@@ -715,8 +789,28 @@ export function EditorPanel({
                   className="marven-scroll absolute inset-0 h-full w-full resize-none border-0 bg-transparent px-4 py-3 font-mono text-[12px] leading-7 outline-none disabled:opacity-40"
                   style={{ color: "transparent", caretColor: "#ddd", overflow: "auto" }}
                 />
+                {/* "Select code first" hint — floating chip top-right of the
+                    editor area, dismisses after 3s. */}
+                {noSelectionHint && (
+                  <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2.5 py-1 text-[10px] text-[var(--m-text-muted)] shadow-lg">
+                    Select code first, then press <kbd className="font-mono">⌘K</kbd>
+                  </div>
+                )}
               </div>
             </div>
+            {/* Inline edit prompt bar — anchored at the bottom of the editor
+                area (above the terminal). Renders only when a selection has
+                been captured. */}
+            {inlineEdit && (
+              <InlineEditPrompt
+                selection={inlineEdit.selection}
+                language={fileExt}
+                provider={provider}
+                model={model}
+                onAccept={acceptInlineEdit}
+                onReject={rejectInlineEdit}
+              />
+            )}
             </>
           ) : (
             /* Empty editor state — watermark + shortcuts */
