@@ -6,6 +6,7 @@ import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
 import { InlineEditPrompt } from "./InlineEditPrompt";
 import { CodeEditor, type CodeEditorActions } from "./CodeEditor";
+import { TerminalView } from "./TerminalView";
 import { useTheme } from "@/lib/theme";
 
 interface EditorPanelProps {
@@ -678,8 +679,11 @@ export function EditorPanel({
         </div>
       </div>
 
-      {/* Terminal */}
-      <div className={`border-t border-[var(--m-border)] bg-[var(--m-bg)] ${showTerminal ? "h-[120px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
+      {/* Terminal — real interactive PTY-backed shell (xterm.js + node-pty).
+          When the workspace changes, ptyId changes, which triggers a fresh
+          shell in the new cwd. The legacy `terminalOutput` prop is no longer
+          rendered here — agent run_command output appears in the tool card. */}
+      <div className={`border-t border-[var(--m-border)] bg-[var(--m-bg)] ${showTerminal ? "h-[240px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
         <div
           className="flex h-7 cursor-pointer items-center gap-3 border-b border-[var(--m-border-subtle)] px-3"
           onClick={onToggleTerminal}
@@ -688,8 +692,18 @@ export function EditorPanel({
           <span className="text-[9px] text-[var(--m-text-faint)]">{showTerminal ? "▾" : "▸"}</span>
         </div>
         {showTerminal && (
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-6 text-[var(--m-text-muted)] whitespace-pre-wrap">
-            {terminalOutput || <span className="text-[var(--m-text-faint)]">No output yet.</span>}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {workspaceRoot ? (
+              <TerminalView
+                ptyId={`pty:${workspaceRoot}`}
+                cwd={workspaceRoot}
+                theme={theme}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center px-3 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">
+                Open a workspace to use the terminal.
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -19,4 +19,22 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     ipcRenderer.on('update-status', (_event, data) => cb(data));
     return () => ipcRenderer.removeAllListeners('update-status');
   },
+
+  // ── Interactive terminal (node-pty) ────────────────────────────────────────
+  // Renderer: TerminalView calls these to drive a real shell PTY. The id is a
+  // stable per-workspace string so the PTY persists across UI remounts.
+  ptyStart: (args) => ipcRenderer.invoke('pty-start', args),
+  ptyWrite: (args) => ipcRenderer.send('pty-write', args),
+  ptyResize: (args) => ipcRenderer.send('pty-resize', args),
+  ptyKill: (args) => ipcRenderer.send('pty-kill', args),
+  onPtyData: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('pty-data', handler);
+    return () => ipcRenderer.removeListener('pty-data', handler);
+  },
+  onPtyExit: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('pty-exit', handler);
+    return () => ipcRenderer.removeListener('pty-exit', handler);
+  },
 });

@@ -326,6 +326,109 @@ ipcMain.handle('dialog-open-folder', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+// ── Interactive terminal (node-pty) ───────────────────────────────────────────
+// One PTY per `id`. The renderer derives a stable id from the workspace path
+// so switching conversations within the same workspace reuses the PTY, and
+// switching workspaces spawns a fresh shell. Lazy-require node-pty so a broken
+// native binding only surfaces when the user actually opens the terminal.
+let _pty = null;
+function getPty() {
+  if (_pty) return _pty;
+  try {
+    _pty = require('node-pty');
+  } catch (err) {
+    console.error('[Marven] node-pty failed to load:', err && err.message);
+    _pty = null;
+  }
+  return _pty;
+}
+
+const ptys = new Map(); // id → IPty
+
+ipcMain.handle('pty-start', (event, args) => {
+  const { id, cwd, cols, rows } = args || {};
+  if (!id) return { ok: false, error: 'missing-id' };
+  const pty = getPty();
+  if (!pty) return { ok: false, error: 'node-pty-unavailable' };
+
+  // If an old PTY exists for this id (e.g. component remount), kill it first.
+  if (ptys.has(id)) {
+    try { ptys.get(id).kill(); } catch {}
+    ptys.delete(id);
+  }
+
+  const shell = process.platform === 'win32'
+    ? 'powershell.exe'
+    : (process.env.SHELL || '/bin/zsh');
+
+  // Resolve cwd defensively — fall back to HOME if the path doesn't exist
+  // (e.g. workspace was deleted while Marven was closed).
+  let resolvedCwd = cwd && typeof cwd === 'string' ? cwd : process.env.HOME;
+  try {
+    if (!fs.existsSync(resolvedCwd)) resolvedCwd = process.env.HOME;
+  } catch {
+    resolvedCwd = process.env.HOME;
+  }
+
+  try {
+    const p = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols: Math.max(20, Math.floor(cols || 80)),
+      rows: Math.max(5, Math.floor(rows || 24)),
+      cwd: resolvedCwd,
+      env: { ...process.env, TERM: 'xterm-256color' },
+    });
+    ptys.set(id, p);
+    p.onData((data) => {
+      // Renderer may have been destroyed (window close, navigation). Guard.
+      if (event.sender.isDestroyed()) return;
+      event.sender.send('pty-data', { id, data });
+    });
+    p.onExit(({ exitCode }) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('pty-exit', { id, exitCode });
+      }
+      ptys.delete(id);
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error('[Marven] pty.spawn failed:', err && err.message);
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
+
+ipcMain.on('pty-write', (_e, args) => {
+  const { id, data } = args || {};
+  const p = ptys.get(id);
+  if (!p) return;
+  try { p.write(data); } catch {}
+});
+
+ipcMain.on('pty-resize', (_e, args) => {
+  const { id, cols, rows } = args || {};
+  const p = ptys.get(id);
+  if (!p) return;
+  try {
+    p.resize(Math.max(20, Math.floor(cols || 80)), Math.max(5, Math.floor(rows || 24)));
+  } catch {}
+});
+
+ipcMain.on('pty-kill', (_e, args) => {
+  const { id } = args || {};
+  const p = ptys.get(id);
+  if (!p) return;
+  try { p.kill(); } catch {}
+  ptys.delete(id);
+});
+
+// Cleanup all PTYs on quit so we don't leak shells.
+app.on('before-quit', () => {
+  for (const p of ptys.values()) {
+    try { p.kill(); } catch {}
+  }
+  ptys.clear();
+});
+
 app.whenReady().then(async () => {
   applySettings(loadSettings());
   await startNextServer();
