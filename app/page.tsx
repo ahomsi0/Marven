@@ -224,8 +224,14 @@ export default function Home() {
   // holds a single bucket of messages; without this, switching between agent
   // conversations would show the wrong thread.
   const agentMessagesByConvRef = useRef<Map<string, AgentMessage[]>>(new Map());
-  // The conversation whose messages are currently in the agent stream — used to
-  // detect when we need to save/restore.
+  // Per-conversation cache of editor tabs & buffers — keeps each agent
+  // conversation's open files isolated. Workspace root itself is persisted on
+  // the Conversation object (so it survives a reload).
+  const agentEditorByConvRef = useRef<
+    Map<string, { openTabs: EditorTab[]; activeTabIndex: number; fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }> }>
+  >(new Map());
+  // The conversation whose state is currently loaded — used to detect when we
+  // need to save/restore.
   const lastAgentConvIdRef = useRef<string | null>(null);
 
   const {
@@ -330,16 +336,50 @@ export default function Home() {
   }, [agentStreamMessages, activeConversationId, activeMode]);
 
   // When the active conversation changes (or we enter agent mode), swap the
-  // stream's messages to match the new conversation.
+  // agent stream's messages AND the editor state (tabs, buffers, workspace
+  // root) so each agent conversation is isolated.
   useEffect(() => {
     if (activeMode !== "agent") return;
     if (activeConversationId === lastAgentConvIdRef.current) return;
+    const prevId = lastAgentConvIdRef.current;
+    // Save the outgoing conversation's editor state to the cache.
+    if (prevId) {
+      agentEditorByConvRef.current.set(prevId, {
+        openTabs,
+        activeTabIndex,
+        fileBuffers,
+      });
+    }
     lastAgentConvIdRef.current = activeConversationId;
-    const saved = activeConversationId
+    // Load the incoming conversation's messages.
+    const savedMsgs = activeConversationId
       ? agentMessagesByConvRef.current.get(activeConversationId) ?? []
       : [];
-    agentStreamLoadMessages(saved);
-  }, [activeConversationId, activeMode, agentStreamLoadMessages]);
+    agentStreamLoadMessages(savedMsgs);
+    // Load the incoming conversation's editor state (or empty defaults).
+    const savedEditor = activeConversationId
+      ? agentEditorByConvRef.current.get(activeConversationId)
+      : null;
+    setOpenTabs(savedEditor?.openTabs ?? []);
+    setActiveTabIndex(savedEditor?.activeTabIndex ?? -1);
+    setFileBuffers(savedEditor?.fileBuffers ?? new Map());
+    // Load this conversation's workspace root (if any) — re-PATCH the server
+    // and refresh files so the explorer matches.
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    const savedRoot = conv?.workspaceRoot ?? null;
+    if (savedRoot) {
+      openWorkspaceFolder(savedRoot).catch(() => {});
+    } else {
+      // No workspace for this conversation — clear UI state so the landing
+      // page shows for a fresh agent.
+      setWorkspaceRoot(null);
+      setWorkspaceFiles([]);
+    }
+  // openWorkspaceFolder is intentionally excluded — it depends on activeConversationId
+  // and would loop. Same for openTabs/activeTabIndex/fileBuffers — we only read
+  // them at switch-time to snapshot, not as deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId, activeMode, agentStreamLoadMessages, conversations]);
 
   // (file loading is now handled inside openFileTab)
 
@@ -644,6 +684,13 @@ export default function Home() {
         try { localStorage.setItem("marven-recent-workspaces", JSON.stringify(next)); } catch {}
         return next;
       });
+      // Persist the folder choice to the active agent conversation so it
+      // re-opens automatically next time the user switches back.
+      if (activeConversationId && activeMode === "agent") {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === activeConversationId ? { ...c, workspaceRoot: folderPath } : c))
+        );
+      }
     }
   }
 

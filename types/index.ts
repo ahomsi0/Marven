@@ -125,6 +125,7 @@ export interface Conversation {
   model?: string;
   pinned?: boolean;
   systemPrompt?: string;
+  workspaceRoot?: string;   // agent mode: which folder is open in this conversation
 }
 
 // ─── Agent tool-use loop types ────────────────────────────────────────────────
