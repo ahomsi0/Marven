@@ -400,7 +400,7 @@ export function EditorPanel({
                   ref={preRef}
                   aria-hidden
                   className="pointer-events-none absolute inset-0 overflow-hidden px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
-                  style={{ margin: 0, background: "transparent", color: "#d4d4d4" }}
+                  style={{ margin: 0, background: "transparent", color: "var(--m-text)" }}
                   dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
                 />
                 {/* Editable layer */}

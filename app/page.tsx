@@ -1,5 +1,6 @@
 "use client";
 
+import packageJson from "@/package.json";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type {
   AIProvider,
@@ -1362,7 +1363,7 @@ export default function Home() {
         onApproveToolCall={approve}
         recentWorkspaces={recentWorkspaces}
         onSelectRecent={openWorkspaceFolder}
-        appVersion="1.6.0"
+        appVersion={packageJson.version}
         onAgentInputChange={setAgentInput}
         onAgentSend={() => { agentStreamSend(agentInput); setAgentInput(""); }}
         onAgentStop={agentStreamStop}
@@ -1440,8 +1441,8 @@ export default function Home() {
       )}
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[480px] rounded-lg border border-[#333] bg-[#1e1e1e] p-4 shadow-2xl">
-            <p className="mb-3 text-[12px] text-[#888]">Enter the full folder path to open as workspace:</p>
+          <div className="w-[480px] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-4 shadow-2xl">
+            <p className="mb-3 text-[12px] text-[var(--m-text-muted)]">Enter the full folder path to open as workspace:</p>
             <input
               autoFocus
               type="text"
@@ -1452,13 +1453,13 @@ export default function Home() {
                 if (e.key === "Escape") setFolderInputVisible(false);
               }}
               placeholder="/Users/you/my-project"
-              className="w-full rounded-md border border-[#383838] bg-[#252525] px-3 py-2 font-mono text-[12px] text-[#ccc] outline-none focus:border-[#d19a66]/50"
+              className="w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[12px] text-[var(--m-text)] outline-none focus:border-[#d19a66]/50"
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setFolderInputVisible(false)}
-                className="rounded-md border border-[#383838] px-3 py-1.5 text-[11px] text-[#666] hover:text-[#999]"
+                className="rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               >
                 Cancel
               </button>

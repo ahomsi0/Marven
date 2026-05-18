@@ -33,7 +33,7 @@ export function TitleBar() {
           <button
             type="button"
             onClick={() => electron.minimize()}
-            className="flex h-full w-11 items-center justify-center text-[#888] hover:bg-[#2a2a2a] hover:text-white transition-colors"
+            className="flex h-full w-11 items-center justify-center text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)] hover:text-white transition-colors"
             aria-label="Minimize"
           >
             <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
@@ -45,7 +45,7 @@ export function TitleBar() {
           <button
             type="button"
             onClick={() => electron.maximize()}
-            className="flex h-full w-11 items-center justify-center text-[#888] hover:bg-[#2a2a2a] hover:text-white transition-colors"
+            className="flex h-full w-11 items-center justify-center text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)] hover:text-white transition-colors"
             aria-label="Maximize"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
@@ -57,7 +57,7 @@ export function TitleBar() {
           <button
             type="button"
             onClick={() => electron.close()}
-            className="flex h-full w-11 items-center justify-center text-[#888] hover:bg-red-600 hover:text-white transition-colors"
+            className="flex h-full w-11 items-center justify-center text-[var(--m-text-muted)] hover:bg-red-600 hover:text-white transition-colors"
             aria-label="Close"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">

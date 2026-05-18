@@ -1,5 +1,5 @@
 import type { HistoryMessage } from "@/types";
-import { buildOpenAIContent } from "@/lib/imageHelpers";
+import { stripAttachments } from "@/lib/imageHelpers";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -47,7 +47,7 @@ export function streamOpenRouter(
               ...messages.map((m) => ({
                 role: m.role,
                 content: m.role === "user" && m.attachments?.length
-                  ? buildOpenAIContent(m.content, m.attachments) as string | unknown[]
+                  ? stripAttachments(m.content, m.attachments)
                   : m.content,
               })),
             ],

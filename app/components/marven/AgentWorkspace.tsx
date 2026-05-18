@@ -571,7 +571,6 @@ export function AgentWorkspace({
                 {
                   key: "preview",
                   label: "Preview",
-                  hint: "⇧⌘P",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <polygon points="6 4 20 12 6 20 6 4" />

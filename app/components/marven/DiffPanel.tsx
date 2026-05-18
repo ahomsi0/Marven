@@ -51,38 +51,38 @@ export function DiffPanel({ checkpoints, onClose }: DiffPanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
-      <header className="flex items-center justify-between border-b border-[#333] px-3 py-2">
-        <span className="font-mono text-[10px] tracking-widest text-[#777] uppercase">
+    <div className="flex h-full flex-col bg-[var(--m-bg)]">
+      <header className="flex items-center justify-between border-b border-[var(--m-border)] px-3 py-2">
+        <span className="font-mono text-[10px] tracking-widest text-[var(--m-text-faint)] uppercase">
           Changes ({diffs.length})
         </span>
         <button
           type="button"
           onClick={onClose}
-          className="text-[#666] hover:text-[#ccc]"
+          className="text-[var(--m-text-faint)] hover:text-[var(--m-text)]"
           aria-label="Close diff panel"
         >
           ×
         </button>
       </header>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {loading && <p className="text-[11px] text-[#666]">Loading diffs…</p>}
+        {loading && <p className="text-[11px] text-[var(--m-text-faint)]">Loading diffs…</p>}
         {!loading && diffs.length === 0 && (
-          <p className="text-[11px] text-[#666]">No changes since the last agent run.</p>
+          <p className="text-[11px] text-[var(--m-text-faint)]">No changes since the last agent run.</p>
         )}
         {diffs.map((d) => (
-          <div key={d.path} className="rounded border border-[#333] overflow-hidden">
-            <div className="flex items-center justify-between bg-[#1e1e1e] px-2 py-1.5">
-              <span className="font-mono text-[10px] text-[#d4d4d4] truncate">{d.path}</span>
+          <div key={d.path} className="rounded border border-[var(--m-border)] overflow-hidden">
+            <div className="flex items-center justify-between bg-[var(--m-surface)] px-2 py-1.5">
+              <span className="font-mono text-[10px] text-[var(--m-text)] truncate">{d.path}</span>
               <button
                 type="button"
                 onClick={() => revert(d.path)}
-                className="text-[10px] text-[#888] hover:text-[#d19a66]"
+                className="text-[10px] text-[var(--m-text-muted)] hover:text-[#d19a66]"
               >
                 Revert
               </button>
             </div>
-            <pre className="bg-[#161616] px-2 py-1.5 overflow-x-auto font-mono text-[10px] leading-relaxed">
+            <pre className="bg-[var(--m-bg)] px-2 py-1.5 overflow-x-auto font-mono text-[10px] leading-relaxed">
               {d.patch.split("\n").map((line, i) => {
                 const color = line.startsWith("+") && !line.startsWith("+++")
                   ? "text-green-400"
@@ -90,7 +90,7 @@ export function DiffPanel({ checkpoints, onClose }: DiffPanelProps) {
                   ? "text-red-400"
                   : line.startsWith("@@")
                   ? "text-cyan-400"
-                  : "text-[#777]";
+                  : "text-[var(--m-text-faint)]";
                 return <div key={i} className={color}>{line}</div>;
               })}
             </pre>

@@ -45,25 +45,25 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
   if (tool === "read_file" || tool === "write_file" || tool === "list_files") {
     const raw = String(args.path ?? "");
     if (!raw) return null;
-    return <span className="truncate font-mono text-[10px] text-[#888]" title={raw}>{basename(raw) || raw}</span>;
+    return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]" title={raw}>{basename(raw) || raw}</span>;
   }
   if (tool === "run_command") {
     const cmd = String(args.command ?? "");
-    return <span className="truncate font-mono text-[10px] text-[#888]" title={cmd}>{cmd}</span>;
+    return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]" title={cmd}>{cmd}</span>;
   }
   if (tool === "search_files") {
-    return <span className="truncate font-mono text-[10px] text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
+    return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]">&quot;{String(args.query ?? "")}&quot;</span>;
   }
   if (tool === "web_search") {
-    return <span className="truncate font-mono text-[10px] text-[#888]">&quot;{String(args.query ?? "")}&quot;</span>;
+    return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]">&quot;{String(args.query ?? "")}&quot;</span>;
   }
   if (tool === "fetch_url") {
     const url = String(args.url ?? "");
-    return <span className="truncate font-mono text-[10px] text-[#888]" title={url}>{url.replace(/^https?:\/\//, "").split("/")[0]}</span>;
+    return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]" title={url}>{url.replace(/^https?:\/\//, "").split("/")[0]}</span>;
   }
   if (tool.startsWith("git_")) {
     const message = String(args.message ?? args.target ?? args.name ?? args.path ?? "");
-    if (message) return <span className="truncate font-mono text-[10px] text-[#888]">{message}</span>;
+    if (message) return <span className="truncate font-mono text-[10px] text-[var(--m-text-muted)]">{message}</span>;
   }
   return null;
 }
@@ -85,8 +85,8 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         isActive
           ? "border-l-[#d19a66] bg-[rgba(209,154,102,0.05)]"
           : isError
-          ? "border-l-red-500/60 bg-[#1e1e1e]"
-          : "border-l-[#d19a66]/35 bg-[#1c1c1c] hover:bg-[#1e1e1e]"
+          ? "border-l-red-500/60 bg-[var(--m-surface)]"
+          : "border-l-[#d19a66]/35 bg-[var(--m-surface)] hover:bg-[var(--m-surface)]"
       }`}
     >
       <button
@@ -99,7 +99,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         <ToolGlyph tool={tool} />
         <span
           className={`text-[11px] shrink-0 tracking-tight ${
-            isActive ? "text-[#d19a66]" : isDone ? "text-[#bbb]" : isError ? "text-red-400" : "text-[#888]"
+            isActive ? "text-[#d19a66]" : isDone ? "text-[var(--m-text-muted)]" : isError ? "text-red-400" : "text-[var(--m-text-muted)]"
           }`}
         >
           {tool}
@@ -133,7 +133,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
           )}
           {canExpand && (
             <svg
-              className="h-3 w-3 text-[#555] transition-transform duration-150"
+              className="h-3 w-3 text-[var(--m-text-faint)] transition-transform duration-150"
               style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
             >
@@ -144,7 +144,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       </button>
 
       {toolCall.status === "awaiting_approval" && (
-        <div className="border-t border-[#2a2a2a] px-3 py-2 flex items-center justify-between gap-2">
+        <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
           <span className="text-[10px] text-[#d19a66]">
             Awaiting approval — this will modify your repository.
           </span>
@@ -152,7 +152,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onApprove?.(toolCall.callId, false); }}
-              className="rounded-md border border-[#383838] px-2 py-0.5 text-[10px] text-[#888] hover:text-red-400 hover:border-red-400/40"
+              className="rounded-md border border-[var(--m-border)] px-2 py-0.5 text-[10px] text-[var(--m-text-muted)] hover:text-red-400 hover:border-red-400/40"
             >
               Reject
             </button>
@@ -168,29 +168,29 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       )}
 
       {expanded && canExpand && (
-        <div className="border-t border-[#2a2a2a] px-3 py-2 space-y-2">
+        <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 space-y-2">
           <div>
-            <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Input</p>
+            <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Input</p>
             <div className="overflow-y-auto max-h-[200px]">
-              <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+              <pre className="font-mono text-[10px] text-[var(--m-text-muted)] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                 {JSON.stringify(args, null, 2)}
               </pre>
             </div>
           </div>
           {toolCall.liveOutput && toolCall.status === "running" && (
             <div>
-              <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Live</p>
+              <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Live</p>
               <div className="overflow-y-auto max-h-[200px]">
-                <pre className="font-mono text-[10px] text-[#d19a66] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+                <pre className="font-mono text-[10px] text-[#d19a66] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                   {toolCall.liveOutput}
                 </pre>
               </div>
             </div>
           )}
           <div>
-            <p className="text-[9px] uppercase tracking-widest text-[#444] mb-1">Output</p>
+            <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Output</p>
             <div className="overflow-y-auto max-h-[300px]">
-              <pre className="font-mono text-[10px] text-[#888] whitespace-pre-wrap break-all bg-[#161616] rounded p-2">
+              <pre className="font-mono text-[10px] text-[var(--m-text-muted)] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                 {output}
               </pre>
             </div>
