@@ -5,6 +5,7 @@ import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
+import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -218,6 +219,10 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
+  const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
+  useEffect(() => {
+    setFormatOnSaveState(getFormatOnSave());
+  }, []);
   const [items, setItems] = useState<CustomShortcut[]>(
     shortcuts.map((s) => ({ ...s }))
   );
@@ -494,6 +499,38 @@ export function SettingsModal({
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Format on save toggle */}
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Format on save</h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Run Prettier on JS/TS, CSS, JSON, Markdown, HTML, and YAML files when
+                    saving. Falls back to the original on syntax errors.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formatOnSave}
+                  onClick={() => {
+                    const next = !formatOnSave;
+                    setFormatOnSaveState(next);
+                    setFormatOnSave(next);
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    formatOnSave ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      formatOnSave ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 

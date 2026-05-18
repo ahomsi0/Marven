@@ -5,6 +5,8 @@ import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate, AIProvider }
 import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
 import { InlineEditPrompt } from "./InlineEditPrompt";
+import { CodeEditor, type CodeEditorActions } from "./CodeEditor";
+import { useTheme } from "@/lib/theme";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -81,137 +83,10 @@ function TabFileIcon({ name }: { name: string }) {
   if (ext === "py") {
     return <span className="font-mono text-[10px] font-bold text-[#3b82f6]">PY</span>;
   }
-  if (["png","jpg","jpeg","gif","svg","webp","ico"].includes(ext)) {
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"].includes(ext)) {
     return <span className="font-mono text-[10px] font-bold text-[#a855f7]">IMG</span>;
   }
   return <span className="font-mono text-[10px] font-bold text-[#888]">{ext ? ext.toUpperCase().slice(0, 3) : "·"}</span>;
-}
-
-// ── Syntax highlighting ────────────────────────────────────────────────────────
-
-const JS_KEYWORDS = new Set([
-  "const", "let", "var", "function", "class", "return", "if", "else", "for",
-  "while", "do", "switch", "case", "break", "continue", "new", "typeof",
-  "instanceof", "import", "export", "from", "default", "async", "await",
-  "try", "catch", "finally", "throw", "extends", "interface", "type", "enum",
-  "implements", "abstract", "declare", "readonly", "public", "private",
-  "protected", "static", "override", "void", "null", "undefined", "true",
-  "false", "this", "super", "in", "of", "yield", "delete", "keyof", "infer",
-  "never", "unknown", "any", "string", "number", "boolean", "object",
-]);
-
-type TokType = "comment" | "string" | "keyword" | "number" | "text";
-type Tok = { t: TokType; v: string };
-
-function tokenizeJs(code: string): Tok[] {
-  const toks: Tok[] = [];
-  let i = 0;
-  while (i < code.length) {
-    // line comment
-    if (code[i] === "/" && code[i + 1] === "/") {
-      const s = i;
-      while (i < code.length && code[i] !== "\n") i++;
-      toks.push({ t: "comment", v: code.slice(s, i) });
-      continue;
-    }
-    // block comment
-    if (code[i] === "/" && code[i + 1] === "*") {
-      const s = i; i += 2;
-      while (i < code.length && !(code[i] === "*" && code[i + 1] === "/")) i++;
-      i += 2;
-      toks.push({ t: "comment", v: code.slice(s, i) });
-      continue;
-    }
-    // string / template literal
-    if (code[i] === '"' || code[i] === "'" || code[i] === "`") {
-      const q = code[i]; const s = i; i++;
-      while (i < code.length) {
-        if (code[i] === "\\") { i += 2; continue; }
-        if (code[i] === q) { i++; break; }
-        i++;
-      }
-      toks.push({ t: "string", v: code.slice(s, i) });
-      continue;
-    }
-    // number
-    if (/\d/.test(code[i]) || (code[i] === "." && /\d/.test(code[i + 1] ?? ""))) {
-      const s = i;
-      while (i < code.length && /[\d.xXa-fA-F_]/.test(code[i])) i++;
-      toks.push({ t: "number", v: code.slice(s, i) });
-      continue;
-    }
-    // identifier / keyword
-    if (/[a-zA-Z_$]/.test(code[i])) {
-      const s = i;
-      while (i < code.length && /[a-zA-Z0-9_$]/.test(code[i])) i++;
-      const w = code.slice(s, i);
-      toks.push({ t: JS_KEYWORDS.has(w) ? "keyword" : "text", v: w });
-      continue;
-    }
-    toks.push({ t: "text", v: code[i] });
-    i++;
-  }
-  return toks;
-}
-
-function tokenizeJson(code: string): Tok[] {
-  const toks: Tok[] = [];
-  let i = 0;
-  while (i < code.length) {
-    if (code[i] === '"') {
-      const s = i; i++;
-      while (i < code.length) {
-        if (code[i] === "\\") { i += 2; continue; }
-        if (code[i] === '"') { i++; break; }
-        i++;
-      }
-      // peek ahead — if followed by ":" it's a key
-      let j = i; while (j < code.length && (code[j] === " " || code[j] === "\t")) j++;
-      toks.push({ t: code[j] === ":" ? "keyword" : "string", v: code.slice(s, i) });
-      continue;
-    }
-    if (/\d|-/.test(code[i])) {
-      const s = i;
-      while (i < code.length && /[\d.eE+\-]/.test(code[i])) i++;
-      toks.push({ t: "number", v: code.slice(s, i) });
-      continue;
-    }
-    if (code.slice(i, i + 4) === "true" || code.slice(i, i + 5) === "false" || code.slice(i, i + 4) === "null") {
-      const end = code[i + 4] === "e" ? i + 5 : i + 4;
-      toks.push({ t: "keyword", v: code.slice(i, end) });
-      i = end;
-      continue;
-    }
-    toks.push({ t: "text", v: code[i] });
-    i++;
-  }
-  return toks;
-}
-
-const COLOR: Record<TokType, string> = {
-  comment: "#6a9955",
-  string: "#ce9178",
-  keyword: "#569cd6",
-  number: "#b5cea8",
-  text: "#d4d4d4",
-};
-
-function esc(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function highlightCode(code: string, ext: string): string {
-  if (code.length > 80_000) return esc(code); // skip very large files
-  let toks: Tok[] | null = null;
-  if (["ts", "tsx", "js", "jsx", "mjs", "cjs"].includes(ext)) toks = tokenizeJs(code);
-  else if (ext === "json") toks = tokenizeJson(code);
-  if (!toks) return esc(code);
-  return toks
-    .map(({ t, v }) => {
-      const e = esc(v);
-      return t === "text" ? e : `<span style="color:${COLOR[t]}">${e}</span>`;
-    })
-    .join("");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,7 +103,6 @@ export function EditorPanel({
   onToggleTerminal,
   onFileContentChange,
   onSaveFile,
-  onCloseFile,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -251,11 +125,9 @@ export function EditorPanel({
   provider = "groq",
   model = "",
 }: EditorPanelProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
-  const findOverlayRef = useRef<HTMLPreElement>(null);
+  const { theme } = useTheme();
+  const editorActionsRef = useRef<CodeEditorActions | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
-  const gutterRef = useRef<HTMLDivElement>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Find / Replace state — query strings and current active match index.
@@ -264,8 +136,8 @@ export function EditorPanel({
   const [activeMatch, setActiveMatch] = useState(0);
 
   // ⌘K Inline AI edit state. We capture the selection's character offsets at
-  // trigger time so that even if the textarea loses focus to the prompt
-  // input, we still know what range to splice.
+  // trigger time so that even if the editor loses focus to the prompt input,
+  // we still know what range to splice.
   const [inlineEdit, setInlineEdit] = useState<{
     selection: string;
     start: number;
@@ -288,23 +160,12 @@ export function EditorPanel({
       : activeFileName ?? ""
     : activeFileName ?? "";
 
-  const highlighted = isFileLoading ? "" : highlightCode(fileContent, fileExt);
-  const lineCount = isFileLoading ? 1 : (fileContent.split("\n").length || 1);
-
-  const syncScroll = useCallback(() => {
-    const ta = textareaRef.current;
-    const pre = preRef.current;
-    const gut = gutterRef.current;
-    const overlay = findOverlayRef.current;
-    if (!ta) return;
-    if (pre) { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
-    if (overlay) { overlay.scrollTop = ta.scrollTop; overlay.scrollLeft = ta.scrollLeft; }
-    if (gut) gut.scrollTop = ta.scrollTop;
-  }, []);
-
-  useEffect(() => {
-    syncScroll();
-  }, [fileContent, syncScroll]);
+  // Breadcrumb path segments — project name + relative file path slices.
+  const breadcrumbSegments = useMemo(() => {
+    if (!selectedFilePath) return [] as string[];
+    const parts = relativeFilePath ? relativeFilePath.split("/").filter(Boolean) : [];
+    return [projectName, ...parts];
+  }, [selectedFilePath, relativeFilePath, projectName]);
 
   // ── Find / Replace ───────────────────────────────────────────────────────
   // Compute substring matches case-insensitively. Empty query → no matches.
@@ -337,36 +198,12 @@ export function EditorPanel({
     }
   }, [totalMatches, activeMatch]);
 
-  // Build the overlay HTML — same text as the editor, with <mark> wrapped
-  // around each match. Body text is rendered transparent via .m-match's
-  // parent rule. Active match gets a stronger background.
-  const findOverlayHtml = useMemo(() => {
-    if (!findOpen || totalMatches === 0) return "";
-    const parts: string[] = [];
-    let cursor = 0;
-    matches.forEach((m, idx) => {
-      if (m.start > cursor) parts.push(esc(fileContent.slice(cursor, m.start)));
-      const cls = idx === activeMatch ? "m-match active" : "m-match";
-      parts.push(`<mark class="${cls}">${esc(fileContent.slice(m.start, m.end))}</mark>`);
-      cursor = m.end;
-    });
-    if (cursor < fileContent.length) parts.push(esc(fileContent.slice(cursor)));
-    return parts.join("");
-  }, [findOpen, matches, activeMatch, fileContent, totalMatches]);
-
-  // Scroll the active match into view by computing its row from newlines.
+  // Scroll the active match into view via the CodeMirror actions API.
   const scrollMatchIntoView = useCallback((index: number) => {
-    const ta = textareaRef.current;
-    if (!ta || index < 0 || index >= matches.length) return;
-    const lineHeight = 28; // matches `leading-7` (1.75rem at 16px root)
+    if (index < 0 || index >= matches.length) return;
     const offset = matches[index].start;
-    const linesBefore = (fileContent.slice(0, offset).match(/\n/g) || []).length;
-    const matchTop = linesBefore * lineHeight;
-    const viewportH = ta.clientHeight;
-    const desired = matchTop - viewportH / 2 + lineHeight / 2;
-    ta.scrollTop = Math.max(0, desired);
-    syncScroll();
-  }, [matches, fileContent, syncScroll]);
+    editorActionsRef.current?.scrollToPos(offset);
+  }, [matches]);
 
   const goToNext = useCallback(() => {
     if (totalMatches === 0) return;
@@ -418,35 +255,27 @@ export function EditorPanel({
       fileContent.slice(inlineEdit.end);
     onFileContentChange(next);
     setInlineEdit(null);
-    // Return focus to the textarea after the prompt closes.
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => editorActionsRef.current?.focus());
   }, [inlineEdit, fileContent, onFileContentChange]);
 
   const rejectInlineEdit = useCallback(() => {
     setInlineEdit(null);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => editorActionsRef.current?.focus());
   }, []);
 
-  // ⌘K Inline edit trigger — reads the textarea's current selection. If empty
-  // (no actual range highlighted), surface the "Select code first" hint and
-  // bail. Otherwise capture the [start, end) range + text and open the bar.
+  // ⌘K Inline edit trigger — reads the CodeMirror selection. If empty (no
+  // actual range highlighted), surface the "Select code first" hint and bail.
+  // Otherwise capture the [start, end) range + text and open the bar.
   const triggerInlineEdit = useCallback(() => {
-    const ta = textareaRef.current;
-    if (!ta || !selectedFilePath || isFileLoading) return;
-    const start = ta.selectionStart ?? 0;
-    const end = ta.selectionEnd ?? 0;
-    if (end <= start) {
-      setNoSelectionHint(true);
-      return;
-    }
-    const sel = fileContent.slice(start, end);
-    if (!sel) {
+    if (!selectedFilePath || isFileLoading) return;
+    const sel = editorActionsRef.current?.getSelection();
+    if (!sel || sel.text.length === 0) {
       setNoSelectionHint(true);
       return;
     }
     setNoSelectionHint(false);
-    setInlineEdit({ selection: sel, start, end });
-  }, [selectedFilePath, isFileLoading, fileContent]);
+    setInlineEdit({ selection: sel.text, start: sel.from, end: sel.to });
+  }, [selectedFilePath, isFileLoading]);
 
   // Publish actions for the parent (AgentWorkspace) to drive via shortcuts.
   useEffect(() => {
@@ -471,10 +300,12 @@ export function EditorPanel({
   // active match index so subsequent re-opens start from the top.
   useEffect(() => {
     if (findOpen) {
-      // Defer so the input has mounted.
       requestAnimationFrame(() => {
         const el = findInputRef.current;
-        if (el) { el.focus(); el.select(); }
+        if (el) {
+          el.focus();
+          el.select();
+        }
       });
     } else {
       setActiveMatch(0);
@@ -493,8 +324,7 @@ export function EditorPanel({
 
   function closeFindAndReturnFocus() {
     onCloseFind?.();
-    // Return focus to the editor textarea.
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => editorActionsRef.current?.focus());
   }
 
   // Detect language label for status bar
@@ -594,6 +424,35 @@ export function EditorPanel({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Breadcrumbs — between tab strip and find bar, when a file is open. */}
+          {selectedFilePath && !isSettingsTabActive && breadcrumbSegments.length > 0 && (
+            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-1.5 font-mono text-[10px] text-[var(--m-text-muted)]">
+              {breadcrumbSegments.map((seg, i) => {
+                const isLast = i === breadcrumbSegments.length - 1;
+                return (
+                  <span key={`${i}-${seg}`} className="flex items-center gap-1 whitespace-nowrap">
+                    <span className={isLast ? "text-[var(--m-text)]" : "text-[var(--m-text-muted)]"}>
+                      {seg}
+                    </span>
+                    {!isLast && (
+                      <svg
+                        className="h-2.5 w-2.5 text-[#d19a66]/60"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="6 4 10 8 6 12" />
+                      </svg>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -738,57 +597,28 @@ export function EditorPanel({
           ) : selectedFilePath ? (
             /* File editor */
             <>
-            {fileError && (
-              <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 font-mono text-[11px] text-red-400">
-                File error: {fileError}
-              </div>
-            )}
-            {/* Code area — highlighted pre + transparent textarea overlay */}
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-              {/* Line numbers */}
-              <div
-                ref={gutterRef}
-                className="w-10 shrink-0 select-none overflow-hidden border-r border-[var(--m-border-subtle)] bg-[var(--m-bg)] py-3 pr-2 text-right font-mono text-[11px] leading-7 text-[var(--m-text-faint)]"
-              >
-                {Array.from({ length: lineCount }, (_, i) => (
-                  <div key={i}>{i + 1}</div>
-                ))}
-              </div>
-
-              {/* Editor content */}
-              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                {/* Highlighted layer */}
-                <pre
-                  ref={preRef}
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 overflow-hidden px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
-                  style={{ margin: 0, background: "transparent", color: "var(--m-text)" }}
-                  dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
-                />
-                {/* Find match highlight overlay — only visible when find is open
-                   and there's a query. Same font / padding / line-height as the
-                   syntax pre so positions align pixel-perfectly. Body text is
-                   transparent; only <mark> backgrounds show through. */}
-                {findOpen && findOverlayHtml && (
-                  <pre
-                    ref={findOverlayRef}
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 overflow-hidden px-4 py-3 font-mono text-[12px] leading-7 whitespace-pre"
-                    style={{ margin: 0, background: "transparent", color: "transparent" }}
-                    dangerouslySetInnerHTML={{ __html: findOverlayHtml }}
+              {fileError && (
+                <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 font-mono text-[11px] text-red-400">
+                  File error: {fileError}
+                </div>
+              )}
+              <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                {isFileLoading ? (
+                  <div className="flex h-full w-full items-center justify-center font-mono text-[11px] text-[var(--m-text-faint)]">
+                    Loading…
+                  </div>
+                ) : (
+                  <CodeEditor
+                    value={fileContent}
+                    onChange={onFileContentChange}
+                    language={fileExt}
+                    theme={theme}
+                    onSave={onSaveFile}
+                    onReady={(actions) => {
+                      editorActionsRef.current = actions;
+                    }}
                   />
                 )}
-                {/* Editable layer */}
-                <textarea
-                  ref={textareaRef}
-                  value={isFileLoading ? "Loading..." : fileContent}
-                  onChange={(e) => onFileContentChange(e.target.value)}
-                  onScroll={syncScroll}
-                  disabled={isFileLoading}
-                  spellCheck={false}
-                  className="marven-scroll absolute inset-0 h-full w-full resize-none border-0 bg-transparent px-4 py-3 font-mono text-[12px] leading-7 outline-none disabled:opacity-40"
-                  style={{ color: "transparent", caretColor: "#ddd", overflow: "auto" }}
-                />
                 {/* "Select code first" hint — floating chip top-right of the
                     editor area, dismisses after 3s. */}
                 {noSelectionHint && (
@@ -797,20 +627,19 @@ export function EditorPanel({
                   </div>
                 )}
               </div>
-            </div>
-            {/* Inline edit prompt bar — anchored at the bottom of the editor
-                area (above the terminal). Renders only when a selection has
-                been captured. */}
-            {inlineEdit && (
-              <InlineEditPrompt
-                selection={inlineEdit.selection}
-                language={fileExt}
-                provider={provider}
-                model={model}
-                onAccept={acceptInlineEdit}
-                onReject={rejectInlineEdit}
-              />
-            )}
+              {/* Inline edit prompt bar — anchored at the bottom of the editor
+                  area (above the terminal). Renders only when a selection has
+                  been captured. */}
+              {inlineEdit && (
+                <InlineEditPrompt
+                  selection={inlineEdit.selection}
+                  language={fileExt}
+                  provider={provider}
+                  model={model}
+                  onAccept={acceptInlineEdit}
+                  onReject={rejectInlineEdit}
+                />
+              )}
             </>
           ) : (
             /* Empty editor state — watermark + shortcuts */

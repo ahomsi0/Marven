@@ -43,6 +43,7 @@ import {
   loadMemories,
   addMemory,
 } from "@/lib/userProfile";
+import { formatBeforeSave, getFormatOnSave, isFormattable } from "@/lib/formatOnSave";
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -652,19 +653,28 @@ export default function Home() {
   async function saveAgentFile() {
     if (!activeFilePath || !activeBuffer) return;
 
+    // Format-on-save — only for known languages, and only if the user hasn't
+    // disabled it via Settings → General. Falls back to the original content
+    // if Prettier throws (syntax error, etc.).
+    let content = activeBuffer.content;
+    const ext = activeFilePath.split(".").pop()?.toLowerCase() ?? "";
+    if (getFormatOnSave() && isFormattable(ext)) {
+      content = await formatBeforeSave(content, ext);
+    }
+
     await fetch("/api/workspace/files", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: activeFilePath,
-        content: activeBuffer.content,
+        content,
       }),
     });
 
     setFileBuffers((prev) => {
       const next = new Map(prev);
       const existing = next.get(activeFilePath!);
-      if (existing) next.set(activeFilePath!, { ...existing, dirty: false });
+      if (existing) next.set(activeFilePath!, { ...existing, content, dirty: false });
       return next;
     });
     await loadWorkspaceFiles();
