@@ -357,9 +357,22 @@ ipcMain.handle('pty-start', (event, args) => {
     ptys.delete(id);
   }
 
-  const shell = process.platform === 'win32'
-    ? 'powershell.exe'
-    : (process.env.SHELL || '/bin/zsh');
+  // Pick a shell that actually exists on disk. $SHELL can point at a binary
+  // that's been uninstalled or moved (e.g. fish removed via brew, bash path
+  // changed) — passing that to pty.spawn surfaces as the opaque "posix_spawnp
+  // failed." Walk a fallback chain and use the first one that's present.
+  const shellCandidates = process.platform === 'win32'
+    ? ['powershell.exe', 'cmd.exe']
+    : [process.env.SHELL, '/bin/zsh', '/bin/bash', '/bin/sh'].filter(Boolean);
+  let shell = null;
+  for (const candidate of shellCandidates) {
+    try {
+      if (process.platform === 'win32' || fs.existsSync(candidate)) { shell = candidate; break; }
+    } catch { /* keep looking */ }
+  }
+  if (!shell) {
+    return { ok: false, error: `no usable shell found (tried: ${shellCandidates.join(', ')})` };
+  }
 
   // Resolve cwd defensively — fall back to HOME if the path doesn't exist
   // (e.g. workspace was deleted while Marven was closed).
@@ -392,8 +405,8 @@ ipcMain.handle('pty-start', (event, args) => {
     });
     return { ok: true };
   } catch (err) {
-    console.error('[Marven] pty.spawn failed:', err && err.message);
-    return { ok: false, error: String(err && err.message || err) };
+    console.error('[Marven] pty.spawn failed:', err && err.message, 'shell=', shell, 'cwd=', resolvedCwd);
+    return { ok: false, error: `${err && err.message || err} (shell: ${shell}, cwd: ${resolvedCwd || '<unset>'})` };
   }
 });
 

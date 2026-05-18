@@ -13,7 +13,8 @@
     "launch": "concurrently \"npm run dev\" \"sleep 3 && menubar-helper/MarvenHelper\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron:build": "next build && node scripts/prepare-standalone.js && electron-builder"
+    "postinstall": "node scripts/fix-node-pty-perms.js",
+    "electron:build": "next build && node scripts/prepare-standalone.js && node scripts/fix-node-pty-perms.js && electron-builder"
   },
   "build": {
     "appId": "com.marven.app",
