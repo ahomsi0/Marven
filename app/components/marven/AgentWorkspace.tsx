@@ -57,7 +57,7 @@ function MemoryPopover({
         <button
           type="button"
           onClick={onClear}
-          className="rounded px-1.5 py-0.5 text-[10px] text-[#666] transition-colors hover:bg-red-500/10 hover:text-red-400"
+          className="rounded px-1.5 py-0.5 text-[10px] text-[var(--m-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
         >
           Clear all
         </button>
@@ -498,7 +498,7 @@ export function AgentWorkspace({
             type="button"
             onClick={() => setShowDiff((v) => !v)}
             className={`ml-1 rounded px-2 py-0.5 text-[10px] transition-colors ${
-              showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[#666] hover:text-[#ccc]"
+              showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
             }`}
             title="Toggle diff panel"
           >
@@ -515,7 +515,7 @@ export function AgentWorkspace({
               className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] transition-colors ${
                 memoryOpen
                   ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
-                  : "border-[#333] bg-[#252525] text-[#999] hover:border-[#444] hover:text-[#ccc]"
+                  : "border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-text-muted)] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)]"
               }`}
             >
               {/* Three connected nodes — echoes the Marven logo's Y-shape */}
