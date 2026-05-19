@@ -46,6 +46,9 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **Multi-tab editor** with drag-reorder and per-tab buffer cache
 - **Format-on-save** via Prettier (toggle in Settings → General)
 - **Breadcrumbs** showing path segments
+- **Markdown split preview** — open a `.md` file and the right pane renders rich GFM live as you type
+- **Image previews** — `.png/.jpg/.svg/.webp/.gif` open inline with natural dimensions
+- **PDF previews** — `.pdf` opens in the tab via the browser's built-in viewer
 
 ### Real interactive terminal (v2.0+)
 - **xterm.js + node-pty** — type into it, run commands, see ANSI colors, use REPLs/TUIs (vim, top, etc.)
@@ -79,6 +82,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 
 ### Local voice (v2.1+)
 - **Offline by default** — "Hey Marven" is transcribed on your machine using Whisper-tiny.en running in WASM via `transformers.js`. The ~145MB model downloads once on first use and is cached in IndexedDB.
+- **Three checkpoint options** in Settings → General: Tiny.en (default, fastest download), Base.en (more accurate, ~290MB), or Distil-Small.en (best balance). Switch any time — the new model downloads on next use.
 - WASM + fp32 backend is pinned so the model loads reliably across machines (the default WebGPU path occasionally ships a quantized variant whose scale tensors are missing).
 - Switch to Groq Whisper for lower latency in **Settings → General → Voice recognition**.
 - The input bar shows a **LOCAL** or **GROQ** chip so you can tell at a glance which backend is handling voice.
