@@ -190,6 +190,10 @@ export function FileExplorer({
   const [creating, setCreating] = useState<"file" | "folder" | null>(null);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  // Whole-tree collapse — clicking the chevron on the project-root row hides
+  // the entire file tree. The header (workspace name + new file / new folder /
+  // refresh) stays visible so the user can still expand it back.
+  const [treeCollapsed, setTreeCollapsed] = useState(false);
 
   const projectName = workspaceRoot?.split("/").filter(Boolean).pop() ?? "workspace";
 
@@ -270,13 +274,21 @@ export function FileExplorer({
 
       {/* Project root row */}
       <div className="group flex items-center gap-1 border-b border-[var(--m-border-subtle)] px-2 py-1.5">
-        <svg
-          className="h-3 w-3 shrink-0 text-[#777]"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-          style={{ transform: "rotate(90deg)" }}
+        <button
+          type="button"
+          onClick={() => setTreeCollapsed((v) => !v)}
+          aria-label={treeCollapsed ? "Expand file tree" : "Collapse file tree"}
+          title={treeCollapsed ? "Expand file tree" : "Collapse file tree"}
+          className="shrink-0 rounded p-0.5 text-[#777] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+          <svg
+            className="h-3 w-3"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            style={{ transform: treeCollapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform 0.15s ease" }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
         <span className="flex-1 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-[var(--m-text)]">{projectName}</span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
@@ -351,22 +363,24 @@ export function FileExplorer({
       )}
 
       {/* Tree */}
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {tree.length === 0 && (
-          <p className="px-3 py-2 text-[10px] text-[var(--m-text-faint)]">No files</p>
-        )}
-        {tree.map((node) => (
-          <TreeItem
-            key={node.path}
-            node={node}
-            depth={0}
-            openFolders={openFolders}
-            selectedFilePath={selectedFilePath}
-            onSelectFile={onSelectFile}
-            onToggleFolder={toggleFolder}
-          />
-        ))}
-      </div>
+      {!treeCollapsed && (
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          {tree.length === 0 && (
+            <p className="px-3 py-2 text-[10px] text-[var(--m-text-faint)]">No files</p>
+          )}
+          {tree.map((node) => (
+            <TreeItem
+              key={node.path}
+              node={node}
+              depth={0}
+              openFolders={openFolders}
+              selectedFilePath={selectedFilePath}
+              onSelectFile={onSelectFile}
+              onToggleFolder={toggleFolder}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

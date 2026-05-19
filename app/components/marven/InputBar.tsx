@@ -266,7 +266,7 @@ export function InputBar({
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
           />
-          <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
+          <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} align="left" />
 
           <div className="ml-auto flex items-center">
             {isVoiceSupported && sttProvider && (

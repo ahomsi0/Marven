@@ -12,6 +12,11 @@ interface UsageIndicatorProps {
   usage: TokenUsage;
   provider: AIProvider;
   model: string;
+  // Popover alignment relative to the button. "right" anchors the popover's
+  // right edge to the button (extends leftward) — fits the narrow agent panel.
+  // "left" anchors the popover's left edge — looks better above the wide chat
+  // input bar where there's room to the right.
+  align?: "left" | "right";
 }
 
 // Rough context-window sizes by model family. Used purely to drive the visual
@@ -40,7 +45,7 @@ function formatTokens(n: number): string {
   return n.toString();
 }
 
-export function UsageIndicator({ usage, provider, model }: UsageIndicatorProps) {
+export function UsageIndicator({ usage, provider, model, align = "right" }: UsageIndicatorProps) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -117,7 +122,7 @@ export function UsageIndicator({ usage, provider, model }: UsageIndicatorProps) 
       {open && (
         <div
           ref={popoverRef}
-          className="absolute bottom-full right-0 z-40 mb-2 w-[240px] rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+          className={`absolute bottom-full ${align === "left" ? "left-0" : "right-0"} z-40 mb-2 w-[240px] rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]`}
         >
           <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--m-text-faint)]">
             Token usage
