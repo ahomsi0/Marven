@@ -25,6 +25,7 @@ import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import { speak, stopSpeaking } from "@/lib/speak";
+import { getRequireWriteApproval } from "@/lib/agentSettings";
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
 import { parseCommand } from "@/lib/commandParser";
@@ -266,6 +267,7 @@ export default function Home() {
     workspaceRoot,
     memory: memories.length > 0 ? memories.map((m) => `- ${m}`).join("\n") : undefined,
     mcpServers,
+    requireWriteApproval: getRequireWriteApproval(),
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
