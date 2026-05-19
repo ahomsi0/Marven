@@ -5,6 +5,46 @@ import type { ToolCallState } from "@/types";
 
 const APPROVAL_TIMEOUT_SECONDS = 60;
 
+function DiffBlock({ diff }: { diff: string }) {
+  const lines = diff.split("\n");
+  const [showAll, setShowAll] = useState(false);
+  const COLLAPSE = 60;
+  const isLong = lines.length > COLLAPSE;
+  const visible = isLong && !showAll ? lines.slice(0, COLLAPSE) : lines;
+
+  function lineColor(line: string): string {
+    if (line.startsWith("+++") || line.startsWith("---")) return "text-[var(--m-text-faint)]";
+    if (line.startsWith("+")) return "text-green-400/80";
+    if (line.startsWith("-")) return "text-red-400/80";
+    if (line.startsWith("@@")) return "text-[var(--m-text-faint)]";
+    return "text-[var(--m-text-muted)]";
+  }
+
+  return (
+    <div className="border-t border-[var(--m-border-subtle)]">
+      <div className="overflow-y-auto max-h-[300px] bg-[var(--m-bg)]">
+        <pre className="px-3 py-2 text-[10px] font-mono leading-relaxed select-text">
+          {visible.map((line, i) => (
+            <span key={i} className={lineColor(line)}>
+              {line}
+              {"\n"}
+            </span>
+          ))}
+        </pre>
+      </div>
+      {isLong && !showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full py-1 text-center text-[10px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] border-t border-[var(--m-border-subtle)]"
+        >
+          Show {lines.length - COLLAPSE} more lines
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Subtle gold-tinted SVG glyphs that match the rest of the workspace look
 function ToolGlyph({ tool }: { tool: string }) {
   const cls = "h-3 w-3 shrink-0 text-[#d19a66]/70";
@@ -167,6 +207,10 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
           )}
         </div>
       </button>
+
+      {toolCall.status === "awaiting_approval" && toolCall.preview && (
+        <DiffBlock diff={toolCall.preview.diff} />
+      )}
 
       {toolCall.status === "awaiting_approval" && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
