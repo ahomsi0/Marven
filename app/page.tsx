@@ -438,6 +438,63 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentStreamMessages]);
 
+  // ── Background task notifications ─────────────────────────────────────────
+  // When a long agent run finishes AND the window isn't focused, fire a
+  // native system notification. Opt-in via Settings (voiceTaskNotifications).
+  const agentStartedAtRef = useRef<number | null>(null);
+  const notifyTaskCompleteRef = useRef<boolean>(false);
+  useEffect(() => {
+    const electron = typeof window !== "undefined"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (window as any).marvenElectron
+      : null;
+    if (!electron?.getSettings) return;
+    electron.getSettings().then((s: { notifyTaskComplete?: boolean }) => {
+      notifyTaskCompleteRef.current = s?.notifyTaskComplete === true;
+    }).catch(() => {});
+    const onChange = () => {
+      electron.getSettings().then((s: { notifyTaskComplete?: boolean }) => {
+        notifyTaskCompleteRef.current = s?.notifyTaskComplete === true;
+      }).catch(() => {});
+    };
+    window.addEventListener("marven:settings-changed", onChange);
+    return () => window.removeEventListener("marven:settings-changed", onChange);
+  }, []);
+  useEffect(() => {
+    if (agentStreamIsRunning) {
+      agentStartedAtRef.current = Date.now();
+      return;
+    }
+    const startedAt = agentStartedAtRef.current;
+    agentStartedAtRef.current = null;
+    if (!startedAt) return;
+    if (!notifyTaskCompleteRef.current) return;
+    const elapsedMs = Date.now() - startedAt;
+    // Only notify for runs longer than 8 seconds — short tasks aren't worth
+    // an interruption.
+    if (elapsedMs < 8_000) return;
+    if (typeof window === "undefined") return;
+    // Don't fire if the window already has focus — the user can already see
+    // the result.
+    if (document.hasFocus()) return;
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification("Marven Agent finished", {
+          body: `Task complete after ${Math.round(elapsedMs / 1000)}s`,
+          silent: false,
+        });
+      } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission().then((p) => {
+          if (p === "granted") {
+            new Notification("Marven Agent finished", { body: `Task complete after ${Math.round(elapsedMs / 1000)}s` });
+          }
+        });
+      }
+    } catch {
+      // Notifications can throw in some Electron sandboxes — swallow.
+    }
+  }, [agentStreamIsRunning]);
+
   function toRelativePath(p: string, root: string | null): string {
     if (!root) return p;
     if (p.startsWith(root)) {
