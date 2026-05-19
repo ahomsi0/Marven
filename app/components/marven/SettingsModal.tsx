@@ -9,6 +9,13 @@ import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
 
 type SttProviderId = "local" | "groq";
+type LocalModelId = "whisper-tiny" | "whisper-base" | "distil-tiny";
+
+const LOCAL_MODEL_OPTIONS: Array<{ id: LocalModelId; label: string; hint: string }> = [
+  { id: "whisper-tiny", label: "Whisper Tiny.en",      hint: "Default • ~145 MB • Fastest download" },
+  { id: "whisper-base", label: "Whisper Base.en",      hint: "~290 MB • More accurate on accents / noise" },
+  { id: "distil-tiny",  label: "Distil-Whisper Small", hint: "~165 MB • Best speed/accuracy balance" },
+];
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -244,6 +251,7 @@ export function SettingsModal({
   // Default to "local" so first-time users get an offline-capable experience
   // without needing to plug in a Groq API key first.
   const [sttProvider, setSttProvider] = useState<SttProviderId>("local");
+  const [localModel, setLocalModel] = useState<LocalModelId>("whisper-tiny");
   const [modelStatus, setModelStatus] = useState<string | null>(null);
   const [modelLoading, setModelLoading] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
@@ -279,6 +287,9 @@ export function SettingsModal({
       if (s.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
       if (s.voiceSttProvider === "groq") setSttProvider("groq");
       else setSttProvider("local");
+      const validModels: LocalModelId[] = ["whisper-tiny", "whisper-base", "distil-tiny"];
+      if (validModels.includes(s.voiceLocalModel)) setLocalModel(s.voiceLocalModel);
+      else setLocalModel("whisper-tiny");
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -372,6 +383,16 @@ export function SettingsModal({
     }
     // Let useVoice (and any other listeners) pick up the change without
     // requiring a full app reload.
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+  }
+
+  async function handleLocalModelChange(choice: LocalModelId) {
+    setLocalModel(choice);
+    setModelStatus(null);
+    if (electron) {
+      const current = await electron.getSettings();
+      await electron.saveSettings({ ...current, voiceLocalModel: choice });
+    }
     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
   }
 
@@ -684,19 +705,62 @@ export function SettingsModal({
                 })}
               </div>
               {sttProvider === "local" && (
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-[10px] text-[var(--m-text-muted)]">
-                    {modelStatus ?? "Model downloads (~150MB) on first use, then runs offline."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handlePreloadModel}
-                    disabled={modelLoading}
-                    className="shrink-0 rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {modelLoading ? "Loading…" : "Preload model"}
-                  </button>
-                </div>
+                <>
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
+                      Local model
+                    </p>
+                    <div className="space-y-1.5">
+                      {LOCAL_MODEL_OPTIONS.map((opt) => {
+                        const active = localModel === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleLocalModelChange(opt.id)}
+                            aria-pressed={active}
+                            className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                              active
+                                ? "border-[var(--m-accent)] bg-[var(--m-accent)]/8"
+                                : "border-[var(--m-border-subtle)] hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)]"
+                            }`}
+                          >
+                            <span
+                              className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full border ${
+                                active
+                                  ? "border-[var(--m-accent)] bg-[var(--m-accent)]"
+                                  : "border-[var(--m-text-faint)]"
+                              }`}
+                            >
+                              {active && (
+                                <span className="h-1.5 w-1.5 rounded-full bg-[var(--m-bg)]" />
+                              )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                                {opt.label}
+                              </div>
+                              <div className="text-[10px] text-[var(--m-text-faint)]">{opt.hint}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-[var(--m-text-muted)]">
+                      {modelStatus ?? "Model downloads on first use, then runs offline."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handlePreloadModel}
+                      disabled={modelLoading}
+                      className="shrink-0 rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {modelLoading ? "Loading…" : "Preload model"}
+                    </button>
+                  </div>
+                </>
               )}
               {sttProvider === "groq" && (
                 <p className="mt-2 text-[10px] text-[var(--m-text-muted)]">
