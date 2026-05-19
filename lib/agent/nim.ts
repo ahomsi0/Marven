@@ -58,10 +58,20 @@ export async function nimAgentStep(
   const data = await res.json();
   const choice = data.choices?.[0];
 
-  if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls?.length) {
+  // Dispatch native tool_calls whenever they're present — NIM sometimes
+  // returns them with finish_reason="stop" instead of "tool_calls", and the
+  // previous strict check made the agent fall through to "text" and just
+  // describe the call instead of executing it.
+  if (choice?.message?.tool_calls?.length) {
     const tc = choice.message.tool_calls[0];
     let args: Record<string, unknown> = {};
-    try { args = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
+    const raw = tc.function?.arguments;
+    if (typeof raw === "string") {
+      try { args = JSON.parse(raw); } catch { /* ignore */ }
+    } else if (raw && typeof raw === "object") {
+      // Some NIM checkpoints return arguments as a JSON object instead of a string
+      args = raw as Record<string, unknown>;
+    }
     return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
   }
 
