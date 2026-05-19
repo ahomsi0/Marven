@@ -168,11 +168,46 @@ You only need **one** to get started. Voice features ("Hey Marven", dictation) d
 
 ### Picking a model
 
-- **Best agentic behavior**: Claude Sonnet 4.5, GPT-4o, Llama 3.3 70B (on Groq)
-- **Cheap + fast**: Llama 3.1 8B on Groq, Gemma 3 27B on OpenRouter
-- **Fully local**: Ollama with `qwen2.5-coder` or `llama3.1` (8B+ params for reliable tool use)
+Pick by what you're doing. Agent (file-editing) needs tool calls and benefits from large context; chat is more forgiving and can run on smaller/cheaper models.
 
-Smaller models (≤3B) tend to narrate tool calls instead of executing them. Marven has fallback parsers for known quirks (e.g., qwen2.5-coder's function-call syntax), but a stronger model is always more reliable.
+#### Free — no card required
+
+| Model | Provider | Best for | Notes |
+|---|---|---|---|
+| **Llama 3.3 70B Versatile** | Groq | Agent ★ + Chat | Strong tool use, fast. Best free agent model. ~131K ctx |
+| **Llama 3.1 8B Instant** | Groq | Chat, light agent | Very fast. Tool use OK on small tasks; can narrate calls on complex ones |
+| **DeepSeek Chat v3** | OpenRouter (`deepseek/deepseek-chat-v3.1:free`) | Agent + Chat | Big context, solid reasoning. Free tier rate-limited |
+| **Gemma 3 27B** | OpenRouter (`google/gemma-3-27b-it:free`) | Chat | Good general chat. Limited tool use — prefer for plain conversation |
+| **Llama 4 Scout 17B** | Groq | Chat + vision | Free tier, supports image inputs |
+
+Alternative: NVIDIA NIM has rotating free credits — `meta/llama-3.3-70b-instruct` is the safe pick there, though smaller NIM checkpoints sometimes describe tool calls instead of executing them.
+
+#### Paid — pay-as-you-go
+
+| Model | Provider | Best for | Rough cost |
+|---|---|---|---|
+| **Claude Sonnet 4.5** | Anthropic | Agent ★★★ (best overall) | $$ — premium quality, 200K ctx, excellent tool use |
+| **Claude Haiku 4.5** | Anthropic | Agent + Chat | $ — fast, cheap, still better than most open-weights at tool use |
+| **GPT-4o** | OpenAI | Agent + vision | $$ — strong vision, 128K ctx |
+| **GPT-4o mini** | OpenAI | Chat, light agent | $ — cheap; weaker at multi-step tool use |
+| **o3-mini** | OpenAI | Reasoning-heavy tasks | $$ — slower but thinks through complex problems |
+
+If you have an existing ChatGPT subscription it does **not** include API access — you need a separate API credit balance at [platform.openai.com](https://platform.openai.com).
+
+#### Local — fully offline via Ollama
+
+Install [Ollama](https://ollama.com), `ollama pull <model>`, then pick "Ollama" as the provider in Marven.
+
+| Model | Size | Best for | Heaviness |
+|---|---|---|---|
+| **qwen2.5-coder:14b** | ~9GB | Agent ★ (best local agent) | Needs 16GB+ RAM. Marven has a dedicated parser for its function-call syntax |
+| **qwen2.5-coder:7b** | ~4.7GB | Agent (lighter) | Runs on 8GB+ RAM; tool use less reliable on complex tasks |
+| **llama3.1:8b** | ~4.7GB | Chat + light agent | Solid all-rounder for chat. Tool use is hit-or-miss |
+| **llama3.1:70b** | ~40GB | Agent ★★ (if you have the hardware) | Needs a workstation GPU or 64GB+ RAM. Closest local rival to Claude |
+| **deepseek-r1:7b** | ~4.7GB | Reasoning chat | Thinks step-by-step. Slow but careful |
+| **gemma3:12b** | ~7GB | Chat | Polished writing, weak tool use — pick for conversation, not agent |
+
+**Rule of thumb:** anything ≤3B parameters tends to narrate tool calls instead of calling them. Marven has fallback parsers for the common formats (Llama `<function=name>` / Qwen `<tool_call>` / variant `<function(name){…}</function>`), but a stronger model is always more reliable. If your agent keeps describing what it would do instead of doing it, the model is too small or the system prompt isn't reaching it — try a bigger checkpoint first.
 
 ---
 
