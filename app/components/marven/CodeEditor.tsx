@@ -325,6 +325,12 @@ export function CodeEditor({
       search({ top: true }),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
+          // If this change came from our own external-value sync (parent
+          // pushing a new `value`), don't bubble it back up as a user edit.
+          if (suppressNextChangeRef.current) {
+            suppressNextChangeRef.current = false;
+            return;
+          }
           const next = u.state.doc.toString();
           onChangeRef.current(next);
         }
@@ -436,11 +442,19 @@ export function CodeEditor({
   }, []);
 
   // ─ External value updates ───────────────────────────────────────────────────
+  // When the parent pushes a new `value` prop (e.g. file just finished loading
+  // from disk), we dispatch a change that updates the editor doc. The internal
+  // updateListener treats that as a user edit and fires onChange — which makes
+  // the parent re-mark the buffer dirty. That sets up a deadlock where the
+  // load handler later sees dirty=true and refuses to apply its result, so the
+  // file shows the loading spinner forever. Suppress onChange while we apply.
+  const suppressNextChangeRef = useRef(false);
   useEffect(() => {
     const v = viewRef.current;
     if (!v) return;
     const cur = v.state.doc.toString();
     if (cur !== value) {
+      suppressNextChangeRef.current = true;
       v.dispatch({
         changes: { from: 0, to: cur.length, insert: value },
       });

@@ -326,8 +326,18 @@ export default function Home() {
 
   // Save the active conversation's agent messages whenever they change so we
   // can restore them when the user switches between agent conversations.
+  //
+  // Guard against the switch race: when activeConversationId changes, React
+  // runs this effect BEFORE the switch effect below (effect order = declaration
+  // order). At that moment agentStreamMessages still holds the OUTGOING conv's
+  // messages, but activeConversationId is already the INCOMING id — so an
+  // unguarded save would clobber the incoming conv's stored messages with the
+  // outgoing one's, making every agent tab appear to share the same thread.
+  // Only persist when the stream state is in sync with the conv we last
+  // swapped to (lastAgentConvIdRef).
   useEffect(() => {
     if (activeMode !== "agent" || !activeConversationId) return;
+    if (activeConversationId !== lastAgentConvIdRef.current) return;
     agentMessagesByConvRef.current.set(activeConversationId, agentStreamMessages);
   }, [agentStreamMessages, activeConversationId, activeMode]);
 
@@ -579,7 +589,12 @@ export default function Home() {
         setFileBuffers((prev) => {
           const next = new Map(prev);
           const existing = next.get(path);
-          if (!existing || !existing.dirty) {
+          // Apply the load result when:
+          //   - no buffer exists yet
+          //   - the buffer is still in loading state (any "dirty" was spurious,
+          //     set by the editor reflecting our own placeholder content)
+          //   - the user hasn't actually started editing (dirty=false)
+          if (!existing || existing.loading || !existing.dirty) {
             next.set(path, {
               content: typeof data?.content === "string" ? data.content : "",
               dirty: false,
