@@ -18,6 +18,7 @@ interface StreamRequestBody {
   workspaceRoot?: string;
   memory?: string;
   mcpServers?: MCPServer[];
+  requireWriteApproval?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
           memory: body.memory,
           providerStep,
           onProgress,
+          requireWriteApproval: body.requireWriteApproval ?? false,
           executeToolFn: async (name, args, root, onProgressCb) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);
