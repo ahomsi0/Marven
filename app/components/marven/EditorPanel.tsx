@@ -7,6 +7,9 @@ import { SettingsModal } from "./SettingsModal";
 import { InlineEditPrompt } from "./InlineEditPrompt";
 import { CodeEditor, type CodeEditorActions } from "./CodeEditor";
 import { TerminalView } from "./TerminalView";
+import { ImagePreview } from "./ImagePreview";
+import { PdfPreview } from "./PdfPreview";
+import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
 
 interface EditorPanelProps {
@@ -158,6 +161,19 @@ export function EditorPanel({
 
   const activeFileName = selectedFilePath?.split("/").pop() ?? null;
   const fileExt = activeFileName?.split(".").pop()?.toLowerCase() ?? "";
+  // Tab content type — drives whether we render the code editor, a markdown
+  // preview, an image, or a PDF. All four use the same EditorTab "file" kind
+  // (the underlying buffer is still fetched the same way); only the renderer
+  // differs.
+  const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"]);
+  const PDF_EXTS = new Set(["pdf"]);
+  const MARKDOWN_EXTS = new Set(["md", "mdx", "markdown"]);
+  const isImage = IMAGE_EXTS.has(fileExt);
+  const isPdf = PDF_EXTS.has(fileExt);
+  const isMarkdown = MARKDOWN_EXTS.has(fileExt);
+  // Side-by-side markdown preview is opt-in via a per-tab toggle so users
+  // who want to edit the raw markdown can disable it.
+  const [markdownPreview, setMarkdownPreview] = useState(true);
   const projectName = workspaceRoot?.split("/").filter(Boolean).pop() ?? "workspace";
   const relativeFilePath = workspaceRoot && selectedFilePath
     ? selectedFilePath.startsWith(workspaceRoot)
@@ -612,6 +628,23 @@ export function EditorPanel({
                   <div className="flex h-full w-full items-center justify-center font-mono text-[11px] text-[var(--m-text-faint)]">
                     Loading…
                   </div>
+                ) : isImage ? (
+                  <ImagePreview path={relativeFilePath ?? selectedFilePath ?? ""} name={activeFileName ?? ""} />
+                ) : isPdf ? (
+                  <PdfPreview path={relativeFilePath ?? selectedFilePath ?? ""} />
+                ) : isMarkdown ? (
+                  <MarkdownView
+                    value={fileContent}
+                    onChange={onFileContentChange}
+                    onSave={onSaveFile}
+                    theme={theme}
+                    preview={markdownPreview}
+                    onTogglePreview={() => setMarkdownPreview((v) => !v)}
+                    onReady={(actions) => {
+                      editorActionsRef.current = actions;
+                      if (externalEditorActionsRef) externalEditorActionsRef.current = actions;
+                    }}
+                  />
                 ) : (
                   <CodeEditor
                     value={fileContent}
