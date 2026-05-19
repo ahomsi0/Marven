@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { blobToFloat32Mono16k, getLocalSttPipeline } from "@/lib/localStt";
+import { blobToFloat32Mono16k, getLocalSttPipeline, setLocalSttModel, type LocalSttModel } from "@/lib/localStt";
 
 export type VoiceState = "idle" | "wake-listening" | "command-listening";
 export type SttProvider = "groq" | "local";
@@ -113,10 +113,15 @@ export function useVoice(
     if (!electron?.getSettings) return;
 
     const load = () => {
-      electron.getSettings().then((s: { voiceSttProvider?: string }) => {
+      electron.getSettings().then((s: { voiceSttProvider?: string; voiceLocalModel?: string }) => {
         const next: SttProvider = s?.voiceSttProvider === "groq" ? "groq" : "local";
         sttProviderRef.current = next;
         setSttProvider(next);
+        const validModels = ["whisper-tiny", "whisper-base", "distil-tiny"] as const;
+        const model = (validModels as readonly string[]).includes(s?.voiceLocalModel ?? "")
+          ? (s.voiceLocalModel as LocalSttModel)
+          : "whisper-tiny";
+        setLocalSttModel(model);
       }).catch(() => { /* keep default */ });
     };
     load();

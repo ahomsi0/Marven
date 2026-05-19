@@ -14,11 +14,29 @@ export interface LocalSttProgress {
   message?: string;
 }
 
-const MODEL_ID = "Xenova/whisper-tiny.en";
+// Available local Whisper checkpoints. Tiny.en is the safe default — small
+// download (~145MB fp32) and works on any machine. base.en is roughly twice
+// the size for noticeably better accuracy on accents / noisy audio. Quantized
+// distil-tiny.en (~40MB) is dramatically faster but slightly less accurate.
+export const LOCAL_STT_MODELS = {
+  "whisper-tiny":  { id: "Xenova/whisper-tiny.en",         label: "Whisper Tiny (default)",   sizeMb: 145 },
+  "whisper-base":  { id: "Xenova/whisper-base.en",         label: "Whisper Base (more accurate)", sizeMb: 290 },
+  "distil-tiny":   { id: "distil-whisper/distil-small.en", label: "Distil Small (fastest)",   sizeMb: 165 },
+} as const;
+export type LocalSttModel = keyof typeof LOCAL_STT_MODELS;
+const DEFAULT_MODEL: LocalSttModel = "whisper-tiny";
 
-// Pipeline is a singleton — we only load the model once per app session and
-// the cached weights stay on disk between sessions.
+let currentModelKey: LocalSttModel = DEFAULT_MODEL;
+// Pipeline is a singleton PER MODEL — if the user switches to a different
+// local checkpoint, we throw away the old pipeline and lazy-load the new one
+// on the next transcription.
 let pipelinePromise: Promise<TranscribeFn> | null = null;
+
+export function setLocalSttModel(key: LocalSttModel) {
+  if (key === currentModelKey) return;
+  currentModelKey = key;
+  pipelinePromise = null;
+}
 
 // We coalesce progress updates to whichever caller most recently subscribed.
 // transformers.js fires progress at module construction, so callers that
@@ -61,9 +79,11 @@ export function getLocalSttPipeline(
         // model.decoder.embed_tokens.weight_merged_0_scale"). WASM + fp32 is
         // the well-trodden path: a bit slower on capable GPUs but reliable,
         // and whisper-tiny is small enough that latency stays comfortable.
+        const modelEntry = LOCAL_STT_MODELS[currentModelKey];
+        console.log(`[localStt] using model:`, modelEntry.label, `(${modelEntry.id})`);
         const pipe = await pipeline(
           "automatic-speech-recognition",
-          MODEL_ID,
+          modelEntry.id,
           {
             device: "wasm",
             dtype: "fp32",
