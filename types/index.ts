@@ -126,6 +126,13 @@ export interface Conversation {
   pinned?: boolean;
   systemPrompt?: string;
   workspaceRoot?: string;   // agent mode: which folder is open in this conversation
+  folderId?: string | null; // user-defined grouping label; null/undefined = no folder
+}
+
+export interface ConversationFolder {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 // ─── Agent tool-use loop types ────────────────────────────────────────────────

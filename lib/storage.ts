@@ -1,9 +1,10 @@
 "use client";
 
-import type { Conversation, Message, CustomShortcut, ConversationMode } from "@/types";
+import type { Conversation, ConversationFolder, Message, CustomShortcut, ConversationMode } from "@/types";
 
 const CONVERSATIONS_KEY = "marven_conversations";
 const SHORTCUTS_KEY = "marven_custom_shortcuts";
+const FOLDERS_KEY = "marven_conversation_folders";
 
 // ─── Serialization helpers ────────────────────────────────────────────────────
 // Messages have Date objects; localStorage stores JSON strings.
@@ -47,6 +48,36 @@ export function saveConversations(conversations: Conversation[]): void {
   } catch {
     // Ignore storage quota errors
   }
+}
+
+// ─── Conversation folders ─────────────────────────────────────────────────────
+
+export function loadConversationFolders(): ConversationFolder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(FOLDERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as ConversationFolder[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveConversationFolders(folders: ConversationFolder[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+export function createConversationFolder(name: string): ConversationFolder {
+  return {
+    id: `folder-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: name.trim() || "New folder",
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export function createConversation(firstUserMessage: string): Conversation {
