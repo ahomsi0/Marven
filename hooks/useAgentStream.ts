@@ -7,9 +7,10 @@ interface UseAgentStreamOptions {
   workspaceRoot: string | null;
   memory?: string;
   mcpServers?: MCPServer[];
+  requireWriteApproval?: boolean;
 }
 
-export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers }: UseAgentStreamOptions) {
+export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +69,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled) }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false }),
         signal: abort.signal,
       });
 
@@ -149,7 +150,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
               ...msg,
               toolCalls: (msg.toolCalls ?? []).map((tc) =>
                 tc.callId === event.callId
-                  ? { ...tc, status: "awaiting_approval" as const }
+                  ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
                   : tc
               ),
             }));
