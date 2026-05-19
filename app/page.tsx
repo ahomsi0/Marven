@@ -140,19 +140,26 @@ const WEATHER_RE = /what(?:'s| is) the weather|how(?:'s| is) the weather|weather
 const MEMORY_RE = /^(?:remember(?: that)?|don't forget(?: that)?)\s+(.+)$/i;
 
 export default function Home() {
-  const [provider, setProvider] = useState<AIProvider>("groq");
+  // Chat and agent each remember their OWN provider + per-provider model
+  // independently. The user's mental model is "the agent's brain is separate
+  // from my chat model" — picking llama 8B for fast chat shouldn't disturb
+  // the agent, and picking Claude for the agent shouldn't bleed into chat.
+  const [chatProvider, setChatProvider]   = useState<AIProvider>("groq");
+  const [agentProvider, setAgentProvider] = useState<AIProvider>("groq");
   const [models, setModels] = useState<OllamaModel[]>([]);
-  const [selectedModelByProvider, setSelectedModelByProvider] = useState<Record<AIProvider, string>>({
+  const emptyModelMap: Record<AIProvider, string> = {
     groq: "",
     ollama: "",
     nim: "",
     openrouter: "",
     openai: "",
     anthropic: "",
-  });
+  };
+  const [chatModelByProvider, setChatModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);
+  const [agentModelByProvider, setAgentModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const selectedModel = selectedModelByProvider[provider];
+  // selectedModel is computed per active mode — declared after activeMode below.
 
   const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
     promptTokens: 0,
@@ -171,6 +178,12 @@ export default function Home() {
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
   const conversationSystemPrompt = activeConversation?.systemPrompt ?? "";
+  const provider = activeMode === "agent" ? agentProvider : chatProvider;
+  const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
+  const selectedModel =
+    activeMode === "agent"
+      ? agentModelByProvider[provider]
+      : chatModelByProvider[provider];
 
   // ─── Custom shortcuts ───────────────────────────────────────────────────────
   const [customShortcuts, setCustomShortcuts] = useState<CustomShortcut[]>([]);
@@ -756,13 +769,19 @@ export default function Home() {
         const nextModels: OllamaModel[] = data.models ?? [];
         setModels(nextModels);
         if (data.error) setModelsError(data.error as string);
-        setSelectedModelByProvider((prev) => {
+        // Seed the ACTIVE mode's bucket only — the other mode keeps whatever
+        // pick the user made for it (or its own seeded default the first time
+        // its provider was visited). Cross-mode bleed was the root cause of
+        // "chat is always following agent."
+        const seed = (prev: Record<AIProvider, string>) => {
           const current = prev[provider];
           const stillAvailable = nextModels.some((m) => m.name === current);
           if (stillAvailable) return prev;
           const fallback = data.defaultModel ?? nextModels[0]?.name ?? "";
           return { ...prev, [provider]: fallback };
-        });
+        };
+        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+        setter(seed);
       } catch {
         if (!cancelled) {
           setModels([]);
@@ -1267,12 +1286,13 @@ export default function Home() {
     setActiveConversationId(id);
     const conv = conversations.find((c) => c.id === id);
     if (conv?.provider) {
-      setProvider(conv.provider);
+      // Restore provider + model into the bucket matching the conv's mode
+      // so the other mode's picks stay untouched.
+      const providerSetter = conv.mode === "agent" ? setAgentProvider : setChatProvider;
+      providerSetter(conv.provider);
       if (conv.model) {
-        setSelectedModelByProvider((prev) => ({
-          ...prev,
-          [conv.provider!]: conv.model!,
-        }));
+        const modelSetter = conv.mode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+        modelSetter((prev) => ({ ...prev, [conv.provider!]: conv.model! }));
       }
     }
   }
@@ -1415,7 +1435,10 @@ export default function Home() {
   }
 
   function handleModelChange(model: string) {
-    setSelectedModelByProvider((prev) => ({ ...prev, [provider]: model }));
+    // Only update the bucket for the active mode — chat and agent are
+    // independent so picking a fast chat model doesn't pin the agent to it.
+    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+    setter((prev) => ({ ...prev, [provider]: model }));
   }
 
   // userProfile is undefined during SSR/initial hydration — wait for it
