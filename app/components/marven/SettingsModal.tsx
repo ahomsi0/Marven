@@ -6,6 +6,7 @@ import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
+import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
 
 type SttProviderId = "local" | "groq";
@@ -230,8 +231,10 @@ export function SettingsModal({
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
+  const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
+    setRequireWriteApprovalState(getRequireWriteApproval());
   }, []);
   const [items, setItems] = useState<CustomShortcut[]>(
     shortcuts.map((s) => ({ ...s }))
@@ -795,6 +798,37 @@ export function SettingsModal({
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
                       formatOnSave ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Require write approval toggle */}
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Require approval before writing files</h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Show a diff preview and ask before write_file or apply_patch execute. Adds a confirmation step for every agent write.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={requireWriteApproval}
+                  onClick={() => {
+                    const next = !requireWriteApproval;
+                    setRequireWriteApprovalState(next);
+                    setRequireWriteApproval(next);
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    requireWriteApproval ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      requireWriteApproval ? "translate-x-5" : "translate-x-1"
                     }`}
                   />
                 </button>
