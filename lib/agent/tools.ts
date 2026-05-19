@@ -40,7 +40,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "write_file",
-    description: "Write or overwrite a file. Creates parent directories if needed.",
+    description: "Write or overwrite a file. Creates parent directories if needed. PREFER apply_patch for small/medium edits to existing files — it's faster, cheaper, and safer than re-sending the whole file.",
     parameters: {
       type: "object",
       properties: {
@@ -48,6 +48,29 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         content: { type: "string", description: "Full file contents to write." },
       },
       required: ["path", "content"],
+    },
+  },
+  {
+    name: "apply_patch",
+    description: "Apply surgical search-and-replace edits to an EXISTING file. Strongly preferred over write_file for small/medium changes — it only sends the snippets that change, not the whole file. Each edit's 'search' text must match exactly (whitespace-sensitive) and must be unique within the file. If a snippet appears more than once, include enough surrounding context to make it unique. To delete code, set 'replace' to an empty string. Edits apply in order.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Relative path to the file. The file must already exist." },
+        edits: {
+          type: "array",
+          description: "Ordered list of search/replace edits.",
+          items: {
+            type: "object",
+            properties: {
+              search:  { type: "string", description: "Exact text to find in the file. Whitespace-sensitive. Must be unique (use surrounding context if not)." },
+              replace: { type: "string", description: "Text to substitute. Empty string to delete." },
+            },
+            required: ["search", "replace"],
+          },
+        },
+      },
+      required: ["path", "edits"],
     },
   },
   {
@@ -367,6 +390,72 @@ export async function executeTool(
         .replace(/\\r/g, "\r");
       await fs.writeFile(abs, content, "utf-8");
       return `Written: ${args.path}`;
+    }
+
+    case "apply_patch": {
+      const abs = assertSafePath(workspaceRoot, args.path as string);
+      const rawEdits = args.edits;
+      if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
+        return `apply_patch failed: edits must be a non-empty array.`;
+      }
+
+      // Unescape literal \n / \t / \r the same way write_file does — models
+      // sometimes serialize newlines as backslash-n inside JSON strings.
+      function unescape(s: unknown): string {
+        return typeof s === "string"
+          ? s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r")
+          : "";
+      }
+
+      const edits = rawEdits.map((e: unknown) => {
+        const o = (e ?? {}) as { search?: unknown; replace?: unknown };
+        return { search: unescape(o.search), replace: unescape(o.replace) };
+      });
+
+      // Validate before touching disk — bail with a clear message rather
+      // than half-applying.
+      let original: string;
+      try {
+        original = await fs.readFile(abs, "utf-8");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `apply_patch failed: could not read ${args.path}. ${msg}`;
+      }
+
+      let next = original;
+      const summaries: string[] = [];
+      for (let i = 0; i < edits.length; i++) {
+        const { search, replace } = edits[i];
+        if (!search) {
+          return `apply_patch failed at edit #${i + 1}: 'search' is empty. To create a new file use write_file instead.`;
+        }
+        const firstIdx = next.indexOf(search);
+        if (firstIdx === -1) {
+          return `apply_patch failed at edit #${i + 1}: 'search' text not found in ${args.path}. The text must match EXACTLY including whitespace. Read the file again, copy the snippet to replace, and retry. No edits were committed.`;
+        }
+        const secondIdx = next.indexOf(search, firstIdx + 1);
+        if (secondIdx !== -1) {
+          return `apply_patch failed at edit #${i + 1}: 'search' text appears multiple times in ${args.path}. Add 1-2 lines of surrounding context (before/after) so the snippet is unique, then retry. No edits were committed.`;
+        }
+        next = next.slice(0, firstIdx) + replace + next.slice(firstIdx + search.length);
+        const delta = replace.length - search.length;
+        summaries.push(
+          replace.length === 0
+            ? `#${i + 1}: deleted ${search.length} chars`
+            : delta > 0
+              ? `#${i + 1}: +${delta} chars`
+              : delta < 0
+                ? `#${i + 1}: ${delta} chars`
+                : `#${i + 1}: rewrote ${search.length} chars`,
+        );
+      }
+
+      if (next === original) {
+        return `apply_patch ok — no net change (all edits were no-ops).`;
+      }
+
+      await fs.writeFile(abs, next, "utf-8");
+      return `apply_patch ok — ${edits.length} edit(s) applied to ${args.path}\n${summaries.join("\n")}`;
     }
 
     case "run_command": {

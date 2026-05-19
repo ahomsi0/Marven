@@ -16,12 +16,13 @@ afterEach(async () => {
 });
 
 describe("TOOL_DEFINITIONS", () => {
-  it("exports 14 tools", () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(14);
+  it("exports 15 tools", () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(15);
     const names = TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toContain("list_files");
     expect(names).toContain("read_file");
     expect(names).toContain("write_file");
+    expect(names).toContain("apply_patch");
     expect(names).toContain("run_command");
     expect(names).toContain("search_files");
     expect(names).toContain("web_search");
@@ -145,5 +146,125 @@ describe("formatWebSearchResult", () => {
     });
     expect(result).toContain("Good topic");
     expect(result).not.toContain("Topics");
+  });
+});
+
+describe("executeTool – apply_patch", () => {
+  it("applies a single search/replace edit", async () => {
+    const filename = "hello.ts";
+    await fs.writeFile(path.join(tmpDir, filename), "const greeting = 'hi';\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: filename, edits: [{ search: "'hi'", replace: "'hello'" }] },
+      tmpDir,
+    );
+    expect(out).toContain("apply_patch ok");
+    const final = await fs.readFile(path.join(tmpDir, filename), "utf-8");
+    expect(final).toBe("const greeting = 'hello';\n");
+  });
+
+  it("applies multiple edits in order", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "let a = 1;\nlet b = 2;\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      {
+        path: "f.ts",
+        edits: [
+          { search: "let a = 1;", replace: "let a = 10;" },
+          { search: "let b = 2;", replace: "let b = 20;" },
+        ],
+      },
+      tmpDir,
+    );
+    expect(out).toContain("2 edit(s) applied");
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("let a = 10;\nlet b = 20;\n");
+  });
+
+  it("deletes when replace is empty", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "keep\nremove me\nkeep again\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: [{ search: "remove me\n", replace: "" }] },
+      tmpDir,
+    );
+    expect(out).toContain("apply_patch ok");
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("keep\nkeep again\n");
+  });
+
+  it("fails clearly when search text is not found", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "actual\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: [{ search: "missing", replace: "x" }] },
+      tmpDir,
+    );
+    expect(out).toContain("not found");
+    // File should NOT have been modified
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("actual\n");
+  });
+
+  it("fails clearly when search text appears multiple times", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "foo\nfoo\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: [{ search: "foo", replace: "bar" }] },
+      tmpDir,
+    );
+    expect(out).toContain("multiple times");
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("foo\nfoo\n");
+  });
+
+  it("does not partially apply when a later edit fails", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "ok\nalso ok\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      {
+        path: "f.ts",
+        edits: [
+          { search: "ok", replace: "fine" },           // unique only on the first line ("also ok" contains "ok")
+          { search: "missing", replace: "x" },          // would fail if reached
+        ],
+      },
+      tmpDir,
+    );
+    // First edit fails (multiple matches) — file must be untouched.
+    expect(out).toMatch(/multiple times|not found/);
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("ok\nalso ok\n");
+  });
+
+  it("unescapes literal \\n in search/replace", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "line1\nline2\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: [{ search: "line1\\nline2", replace: "newline1\\nnewline2" }] },
+      tmpDir,
+    );
+    expect(out).toContain("apply_patch ok");
+    const final = await fs.readFile(path.join(tmpDir, "f.ts"), "utf-8");
+    expect(final).toBe("newline1\nnewline2\n");
+  });
+
+  it("rejects empty search", async () => {
+    await fs.writeFile(path.join(tmpDir, "f.ts"), "x\n", "utf-8");
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: [{ search: "", replace: "y" }] },
+      tmpDir,
+    );
+    expect(out).toContain("empty");
+  });
+
+  it("rejects non-array edits", async () => {
+    const out = await executeTool(
+      "apply_patch",
+      { path: "f.ts", edits: "not an array" },
+      tmpDir,
+    );
+    expect(out).toContain("non-empty array");
   });
 });

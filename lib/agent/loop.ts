@@ -29,7 +29,8 @@ If the user asks about the project or its files: CALL list_files / read_file fir
 IMPORTANT RULES:
 - When the user mentions their project, files, or asks you to analyze/modify something, ALWAYS call list_files first to discover what exists — never ask the user for a file path you can find yourself.
 - Use read_file to inspect files before modifying them.
-- Use write_file to create or update files. The full file contents go in the "content" argument. Do NOT also echo the code in your reply.
+- Use apply_patch for SMALL/MEDIUM EDITS to existing files. Each edit is a search/replace pair — only send the snippets that change, not the whole file. Prefer this over write_file whenever you're modifying a file that already exists; it's faster, cheaper, and less risky than rewriting the entire file.
+- Use write_file to create NEW files or to fully replace a file's contents. The full file contents go in the "content" argument. Do NOT also echo the code in your reply.
 - Use run_command to install dependencies, run builds, start servers, etc. — invoke it, do not narrate it.
 - When a run_command output contains "Live URL:" or "SERVER READY", you MUST surface that exact URL back to the user as a clickable link (e.g., "Your site is live at http://localhost:3000"). Never tell the user "the port may vary" — the URL is in the tool output.
 - Use web_search to look up documentation, APIs, or current information.
@@ -130,7 +131,7 @@ export async function* runAgentLoop(
     });
 
     // 1. Checkpoint files that are about to be modified
-    if (result.tool === "write_file") {
+    if (result.tool === "write_file" || result.tool === "apply_patch") {
       const rel = result.args.path as string | undefined;
       if (rel) {
         const abs = path.isAbsolute(rel) ? rel : path.join(workspaceRoot, rel);

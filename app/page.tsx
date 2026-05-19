@@ -408,7 +408,7 @@ export default function Home() {
     const lastMsg = agentStreamMessages[agentStreamMessages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
     const newDone = (lastMsg.toolCalls ?? []).filter(
-      (tc) => tc.tool === "write_file" && tc.status === "done" && !processedWriteCallsRef.current.has(tc.callId)
+      (tc) => (tc.tool === "write_file" || tc.tool === "apply_patch") && tc.status === "done" && !processedWriteCallsRef.current.has(tc.callId)
     );
     if (newDone.length === 0) return;
     newDone.forEach((tc) => processedWriteCallsRef.current.add(tc.callId));
@@ -885,6 +885,16 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
+    // When the user has set a custom system prompt, ALL of the hardcoded
+    // shortcut replies (weather/time/date/open-app/search/memory) are
+    // disabled. Those paths return English literals that bypass the LLM and
+    // therefore ignore the system prompt — which makes "answer only in
+    // Arabic" silently break for voice queries like "what time is it".
+    // Routing through the LLM is slightly slower but preserves the user's
+    // language/persona preference.
+    const customSystemPrompt = (activeConversation?.systemPrompt ?? "").trim();
+    const useShortcuts = !customSystemPrompt;
+
     if (activeMode === "agent") {
       const convId = ensureActiveConversation(text, "agent");
       autoRenameConversation(convId, text);
@@ -939,7 +949,7 @@ export default function Home() {
     }
 
     // 0. Memory detection (before everything else)
-    const memoryMatch = text.match(MEMORY_RE);
+    const memoryMatch = useShortcuts ? text.match(MEMORY_RE) : null;
     if (memoryMatch) {
       const memoryStr = memoryMatch[2].trim();
       const newMemories = addMemory(memoryStr);
@@ -954,7 +964,7 @@ export default function Home() {
     }
 
     // 0b. Weather detection
-    if (WEATHER_RE.test(text)) {
+    if (useShortcuts && WEATHER_RE.test(text)) {
       const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       if (weather) {
@@ -971,7 +981,7 @@ export default function Home() {
     }
 
     // 0c. Screen awareness detection
-    if (SCREEN_RE.test(text)) {
+    if (useShortcuts && SCREEN_RE.test(text)) {
       const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const streamingMsg = createMessage("assistant", "Analyzing your screen...", false);
@@ -1042,8 +1052,12 @@ export default function Home() {
       return;
     }
 
-    // 3. Command detection (client-side shortcuts checked first)
-    const command = parseCommand(text, customShortcuts);
+    // 3. Command detection (client-side shortcuts checked first). Skipped
+    // entirely when a custom system prompt is set so the model can respond
+    // in the user's preferred language / persona.
+    const command = useShortcuts
+      ? parseCommand(text, customShortcuts)
+      : ({ type: null, payload: "" } as const);
 
     const convId = ensureActiveConversation(text);
     autoRenameConversation(convId, text);

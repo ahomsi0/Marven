@@ -130,12 +130,24 @@ export interface Conversation {
 
 // ─── Agent tool-use loop types ────────────────────────────────────────────────
 
+// JSON-Schema-shaped property definition. Loose intentionally — providers
+// accept any subset of JSON Schema in their function-call descriptors and
+// we want to be able to describe nested objects/arrays for tools like
+// apply_patch without inventing a brand-new type system.
+export interface ToolPropertyDef {
+  type: "string" | "number" | "boolean" | "array" | "object";
+  description?: string;
+  items?: ToolPropertyDef | { type: "object"; properties: Record<string, ToolPropertyDef>; required?: string[] };
+  properties?: Record<string, ToolPropertyDef>;
+  required?: string[];
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; description: string }>;
+    properties: Record<string, ToolPropertyDef>;
     required: string[];
   };
 }
