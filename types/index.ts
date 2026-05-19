@@ -181,7 +181,7 @@ export type AgentEvent =
   | { type: "tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { type: "tool_result"; callId: string; output: string; truncated: boolean }
   | { type: "tool_progress"; callId: string; chunk: string }
-  | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown> }
+  | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown>; preview?: WritePreview }
   | { type: "checkpoint"; path: string }
   | { type: "text_delta"; delta: string }
   | { type: "done"; toolCallCount: number }
@@ -208,12 +208,20 @@ export interface ToolCallState {
   status: "pending" | "running" | "awaiting_approval" | "done" | "error" | "rejected";
   output?: string;
   liveOutput?: string;
+  preview?: WritePreview;
 }
 
 export interface DiffEntry {
   path: string;
   before: string | null;
   after: string | null;
+}
+
+export interface WritePreview {
+  path: string;
+  before: string;
+  after: string;
+  diff: string; // unified diff string produced by createPatch()
 }
 
 export type EditorTab =
