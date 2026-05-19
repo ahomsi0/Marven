@@ -24,6 +24,7 @@ import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
 import { AgentWorkspace } from "@/app/components/marven/AgentWorkspace";
+import { ConversationSearchPalette } from "@/app/components/marven/ConversationSearchPalette";
 import { generateMarkdown } from "@/lib/chatHelpers";
 
 interface ChatLayoutProps {
@@ -213,6 +214,21 @@ export function ChatLayout({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
+  const [convSearchOpen, setConvSearchOpen] = useState(false);
+
+  // ⌘⇧K — open cross-conversation search palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setConvSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     setSystemPromptOpen(false);
@@ -493,6 +509,18 @@ export function ChatLayout({
           onSaveTemplates={onSaveTemplates}
           onSaveMCPServers={onSaveMCPServers}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {/* Cross-conversation search palette (⌘⇧K) */}
+      {convSearchOpen && (
+        <ConversationSearchPalette
+          conversations={conversations}
+          onClose={() => setConvSearchOpen(false)}
+          onJump={(convId) => {
+            onSelectConversation(convId);
+            setConvSearchOpen(false);
+          }}
         />
       )}
     </div>

@@ -104,6 +104,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 | ⌘⌥F | Find and replace |
 | ⌘G / ⌘⇧G | Next / previous match |
 | ⌘K | Inline AI edit (with code selected) |
+| ⌘⇧K | Search across all conversations |
 | ⌘, | Open Settings |
 | ⌥⌘I / F12 | Toggle DevTools (for debugging) |
 
