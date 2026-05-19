@@ -64,6 +64,8 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **MCP server support** (filesystem, GitHub, databases, anything that speaks Model Context Protocol)
 - **Persistent memory** — `remember` tool stores facts across sessions
 - **Per-conversation workspace** — each "New agent" remembers its own folder, open tabs, and message history (and new agents now start fresh — no stale workspace leaking through)
+- **Independent chat & agent model selection** — picking a fast cheap model for chat doesn't downgrade the agent, and vice versa. Each mode tracks its own provider + per-provider model
+- **Collapsible file tree** — click the chevron next to the project name to collapse / expand the whole tree
 - **Live preview** — open HTML, Markdown, or image files in your chosen browser
 - **Background tasks panel** with elapsed time + Stop button
 
