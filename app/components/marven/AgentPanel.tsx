@@ -6,7 +6,8 @@ import remarkGfm from "remark-gfm";
 import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import { GroupedModelDropdown } from "./GroupedModelDropdown";
-import type { AgentMessage, AIProvider } from "@/types";
+import { UsageIndicator } from "./UsageIndicator";
+import type { AgentMessage, AIProvider, TokenUsage } from "@/types";
 
 interface AgentPanelProps {
   messages: AgentMessage[];
@@ -15,6 +16,7 @@ interface AgentPanelProps {
   error: string | null;
   provider: AIProvider;
   selectedModel: string;
+  tokenUsage: TokenUsage;
   onProviderChange: (p: AIProvider) => void;
   onModelChange: (m: string) => void;
   onInputChange: (value: string) => void;
@@ -31,6 +33,7 @@ export function AgentPanel({
   error,
   provider,
   selectedModel,
+  tokenUsage,
   onProviderChange,
   onModelChange,
   onInputChange,
@@ -212,6 +215,7 @@ export function AgentPanel({
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
           />
+          <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
         </div>
       </div>
     </div>

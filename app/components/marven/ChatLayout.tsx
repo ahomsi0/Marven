@@ -345,27 +345,15 @@ export function ChatLayout({
                     </button>
                   )}
 
-                  <div className="text-[11px] text-[var(--m-text-muted)]">
-                    {tokenUsage.totalTokens.toLocaleString()} tokens
-                  </div>
                 </div>
               </div>
 
               {/* System prompt panel */}
               {mode === "chat" && systemPromptOpen && (
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="conv-system-prompt" className="text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                    System prompt for this conversation
-                  </label>
-                  <textarea
-                    id="conv-system-prompt"
-                    rows={3}
-                    placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert')"
-                    value={conversationSystemPrompt}
-                    onChange={(e) => onSystemPromptChange(e.target.value)}
-                    className="w-full resize-none rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)]"
-                  />
-                </div>
+                <SystemPromptEditor
+                  value={conversationSystemPrompt}
+                  onCommit={onSystemPromptChange}
+                />
               )}
 
             </div>
@@ -379,6 +367,7 @@ export function ChatLayout({
               error={agentError}
               provider={provider}
               model={selectedModel}
+              tokenUsage={tokenUsage}
               speechEnabled={speechEnabled}
               wakeEnabled={wakeEnabled}
               voiceState={voiceState}
@@ -469,6 +458,7 @@ export function ChatLayout({
                     speechEnabled={speechEnabled}
                     wakeEnabled={wakeEnabled}
                     sttProvider={sttProvider}
+                    tokenUsage={tokenUsage}
                     voiceError={voiceError}
                     lastHeard={lastHeard}
                     attachments={chatAttachments}
@@ -505,6 +495,83 @@ export function ChatLayout({
           onClose={() => setSettingsOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+// Local-state editor for the per-conversation system prompt. Previously every
+// keystroke fired into upsertConversation, which led to subtle "is my prompt
+// actually applied?" anxiety when send happened mid-edit. Now the textarea is
+// owned locally; the prompt only commits on explicit Save (button, ⌘↵, or
+// blur) so the user can see when their changes have actually been persisted.
+function SystemPromptEditor({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  // Pull in external changes (e.g. switching conversations) without nuking
+  // an unsaved local edit the user is mid-way through.
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const dirty = draft !== value;
+
+  function save() {
+    if (!dirty) return;
+    onCommit(draft);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <label htmlFor="conv-system-prompt" className="text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
+          System prompt for this conversation
+        </label>
+        <span className={`text-[10px] ${dirty ? "text-[#f59e0b]" : "text-[var(--m-text-faint)]"}`}>
+          {dirty ? "Unsaved" : value ? "Saved" : "Empty"}
+        </span>
+      </div>
+      <textarea
+        id="conv-system-prompt"
+        rows={3}
+        placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). Press ⌘↵ or click Save to apply."
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            save();
+          }
+        }}
+        className="w-full resize-none rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)]"
+      />
+      <div className="flex items-center justify-end gap-2">
+        {dirty && (
+          <button
+            type="button"
+            onClick={() => setDraft(value)}
+            className="rounded px-2 py-0.5 text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-text)]"
+          >
+            Discard
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty}
+          className={`rounded px-2.5 py-0.5 text-[10px] transition-colors ${
+            dirty
+              ? "bg-[var(--m-accent)] text-[var(--m-bg)] hover:opacity-90"
+              : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
+          }`}
+        >
+          {dirty ? "Save" : "Saved"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -224,6 +224,7 @@ interface AgentWorkspaceProps {
   error: string | null;
   provider: string;
   model: string;
+  tokenUsage: import("@/types").TokenUsage;
   speechEnabled: boolean;
   wakeEnabled: boolean;
   voiceState: VoiceState;
@@ -281,6 +282,7 @@ export function AgentWorkspace({
   error,
   provider,
   model,
+  tokenUsage,
   speechEnabled,
   wakeEnabled,
   voiceState,
@@ -1012,6 +1014,7 @@ export function AgentWorkspace({
                   error={error}
                   provider={provider as import("@/types").AIProvider}
                   selectedModel={model}
+                  tokenUsage={tokenUsage}
                   onProviderChange={onProviderChange}
                   onModelChange={onModelChange}
                   onInputChange={onInputChange}

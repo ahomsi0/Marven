@@ -5,6 +5,8 @@ import type { VoiceState } from "@/hooks/useVoice";
 import type { AIProvider, ImageAttachment, PromptTemplate } from "@/types";
 import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
 import { GroupedModelDropdown } from "@/app/components/marven/GroupedModelDropdown";
+import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
+import type { TokenUsage } from "@/types";
 
 const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -20,6 +22,7 @@ interface InputBarProps {
   speechEnabled: boolean;
   wakeEnabled: boolean;
   sttProvider?: "local" | "groq" | null;
+  tokenUsage: TokenUsage;
   voiceError: string | null;
   lastHeard: string;
   onChange: (value: string) => void;
@@ -46,6 +49,7 @@ export function InputBar({
   speechEnabled,
   wakeEnabled,
   sttProvider,
+  tokenUsage,
   voiceError,
   lastHeard,
   onChange,
@@ -262,6 +266,7 @@ export function InputBar({
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
           />
+          <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
 
           <div className="ml-auto flex items-center">
             {isVoiceSupported && sttProvider && (
