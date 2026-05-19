@@ -6,6 +6,9 @@ import path from "path";
 import { registerApproval } from "./approvals";
 import { isGitMutation } from "./tools";
 import { recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
+import { createPatch } from "diff";
+import { simulateApplyPatch } from "./applyPatch";
+import type { WritePreview } from "@/types";
 
 const MAX_ITERATIONS = 20;
 
@@ -55,6 +58,9 @@ interface LoopOptions {
   ) => Promise<ProviderStepResult>;
   executeToolFn?: typeof executeTool;
   onProgress?: (callId: string, chunk: string) => void;
+  requireWriteApproval?: boolean;
+  /** Internal test-only: when set, resolves every registerApproval with this value instead of blocking. */
+  _testApprovalResult?: boolean;
 }
 
 export async function* runAgentLoop(
@@ -145,6 +151,56 @@ export async function* runAgentLoop(
         await ensureCheckpoint(abs);
         if (getCheckpoint(abs) !== null) {
           yield { type: "checkpoint", path: abs };
+        }
+      }
+    }
+
+    // 2a. Write-approval gate (opt-in, controlled by requireWriteApproval setting)
+    if (options.requireWriteApproval && (result.tool === "write_file" || result.tool === "apply_patch")) {
+      const rel = result.args.path as string;
+      const abs = path.isAbsolute(rel) ? rel : path.join(workspaceRoot, rel);
+      const rawBefore = getCheckpoint(abs);
+
+      if (rawBefore !== "<too large to snapshot>") {
+        const before = rawBefore ?? "";
+        let after: string | null = null;
+
+        if (result.tool === "write_file") {
+          const raw = (result.args.content as string) ?? "";
+          after = raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+        } else {
+          const rawEdits = result.args.edits as Array<{ search?: unknown; replace?: unknown }>;
+          const edits = rawEdits.map((e) => ({
+            search: typeof e.search === "string"
+              ? e.search.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r")
+              : "",
+            replace: typeof e.replace === "string"
+              ? e.replace.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r")
+              : "",
+          }));
+          after = simulateApplyPatch(before, edits);
+        }
+
+        if (after !== null) {
+          const diff = createPatch(rel, before, after, "before", "after");
+          const preview: WritePreview = { path: rel, before, after, diff };
+          yield {
+            type: "pending_approval",
+            callId: result.callId,
+            tool: result.tool,
+            args: result.args,
+            preview,
+          };
+          const approved =
+            options._testApprovalResult !== undefined
+              ? options._testApprovalResult
+              : await registerApproval(result.callId, 60_000);
+          if (!approved) {
+            const rejection = "Rejected by user.";
+            yield { type: "tool_result", callId: result.callId, output: rejection, truncated: false };
+            history.push({ role: "tool_result", callId: result.callId, content: rejection });
+            continue;
+          }
         }
       }
     }

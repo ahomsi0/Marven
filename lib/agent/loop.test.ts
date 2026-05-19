@@ -8,6 +8,19 @@ const echoTool: ToolDefinition = {
   parameters: { type: "object", properties: { text: { type: "string", description: "text" } }, required: ["text"] },
 };
 
+const writeFileTool: ToolDefinition = {
+  name: "write_file",
+  description: "Write a file",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "path" },
+      content: { type: "string", description: "content" },
+    },
+    required: ["path", "content"],
+  },
+};
+
 describe("runAgentLoop", () => {
   it("yields text event when provider returns text immediately", async () => {
     const mockStep = vi.fn().mockResolvedValue({ type: "text", content: "hello" });
@@ -94,5 +107,107 @@ describe("runAgentLoop", () => {
     expect(lastEvent.type).toBe("error");
     if (lastEvent.type !== "error") throw new Error("expected error event");
     expect(lastEvent.code).toBe("max_iterations");
+  });
+
+  describe("requireWriteApproval", () => {
+    it("does NOT gate write_file when requireWriteApproval is false", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "w1", tool: "write_file", args: { path: "a.txt", content: "hello" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("Written: a.txt");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "write file" }],
+        tools: [writeFileTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: false,
+      })) {
+        events.push(event);
+      }
+
+      const approvalEvents = events.filter((e) => e.type === "pending_approval");
+      expect(approvalEvents).toHaveLength(0);
+      expect(mockExec).toHaveBeenCalledOnce();
+    });
+
+    it("emits pending_approval with preview for write_file when requireWriteApproval is true", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "w2", tool: "write_file", args: { path: "b.txt", content: "hello" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("Written: b.txt");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "write file" }],
+        tools: [writeFileTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: true,
+        _testApprovalResult: true,
+      })) {
+        events.push(event);
+      }
+
+      const approvalEvent = events.find((e) => e.type === "pending_approval");
+      expect(approvalEvent).toBeDefined();
+      if (approvalEvent?.type !== "pending_approval") throw new Error("expected pending_approval");
+      expect(approvalEvent.preview).toBeDefined();
+      expect(approvalEvent.preview?.path).toBe("b.txt");
+      expect(approvalEvent.preview?.after).toBe("hello");
+      expect(approvalEvent.preview?.diff).toContain("+hello");
+      expect(mockExec).toHaveBeenCalledOnce();
+    });
+
+    it("skips write_file execution when approval is rejected", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "w3", tool: "write_file", args: { path: "c.txt", content: "hi" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("Written: c.txt");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "write file" }],
+        tools: [writeFileTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: true,
+        _testApprovalResult: false,
+      })) {
+        events.push(event);
+      }
+
+      expect(mockExec).not.toHaveBeenCalled();
+      const rejectionResult = events.find(
+        (e) => e.type === "tool_result" && e.output === "Rejected by user."
+      );
+      expect(rejectionResult).toBeDefined();
+    });
+
+    it("defaults requireWriteApproval to off when option is omitted", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "w4", tool: "write_file", args: { path: "d.txt", content: "x" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("Written: d.txt");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "write file" }],
+        tools: [writeFileTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        // requireWriteApproval omitted
+      })) {
+        events.push(event);
+      }
+
+      expect(events.filter((e) => e.type === "pending_approval")).toHaveLength(0);
+      expect(mockExec).toHaveBeenCalledOnce();
+    });
   });
 });
