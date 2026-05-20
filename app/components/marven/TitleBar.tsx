@@ -7,10 +7,10 @@ export function TitleBar() {
   const [isWindows, setIsWindows] = useState(false);
 
   useEffect(() => {
-    const electron = (window as unknown as { marvenElectron?: unknown }).marvenElectron;
-    if (!electron) return;
+    const el = (window as unknown as { marvenElectron?: { platform?: string } }).marvenElectron;
+    if (!el) return;
     setIsElectron(true);
-    setIsWindows(navigator.platform.startsWith("Win"));
+    setIsWindows(el.platform === "win32");
   }, []);
 
   if (!isElectron) return null;
