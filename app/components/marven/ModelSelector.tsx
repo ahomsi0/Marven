@@ -169,7 +169,7 @@ export function ModelSelector({
 
       {open && (
         <div
-          className={`${popoverPos} z-50 w-[280px] overflow-hidden rounded-lg border border-[#252525] bg-[#161616] shadow-xl`}
+          className={`${popoverPos} z-50 flex h-[234px] w-[280px] flex-col overflow-hidden rounded-lg border border-[#252525] bg-[#161616] shadow-xl`}
         >
           {/* Tab bar */}
           <div className="flex border-b border-[#1e1e1e] bg-[#131313]">
@@ -199,13 +199,13 @@ export function ModelSelector({
           </div>
 
           {tabProviders.length === 0 ? (
-            <div className="flex h-[188px] items-center justify-center px-3 text-[11px] text-[#555]">
+            <div className="flex flex-1 items-center justify-center px-3 text-[11px] text-[#555]">
               Enable backends in Settings → AI Backends
             </div>
           ) : (
             <>
-              {/* Provider chips */}
-              <div className="flex flex-wrap gap-1.5 border-b border-[#1e1e1e] px-2.5 py-2">
+              {/* Provider chips — single row, scrolls horizontally if many chips */}
+              <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#1e1e1e] px-2.5 py-2 scrollbar-none">
                 {tabProviders.map((p) => (
                   <button
                     key={p}
@@ -229,8 +229,8 @@ export function ModelSelector({
                 ))}
               </div>
 
-              {/* Model list — fixed height so the popup never changes size */}
-              <div className="h-[148px] overflow-y-auto py-1">
+              {/* Model list — fills remaining space */}
+              <div className="flex-1 overflow-y-auto py-1">
                 {loadingProvider === hoveredProvider ? (
                   <div className="flex h-full items-center justify-center text-[10px] text-[#444]">Loading…</div>
                 ) : errors[hoveredProvider] ? (
