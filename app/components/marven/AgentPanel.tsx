@@ -219,7 +219,7 @@ export function AgentPanel({
 
       <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 pt-3 pb-2">
         <div
-          className="relative flex flex-col rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)]"
+          className="relative flex flex-col overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)]"
           onDrop={async (e) => {
             e.preventDefault();
             const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
@@ -244,7 +244,7 @@ export function AgentPanel({
               ))}
             </div>
           )}
-          <div className="relative flex items-end gap-2 px-0 py-0">
+          <div className="relative flex items-stretch gap-2 px-0 py-0">
             {menuOpen && (
               <SlashMenu
                 query={query}
