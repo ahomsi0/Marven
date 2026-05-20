@@ -282,11 +282,15 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
   }, []);
 
   const approve = useCallback(async (callId: string, accept: boolean) => {
-    await fetch("/api/agent/approve", {
+    const res = await fetch("/api/agent/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, accept }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.error("[approve] failed:", res.status, data);
+    }
   }, []);
 
   return {
