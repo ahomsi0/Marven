@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
@@ -315,8 +315,14 @@ export function SettingsModal({
       else setLocalModel("whisper-tiny");
       setCustomWakeWord(s.customWakeWord ?? "");
       if (s.enabledProviders) setEnabledProviders((prev) => ({ ...prev, ...(s.enabledProviders as Record<string, boolean>) }));
-      if (s.lmStudioUrl) setLmStudioUrl(s.lmStudioUrl);
-      if (s.llamaServerUrl) setLlamaServerUrl(s.llamaServerUrl);
+      if (s.lmStudioUrl) {
+        setLmStudioUrl(s.lmStudioUrl);
+        persistedLmStudioUrlRef.current = s.lmStudioUrl;
+      }
+      if (s.llamaServerUrl) {
+        setLlamaServerUrl(s.llamaServerUrl);
+        persistedLlamaServerUrlRef.current = s.llamaServerUrl;
+      }
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -401,6 +407,8 @@ export function SettingsModal({
   });
   const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
   const [llamaServerUrl, setLlamaServerUrl] = useState("http://localhost:8080");
+  const persistedLmStudioUrlRef = useRef("http://localhost:1234");
+  const persistedLlamaServerUrlRef = useRef("http://localhost:8080");
   const [backendStatus, setBackendStatus] = useState<Record<string, "live" | "down" | "checking">>({
     ollama: "checking", lmstudio: "checking", llamaserver: "checking",
   });
@@ -1093,10 +1101,13 @@ export function SettingsModal({
                         new URL(val);
                         const key = id === "lmstudio" ? "lmStudioUrl" : "llamaServerUrl";
                         await saveBackendSettings({ [key]: val });
+                        // Update persisted ref on success
+                        if (id === "lmstudio") persistedLmStudioUrlRef.current = val;
+                        else persistedLlamaServerUrlRef.current = val;
                       } catch {
-                        // revert invalid URL
-                        if (id === "lmstudio") setLmStudioUrl(lmStudioUrl);
-                        else setLlamaServerUrl(llamaServerUrl);
+                        // Revert to last persisted value
+                        if (id === "lmstudio") setLmStudioUrl(persistedLmStudioUrlRef.current);
+                        else setLlamaServerUrl(persistedLlamaServerUrlRef.current);
                       }
                     }}
                     className="ml-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
