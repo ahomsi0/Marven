@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { WorkspaceFile } from "@/types";
+
+interface ContextMenuState {
+  node: TreeNode;
+  x: number;
+  y: number;
+}
 
 interface FileExplorerProps {
   files: WorkspaceFile[];
@@ -116,16 +122,23 @@ function FileIcon({ name }: { name: string }) {
 }
 
 function TreeItem({
-  node, depth, openFolders, selectedFilePath, onSelectFile, onToggleFolder,
+  node, depth, openFolders, selectedFilePath, onSelectFile, onToggleFolder, onContextMenu,
 }: {
   node: TreeNode; depth: number; openFolders: Set<string>;
   selectedFilePath: string | null;
   onSelectFile: (path: string) => void;
   onToggleFolder: (path: string) => void;
+  onContextMenu: (node: TreeNode, x: number, y: number) => void;
 }) {
   const isOpen = openFolders.has(node.path);
   const isActive = node.path === selectedFilePath;
   const pl = 8 + depth * 10;
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu(node, e.clientX, e.clientY);
+  }
 
   if (node.type === "folder") {
     return (
@@ -133,6 +146,7 @@ function TreeItem({
         <button
           type="button"
           onClick={() => onToggleFolder(node.path)}
+          onContextMenu={handleContextMenu}
           className="flex w-full items-center gap-1 py-[2px] text-left text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)]"
           style={{ paddingLeft: pl }}
         >
@@ -150,6 +164,7 @@ function TreeItem({
             key={child.path} node={child} depth={depth + 1}
             openFolders={openFolders} selectedFilePath={selectedFilePath}
             onSelectFile={onSelectFile} onToggleFolder={onToggleFolder}
+            onContextMenu={onContextMenu}
           />
         ))}
       </>
@@ -160,6 +175,7 @@ function TreeItem({
     <button
       type="button"
       onClick={() => onSelectFile(node.path)}
+      onContextMenu={handleContextMenu}
       title={node.path}
       className={`flex w-full items-center gap-1 py-[2px] text-left transition-colors text-[12px] ${
         isActive
@@ -190,12 +206,70 @@ export function FileExplorer({
   const [creating, setCreating] = useState<"file" | "folder" | null>(null);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
-  // Whole-tree collapse — clicking the chevron on the project-root row hides
-  // the entire file tree. The header (workspace name + new file / new folder /
-  // refresh) stays visible so the user can still expand it back.
   const [treeCollapsed, setTreeCollapsed] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const projectName = workspaceRoot?.split("/").filter(Boolean).pop() ?? "workspace";
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleOutside(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [contextMenu]);
+
+  async function handleDelete(node: TreeNode) {
+    setContextMenu(null);
+    const label = node.type === "folder" ? `folder "${node.name}" and all its contents` : `file "${node.name}"`;
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch("/api/workspace/file-ops", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: node.path }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error ?? "Delete failed");
+        return;
+      }
+      onRefreshFiles();
+    } catch {
+      alert("Delete failed");
+    }
+  }
+
+  async function handleCopy(node: TreeNode) {
+    setContextMenu(null);
+    try {
+      const res = await fetch("/api/workspace/file-ops", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: node.path }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error ?? "Copy failed");
+        return;
+      }
+      const data = await res.json();
+      onRefreshFiles();
+      if (node.type === "file" && data.path) onSelectFile(data.path);
+    } catch {
+      alert("Copy failed");
+    }
+  }
+
+  function handleCopyPath(node: TreeNode) {
+    setContextMenu(null);
+    navigator.clipboard.writeText(node.path).catch(() => {});
+  }
 
   async function handleCreateSubmit() {
     const name = newName.trim();
@@ -377,8 +451,53 @@ export function FileExplorer({
               selectedFilePath={selectedFilePath}
               onSelectFile={onSelectFile}
               onToggleFolder={toggleFolder}
+              onContextMenu={(n, x, y) => setContextMenu({ node: n, x, y })}
             />
           ))}
+        </div>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[160px] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] py-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <div className="px-3 py-1 border-b border-[var(--m-border-subtle)] mb-1">
+            <span className="truncate font-mono text-[10px] text-[var(--m-text-faint)]">{contextMenu.node.name}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleCopy(contextMenu.node)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)]"
+          >
+            <svg className="h-3.5 w-3.5 shrink-0 text-[var(--m-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Duplicate
+          </button>
+          <button
+            type="button"
+            onClick={() => handleCopyPath(contextMenu.node)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)]"
+          >
+            <svg className="h-3.5 w-3.5 shrink-0 text-[var(--m-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Copy Path
+          </button>
+          <div className="my-1 border-t border-[var(--m-border-subtle)]" />
+          <button
+            type="button"
+            onClick={() => handleDelete(contextMenu.node)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 transition-colors hover:bg-[var(--m-surface-3)]"
+          >
+            <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
         </div>
       )}
     </div>
