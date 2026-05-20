@@ -269,7 +269,7 @@ export function AgentPanel({
               }}
               disabled={isRunning}
               rows={1}
-              placeholder="Describe task... or / for commands"
+              placeholder="Describe task…"
               className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
               style={{ maxHeight: 120, overflowY: "auto" }}
             />
