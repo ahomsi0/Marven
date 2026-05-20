@@ -232,7 +232,7 @@ export function FileExplorer({
       const res = await fetch("/api/workspace/file-ops", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: node.path }),
+        body: JSON.stringify({ path: node.path, root: workspaceRoot }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -251,7 +251,7 @@ export function FileExplorer({
       const res = await fetch("/api/workspace/file-ops", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: node.path }),
+        body: JSON.stringify({ path: node.path, root: workspaceRoot }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));

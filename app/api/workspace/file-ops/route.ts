@@ -3,8 +3,8 @@ import fs from "fs/promises";
 import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
 
-function getRoot(): string {
-  const root = getActiveWorkspaceRoot();
+function getRoot(bodyRoot?: string): string {
+  const root = bodyRoot?.trim() || getActiveWorkspaceRoot();
   if (!root) throw new Error("No workspace folder open.");
   return root;
 }
@@ -49,7 +49,7 @@ export async function DELETE(req: NextRequest) {
     if (!targetPath.trim())
       return NextResponse.json({ error: "path is required" }, { status: 400 });
 
-    const root = getRoot();
+    const root = getRoot(body.root);
     const abs = safePath(root, targetPath);
 
     const stat = await fs.stat(abs).catch(() => null);
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (!targetPath.trim())
       return NextResponse.json({ error: "path is required" }, { status: 400 });
 
-    const root = getRoot();
+    const root = getRoot(body.root);
     const src = safePath(root, targetPath);
 
     const stat = await fs.stat(src).catch(() => null);
