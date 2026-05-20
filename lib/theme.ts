@@ -2,14 +2,22 @@
 
 import { useEffect, useState } from "react";
 
-export type Theme = "dark" | "light";
+export type Theme = "dark" | "light" | "midnight" | "aurora";
 
 const KEY = "marven-theme";
+
+const DARK_THEMES: Theme[] = ["dark", "midnight", "aurora"];
+
+/** Returns true if the theme renders dark UI (terminal stays dark). */
+export function isDarkTheme(t: Theme): boolean {
+  return DARK_THEMES.includes(t);
+}
 
 export function getStoredTheme(): Theme {
   if (typeof window === "undefined") return "dark";
   const v = localStorage.getItem(KEY);
-  return v === "light" ? "light" : "dark";
+  if (v === "light" || v === "midnight" || v === "aurora") return v;
+  return "dark";
 }
 
 export function setStoredTheme(theme: Theme): void {

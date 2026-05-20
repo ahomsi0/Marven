@@ -32,7 +32,7 @@ If the user asks about the project or its files: CALL list_files / read_file fir
 IMPORTANT RULES:
 - When the user mentions their project, files, or asks you to analyze/modify something, ALWAYS call list_files first to discover what exists — never ask the user for a file path you can find yourself.
 - Use read_file to inspect files before modifying them.
-- Use apply_patch for SMALL/MEDIUM EDITS to existing files. Each edit is a search/replace pair — only send the snippets that change, not the whole file. Prefer this over write_file whenever you're modifying a file that already exists; it's faster, cheaper, and less risky than rewriting the entire file.
+- Use apply_patch for SMALL/MEDIUM EDITS to existing files. Each edit is a search/replace pair — only send the snippets that change, not the whole file. Prefer this over write_file whenever you're modifying a file that already exists; it's faster, cheaper, and less risky than rewriting the entire file. CRITICAL apply_patch rule: every 'search' string MUST be unique within the file. If the exact text appears more than once (e.g. "color: #fff;" in a CSS file), expand the search to include 1-2 surrounding lines to make it unique — e.g. "header {\n    background-color: #333;\n    color: #fff;". Never retry with the same ambiguous search string after a uniqueness error; always add context. For very small files (under ~60 lines) that you have already read in full, it is acceptable to use write_file to replace the entire content.
 - Use write_file to create NEW files or to fully replace a file's contents. The full file contents go in the "content" argument. Do NOT also echo the code in your reply.
 - Use run_command to install dependencies, run builds, start servers, etc. — invoke it, do not narrate it.
 - When a run_command output contains "Live URL:" or "SERVER READY", you MUST surface that exact URL back to the user as a clickable link (e.g., "Your site is live at http://localhost:3000"). Never tell the user "the port may vary" — the URL is in the tool output.
@@ -133,38 +133,17 @@ export async function* runAgentLoop(
       const planText = result.content;
       const callId = `plan-${Date.now()}`;
 
-      // Emit the text delta for display
       yield { type: "text_delta", delta: planText };
-
-      // Add to history as assistant message
       history.push({ role: "assistant", content: planText });
-
-      // Register approval gate for the plan
       yield {
         type: "pending_approval",
         callId,
         tool: "__plan__",
         args: { plan: planText },
       };
-
-      const approved = options._testApprovalResult !== undefined
-        ? options._testApprovalResult
-        : await registerApproval(callId, 120_000);
-
-      if (!approved) {
-        yield {
-          type: "tool_result",
-          callId,
-          output: "Plan cancelled by user.",
-          truncated: false,
-        };
-        yield { type: "done", toolCallCount: 0 };
-        return;
-      }
-
-      // Inject approval confirmation and continue execution
-      history.push({ role: "user", content: "Plan approved. Please proceed with execution step by step." });
-      continue;
+      // Close stream — client re-triggers execution after the user approves
+      yield { type: "done", toolCallCount: 0 };
+      return;
     }
 
     if (result.type === "text") {

@@ -385,6 +385,11 @@ export function AgentWorkspace({
   // Handle on the underlying CodeEditor so we can scroll to a specific line
   // after the global-search panel triggers a file open.
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
+  const [isWindows, setIsWindows] = useState(false);
+  useEffect(() => {
+    const el = (window as unknown as { marvenElectron?: { platform?: string } }).marvenElectron;
+    setIsWindows(el?.platform === "win32");
+  }, []);
   // Pending jump from a global-search click. Held in state (not just a ref) so
   // that re-clicking a match in the SAME file fires the effect again — refs
   // don't trigger re-renders. The token bumps on each request to force the
@@ -661,18 +666,19 @@ export function AgentWorkspace({
   }, [pendingJump, isPendingPathActive, isActiveBufferLoading]);
 
   // ── Command Palette commands list ────────────────────────────────────────
+  const W = isWindows;
   const paletteCommands: PaletteCommand[] = [
-    { label: "Save File", keybinding: "⌘S", action: onSaveFile },
-    { label: "Close Tab", keybinding: "⌘W", action: () => onCloseTab(activeTabIndex) },
-    { label: "Toggle Sidebar", keybinding: "⌘B", action: () => setShowExplorer((v) => !v) },
-    { label: "Toggle Terminal", keybinding: "⌃`", action: () => setShowTerminal((v) => !v) },
-    { label: "Toggle Chat", keybinding: "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
-    { label: "Open Quick File", keybinding: "⌘P", action: () => setQuickOpen(true) },
-    { label: "Find", keybinding: "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Find and Replace", keybinding: "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Search files", keybinding: "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
-    { label: "Inline AI Edit (selection)", keybinding: "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
-    { label: "Git panel", keybinding: "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
+    { label: "Save File", keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
+    { label: "Close Tab", keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
+    { label: "Toggle Sidebar", keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
+    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: () => setShowTerminal((v) => !v) },
+    { label: "Toggle Chat", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
+    { label: "Open Quick File", keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
+    { label: "Find", keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { label: "Find and Replace", keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { label: "Search files", keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
+    { label: "Inline AI Edit (selection)", keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
+    { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
@@ -895,7 +901,7 @@ export function AgentWorkspace({
                 {
                   key: "diff",
                   label: "Diff" + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
-                  hint: "⇧⌘D",
+                  hint: W ? "Ctrl+Shift+D" : "⇧⌘D",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <rect x="3" y="4" width="7" height="16" rx="1" />
@@ -908,7 +914,7 @@ export function AgentWorkspace({
                 {
                   key: "terminal",
                   label: "Terminal",
-                  hint: "⌃`",
+                  hint: W ? "Ctrl+`" : "⌃`",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l4 4-4 4M11 16h7" />
@@ -919,7 +925,7 @@ export function AgentWorkspace({
                 {
                   key: "files",
                   label: "Files",
-                  hint: "⌘B",
+                  hint: W ? "Ctrl+B" : "⌘B",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
@@ -930,7 +936,7 @@ export function AgentWorkspace({
                 {
                   key: "search",
                   label: "Search files",
-                  hint: "⇧⌘F",
+                  hint: W ? "Ctrl+Shift+F" : "⇧⌘F",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <circle cx="11" cy="11" r="7" />

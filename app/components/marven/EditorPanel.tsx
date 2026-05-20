@@ -214,6 +214,11 @@ export function EditorPanel({
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isWindows, setIsWindows] = useState(false);
+  useEffect(() => {
+    const el = (window as unknown as { marvenElectron?: { platform?: string } }).marvenElectron;
+    setIsWindows(el?.platform === "win32");
+  }, []);
 
   // Find / Replace state — query strings and current active match index.
   const [findQuery, setFindQuery] = useState("");
@@ -829,7 +834,7 @@ export function EditorPanel({
                   className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Open Chat</span>
-                  <kbd className="font-mono text-[10px]">⌃⌘I</kbd>
+                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+Alt+I" : "⌃⌘I"}</kbd>
                 </button>
                 <button
                   type="button"
@@ -837,7 +842,7 @@ export function EditorPanel({
                   className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Show All Commands</span>
-                  <kbd className="font-mono text-[10px]">⇧⌘P</kbd>
+                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+Shift+P" : "⇧⌘P"}</kbd>
                 </button>
                 <button
                   type="button"
@@ -845,7 +850,7 @@ export function EditorPanel({
                   className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <span>Toggle Terminal</span>
-                  <kbd className="font-mono text-[10px]">⌃`</kbd>
+                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+`" : "⌃`"}</kbd>
                 </button>
               </div>
             </div>

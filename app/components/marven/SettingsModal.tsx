@@ -267,6 +267,7 @@ export function SettingsModal({
   // without needing to plug in a Groq API key first.
   const [sttProvider, setSttProvider] = useState<SttProviderId>("local");
   const [customWakeWord, setCustomWakeWord] = useState<string>("");
+  const [customWakeWordSaved, setCustomWakeWordSaved] = useState(false);
   const [localModel, setLocalModel] = useState<LocalModelId>("whisper-tiny");
   const [modelStatus, setModelStatus] = useState<string | null>(null);
   const [modelLoading, setModelLoading] = useState(false);
@@ -420,11 +421,13 @@ export function SettingsModal({
     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
   }
 
-  async function handleCustomWakeWordBlur() {
+  async function handleSaveCustomWakeWord() {
     if (!electron) return;
     const current = await electron.getSettings();
     await electron.saveSettings({ ...current, customWakeWord: customWakeWord.trim() });
     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+    setCustomWakeWordSaved(true);
+    setTimeout(() => setCustomWakeWordSaved(false), 2000);
   }
 
   async function handlePreloadModel() {
@@ -612,6 +615,7 @@ export function SettingsModal({
                     border: "#333",
                     text: "#d4d4d4",
                     muted: "#888",
+                    accent: "#d19a66",
                   },
                   {
                     id: "light" as const,
@@ -622,6 +626,29 @@ export function SettingsModal({
                     border: "#d4d4d4",
                     text: "#1f1f1f",
                     muted: "#6b6b6b",
+                    accent: "#b87a3f",
+                  },
+                  {
+                    id: "midnight" as const,
+                    label: "Midnight",
+                    bg: "#282c34",
+                    surface: "#21252b",
+                    surface2: "#2c313a",
+                    border: "#3e4451",
+                    text: "#abb2bf",
+                    muted: "#636d83",
+                    accent: "#61afef",
+                  },
+                  {
+                    id: "aurora" as const,
+                    label: "Aurora",
+                    bg: "#1a1229",
+                    surface: "#1f1735",
+                    surface2: "#271e40",
+                    border: "#3d2f5e",
+                    text: "#f0e6d3",
+                    muted: "#b994e0",
+                    accent: "#f97ef8",
                   },
                 ]).map((t) => {
                   const active = theme === t.id;
@@ -655,7 +682,7 @@ export function SettingsModal({
                         <div className="flex flex-1 flex-col gap-0.5 p-1">
                           <div className="flex gap-0.5">
                             <div className="h-1 w-3 rounded-sm" style={{ background: t.surface2 }} />
-                            <div className="h-1 w-1 rounded-sm" style={{ background: "#d19a66" }} />
+                            <div className="h-1 w-1 rounded-sm" style={{ background: t.accent }} />
                           </div>
                           <div className="mt-0.5 space-y-[1px]">
                             <div className="h-[1px] w-4/5" style={{ background: t.text, opacity: 0.7 }} />
@@ -818,14 +845,27 @@ export function SettingsModal({
                     Phrase to trigger voice in addition to &quot;Hey Marven&quot; (leave blank to use default only)
                   </p>
                 </div>
-                <input
-                  type="text"
-                  value={customWakeWord}
-                  onChange={(e) => setCustomWakeWord(e.target.value)}
-                  onBlur={handleCustomWakeWordBlur}
-                  placeholder="e.g. Hey Assistant"
-                  className="ml-4 w-44 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
-                />
+                <div className="ml-4 flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={customWakeWord}
+                    onChange={(e) => { setCustomWakeWord(e.target.value); setCustomWakeWordSaved(false); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSaveCustomWakeWord(); }}
+                    placeholder="e.g. Hey Assistant"
+                    className="w-36 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomWakeWord}
+                    className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition-all ${
+                      customWakeWordSaved
+                        ? "bg-green-600/20 text-green-400"
+                        : "bg-[var(--m-accent-soft)] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20"
+                    }`}
+                  >
+                    {customWakeWordSaved ? "Saved ✓" : "Save"}
+                  </button>
+                </div>
               </div>
             </div>
 

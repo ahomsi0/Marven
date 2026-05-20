@@ -55,7 +55,7 @@ export interface CodeEditorProps {
   /** File extension or language ID. Falls back to no language extension when unknown. */
   language: string;
   /** Mirrors data-theme on <html>. */
-  theme: "dark" | "light";
+  theme: import("@/lib/theme").Theme;
   readOnly?: boolean;
   /** Optional save handler — when set, ⌘S inside the editor calls this. */
   onSave?: () => void;
@@ -300,7 +300,7 @@ export function CodeEditor({
 
     const langExt = languageExtension(language);
     const themeExt =
-      theme === "dark"
+      theme !== "light"
         ? oneDark
         : [lightTheme, syntaxHighlighting(lightHighlight)];
 
@@ -486,7 +486,7 @@ export function CodeEditor({
     const v = viewRef.current;
     if (!v) return;
     const themeExt =
-      theme === "dark"
+      theme !== "light"
         ? oneDark
         : [lightTheme, syntaxHighlighting(lightHighlight)];
     v.dispatch({

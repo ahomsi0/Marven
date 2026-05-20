@@ -22,6 +22,24 @@ function stripWakeWord(t: string) {
   return t.replace(WAKE_WORD_REGEX, "").replace(/^[\s,.:;!?-]+/, "").trim();
 }
 
+// Build a regex that matches a custom phrase at the start of a transcription,
+// tolerating punctuation/spaces that Whisper sometimes injects between words.
+function buildCustomWakeRegex(phrase: string): RegExp {
+  const escaped = phrase
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // escape regex specials
+    .split(/\s+/)                              // split into words
+    .join("[\\s,.:;!?]*");                     // allow punctuation between words
+  return new RegExp(`^\\s*[,.!?]*\\s*${escaped}`, "i");
+}
+function matchesCustomWake(text: string, phrase: string): boolean {
+  if (!phrase) return false;
+  return buildCustomWakeRegex(phrase).test(text.trim());
+}
+function stripCustomWake(text: string, phrase: string): string {
+  return text.trim().replace(buildCustomWakeRegex(phrase), "").replace(/^[\s,.:;!?-]+/, "").trim();
+}
+
 function preferredMime() {
   for (const m of ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", ""])
     if (!m || MediaRecorder.isTypeSupported(m)) return m;
@@ -56,9 +74,10 @@ async function transcribeBlob(
     }
   }
 
-  const ext  = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
+  const rawType = blob.type.split(";")[0].trim();
+  const ext = rawType.includes("ogg") ? "ogg" : rawType.includes("mp4") ? "mp4" : "webm";
   const form = new FormData();
-  form.append("audio", new File([blob], `audio.${ext}`, { type: blob.type }));
+  form.append("audio", new File([blob], `audio.${ext}`, { type: rawType }));
   if (prompt) form.append("prompt", prompt);
   try {
     const res = await fetch("/api/stt", { method: "POST", body: form });
@@ -102,6 +121,8 @@ export function useVoice(
   const onWakeRef      = useRef(onWakeWordDetected);  onWakeRef.current      = onWakeWordDetected;
   const onInterimRef   = useRef(onInterimTranscript); onInterimRef.current   = onInterimTranscript;
   const customWakePhraseRef = useRef<string>("");
+  // Prevent double-firing: ignore commands sent within 2.5 s of the last one
+  const lastCommandTimeRef = useRef<number>(0);
 
   // ── STT provider preference ───────────────────────────────────────────────
   // Default to "local" — wake-word transcription runs on the user's machine
@@ -267,7 +288,11 @@ export function useVoice(
               // Start the next recorder immediately so we never miss audio
               startRec();
 
-              transcribeBlob(blob, "Hey Marven, Hey Marvin", sttProviderRef.current)
+              const customPhrase = customWakePhraseRef.current.trim();
+              const wakePrompt = customPhrase
+                ? `Hey Marven, Hey Marvin, ${customPhrase}`
+                : "Hey Marven, Hey Marvin";
+              transcribeBlob(blob, wakePrompt, sttProviderRef.current)
                 .then(({ text, error }) => {
                   if (!wakeActiveRef.current) return;
                   wakeChecking.current = false;
@@ -277,20 +302,20 @@ export function useVoice(
                     return;
                   }
                   console.log("[wake] whisper →", JSON.stringify(text));
-                  setLastHeard(text || "(empty)");
 
-                  const normalizedT = text.trim().toLowerCase();
-                  const customPhrase = customWakePhraseRef.current.toLowerCase();
-                  const isWake = hasWakeWord(text) || (customPhrase && normalizedT.startsWith(customPhrase));
+                  const isCustomWake = matchesCustomWake(text, customPhrase);
+                  const isWake = hasWakeWord(text) || isCustomWake;
+                  if (isWake) setLastHeard(text);
                   if (isWake) {
                     stopWakeListener();
                     onWakeRef.current?.();
-                    let rest = stripWakeWord(text);
-                    if (customPhrase && normalizedT.startsWith(customPhrase)) {
-                      rest = text.trim().slice(customWakePhraseRef.current.length).replace(/^[\s,.:;!?-]+/, "").trim();
-                    }
+                    let rest = isCustomWake ? stripCustomWake(text, customPhrase) : stripWakeWord(text);
                     if (rest.length > 1) {
-                      onCommandRef.current(rest);
+                      const now = Date.now();
+                      if (now - lastCommandTimeRef.current >= 2500) {
+                        lastCommandTimeRef.current = now;
+                        onCommandRef.current(rest);
+                      }
                       setTimeout(() => { if (wakeEnabledRef.current) startWakeListener(); }, 500);
                     } else {
                       startCommandCapture();
@@ -357,12 +382,17 @@ export function useVoice(
         const result = await transcribeBlob(blob, undefined, sttProviderRef.current);
         if (result.error) setVoiceError(result.error);
         const clean = (result.text ?? "").trim();
-        let cmd = hasWakeWord(clean) ? stripWakeWord(clean) : clean;
-        const customPhraseCmd = customWakePhraseRef.current.toLowerCase();
-        if (customPhraseCmd && clean.toLowerCase().startsWith(customPhraseCmd)) {
-          cmd = clean.slice(customWakePhraseRef.current.length).replace(/^[\s,.:;!?-]+/, "").trim();
+        const customPhraseCmd = customWakePhraseRef.current.trim();
+        let cmd = matchesCustomWake(clean, customPhraseCmd)
+          ? stripCustomWake(clean, customPhraseCmd)
+          : hasWakeWord(clean) ? stripWakeWord(clean) : clean;
+        if (cmd.length > 1) {
+          const now = Date.now();
+          if (now - lastCommandTimeRef.current >= 2500) {
+            lastCommandTimeRef.current = now;
+            onCommandRef.current(cmd);
+          }
         }
-        if (cmd.length > 1) onCommandRef.current(cmd);
 
         if (wakeEnabledRef.current) { setVoiceState("wake-listening"); startWakeListener(); }
         else setVoiceState("idle");

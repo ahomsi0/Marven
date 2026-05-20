@@ -12,7 +12,7 @@ interface MarkdownViewProps {
   value: string;
   onChange: (next: string) => void;
   onSave: () => void;
-  theme: "dark" | "light";
+  theme: import("@/lib/theme").Theme;
   preview: boolean;
   onTogglePreview: () => void;
   onReady: (actions: CodeEditorActions) => void;

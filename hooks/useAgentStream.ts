@@ -21,6 +21,8 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
   const [liveTerminalOutput, setLiveTerminalOutput] = useState<string>("");
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const planPendingCallIdRef = useRef<string | null>(null);
+  const planModeOverrideRef = useRef<boolean | null>(null);
 
   const addMessage = (msg: AgentMessage) =>
     setMessages((prev) => [...prev, msg]);
@@ -114,11 +116,15 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     const abort = new AbortController();
     abortRef.current = abort;
 
+    // Consume a one-shot planMode override (used when re-triggering after plan approval)
+    const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
+    planModeOverrideRef.current = null;
+
     try {
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: planMode ?? false, attachments: attachments ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [] }),
         signal: abort.signal,
       });
 
@@ -196,6 +202,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
 
           if (event.type === "pending_approval") {
             if (event.tool === "__plan__") {
+              planPendingCallIdRef.current = event.callId;
               // Plan approval: no prior tool_call was emitted — insert the entry now
               updateLastAssistant((msg) => ({
                 ...msg,
@@ -282,6 +289,24 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
   }, []);
 
   const approve = useCallback(async (callId: string, accept: boolean) => {
+    // Plan approvals are handled client-side — no HTTP round-trip needed
+    if (planPendingCallIdRef.current === callId) {
+      planPendingCallIdRef.current = null;
+      updateLastAssistant((msg) => ({
+        ...msg,
+        toolCalls: (msg.toolCalls ?? []).map((tc) =>
+          tc.callId === callId
+            ? { ...tc, status: accept ? ("done" as const) : ("rejected" as const) }
+            : tc
+        ),
+      }));
+      if (!accept) return;
+      // Re-trigger the agent with planMode=false so it executes instead of planning
+      planModeOverrideRef.current = false;
+      await send("Plan approved. Please proceed with execution step by step.");
+      return;
+    }
+
     const res = await fetch("/api/agent/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -291,7 +316,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const data = await res.json().catch(() => ({}));
       console.error("[approve] failed:", res.status, data);
     }
-  }, []);
+  }, [send]);
 
   return {
     messages, isRunning, error, send, stop, clearMessages, loadMessages, injectAssistantMessage,

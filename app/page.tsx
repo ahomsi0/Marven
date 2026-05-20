@@ -956,7 +956,7 @@ export default function Home() {
     // Pause the wake listener while we speak — otherwise the mic picks up our
     // own TTS audio, transcribes it, and re-triggers wake every few seconds.
     // We resume in the onEnd callback below.
-    if (wakeEnabled) pauseVoiceCapture();
+    pauseVoiceCapture();
     setIsSpeakingNow(true);
     // If the conversation's system prompt is in Arabic OR mentions "arabic",
     // force Arabic voice even when the response text itself looks English.
@@ -965,7 +965,7 @@ export default function Home() {
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     speak(text, () => {
       setIsSpeakingNow(false);
-      if (wakeEnabled) resumeWakeWord();
+      resumeWakeWord();
     }, forceLang ? { forceLang } : undefined);
   }
 

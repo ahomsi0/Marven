@@ -9,16 +9,16 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import type { Theme } from "@/lib/theme";
 
 interface TerminalViewProps {
   ptyId: string;   // stable id per workspace
   cwd: string;     // initial working directory for the shell
-  theme: "dark" | "light";
+  theme: Theme;
 }
 
-// xterm theme objects — colors map to the Marven palette where possible.
-// The accent (#d19a66) shows up in the selection wash so the terminal still
-// feels part of the app.
+// xterm theme objects. Light mode keeps the traditional dark terminal look
+// (users expect a dark terminal regardless of app theme).
 const DARK_THEME = {
   background: "#1a1a1a",
   foreground: "#d4d4d4",
@@ -27,13 +27,27 @@ const DARK_THEME = {
   selectionBackground: "rgba(209,154,102,0.3)",
 };
 
-const LIGHT_THEME = {
-  background: "#ffffff",
-  foreground: "#1f1f1f",
-  cursor: "#1f1f1f",
-  cursorAccent: "#ffffff",
-  selectionBackground: "rgba(209,154,102,0.3)",
+const MIDNIGHT_THEME = {
+  background: "#21252b",
+  foreground: "#abb2bf",
+  cursor: "#abb2bf",
+  cursorAccent: "#21252b",
+  selectionBackground: "rgba(97,175,239,0.3)",
 };
+
+const AURORA_THEME = {
+  background: "#1a1229",
+  foreground: "#f0e6d3",
+  cursor: "#f97ef8",
+  cursorAccent: "#1a1229",
+  selectionBackground: "rgba(249,126,248,0.25)",
+};
+
+function xtermTheme(t: Theme) {
+  if (t === "midnight") return MIDNIGHT_THEME;
+  if (t === "aurora") return AURORA_THEME;
+  return DARK_THEME; // dark, light, and anything else → standard dark terminal
+}
 
 // Narrow interface for the preload bridge. We type-check against this at the
 // call site so TS catches typos without bloating window typings globally.
@@ -71,7 +85,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
       scrollback: 5000,
       allowProposedApi: true,
-      theme: theme === "light" ? LIGHT_THEME : DARK_THEME,
+      theme: xtermTheme(theme),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -194,7 +208,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       style={{
         // xterm renders against its own theme; this background fills any gap
         // before xterm mounts so we don't flash the panel's surface color.
-        background: theme === "light" ? LIGHT_THEME.background : DARK_THEME.background,
+        background: xtermTheme(theme).background,
       }}
     />
   );

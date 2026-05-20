@@ -23,7 +23,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("marven-theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch{}`,
+            __html: `try{var t=localStorage.getItem("marven-theme");if(t&&t!=="dark")document.documentElement.setAttribute("data-theme",t);}catch{}`,
           }}
         />
       </head>

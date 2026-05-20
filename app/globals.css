@@ -33,6 +33,38 @@
     --m-accent-soft: rgba(184, 122, 63, 0.12);
   }
 
+  /* Midnight — deep blue-gray inspired by professional dark editors */
+  [data-theme="midnight"] {
+    color-scheme: dark;
+    --m-bg: #282c34;
+    --m-surface: #21252b;
+    --m-surface-2: #2c313a;
+    --m-surface-3: #323842;
+    --m-border: #3e4451;
+    --m-border-subtle: #2c313a;
+    --m-text: #abb2bf;
+    --m-text-muted: #636d83;
+    --m-text-faint: #4b5263;
+    --m-accent: #61afef;
+    --m-accent-soft: rgba(97, 175, 239, 0.12);
+  }
+
+  /* Aurora — deep purple with neon accent */
+  [data-theme="aurora"] {
+    color-scheme: dark;
+    --m-bg: #1a1229;
+    --m-surface: #1f1735;
+    --m-surface-2: #271e40;
+    --m-surface-3: #312650;
+    --m-border: #3d2f5e;
+    --m-border-subtle: #271e40;
+    --m-text: #f0e6d3;
+    --m-text-muted: #b994e0;
+    --m-text-faint: #7b5ea7;
+    --m-accent: #f97ef8;
+    --m-accent-soft: rgba(249, 126, 248, 0.12);
+  }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; }
 
@@ -62,7 +94,7 @@
   ::-webkit-scrollbar-corner { background: transparent; }
   ::-webkit-scrollbar-thumb {
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(128, 128, 128, 0.18);
   }
   ::-webkit-scrollbar-thumb:hover {
     background: rgba(209, 154, 102, 0.35);

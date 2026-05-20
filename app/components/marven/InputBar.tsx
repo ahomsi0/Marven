@@ -390,6 +390,13 @@ export function InputBar({
             </button>
           </div>
         </div>
+        {/* Last-heard indicator — visible only while wake is on and there's something to show */}
+        {wakeEnabled && lastHeard && (
+          <div className="flex items-center gap-1 px-3 pb-1">
+            <span className="text-[9px] uppercase tracking-[0.1em] text-[var(--m-text-faint)]">heard:</span>
+            <span className="max-w-[260px] truncate text-[10px] italic text-[var(--m-text-faint)]">{lastHeard}</span>
+          </div>
+        )}
       </div>
     </div>
   );
