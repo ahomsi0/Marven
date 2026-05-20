@@ -12,6 +12,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.6.0",
+    items: [
+      { tag: "new", label: "LM Studio local backend support" },
+      { tag: "new", label: "llama-server (llama.cpp) local backend support" },
+      { tag: "new", label: "Cloud/Local model selector with provider tabs" },
+      { tag: "new", label: "AI Backends settings panel with provider toggles" },
+      { tag: "imp", label: "Provider and model persist across sessions" },
+    ],
+  },
+  {
     version: "2.5.3",
     items: [
       { tag: "new", label: "What's New card on first launch after update" },
