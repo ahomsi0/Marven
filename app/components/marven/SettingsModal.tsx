@@ -37,6 +37,7 @@ interface SettingsModalProps {
 
 type SettingsPage =
   | "general"
+  | "ai-backends"
   | "api-keys"
   | "connectors"
   | "browser"
@@ -117,6 +118,7 @@ const SECTIONS: Array<{
   {
     heading: "Integrations",
     items: [
+      { id: "ai-backends", label: "AI Backends" },
       { id: "api-keys", label: "API Keys" },
       { id: "connectors", label: "Connectors" },
       { id: "browser", label: "Browser" },
@@ -143,6 +145,10 @@ const PAGE_META: Record<SettingsPage, { title: string; description: string }> = 
   general: {
     title: "General",
     description: "Overview and basic preferences for Marven.",
+  },
+  "ai-backends": {
+    title: "AI Backends",
+    description: "Enable and configure AI providers and local model servers.",
   },
   "api-keys": {
     title: "API Keys",
@@ -308,6 +314,9 @@ export function SettingsModal({
       if (validModels.includes(s.voiceLocalModel)) setLocalModel(s.voiceLocalModel);
       else setLocalModel("whisper-tiny");
       setCustomWakeWord(s.customWakeWord ?? "");
+      if (s.enabledProviders) setEnabledProviders((prev) => ({ ...prev, ...(s.enabledProviders as Record<string, boolean>) }));
+      if (s.lmStudioUrl) setLmStudioUrl(s.lmStudioUrl);
+      if (s.llamaServerUrl) setLlamaServerUrl(s.llamaServerUrl);
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -355,6 +364,24 @@ export function SettingsModal({
     return () => clearInterval(id);
   }, [activePage]);
 
+  useEffect(() => {
+    if (activePage !== "ai-backends") return;
+    const localProviders = ["ollama", "lmstudio", "llamaserver"] as const;
+    localProviders.forEach(async (p) => {
+      setBackendStatus((prev) => ({ ...prev, [p]: "checking" }));
+      try {
+        const res = await fetch(`/api/models?provider=${p}`);
+        const data = await res.json();
+        setBackendStatus((prev) => ({
+          ...prev,
+          [p]: data.models && data.models.length > 0 ? "live" : "down",
+        }));
+      } catch {
+        setBackendStatus((prev) => ({ ...prev, [p]: "down" }));
+      }
+    });
+  }, [activePage]);
+
   // Add shortcut form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [addLabel, setAddLabel] = useState("");
@@ -366,12 +393,30 @@ export function SettingsModal({
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editError, setEditError] = useState("");
 
+  // AI Backends state
+  const [enabledProviders, setEnabledProviders] = useState<Record<string, boolean>>({
+    groq: true, openai: true, ollama: true,
+    anthropic: false, nim: false, openrouter: false,
+    lmstudio: false, llamaserver: false,
+  });
+  const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
+  const [llamaServerUrl, setLlamaServerUrl] = useState("http://localhost:8080");
+  const [backendStatus, setBackendStatus] = useState<Record<string, "live" | "down" | "checking">>({
+    ollama: "checking", lmstudio: "checking", llamaserver: "checking",
+  });
+
   // Keyboard bindings state
   const [kbOverrides, setKbOverrides] = useState<Record<string, string>>({});
   const [capturingId, setCapturingId] = useState<string | null>(null);
   useEffect(() => {
     setKbOverrides(loadKeybindings());
   }, []);
+
+  async function saveBackendSettings(patch: Record<string, unknown>) {
+    if (!electron) return;
+    const current = await electron.getSettings();
+    await electron.saveSettings({ ...current, ...patch });
+  }
 
   async function handleSaveKeys() {
     if (!electron) return;
@@ -931,6 +976,135 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── AI Backends ── */}
+        {activePage === "ai-backends" && (
+          <div className="flex flex-col gap-0">
+            {/* Cloud providers */}
+            <div className="mb-1 px-1 pt-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
+              Cloud
+            </div>
+            {([
+              { id: "groq",       label: "Groq",       icon: "⚡", meta: "5 models", badge: "cloud" },
+              { id: "openai",     label: "OpenAI",     icon: "◈", meta: "4 models", badge: "cloud" },
+              { id: "anthropic",  label: "Anthropic",  icon: "✦", meta: "3 models", badge: "cloud" },
+              { id: "nim",        label: "NIM",        icon: "◈", meta: "5 models", badge: "cloud" },
+              { id: "openrouter", label: "OpenRouter", icon: "◉", meta: "5 models", badge: "cloud" },
+            ] as const).map(({ id, label, icon, meta, badge }) => (
+              <div
+                key={id}
+                className="flex items-center gap-3 border-b border-[var(--m-border-subtle)] py-2.5"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--m-surface-raised)] text-base">
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
+                    <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(97,175,239,0.1)] text-[#61afef]">
+                      {badge}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-[var(--m-text-faint)]">{meta}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = { ...enabledProviders, [id]: !enabledProviders[id] };
+                    setEnabledProviders(next);
+                    await saveBackendSettings({ enabledProviders: next });
+                  }}
+                  className={`relative h-[17px] w-[32px] shrink-0 rounded-full transition-colors ${
+                    enabledProviders[id] ? "bg-[#d19a66]" : "bg-[#333]"
+                  }`}
+                  aria-label={enabledProviders[id] ? `Disable ${label}` : `Enable ${label}`}
+                >
+                  <span
+                    className={`absolute top-[2px] h-[13px] w-[13px] rounded-full bg-white transition-all ${
+                      enabledProviders[id] ? "left-[17px]" : "left-[2px]"
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+
+            {/* Local backends */}
+            <div className="mb-1 mt-4 px-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
+              Local
+            </div>
+            {([
+              { id: "ollama",      label: "Ollama",       icon: "🦙", badge: "local", hasUrl: false },
+              { id: "lmstudio",    label: "LM Studio",    icon: "◉",  badge: "local", hasUrl: true  },
+              { id: "llamaserver", label: "llama-server",  icon: "⬡",  badge: "local", hasUrl: true  },
+            ] as const).map(({ id, label, icon, badge, hasUrl }) => (
+              <div
+                key={id}
+                className="flex flex-col border-b border-[var(--m-border-subtle)] py-2.5 gap-1.5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--m-surface-raised)] text-base">
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
+                      <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(152,195,121,0.1)] text-[#98c379]">
+                        {badge}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-[var(--m-text-faint)]">
+                      {backendStatus[id] === "checking" && "Checking…"}
+                      {backendStatus[id] === "live"     && <span className="text-[#98c379]">● running</span>}
+                      {backendStatus[id] === "down"     && <span className="text-[#555]">✗ not running</span>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = { ...enabledProviders, [id]: !enabledProviders[id] };
+                      setEnabledProviders(next);
+                      await saveBackendSettings({ enabledProviders: next });
+                    }}
+                    className={`relative h-[17px] w-[32px] shrink-0 rounded-full transition-colors ${
+                      enabledProviders[id] ? "bg-[#d19a66]" : "bg-[#333]"
+                    }`}
+                    aria-label={enabledProviders[id] ? `Disable ${label}` : `Enable ${label}`}
+                  >
+                    <span
+                      className={`absolute top-[2px] h-[13px] w-[13px] rounded-full bg-white transition-all ${
+                        enabledProviders[id] ? "left-[17px]" : "left-[2px]"
+                      }`}
+                    />
+                  </button>
+                </div>
+                {hasUrl && (
+                  <input
+                    type="text"
+                    value={id === "lmstudio" ? lmStudioUrl : llamaServerUrl}
+                    onChange={(e) => {
+                      if (id === "lmstudio") setLmStudioUrl(e.target.value);
+                      else setLlamaServerUrl(e.target.value);
+                    }}
+                    onBlur={async (e) => {
+                      const val = e.target.value.trim();
+                      try {
+                        new URL(val);
+                        const key = id === "lmstudio" ? "lmStudioUrl" : "llamaServerUrl";
+                        await saveBackendSettings({ [key]: val });
+                      } catch {
+                        // revert invalid URL
+                        if (id === "lmstudio") setLmStudioUrl(lmStudioUrl);
+                        else setLlamaServerUrl(llamaServerUrl);
+                      }
+                    }}
+                    className="ml-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
+                    spellCheck={false}
+                  />
+                )}
+              </div>
+            ))}
           </div>
         )}
 
