@@ -246,6 +246,10 @@ export function Sidebar({
 
   // Drag state: id of the conv being dragged, and which target is hovered.
   // "__unfiled__" means the unfiled drop zone.
+  // draggingConvIdRef is the source of truth for drop handlers — it's set
+  // synchronously so it's never null by the time drop fires, even if React
+  // hasn't flushed the state update yet.
+  const draggingConvIdRef = useRef<string | null>(null);
   const [draggingConvId, setDraggingConvId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
@@ -273,11 +277,15 @@ export function Sidebar({
 
   function handleDragStart(e: React.DragEvent, convId: string) {
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", convId);
-    setDraggingConvId(convId);
+    draggingConvIdRef.current = convId;
+    // Delay the state update by one frame — setting state synchronously inside
+    // onDragStart triggers an immediate re-render that can cause Chromium to
+    // abort the drag before it fully starts.
+    requestAnimationFrame(() => setDraggingConvId(convId));
   }
 
   function handleDragEnd() {
+    draggingConvIdRef.current = null;
     setDraggingConvId(null);
     setDragOverTarget(null);
   }
@@ -298,7 +306,9 @@ export function Sidebar({
 
   function handleFolderDrop(e: React.DragEvent, folderId: string) {
     e.preventDefault();
-    if (draggingConvId) onMoveConversation(draggingConvId, folderId);
+    const convId = draggingConvIdRef.current;
+    if (convId) onMoveConversation(convId, folderId);
+    draggingConvIdRef.current = null;
     setDraggingConvId(null);
     setDragOverTarget(null);
   }
@@ -318,7 +328,9 @@ export function Sidebar({
 
   function handleUnfiledDrop(e: React.DragEvent) {
     e.preventDefault();
-    if (draggingConvId) onMoveConversation(draggingConvId, null);
+    const convId = draggingConvIdRef.current;
+    if (convId) onMoveConversation(convId, null);
+    draggingConvIdRef.current = null;
     setDraggingConvId(null);
     setDragOverTarget(null);
   }
