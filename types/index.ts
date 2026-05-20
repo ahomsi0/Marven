@@ -1,5 +1,5 @@
 export type MessageRole = "user" | "assistant";
-export type AIProvider = "groq" | "ollama" | "nim" | "openrouter" | "openai" | "anthropic";
+export type AIProvider = "groq" | "ollama" | "nim" | "openrouter" | "openai" | "anthropic" | "lmstudio" | "llamaserver";
 export type ConversationMode = "chat" | "agent";
 
 export interface DocAttachment {

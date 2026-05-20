@@ -162,6 +162,8 @@ export default function Home() {
     openrouter: "",
     openai: "",
     anthropic: "",
+    lmstudio: "",
+    llamaserver: "",
   };
   const [chatModelByProvider, setChatModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);
   const [agentModelByProvider, setAgentModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);

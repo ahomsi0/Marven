@@ -15,9 +15,11 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
   openrouter: "OpenRouter",
   openai: "OpenAI",
   anthropic: "Anthropic",
+  lmstudio: "LM Studio",
+  llamaserver: "Llama Server",
 };
 
-const PROVIDERS: AIProvider[] = ["groq", "ollama", "nim", "openrouter", "openai", "anthropic"];
+const PROVIDERS: AIProvider[] = ["groq", "ollama", "nim", "openrouter", "openai", "anthropic", "lmstudio", "llamaserver"];
 
 type AllModels = Record<AIProvider, OllamaModel[]>;
 type AllLoading = Record<AIProvider, boolean>;
@@ -40,9 +42,9 @@ export function GroupedModelDropdown({
   onModelChange,
 }: GroupedModelDropdownProps) {
   const [open, setOpen] = useState(false);
-  const [allModels, setAllModels] = useState<AllModels>({ groq: [], ollama: [], nim: [], openrouter: [], openai: [], anthropic: [] });
-  const [loading, setLoading] = useState<AllLoading>({ groq: true, ollama: true, nim: true, openrouter: true, openai: true, anthropic: true });
-  const [errors, setErrors] = useState<AllErrors>({ groq: null, ollama: null, nim: null, openrouter: null, openai: null, anthropic: null });
+  const [allModels, setAllModels] = useState<AllModels>({ groq: [], ollama: [], nim: [], openrouter: [], openai: [], anthropic: [], lmstudio: [], llamaserver: [] });
+  const [loading, setLoading] = useState<AllLoading>({ groq: true, ollama: true, nim: true, openrouter: true, openai: true, anthropic: true, lmstudio: true, llamaserver: true });
+  const [errors, setErrors] = useState<AllErrors>({ groq: null, ollama: null, nim: null, openrouter: null, openai: null, anthropic: null, lmstudio: null, llamaserver: null });
   const [hoveredProvider, setHoveredProvider] = useState<AIProvider>(provider);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
