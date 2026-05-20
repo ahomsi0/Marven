@@ -78,6 +78,17 @@ export function ModelSelector({
     });
   }, []);
 
+  // Restore last-used provider and model from localStorage on mount
+  useEffect(() => {
+    const savedProvider = localStorage.getItem("marven_last_provider") as AIProvider | null;
+    const savedModel = localStorage.getItem("marven_last_model");
+    if (savedProvider && savedModel) {
+      onProviderChange(savedProvider);
+      onModelChange(savedModel);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
   const loadModels = useCallback(async (p: AIProvider) => {
     if (loadedRef.current.has(p)) return;
     setLoadingProvider(p);
