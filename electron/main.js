@@ -197,6 +197,21 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
+  // Block any navigation that would take the main window away from localhost,
+  // and prevent file:// URLs from opening in the system browser. External
+  // http/https links are handled explicitly via the open-external IPC handler.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const appUrl = `http://localhost:${appPort}`;
+    if (!url.startsWith(appUrl)) {
+      event.preventDefault();
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow DevTools to open normally; block everything else from spawning a new window.
+    if (url.startsWith('devtools://')) return { action: 'allow' };
+    return { action: 'deny' };
+  });
+
   // Frameless windows skip the default menu, so ⌥⌘I/F12 aren't wired. Bind
   // them explicitly so DevTools is reachable for debugging.
   mainWindow.webContents.on('before-input-event', (_event, input) => {

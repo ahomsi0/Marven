@@ -79,7 +79,11 @@ function PreviewPane({ url, onClose: _onClose }: { url: string; workspaceRoot?: 
 
   function navigate(target: string) {
     let resolved = target.trim();
-    if (!resolved.startsWith("http://") && !resolved.startsWith("https://") && !resolved.startsWith("file://")) {
+    if (resolved.startsWith("file://")) {
+      // Convert file:// → HTTP serve endpoint so the iframe can load it
+      const filePath = resolved.replace(/^file:\/\//, "");
+      resolved = `/api/workspace/serve?path=${encodeURIComponent(filePath)}`;
+    } else if (!resolved.startsWith("http://") && !resolved.startsWith("https://") && !resolved.startsWith("/")) {
       resolved = `https://${resolved}`;
     }
     setCurrentUrl(resolved);
@@ -569,8 +573,11 @@ export function EditorPanel({
                   type="button"
                   onClick={() => {
                     if (activeTab.kind === "file") {
-                      const abs = activeTab.path.startsWith("/") ? activeTab.path : `${workspaceRoot ?? ""}/${activeTab.path}`;
-                      onOpenPreview?.(`file://${abs}`);
+                      // Serve through HTTP so the iframe loads without
+                      // cross-origin (http → file://) errors in Chromium.
+                      const params = new URLSearchParams({ path: activeTab.path });
+                      if (workspaceRoot) params.set("root", workspaceRoot);
+                      onOpenPreview?.(`/api/workspace/serve?${params}`);
                     }
                   }}
                   title="Preview in-app"
