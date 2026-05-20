@@ -15,6 +15,7 @@ import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
 import type { CodeEditorActions } from "./CodeEditor";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
+import { SymbolOutline } from "./SymbolOutline";
 
 // Background tasks popover — mirrors MemoryPopover's position:fixed pattern so
 // it can extend past the workspace's overflow-hidden bounds. Anchors at the
@@ -279,6 +280,7 @@ interface AgentWorkspaceProps {
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
   onOpenPreviewTab?: (url: string) => void;
+  onJumpToLine?: (path: string, line: number) => void;
 }
 
 export function AgentWorkspace({
@@ -341,11 +343,13 @@ export function AgentWorkspace({
   planMode,
   onPlanModeChange,
   onOpenPreviewTab,
+  onJumpToLine,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-show-explorer") !== "false";
   });
+  const [showOutline, setShowOutline] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -928,14 +932,49 @@ export function AgentWorkspace({
                   onSelectMatch={handleSelectMatch}
                 />
               ) : (
-                <FileExplorer
-                  files={files}
-                  workspaceRoot={workspaceRoot}
-                  selectedFilePath={selectedFilePath}
-                  onSelectFile={onSelectFile}
-                  onRefreshFiles={onRefreshFiles}
-                  onOpenFolder={onOpenFolder}
-                />
+                <>
+                  <FileExplorer
+                    files={files}
+                    workspaceRoot={workspaceRoot}
+                    selectedFilePath={selectedFilePath}
+                    onSelectFile={onSelectFile}
+                    onRefreshFiles={onRefreshFiles}
+                    onOpenFolder={onOpenFolder}
+                  />
+                  {/* Symbol Outline — shown only when a code file is active */}
+                  {selectedFilePath && fileContent && (
+                    <div className="border-t border-[var(--m-border-subtle)] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowOutline((v) => !v)}
+                        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+                      >
+                        <svg
+                          className={`h-2.5 w-2.5 transition-transform ${showOutline ? "" : "-rotate-90"}`}
+                          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                        </svg>
+                        Outline
+                      </button>
+                      {showOutline && (
+                        <SymbolOutline
+                          content={fileContent}
+                          filePath={selectedFilePath}
+                          onJumpToLine={(line) => {
+                            if (onJumpToLine) {
+                              onJumpToLine(selectedFilePath, line);
+                            } else {
+                              // Fallback: use the pendingJump mechanism directly
+                              jumpTokenRef.current += 1;
+                              setPendingJump({ path: selectedFilePath, line, col: 1, token: jumpTokenRef.current });
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {/* Drag handle 1 — between Explorer and Editor */}

@@ -65,6 +65,8 @@ interface EditorPanelProps {
   model?: string;
   // Preview tab
   onOpenPreview?: (url: string) => void;
+  /** When true, shows a scroll progress indicator on the right edge of the code editor. */
+  showMinimap?: boolean;
 }
 
 // ── Preview pane ───────────────────────────────────────────────────────────────
@@ -201,6 +203,7 @@ export function EditorPanel({
   provider = "groq",
   model = "",
   onOpenPreview,
+  showMinimap = false,
 }: EditorPanelProps) {
   const { theme } = useTheme();
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
@@ -760,6 +763,7 @@ export function EditorPanel({
                     language={fileExt}
                     theme={theme}
                     onSave={onSaveFile}
+                    showMinimap={showMinimap}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
                       // Mirror the handle outward so parents (AgentWorkspace)

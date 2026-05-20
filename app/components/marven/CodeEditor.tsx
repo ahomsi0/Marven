@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
@@ -62,6 +62,8 @@ export interface CodeEditorProps {
   onReady?: (actions: CodeEditorActions) => void;
   /** Placeholder text shown when the document is empty. */
   placeholderText?: string;
+  /** When true, renders a thin scroll progress indicator on the right edge. */
+  showMinimap?: boolean;
 }
 
 // ── Language picker ───────────────────────────────────────────────────────────
@@ -269,9 +271,11 @@ export function CodeEditor({
   onSave,
   onReady,
   placeholderText,
+  showMinimap = false,
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
   // Compartments allow us to dynamically swap extensions (language / theme /
   // read-only) without recreating the entire EditorView.
@@ -333,6 +337,12 @@ export function CodeEditor({
           }
           const next = u.state.doc.toString();
           onChangeRef.current(next);
+        }
+        // Track scroll position for the minimap progress indicator.
+        if (u.geometryChanged || u.docChanged || u.transactions.some((tr) => tr.scrollIntoView)) {
+          const { scrollTop, scrollHeight, clientHeight } = u.view.scrollDOM;
+          const prog = scrollHeight > clientHeight ? scrollTop / (scrollHeight - clientHeight) : 0;
+          setScrollProgress(prog);
         }
       }),
     ];
@@ -501,9 +511,26 @@ export function CodeEditor({
   // up the latest handler.
 
   return (
-    <div
-      ref={hostRef}
-      className="marven-scroll h-full w-full min-h-0 min-w-0 overflow-hidden bg-[var(--m-surface)]"
-    />
+    <div className="relative h-full w-full min-h-0 min-w-0 overflow-hidden">
+      <div
+        ref={hostRef}
+        className="marven-scroll h-full w-full min-h-0 min-w-0 overflow-hidden bg-[var(--m-surface)]"
+      />
+      {showMinimap && (
+        <div
+          className="pointer-events-none absolute right-0 top-0 h-full w-[3px] bg-[var(--m-border-subtle)]"
+          aria-hidden="true"
+        >
+          <div
+            className="absolute w-full bg-[#d19a66]/50"
+            style={{
+              top: `${scrollProgress * 100}%`,
+              height: "20%",
+              transform: "translateY(-50%)",
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
