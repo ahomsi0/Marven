@@ -63,12 +63,10 @@ export function ModelSelector({
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
 
-  // Load enabledProviders from Electron settings on mount
-  useEffect(() => {
-    const win = window as Window & {
-      electron?: { getSettings?: () => Promise<Record<string, unknown>> };
-    };
-    win.electron?.getSettings?.().then((s) => {
+  // Load enabledProviders from Electron settings — on mount and every time the dropdown opens
+  const refreshEnabled = useCallback(() => {
+    const el = (window as any).marvenElectron;
+    el?.getSettings?.().then((s: Record<string, unknown>) => {
       if (s.enabledProviders && typeof s.enabledProviders === "object") {
         setEnabledProviders({
           ...DEFAULT_ENABLED,
@@ -77,6 +75,10 @@ export function ModelSelector({
       }
     });
   }, []);
+
+  useEffect(() => {
+    refreshEnabled();
+  }, [refreshEnabled]);
 
   // Restore last-used provider and model from localStorage on mount
   useEffect(() => {
@@ -111,14 +113,15 @@ export function ModelSelector({
     }
   }, []);
 
-  // On open: sync tab to current provider, load its models
+  // On open: refresh settings, sync tab to current provider, load its models
   useEffect(() => {
     if (!open) return;
+    refreshEnabled();
     const newTab = LOCAL_PROVIDERS.includes(provider) ? "local" : "cloud";
     setTab(newTab);
     setHoveredProvider(provider);
     loadModels(provider);
-  }, [open, provider, loadModels]);
+  }, [open, provider, loadModels, refreshEnabled]);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -148,18 +151,18 @@ export function ModelSelector({
 
   return (
     <div ref={ref} className="relative">
-      {/* Trigger pill */}
+      {/* Trigger pill — fixed width so the input bar never shifts */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[#2e2e2e]"
+        className="flex w-[172px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[#2e2e2e]"
       >
-        <span className="text-[#d19a66]">{PROVIDER_LABELS[provider]}</span>
-        <span className="text-[#383838]">·</span>
-        <span className="max-w-[120px] truncate text-[#666]">
-          {selectedModel ? shortModelName(selectedModel) : "Select"}
+        <span className="w-[52px] shrink-0 truncate text-[#d19a66]">{PROVIDER_LABELS[provider]}</span>
+        <span className="shrink-0 text-[#383838]">·</span>
+        <span className="min-w-0 flex-1 truncate text-[#666]">
+          {selectedModel ? shortModelName(selectedModel) : "—"}
         </span>
-        <svg className="h-2.5 w-2.5 text-[#333]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+        <svg className="ml-auto h-2.5 w-2.5 shrink-0 text-[#333]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
