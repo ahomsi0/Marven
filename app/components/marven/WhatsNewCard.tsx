@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import packageJson from "@/package.json";
 import { getRelease } from "@/lib/changelog";
+import type { ChangeTag } from "@/lib/changelog";
 
 const STORAGE_KEY = "marven_last_seen_version";
 
 // Colour config for each tag type
-const TAG_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+const TAG_STYLE: Record<ChangeTag, { bg: string; text: string; label: string }> = {
   new: { bg: "bg-[#98c379]/10", text: "text-[#98c379]", label: "NEW" },
   fix: { bg: "bg-[#e5c07b]/10", text: "text-[#e5c07b]", label: "FIX" },
   imp: { bg: "bg-[#61afef]/10", text: "text-[#61afef]", label: "IMP" },
@@ -16,6 +17,7 @@ const TAG_STYLE: Record<string, { bg: string; text: string; label: string }> = {
 export function WhatsNewCard() {
   const [visible, setVisible] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const version = packageJson.version;
   const release = getRelease(version);
@@ -28,10 +30,12 @@ export function WhatsNewCard() {
     }
   }, [version, release]);
 
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
   function dismiss() {
     setDismissing(true);
     localStorage.setItem(STORAGE_KEY, version);
-    setTimeout(() => setVisible(false), 150);
+    timerRef.current = setTimeout(() => setVisible(false), 150);
   }
 
   if (!visible || !release) return null;
