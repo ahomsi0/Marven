@@ -4,8 +4,12 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { HistoryMessage } from "@/types";
+import { stripAttachments } from "@/lib/imageHelpers";
 
 export const DEFAULT_MODEL = "local-model";
+
+const SYSTEM_PROMPT =
+  "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
 
 /**
  * Returns the list of models currently loaded in LM Studio.
@@ -36,14 +40,13 @@ export function streamLMStudio(
   const client = new OpenAI({ baseURL: `${baseUrl}/v1`, apiKey: "lm-studio" });
   const encoder = new TextEncoder();
 
-  const SYSTEM_PROMPT =
-    "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
-
   const msgs: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
     ...messages.map((m): ChatCompletionMessageParam => ({
       role: m.role as "user" | "assistant",
-      content: m.content,
+      content: m.role === "user" && m.attachments?.length
+        ? stripAttachments(m.content, m.attachments)
+        : m.content,
     })),
   ];
 
