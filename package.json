@@ -1,6 +1,6 @@
 {
   "name": "marven",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {
@@ -126,9 +126,11 @@
     "diff": "^9.0.0",
     "electron-updater": "^6.8.3",
     "fix-path": "^5.0.0",
+    "mammoth": "^1.12.0",
     "next": "^15.5.15",
     "node-pty": "^1.1.0",
     "openai": "^6.38.0",
+    "pdf-parse": "^2.4.5",
     "prettier": "^3.8.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
