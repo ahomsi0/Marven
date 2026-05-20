@@ -193,7 +193,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
   useEffect(() => {
     const t = termRef.current;
     if (!t) return;
-    t.options.theme = theme === "light" ? LIGHT_THEME : DARK_THEME;
+    t.options.theme = xtermTheme(theme);
   }, [theme]);
 
   return (
