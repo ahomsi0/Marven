@@ -134,6 +134,8 @@ function applySettings(settings) {
   if (settings.openrouterApiKey) process.env.OPENROUTER_API_KEY  = settings.openrouterApiKey;
   if (settings.openaiApiKey)     process.env.OPENAI_API_KEY      = settings.openaiApiKey;
   if (settings.anthropicApiKey)  process.env.ANTHROPIC_API_KEY   = settings.anthropicApiKey;
+  if (settings.lmStudioUrl)      process.env.LM_STUDIO_URL       = settings.lmStudioUrl;
+  if (settings.llamaServerUrl)   process.env.LLAMA_SERVER_URL    = settings.llamaServerUrl;
 }
 
 ipcMain.handle('get-settings', () => loadSettings());
