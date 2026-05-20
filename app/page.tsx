@@ -50,6 +50,7 @@ import {
   addMemory,
 } from "@/lib/userProfile";
 import { formatBeforeSave, getFormatOnSave, isFormattable } from "@/lib/formatOnSave";
+import { createRestRequest } from "@/lib/restStorage";
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -710,6 +711,13 @@ export default function Home() {
     }
     const newIndex = openTabs.length;
     setOpenTabs((prev) => [...prev, { kind: "settings" as const }]);
+    setActiveTabIndex(newIndex);
+  }
+
+  function openRestTab() {
+    const request = createRestRequest();
+    const newIndex = openTabs.length;
+    setOpenTabs((prev) => [...prev, { kind: "rest" as const, requestId: request.id }]);
     setActiveTabIndex(newIndex);
   }
 
@@ -1735,6 +1743,7 @@ export default function Home() {
         onReorderTabs={reorderTabs}
         onOpenSettings={openSettingsTab}
         onOpenPreviewTab={openPreviewTab}
+        onOpenRestTab={openRestTab}
         folders={folders}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}

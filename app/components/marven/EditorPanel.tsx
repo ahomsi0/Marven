@@ -11,6 +11,7 @@ import { ImagePreview } from "./ImagePreview";
 import { PdfPreview } from "./PdfPreview";
 import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
+import { RestClientPanel } from "./RestClientPanel";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -430,6 +431,7 @@ export function EditorPanel({
   const activeTab = activeTabIndex >= 0 && activeTabIndex < openTabs.length ? openTabs[activeTabIndex] : null;
   const isSettingsTabActive = activeTab?.kind === "settings";
   const isPreviewTabActive = activeTab?.kind === "preview";
+  const isRestTabActive = activeTab?.kind === "rest";
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--m-surface)]">
@@ -453,12 +455,14 @@ export function EditorPanel({
                   ? "Settings"
                   : tab.kind === "preview"
                   ? (() => { try { return new URL(tab.url).hostname || "Preview"; } catch { return "Preview"; } })()
+                  : tab.kind === "rest"
+                  ? "REST"
                   : tab.path.split("/").pop() ?? tab.path;
                 const buffer = tab.kind === "file" ? fileBuffers.get(tab.path) : null;
                 const isDirty = buffer?.dirty ?? false;
                 return (
                   <div
-                    key={tab.kind === "file" ? `file:${tab.path}` : tab.kind === "preview" ? `preview:${tab.url}` : "settings"}
+                    key={tab.kind === "file" ? `file:${tab.path}` : tab.kind === "preview" ? `preview:${tab.url}` : tab.kind === "rest" ? `rest:${tab.requestId}` : "settings"}
                     draggable
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", String(i));
@@ -480,7 +484,7 @@ export function EditorPanel({
                     className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-[var(--m-border)] px-3 py-2 transition-colors ${
                       isActive ? "bg-[var(--m-surface)]" : "bg-[var(--m-bg)] hover:bg-[var(--m-surface)]/50"
                     }`}
-                    title={tab.kind === "file" ? tab.path : tab.kind === "preview" ? tab.url : "Settings"}
+                    title={tab.kind === "file" ? tab.path : tab.kind === "preview" ? tab.url : tab.kind === "rest" ? "REST Client" : "Settings"}
                   >
                     {/* Drop indicator — vertical gold line on left edge */}
                     {dragOverIndex === i && (
@@ -491,6 +495,10 @@ export function EditorPanel({
                     ) : tab.kind === "preview" ? (
                       <svg className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253M3.284 14.253A8.959 8.959 0 0 1 3 12c0-1.512.372-2.935 1.034-4.189" />
+                      </svg>
+                    ) : tab.kind === "rest" ? (
+                      <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     ) : (
                       <svg className="h-3.5 w-3.5 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -515,7 +523,7 @@ export function EditorPanel({
                 );
               })}
               {/* Save button lives in tab bar header area — shown when active file is dirty */}
-              {isFileDirty && !isSettingsTabActive && !isPreviewTabActive && (
+              {isFileDirty && !isSettingsTabActive && !isPreviewTabActive && !isRestTabActive && (
                 <div className="ml-auto flex items-center gap-2 px-3">
                   <button
                     type="button"
@@ -530,7 +538,7 @@ export function EditorPanel({
           )}
 
           {/* Breadcrumbs — between tab strip and find bar, when a file is open. */}
-          {selectedFilePath && !isSettingsTabActive && !isPreviewTabActive && breadcrumbSegments.length > 0 && (
+          {selectedFilePath && !isSettingsTabActive && !isPreviewTabActive && !isRestTabActive && breadcrumbSegments.length > 0 && (
             <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-1.5 font-mono text-[10px] text-[var(--m-text-muted)]">
               {breadcrumbSegments.map((seg, i) => {
                 const isLast = i === breadcrumbSegments.length - 1;
@@ -577,7 +585,7 @@ export function EditorPanel({
           )}
 
           {/* Find / Replace bar — slides in above the editor when active */}
-          {findOpen && selectedFilePath && !isSettingsTabActive && (
+          {findOpen && selectedFilePath && !isSettingsTabActive && !isRestTabActive && (
             <div className="flex flex-col gap-1.5 border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3 py-2">
               {/* Find row */}
               <div className="flex items-center gap-1.5">
@@ -697,7 +705,12 @@ export function EditorPanel({
           )}
 
           {/* Content area — depends on active tab */}
-          {isPreviewTabActive && activeTab?.kind === "preview" ? (
+          {isRestTabActive && activeTab?.kind === "rest" ? (
+            /* REST client tab content */
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <RestClientPanel requestId={activeTab.requestId} workspaceRoot={workspaceRoot} />
+            </div>
+          ) : isPreviewTabActive && activeTab?.kind === "preview" ? (
             /* Preview tab content */
             <div className="min-h-0 flex-1 overflow-hidden">
               <PreviewPane

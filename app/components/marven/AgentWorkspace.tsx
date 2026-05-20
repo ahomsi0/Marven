@@ -281,6 +281,7 @@ interface AgentWorkspaceProps {
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
   onOpenPreviewTab?: (url: string) => void;
+  onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
 }
 
@@ -344,6 +345,7 @@ export function AgentWorkspace({
   planMode,
   onPlanModeChange,
   onOpenPreviewTab,
+  onOpenRestTab,
   onJumpToLine,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
@@ -674,6 +676,7 @@ export function AgentWorkspace({
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
+    { label: "New REST request", action: () => onOpenRestTab?.() },
   ];
 
   // Landing page when no workspace is open AND no settings tab is open
@@ -762,6 +765,18 @@ export function AgentWorkspace({
             </svg>
           </button>
         )}
+
+        {/* REST client button */}
+        <button
+          type="button"
+          onClick={() => onOpenRestTab?.()}
+          className="rounded p-1 transition-colors text-[#555] hover:text-[#aaa]"
+          title="New REST request"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </button>
 
         {checkpoints.length > 0 && showRightPanel && (
           <button
@@ -964,6 +979,20 @@ export function AgentWorkspace({
                   onClick: () => {
                     setViewMenuOpen(false);
                     setTasksOpen(true);
+                  },
+                },
+                {
+                  key: "rest",
+                  label: "New REST request",
+                  hint: "",
+                  icon: (
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setViewMenuOpen(false);
+                    onOpenRestTab?.();
                   },
                 },
               ]}

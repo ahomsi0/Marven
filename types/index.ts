@@ -237,4 +237,30 @@ export interface WritePreview {
 export type EditorTab =
   | { kind: "file"; path: string }
   | { kind: "settings" }
-  | { kind: "preview"; url: string };
+  | { kind: "preview"; url: string }
+  | { kind: "rest"; requestId: string };
+
+export interface RestHeader {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
+export type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+
+export interface RestRequest {
+  id: string;
+  name: string;
+  method: RestMethod;
+  url: string;
+  headers: RestHeader[];
+  body: string;
+  bodyType: "none" | "json" | "text" | "form";
+  savedAt?: string; // ISO string
+}
+
+export interface RestCollection {
+  id: string;
+  name: string;
+  requests: RestRequest[];
+}
