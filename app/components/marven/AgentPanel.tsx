@@ -244,7 +244,7 @@ export function AgentPanel({
               ))}
             </div>
           )}
-          <div className="relative flex items-stretch gap-2 px-0 py-0">
+          <div className="relative flex items-center gap-2 px-0 py-0">
             {menuOpen && (
               <SlashMenu
                 query={query}
@@ -273,7 +273,7 @@ export function AgentPanel({
               className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
               style={{ maxHeight: 120, overflowY: "auto" }}
             />
-            <div className="flex shrink-0 items-center gap-1 pr-1.5 pb-1.5">
+            <div className="flex shrink-0 items-center gap-1 pr-1.5">
               <>
                 <button
                   type="button"
