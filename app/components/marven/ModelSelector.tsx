@@ -199,7 +199,7 @@ export function ModelSelector({
           </div>
 
           {tabProviders.length === 0 ? (
-            <div className="px-3 py-4 text-[11px] text-[#555]">
+            <div className="flex h-[188px] items-center justify-center px-3 text-[11px] text-[#555]">
               Enable backends in Settings → AI Backends
             </div>
           ) : (
@@ -229,12 +229,12 @@ export function ModelSelector({
                 ))}
               </div>
 
-              {/* Model list */}
-              <div className="max-h-[140px] overflow-y-auto py-1">
+              {/* Model list — fixed height so the popup never changes size */}
+              <div className="h-[148px] overflow-y-auto py-1">
                 {loadingProvider === hoveredProvider ? (
-                  <div className="px-3 py-2 text-[10px] text-[#444]">Loading…</div>
+                  <div className="flex h-full items-center justify-center text-[10px] text-[#444]">Loading…</div>
                 ) : errors[hoveredProvider] ? (
-                  <div className="px-3 py-2">
+                  <div className="flex h-full flex-col items-start justify-center px-3">
                     <div className="text-[11px] text-[#555]">
                       {PROVIDER_LABELS[hoveredProvider]} unavailable
                     </div>
@@ -243,7 +243,7 @@ export function ModelSelector({
                     </div>
                   </div>
                 ) : models[hoveredProvider].length === 0 ? (
-                  <div className="px-3 py-2 text-[10px] text-[#383838]">No models found</div>
+                  <div className="flex h-full items-center justify-center text-[10px] text-[#383838]">No models found</div>
                 ) : (
                   models[hoveredProvider].map((m) => {
                     const isActive = m === selectedModel && hoveredProvider === provider;
