@@ -30,6 +30,7 @@ import { speak, stopSpeaking } from "@/lib/speak";
 import { getRequireWriteApproval, getPlanMode, setPlanMode } from "@/lib/agentSettings";
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
+import { WhatsNewCard } from "@/app/components/marven/WhatsNewCard";
 import { parseCommand } from "@/lib/commandParser";
 import {
   loadConversations,
@@ -1753,6 +1754,7 @@ export default function Home() {
       {profileLoaded && userProfile === null && (
         <SetupModal onSave={handleProfileSave} />
       )}
+      <WhatsNewCard />
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[480px] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-4 shadow-2xl">
