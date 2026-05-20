@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback } from "react";
 import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment } from "@/types";
 
+const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
+const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
+
 interface UseAgentStreamOptions {
   provider: AIProvider;
   model: string;
@@ -55,7 +58,51 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     };
     addMessage(assistantMsg);
 
-    const history = messages
+    // Auto-summarize if thread is too long
+    let activeMessages = messages; // the messages list at the time of send
+
+    if (messages.length > SUMMARIZE_THRESHOLD && workspaceRoot && provider && model) {
+      const oldMessages = messages.slice(0, messages.length - KEEP_RECENT);
+      const recentMessages = messages.slice(messages.length - KEEP_RECENT);
+
+      try {
+        const summarizeRes = await fetch("/api/agent/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: oldMessages
+              .filter((m) => !m.isSummary)
+              .map((m) => ({
+                role: m.role,
+                content: m.content || (m.toolCalls?.length
+                  ? `[Used tools: ${m.toolCalls.map((tc) => tc.tool).join(", ")}]`
+                  : ""),
+              }))
+              .filter((m) => m.content),
+            provider,
+            model,
+          }),
+        });
+
+        if (summarizeRes.ok) {
+          const { summary } = await summarizeRes.json();
+          const summaryMsg: AgentMessage = {
+            id: `summary-${Date.now()}`,
+            role: "assistant",
+            content: summary,
+            isSummary: true,
+          };
+          // Replace old messages with summary in state
+          const condensed = [summaryMsg, ...recentMessages];
+          setMessages(condensed);
+          activeMessages = condensed;
+        }
+      } catch {
+        // On failure, continue without summarizing
+      }
+    }
+
+    const history = activeMessages
       .map((m) => ({
         role: m.role,
         content: m.content || (m.toolCalls?.length

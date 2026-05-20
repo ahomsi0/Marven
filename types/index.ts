@@ -207,6 +207,7 @@ export interface AgentMessage {
   content: string;
   toolCalls?: ToolCallState[];
   attachments?: ImageAttachment[];
+  isSummary?: true;
 }
 
 /** Per-tool-call UI state rendered by ToolCallCard */

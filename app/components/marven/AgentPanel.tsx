@@ -133,49 +133,64 @@ export function AgentPanel({
         <div className="flex flex-col gap-4">
           {messages.map((msg) => (
             <div key={msg.id}>
-              {msg.role === "user" ? (
-                <div className="rounded-md bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[12px] text-[var(--m-text)]">
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                      {msg.attachments.map((att, i) => (
-                        <img key={i} src={att.base64} alt={att.name} className="max-h-32 max-w-[200px] rounded border border-[var(--m-border)] object-cover" />
-                      ))}
-                    </div>
-                  )}
-                  {msg.content}
+              {msg.isSummary ? (
+                <div className="flex items-center gap-3 py-1">
+                  <div className="h-px flex-1 bg-[var(--m-border-subtle)]" />
+                  <div className="flex items-center gap-1.5 rounded-full border border-[var(--m-border)] bg-[var(--m-surface)] px-3 py-1">
+                    <svg className="h-3 w-3 text-[#d19a66]/70" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+                    </svg>
+                    <span className="text-[10px] text-[var(--m-text-faint)]">Thread summarized</span>
+                  </div>
+                  <div className="h-px flex-1 bg-[var(--m-border-subtle)]" />
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {(msg.toolCalls ?? []).map((tc) => (
-                    <ToolCallCard key={tc.callId} toolCall={tc} onApprove={onApproveToolCall} />
-                  ))}
-                  {msg.content && (
-                    <div className="prose prose-sm max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          a: ({ href, children }) => (
-                            <a
-                              href={href}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (!href) return;
-                                const electron = (window as any).marvenElectron;
-                                if (electron?.openExternal) {
-                                  electron.openExternal(href, preferredBrowser);
-                                } else {
-                                  window.open(href, "_blank", "noopener,noreferrer");
-                                }
-                              }}
-                              className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"
-                            >
-                              {children}
-                            </a>
-                          ),
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
+                <div>
+                  {msg.role === "user" ? (
+                    <div className="rounded-md bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[12px] text-[var(--m-text)]">
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          {msg.attachments.map((att, i) => (
+                            <img key={i} src={att.base64} alt={att.name} className="max-h-32 max-w-[200px] rounded border border-[var(--m-border)] object-cover" />
+                          ))}
+                        </div>
+                      )}
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {(msg.toolCalls ?? []).map((tc) => (
+                        <ToolCallCard key={tc.callId} toolCall={tc} onApprove={onApproveToolCall} />
+                      ))}
+                      {msg.content && (
+                        <div className="prose prose-sm max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (!href) return;
+                                    const electron = (window as any).marvenElectron;
+                                    if (electron?.openExternal) {
+                                      electron.openExternal(href, preferredBrowser);
+                                    } else {
+                                      window.open(href, "_blank", "noopener,noreferrer");
+                                    }
+                                  }}
+                                  className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                            }}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
