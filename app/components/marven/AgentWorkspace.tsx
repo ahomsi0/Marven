@@ -536,7 +536,7 @@ export function AgentWorkspace({
   // ── Right panel drag ──────────────────────────────────────────────────────
   const [rightWidth, setRightWidth] = useState(() => {
     if (typeof window === "undefined") return 380;
-    return Math.min(700, Math.max(280, Number(localStorage.getItem("marven-right-width") ?? 380) || 380));
+    return Math.min(700, Math.max(380, Number(localStorage.getItem("marven-right-width") ?? 380) || 380));
   });
   const isRightDragging = useRef(false);
   const rightDragStartX = useRef(0);
@@ -546,7 +546,7 @@ export function AgentWorkspace({
     function onMouseMove(e: MouseEvent) {
       if (!isRightDragging.current) return;
       const delta = rightDragStartX.current - e.clientX;
-      const next = Math.min(700, Math.max(280, rightDragStartWidth.current + delta));
+      const next = Math.min(700, Math.max(380, rightDragStartWidth.current + delta));
       setRightWidth(next);
     }
     function onMouseUp() {
