@@ -95,6 +95,12 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expandedAll, setExpandedAll] = useState<Set<string>>(new Set());
 
+  const [replaceExpanded, setReplaceExpanded] = useState(false);
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [replacing, setReplacing] = useState(false);
+  const [replaceResult, setReplaceResult] = useState<{ count: number; files: number } | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -274,13 +280,76 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
           >
             .*
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setReplaceExpanded((v) => !v);
+              if (!replaceExpanded) setTimeout(() => replaceInputRef.current?.focus(), 50);
+            }}
+            title={replaceExpanded ? "Hide replace" : "Show replace"}
+            className={`flex h-5 w-5 items-center justify-center rounded text-[11px] transition-colors ${
+              replaceExpanded
+                ? "bg-[var(--m-accent)]/20 text-[var(--m-accent)]"
+                : "text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
+            }`}
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m15 15-6-6m0 0 6-6m-6 6h12M9 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4" />
+            </svg>
+          </button>
         </div>
+        {replaceExpanded && (
+          <div className="flex items-center gap-1.5 border-t border-[var(--m-border-subtle)] pt-2">
+            <input
+              ref={replaceInputRef}
+              type="text"
+              placeholder="Replace with…"
+              value={replaceQuery}
+              onChange={(e) => { setReplaceQuery(e.target.value); setReplaceResult(null); }}
+              className="flex-1 bg-transparent py-0.5 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none"
+            />
+            <button
+              type="button"
+              disabled={replacing || !query.trim() || results.length === 0}
+              onClick={async () => {
+                setReplacing(true);
+                setReplaceResult(null);
+                try {
+                  const res = await fetch("/api/workspace/search-replace", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex }),
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                    setReplaceResult({ count: data.replacedCount, files: data.filesModified.length });
+                    // Re-run search to update results
+                    setResults([]);
+                    setTotalMatches(0);
+                  }
+                } catch {
+                  // ignore
+                } finally {
+                  setReplacing(false);
+                }
+              }}
+              className="rounded border border-[var(--m-border)] px-2 py-0.5 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] disabled:opacity-40"
+            >
+              {replacing ? "…" : "Replace all"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Status line */}
       <div className="border-b border-[var(--m-border-subtle)] px-3 py-2 text-[10px] text-[var(--m-text-muted)]">
         {error ? <span className="text-red-400">{error}</span> : statusText}
       </div>
+      {replaceResult && (
+        <p className="border-b border-[var(--m-border-subtle)] px-3 py-1 text-[10px] text-green-400">
+          Replaced {replaceResult.count} occurrence{replaceResult.count !== 1 ? "s" : ""} in {replaceResult.files} file{replaceResult.files !== 1 ? "s" : ""}
+        </p>
+      )}
 
       {/* Results — scrollable list */}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -294,28 +363,51 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
           const matchCountLabel = file.matches.length === 1 ? "match" : "matches";
           return (
             <div key={file.path} className="border-b border-[var(--m-border-subtle)]">
-              <button
-                type="button"
-                onClick={() => toggleFile(file.path)}
-                className="group flex w-full items-center gap-1 px-2 py-1 text-left transition-colors hover:bg-[var(--m-surface-3)]"
-              >
-                <svg
-                  className="h-3 w-3 shrink-0 text-[var(--m-text-faint)] transition-transform duration-100"
-                  style={{ transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
+              <div className="group flex w-full items-center gap-1 px-2 py-1 transition-colors hover:bg-[var(--m-surface-3)]">
+                <button
+                  type="button"
+                  onClick={() => toggleFile(file.path)}
+                  className="flex flex-1 items-center gap-1 text-left"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="flex-1 truncate font-mono text-[11px] text-[var(--m-text)]">
-                  {file.path}
-                </span>
+                  <svg
+                    className="h-3 w-3 shrink-0 text-[var(--m-text-faint)] transition-transform duration-100"
+                    style={{ transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="flex-1 truncate font-mono text-[11px] text-[var(--m-text)]">
+                    {file.path}
+                  </span>
+                </button>
                 <span className="shrink-0 rounded-full bg-[var(--m-surface-3)] px-1.5 py-0.5 text-[9px] text-[var(--m-text-muted)]">
                   {file.matches.length} {matchCountLabel}
                 </span>
-              </button>
+                {replaceExpanded && (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setReplacing(true);
+                      try {
+                        await fetch("/api/workspace/search-replace", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex, files: [file.path] }),
+                        });
+                        setReplaceResult(null); // clear previous result
+                      } catch { /* ignore */ } finally { setReplacing(false); }
+                    }}
+                    className="ml-1 rounded px-1.5 py-0.5 text-[9px] text-[var(--m-text-faint)] opacity-0 transition-opacity hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)] group-hover:opacity-100"
+                    title="Replace in this file"
+                  >
+                    Replace
+                  </button>
+                )}
+              </div>
               {!isCollapsed && (
                 <div className="pb-1">
                   {visibleMatches.map((match, idx) => (
