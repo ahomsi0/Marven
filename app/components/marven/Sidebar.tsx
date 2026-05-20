@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { filterConversations } from "@/lib/chatHelpers";
@@ -219,12 +219,17 @@ export function Sidebar({
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    function handleOutside(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
   }, [contextMenu]);
 
   const pinnedConvs = conversations.filter((c) => c.pinned);
@@ -427,9 +432,9 @@ export function Sidebar({
           {/* Context menu */}
           {contextMenu && (
             <div
+              ref={contextMenuRef}
               className="fixed z-50 min-w-[160px] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] py-1 shadow-xl"
               style={{ left: contextMenu.x, top: contextMenu.y }}
-              onMouseDown={(e) => e.stopPropagation()}
             >
               {contextMenu.kind === "conversation" && (
                 <>

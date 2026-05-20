@@ -27,9 +27,14 @@ async function listRecursive(dir: string, base: string, shallow = false): Promis
     if (entry.isDirectory()) {
       results.push({ path: rel, name: entry.name, type: "folder" });
       if (shallow) continue;
-      const childShallow = SHALLOW_DIRS.has(entry.name);
-      const nested = await listRecursive(path.join(dir, entry.name), base, childShallow);
-      results.push(...nested);
+      try {
+        const childShallow = SHALLOW_DIRS.has(entry.name);
+        const nested = await listRecursive(path.join(dir, entry.name), base, childShallow);
+        results.push(...nested);
+      } catch {
+        // Unreadable subdirectory (permissions, stale symlink, etc.) — show the
+        // folder node but skip its contents rather than failing the whole listing.
+      }
     } else {
       results.push({ path: rel, name: entry.name, type: "file" });
     }
