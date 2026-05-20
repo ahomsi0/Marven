@@ -123,6 +123,7 @@ interface ChatLayoutProps {
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveConversation: (convId: string, folderId: string | null) => void;
+  onOpenPreviewTab?: (url: string) => void;
 }
 
 function TypingRow() {
@@ -235,6 +236,7 @@ export function ChatLayout({
   onRenameFolder,
   onDeleteFolder,
   onMoveConversation,
+  onOpenPreviewTab,
 }: ChatLayoutProps) {
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -439,6 +441,7 @@ export function ChatLayout({
               onAgentVoiceClick={onAgentVoiceClick}
               planMode={agentPlanMode}
               onPlanModeChange={onAgentPlanModeChange}
+              onOpenPreviewTab={onOpenPreviewTab}
             />
           ) : (
             <>

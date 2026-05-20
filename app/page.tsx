@@ -713,6 +713,19 @@ export default function Home() {
     setActiveTabIndex(newIndex);
   }
 
+  function openPreviewTab(url: string) {
+    const existingIdx = openTabs.findIndex((t) => t.kind === "preview");
+    if (existingIdx >= 0) {
+      // Update URL of the existing preview tab and activate it
+      setOpenTabs((prev) => prev.map((t, i) => i === existingIdx ? { kind: "preview" as const, url } : t));
+      setActiveTabIndex(existingIdx);
+      return;
+    }
+    const newIndex = openTabs.length;
+    setOpenTabs((prev) => [...prev, { kind: "preview" as const, url }]);
+    setActiveTabIndex(newIndex);
+  }
+
   function closeTab(index: number) {
     setOpenTabs((prev) => prev.filter((_, i) => i !== index));
     const newLength = openTabs.length - 1;
@@ -1721,6 +1734,7 @@ export default function Home() {
         onCloseTab={closeTab}
         onReorderTabs={reorderTabs}
         onOpenSettings={openSettingsTab}
+        onOpenPreviewTab={openPreviewTab}
         folders={folders}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}

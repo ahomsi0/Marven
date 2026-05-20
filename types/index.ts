@@ -236,4 +236,5 @@ export interface WritePreview {
 
 export type EditorTab =
   | { kind: "file"; path: string }
-  | { kind: "settings" };
+  | { kind: "settings" }
+  | { kind: "preview"; url: string };

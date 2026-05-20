@@ -278,6 +278,7 @@ interface AgentWorkspaceProps {
   onAgentVoiceClick?: () => void;
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
+  onOpenPreviewTab?: (url: string) => void;
 }
 
 export function AgentWorkspace({
@@ -339,6 +340,7 @@ export function AgentWorkspace({
   onAgentVoiceClick,
   planMode,
   onPlanModeChange,
+  onOpenPreviewTab,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -986,6 +988,7 @@ export function AgentWorkspace({
             editorActionsRef={editorActionsRef}
             provider={provider as import("@/types").AIProvider}
             model={model}
+            onOpenPreview={onOpenPreviewTab}
           />
         </div>
 
