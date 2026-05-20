@@ -7,6 +7,8 @@ import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { streamOpenRouter, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
 import { streamOpenAI, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
 import { streamAnthropic, DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib/anthropic";
+import { streamLMStudio, DEFAULT_MODEL as LMSTUDIO_DEFAULT_MODEL } from "@/lib/lmstudio";
+import { streamLlamaServer, DEFAULT_MODEL as LLAMASERVER_DEFAULT_MODEL } from "@/lib/llamaserver";
 import type { ChatRequest, ChatResponse, HistoryMessage } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -24,11 +26,13 @@ export async function POST(req: NextRequest) {
   const messages: HistoryMessage[] = body.messages ?? [];
   const provider = (body.provider ?? "groq").toLowerCase();
   const defaultModel =
-    provider === "ollama"      ? OLLAMA_DEFAULT_MODEL :
-    provider === "nim"         ? NIM_DEFAULT_MODEL :
-    provider === "openrouter"  ? OPENROUTER_DEFAULT_MODEL :
-    provider === "openai"      ? OPENAI_DEFAULT_MODEL :
-    provider === "anthropic"   ? ANTHROPIC_DEFAULT_MODEL :
+    provider === "ollama"       ? OLLAMA_DEFAULT_MODEL :
+    provider === "nim"          ? NIM_DEFAULT_MODEL :
+    provider === "openrouter"   ? OPENROUTER_DEFAULT_MODEL :
+    provider === "openai"       ? OPENAI_DEFAULT_MODEL :
+    provider === "anthropic"    ? ANTHROPIC_DEFAULT_MODEL :
+    provider === "lmstudio"     ? LMSTUDIO_DEFAULT_MODEL :
+    provider === "llamaserver"  ? LLAMASERVER_DEFAULT_MODEL :
     GROQ_DEFAULT_MODEL;
   const model = body.model?.trim() || defaultModel;
 
@@ -149,6 +153,48 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error.";
       return NextResponse.json({ reply: `Marven couldn't reach Anthropic: ${msg}` }, { status: 503 });
+    }
+  }
+
+  if (provider === "lmstudio") {
+    try {
+      const history = messages.slice(-20);
+      const stream = streamLMStudio(history, model, body.systemPrompt);
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache",
+          "Transfer-Encoding": "chunked",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      return NextResponse.json(
+        { reply: `LM Studio is not running. Start it and try again. (${msg})` },
+        { status: 503 }
+      );
+    }
+  }
+
+  if (provider === "llamaserver") {
+    try {
+      const history = messages.slice(-20);
+      const stream = streamLlamaServer(history, model, body.systemPrompt);
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache",
+          "Transfer-Encoding": "chunked",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      return NextResponse.json(
+        { reply: `llama-server is not running. Start it and try again. (${msg})` },
+        { status: 503 }
+      );
     }
   }
 

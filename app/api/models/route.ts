@@ -5,6 +5,8 @@ import { NIM_MODELS, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { OPENROUTER_MODELS, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
 import { OPENAI_MODELS, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
 import { ANTHROPIC_MODELS, DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib/anthropic";
+import { getLMStudioModels, DEFAULT_MODEL as LMSTUDIO_DEFAULT_MODEL } from "@/lib/lmstudio";
+import { getLlamaServerModels, DEFAULT_MODEL as LLAMASERVER_DEFAULT_MODEL } from "@/lib/llamaserver";
 
 export async function GET(req: NextRequest) {
   const provider = (req.nextUrl.searchParams.get("provider") ?? "groq").toLowerCase();
@@ -64,6 +66,26 @@ export async function GET(req: NextRequest) {
       );
     }
     return NextResponse.json({ provider: "openrouter", models: OPENROUTER_MODELS, defaultModel: OPENROUTER_DEFAULT_MODEL });
+  }
+
+  if (provider === "lmstudio") {
+    const url = process.env.LM_STUDIO_URL ?? "http://localhost:1234";
+    const models = await getLMStudioModels(url);
+    return NextResponse.json({
+      provider: "lmstudio",
+      models,
+      defaultModel: models[0]?.name ?? LMSTUDIO_DEFAULT_MODEL,
+    });
+  }
+
+  if (provider === "llamaserver") {
+    const url = process.env.LLAMA_SERVER_URL ?? "http://localhost:8080";
+    const models = await getLlamaServerModels(url);
+    return NextResponse.json({
+      provider: "llamaserver",
+      models,
+      defaultModel: models[0]?.name ?? LLAMASERVER_DEFAULT_MODEL,
+    });
   }
 
   // Groq (default)
