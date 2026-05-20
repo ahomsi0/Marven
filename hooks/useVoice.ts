@@ -101,6 +101,7 @@ export function useVoice(
   const onCommandRef   = useRef(onCommand);           onCommandRef.current   = onCommand;
   const onWakeRef      = useRef(onWakeWordDetected);  onWakeRef.current      = onWakeWordDetected;
   const onInterimRef   = useRef(onInterimTranscript); onInterimRef.current   = onInterimTranscript;
+  const customWakePhraseRef = useRef<string>("");
 
   // ── STT provider preference ───────────────────────────────────────────────
   // Default to "local" — wake-word transcription runs on the user's machine
@@ -113,7 +114,7 @@ export function useVoice(
     if (!electron?.getSettings) return;
 
     const load = () => {
-      electron.getSettings().then((s: { voiceSttProvider?: string; voiceLocalModel?: string }) => {
+      electron.getSettings().then((s: { voiceSttProvider?: string; voiceLocalModel?: string; customWakeWord?: string }) => {
         const next: SttProvider = s?.voiceSttProvider === "groq" ? "groq" : "local";
         sttProviderRef.current = next;
         setSttProvider(next);
@@ -122,6 +123,7 @@ export function useVoice(
           ? (s.voiceLocalModel as LocalSttModel)
           : "whisper-tiny";
         setLocalSttModel(model);
+        customWakePhraseRef.current = (s?.customWakeWord ?? "").trim();
       }).catch(() => { /* keep default */ });
     };
     load();
@@ -277,10 +279,16 @@ export function useVoice(
                   console.log("[wake] whisper →", JSON.stringify(text));
                   setLastHeard(text || "(empty)");
 
-                  if (hasWakeWord(text)) {
+                  const normalizedT = text.trim().toLowerCase();
+                  const customPhrase = customWakePhraseRef.current.toLowerCase();
+                  const isWake = hasWakeWord(text) || (customPhrase && normalizedT.startsWith(customPhrase));
+                  if (isWake) {
                     stopWakeListener();
                     onWakeRef.current?.();
-                    const rest = stripWakeWord(text);
+                    let rest = stripWakeWord(text);
+                    if (customPhrase && normalizedT.startsWith(customPhrase)) {
+                      rest = text.trim().slice(customWakePhraseRef.current.length).replace(/^[\s,.:;!?-]+/, "").trim();
+                    }
                     if (rest.length > 1) {
                       onCommandRef.current(rest);
                       setTimeout(() => { if (wakeEnabledRef.current) startWakeListener(); }, 500);
@@ -349,7 +357,11 @@ export function useVoice(
         const result = await transcribeBlob(blob, undefined, sttProviderRef.current);
         if (result.error) setVoiceError(result.error);
         const clean = (result.text ?? "").trim();
-        const cmd   = hasWakeWord(clean) ? stripWakeWord(clean) : clean;
+        let cmd = hasWakeWord(clean) ? stripWakeWord(clean) : clean;
+        const customPhraseCmd = customWakePhraseRef.current.toLowerCase();
+        if (customPhraseCmd && clean.toLowerCase().startsWith(customPhraseCmd)) {
+          cmd = clean.slice(customWakePhraseRef.current.length).replace(/^[\s,.:;!?-]+/, "").trim();
+        }
         if (cmd.length > 1) onCommandRef.current(cmd);
 
         if (wakeEnabledRef.current) { setVoiceState("wake-listening"); startWakeListener(); }

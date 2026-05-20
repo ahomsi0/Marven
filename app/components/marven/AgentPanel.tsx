@@ -26,6 +26,9 @@ interface AgentPanelProps {
   onApproveToolCall?: (callId: string, accept: boolean) => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
+  isVoiceSupported?: boolean;
+  voiceState?: import("@/hooks/useVoice").VoiceState;
+  onVoiceClick?: () => void;
 }
 
 function fileToAttachment(file: File): Promise<ImageAttachment> {
@@ -59,6 +62,9 @@ export function AgentPanel({
   onApproveToolCall,
   attachments,
   onAttachmentsChange,
+  isVoiceSupported,
+  voiceState,
+  onVoiceClick,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -250,6 +256,22 @@ export function AgentPanel({
             />
             <div className="flex shrink-0 items-center gap-1 pr-1.5 pb-1.5">
               <>
+                {isVoiceSupported && (
+                  <button
+                    type="button"
+                    onClick={onVoiceClick}
+                    title={voiceState === "command-listening" ? "Listening…" : "Voice input"}
+                    className={`rounded p-1.5 transition-colors ${
+                      voiceState === "command-listening"
+                        ? "text-red-400 animate-pulse"
+                        : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]"
+                    }`}
+                  >
+                    <svg className="h-4 w-4" fill={voiceState === "command-listening" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                    </svg>
+                  </button>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"

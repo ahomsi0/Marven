@@ -114,6 +114,7 @@ interface ChatLayoutProps {
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
+  onAgentVoiceClick?: () => void;
   onOpenSettings: () => void;
   folders: ConversationFolder[];
   onCreateFolder: () => void;
@@ -223,6 +224,7 @@ export function ChatLayout({
   onSelectTab,
   onCloseTab,
   onReorderTabs,
+  onAgentVoiceClick,
   onOpenSettings,
   folders,
   onCreateFolder,
@@ -430,6 +432,7 @@ export function ChatLayout({
               onSaveMCPServers={onSaveMCPServers}
               attachments={agentAttachments}
               onAttachmentsChange={onAgentAttachmentsChange}
+              onAgentVoiceClick={onAgentVoiceClick}
             />
           ) : (
             <>

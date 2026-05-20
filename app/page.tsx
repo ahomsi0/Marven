@@ -887,7 +887,13 @@ export default function Home() {
       stopSpeaking();
       setIsSpeakingNow(false);
     },
-    (text) => setInput(text),
+    (text) => {
+      if (activeMode === "agent") {
+        setAgentInput(text);
+      } else {
+        setInput(text);
+      }
+    },
   );
 
   // ── Menubar helper: auto-trigger listening when opened via ?listen=1 ────────
@@ -1365,8 +1371,12 @@ export default function Home() {
 
   // ── Voice command ref ──────────────────────────────────────────────────────
   sendVoiceCommandRef.current = (text: string) => {
-    if (!text || isLoading) return;
-    sendMessage(text);
+    if (!text) return;
+    if (activeMode === "agent" && !agentStreamIsRunning) {
+      agentStreamSend(text);
+    } else if (activeMode === "chat" && !isLoading) {
+      sendMessage(text);
+    }
   };
 
   // ─── Conversation management ───────────────────────────────────────────────
@@ -1647,6 +1657,7 @@ export default function Home() {
         onInputChange={setInput}
         onSend={() => sendMessage(input.trim())}
         onVoiceClick={startManualListen}
+        onAgentVoiceClick={startManualListen}
         onProviderChange={setProvider}
         onModelChange={handleModelChange}
         onToggleWakeWord={toggleWakeWord}

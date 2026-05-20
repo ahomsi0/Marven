@@ -254,6 +254,7 @@ export function SettingsModal({
   // Default to "local" so first-time users get an offline-capable experience
   // without needing to plug in a Groq API key first.
   const [sttProvider, setSttProvider] = useState<SttProviderId>("local");
+  const [customWakeWord, setCustomWakeWord] = useState<string>("");
   const [localModel, setLocalModel] = useState<LocalModelId>("whisper-tiny");
   const [modelStatus, setModelStatus] = useState<string | null>(null);
   const [modelLoading, setModelLoading] = useState(false);
@@ -293,6 +294,7 @@ export function SettingsModal({
       const validModels: LocalModelId[] = ["whisper-tiny", "whisper-base", "distil-tiny"];
       if (validModels.includes(s.voiceLocalModel)) setLocalModel(s.voiceLocalModel);
       else setLocalModel("whisper-tiny");
+      setCustomWakeWord(s.customWakeWord ?? "");
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
@@ -396,6 +398,13 @@ export function SettingsModal({
       const current = await electron.getSettings();
       await electron.saveSettings({ ...current, voiceLocalModel: choice });
     }
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+  }
+
+  async function handleCustomWakeWordBlur() {
+    if (!electron) return;
+    const current = await electron.getSettings();
+    await electron.saveSettings({ ...current, customWakeWord: customWakeWord.trim() });
     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
   }
 
@@ -770,6 +779,22 @@ export function SettingsModal({
                   Requires a Groq API key in Integrations → API Keys. Audio is sent to Groq Whisper.
                 </p>
               )}
+              <div className="mt-4 flex items-center justify-between py-2">
+                <div>
+                  <p className="text-[12px] text-[var(--m-text)]">Custom wake word</p>
+                  <p className="text-[11px] text-[var(--m-text-faint)]">
+                    Phrase to trigger voice in addition to &quot;Hey Marven&quot; (leave blank to use default only)
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  value={customWakeWord}
+                  onChange={(e) => setCustomWakeWord(e.target.value)}
+                  onBlur={handleCustomWakeWordBlur}
+                  placeholder="e.g. Hey Assistant"
+                  className="ml-4 w-44 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
+                />
+              </div>
             </div>
 
             {/* Format on save toggle */}

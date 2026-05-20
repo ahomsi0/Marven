@@ -275,6 +275,7 @@ interface AgentWorkspaceProps {
   onSaveMCPServers: (servers: MCPServer[]) => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
+  onAgentVoiceClick?: () => void;
 }
 
 export function AgentWorkspace({
@@ -333,6 +334,7 @@ export function AgentWorkspace({
   onSaveMCPServers,
   attachments,
   onAttachmentsChange,
+  onAgentVoiceClick,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1028,6 +1030,9 @@ export function AgentWorkspace({
                   onApproveToolCall={onApproveToolCall}
                   attachments={attachments}
                   onAttachmentsChange={onAttachmentsChange}
+                  isVoiceSupported={isVoiceSupported}
+                  voiceState={voiceState}
+                  onVoiceClick={onAgentVoiceClick}
                 />
               </div>
             </>
