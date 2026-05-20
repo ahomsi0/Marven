@@ -17,6 +17,9 @@ import {
 
 type SttProviderId = "local" | "groq";
 type LocalModelId = "whisper-tiny" | "whisper-base" | "distil-tiny";
+type ProviderId =
+  | "groq" | "openai" | "anthropic" | "nim" | "openrouter"
+  | "ollama" | "lmstudio" | "llamaserver";
 
 const LOCAL_MODEL_OPTIONS: Array<{ id: LocalModelId; label: string; hint: string }> = [
   { id: "whisper-tiny", label: "Whisper Tiny.en",      hint: "Default • ~145 MB • Fastest download" },
@@ -355,6 +358,22 @@ export function SettingsModal({
   const [mcpError, setMcpError] = useState("");
   const [mcpLoading, setMcpLoading] = useState<string | null>(null);
 
+  // AI Backends state
+  const [enabledProviders, setEnabledProviders] = useState<Record<ProviderId, boolean>>({
+    groq: true, openai: true, ollama: true,
+    anthropic: false, nim: false, openrouter: false,
+    lmstudio: false, llamaserver: false,
+  });
+  const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
+  const [llamaServerUrl, setLlamaServerUrl] = useState("http://localhost:8080");
+  const persistedLmStudioUrlRef = useRef("http://localhost:1234");
+  const persistedLlamaServerUrlRef = useRef("http://localhost:8080");
+  const [backendStatus, setBackendStatus] = useState<Record<string, "live" | "down" | "checking">>({
+    ollama: "checking", lmstudio: "checking", llamaserver: "checking",
+  });
+  const backendSaveInFlightRef = useRef(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
+
   useEffect(() => {
     if (activePage !== "connectors") return;
     const fetchStatus = () => {
@@ -372,20 +391,30 @@ export function SettingsModal({
 
   useEffect(() => {
     if (activePage !== "ai-backends") return;
+    const controller = new AbortController();
     const localProviders = ["ollama", "lmstudio", "llamaserver"] as const;
-    localProviders.forEach(async (p) => {
-      setBackendStatus((prev) => ({ ...prev, [p]: "checking" }));
-      try {
-        const res = await fetch(`/api/models?provider=${p}`);
-        const data = await res.json();
-        setBackendStatus((prev) => ({
-          ...prev,
-          [p]: data.models && data.models.length > 0 ? "live" : "down",
-        }));
-      } catch {
-        setBackendStatus((prev) => ({ ...prev, [p]: "down" }));
-      }
-    });
+    localProviders.forEach((p) =>
+      setBackendStatus((prev) => ({ ...prev, [p]: "checking" }))
+    );
+    Promise.all(
+      localProviders.map(async (p) => {
+        try {
+          const res = await fetch(`/api/models?provider=${p}`, {
+            signal: controller.signal,
+          });
+          const data = await res.json();
+          setBackendStatus((prev) => ({
+            ...prev,
+            [p]: data.models && data.models.length > 0 ? "live" : "down",
+          }));
+        } catch (err) {
+          if ((err as Error).name !== "AbortError") {
+            setBackendStatus((prev) => ({ ...prev, [p]: "down" }));
+          }
+        }
+      })
+    );
+    return () => controller.abort();
   }, [activePage]);
 
   // Add shortcut form state
@@ -399,20 +428,6 @@ export function SettingsModal({
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editError, setEditError] = useState("");
 
-  // AI Backends state
-  const [enabledProviders, setEnabledProviders] = useState<Record<string, boolean>>({
-    groq: true, openai: true, ollama: true,
-    anthropic: false, nim: false, openrouter: false,
-    lmstudio: false, llamaserver: false,
-  });
-  const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
-  const [llamaServerUrl, setLlamaServerUrl] = useState("http://localhost:8080");
-  const persistedLmStudioUrlRef = useRef("http://localhost:1234");
-  const persistedLlamaServerUrlRef = useRef("http://localhost:8080");
-  const [backendStatus, setBackendStatus] = useState<Record<string, "live" | "down" | "checking">>({
-    ollama: "checking", lmstudio: "checking", llamaserver: "checking",
-  });
-
   // Keyboard bindings state
   const [kbOverrides, setKbOverrides] = useState<Record<string, string>>({});
   const [capturingId, setCapturingId] = useState<string | null>(null);
@@ -421,9 +436,14 @@ export function SettingsModal({
   }, []);
 
   async function saveBackendSettings(patch: Record<string, unknown>) {
-    if (!electron) return;
-    const current = await electron.getSettings();
-    await electron.saveSettings({ ...current, ...patch });
+    if (!electron || backendSaveInFlightRef.current) return;
+    backendSaveInFlightRef.current = true;
+    try {
+      const current = await electron.getSettings();
+      await electron.saveSettings({ ...current, ...patch });
+    } finally {
+      backendSaveInFlightRef.current = false;
+    }
   }
 
   async function handleSaveKeys() {
@@ -1088,31 +1108,36 @@ export function SettingsModal({
                   </button>
                 </div>
                 {hasUrl && (
-                  <input
-                    type="text"
-                    value={id === "lmstudio" ? lmStudioUrl : llamaServerUrl}
-                    onChange={(e) => {
-                      if (id === "lmstudio") setLmStudioUrl(e.target.value);
-                      else setLlamaServerUrl(e.target.value);
-                    }}
-                    onBlur={async (e) => {
-                      const val = e.target.value.trim();
-                      try {
-                        new URL(val);
-                        const key = id === "lmstudio" ? "lmStudioUrl" : "llamaServerUrl";
-                        await saveBackendSettings({ [key]: val });
-                        // Update persisted ref on success
-                        if (id === "lmstudio") persistedLmStudioUrlRef.current = val;
-                        else persistedLlamaServerUrlRef.current = val;
-                      } catch {
-                        // Revert to last persisted value
-                        if (id === "lmstudio") setLmStudioUrl(persistedLmStudioUrlRef.current);
-                        else setLlamaServerUrl(persistedLlamaServerUrlRef.current);
-                      }
-                    }}
-                    className="ml-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
-                    spellCheck={false}
-                  />
+                  <>
+                    <input
+                      type="text"
+                      value={id === "lmstudio" ? lmStudioUrl : llamaServerUrl}
+                      onChange={(e) => {
+                        if (id === "lmstudio") setLmStudioUrl(e.target.value);
+                        else setLlamaServerUrl(e.target.value);
+                      }}
+                      onBlur={async (e) => {
+                        const val = e.target.value.trim();
+                        try {
+                          new URL(val);
+                          setUrlError(null);
+                          const key = id === "lmstudio" ? "lmStudioUrl" : "llamaServerUrl";
+                          await saveBackendSettings({ [key]: val });
+                          if (id === "lmstudio") persistedLmStudioUrlRef.current = val;
+                          else persistedLlamaServerUrlRef.current = val;
+                        } catch {
+                          setUrlError("Invalid URL — must start with http:// or https://");
+                          if (id === "lmstudio") setLmStudioUrl(persistedLmStudioUrlRef.current);
+                          else setLlamaServerUrl(persistedLlamaServerUrlRef.current);
+                        }
+                      }}
+                      className="ml-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
+                      spellCheck={false}
+                    />
+                    {urlError && (
+                      <p className="ml-11 mt-0.5 text-[10px] text-[#e06c75]">{urlError}</p>
+                    )}
+                  </>
                 )}
               </div>
             ))}
