@@ -7,6 +7,7 @@ import type {
   Conversation,
   ConversationFolder,
   ConversationMode,
+  DocAttachment,
   Message as ChatMessage,
   OllamaModel,
   TokenUsage,
@@ -94,6 +95,8 @@ interface ChatLayoutProps {
   onSaveMCPServers: (servers: MCPServer[]) => void;
   chatAttachments: ImageAttachment[];
   onAttachmentsChange: (attachments: ImageAttachment[]) => void;
+  chatDocs?: DocAttachment[];
+  onChatDocsChange?: (docs: DocAttachment[]) => void;
   agentAttachments?: ImageAttachment[];
   onAgentAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   onSlashCommand: (cmd: string) => void;
@@ -202,6 +205,8 @@ export function ChatLayout({
   onSaveMCPServers,
   chatAttachments,
   onAttachmentsChange,
+  chatDocs,
+  onChatDocsChange,
   agentAttachments,
   onAgentAttachmentsChange,
   onSlashCommand,
@@ -482,6 +487,8 @@ export function ChatLayout({
                     lastHeard={lastHeard}
                     attachments={chatAttachments}
                     onAttachmentsChange={onAttachmentsChange}
+                    docs={chatDocs}
+                    onDocsChange={onChatDocsChange}
                     promptTemplates={promptTemplates}
                     onChange={onInputChange}
                     onSend={onSend}

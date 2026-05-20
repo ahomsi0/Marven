@@ -2,7 +2,7 @@
 
 import { KeyboardEvent, useEffect, useRef, useState, Fragment } from "react";
 import type { VoiceState } from "@/hooks/useVoice";
-import type { AIProvider, ImageAttachment, PromptTemplate } from "@/types";
+import type { AIProvider, DocAttachment, ImageAttachment, PromptTemplate } from "@/types";
 import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
 import { GroupedModelDropdown } from "@/app/components/marven/GroupedModelDropdown";
 import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
@@ -35,6 +35,8 @@ interface InputBarProps {
   onToggleWakeWord: () => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
+  docs?: DocAttachment[];
+  onDocsChange?: (docs: DocAttachment[]) => void;
   promptTemplates?: PromptTemplate[];
 }
 
@@ -62,10 +64,14 @@ export function InputBar({
   onToggleWakeWord,
   attachments,
   onAttachmentsChange,
+  docs,
+  onDocsChange,
   promptTemplates,
 }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
+  const [docUploading, setDocUploading] = useState(false);
   const isListening = voiceState === "command-listening";
 
   const menuOpen = value.startsWith("/") && !value.includes(" ");
@@ -107,6 +113,37 @@ export function InputBar({
     onAttachmentsChange?.([...(attachments ?? []), ...newAttachments]);
   }
 
+  async function addDocFiles(files: FileList | File[]) {
+    const docFiles = Array.from(files).filter(
+      (f) =>
+        f.type === "application/pdf" ||
+        f.type ===
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    if (!docFiles.length) return;
+    setDocUploading(true);
+    try {
+      const results = await Promise.all(
+        docFiles.map(async (file) => {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/chat/parse-document", {
+            method: "POST",
+            body: fd,
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const { text } = await res.json();
+          return { name: file.name, text, mimeType: file.type } as DocAttachment;
+        })
+      );
+      onDocsChange?.([...(docs ?? []), ...results]);
+    } catch {
+      // silently ignore parse errors
+    } finally {
+      setDocUploading(false);
+    }
+  }
+
   function selectCommand(cmd: string) {
     if (cmd.startsWith("/template:")) {
       const trigger = cmd.slice("/template:".length);
@@ -129,7 +166,7 @@ export function InputBar({
       if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) { const cmd = "command" in sel ? sel.command : `/template:${sel.trigger}`; selectCommand(cmd); } return; }
       if (event.key === "Escape") { event.preventDefault(); onChange(""); return; }
     }
-    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (value.trim() || (attachments && attachments.length > 0)) onSend(); }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (value.trim() || (attachments && attachments.length > 0) || (docs && docs.length > 0)) onSend(); }
   }
 
   return (
@@ -139,6 +176,7 @@ export function InputBar({
       onDrop={async (e) => {
         e.preventDefault();
         await addFiles(e.dataTransfer.files);
+        await addDocFiles(e.dataTransfer.files);
       }}
     >
       {menuOpen && (
@@ -160,6 +198,17 @@ export function InputBar({
           className="hidden"
           onChange={async (e) => {
             if (e.target.files) await addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={docFileInputRef}
+          type="file"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple
+          className="hidden"
+          onChange={async (e) => {
+            if (e.target.files) await addDocFiles(e.target.files);
             e.target.value = "";
           }}
         />
@@ -187,6 +236,33 @@ export function InputBar({
               </div>
             ))}
           </div>
+        )}
+
+        {/* Doc chip strip */}
+        {docs && docs.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-3 pt-2">
+            {docs.map((doc, i) => (
+              <div
+                key={`${doc.name}-${i}`}
+                className="flex max-w-[180px] items-center gap-1.5 rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1"
+              >
+                <svg className="h-3.5 w-3.5 shrink-0 text-[#d19a66]/80" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                </svg>
+                <span className="truncate text-[11px] text-[var(--m-text-muted)]">{doc.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onDocsChange?.(docs.filter((_, j) => j !== i))}
+                  className="ml-auto shrink-0 text-[var(--m-text-faint)] hover:text-red-400/80"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {docUploading && (
+          <div className="px-3 pt-2 text-[11px] text-[var(--m-text-faint)]">Extracting text…</div>
         )}
 
         {/* Input row */}
@@ -225,6 +301,18 @@ export function InputBar({
             </svg>
           </button>
 
+          <button
+            type="button"
+            onClick={() => docFileInputRef.current?.click()}
+            title="Attach PDF or DOCX"
+            disabled={isLoading || docUploading}
+            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)] disabled:opacity-30"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+            </svg>
+          </button>
+
           {isVoiceSupported && (
             <button
               type="button"
@@ -249,7 +337,7 @@ export function InputBar({
           <button
             type="button"
             onClick={onSend}
-            disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0))}
+            disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
             className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">

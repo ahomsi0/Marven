@@ -2,6 +2,12 @@ export type MessageRole = "user" | "assistant";
 export type AIProvider = "groq" | "ollama" | "nim" | "openrouter" | "openai" | "anthropic";
 export type ConversationMode = "chat" | "agent";
 
+export interface DocAttachment {
+  name: string;
+  text: string;      // extracted full text
+  mimeType: string;  // "application/pdf" or docx MIME
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -9,6 +15,7 @@ export interface Message {
   timestamp: Date;
   isStreaming?: boolean;
   attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
 }
 
 export interface ImageAttachment {
@@ -42,6 +49,7 @@ export interface HistoryMessage {
   role: MessageRole;
   content: string;
   attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
 }
 
 export interface ChatRequest {

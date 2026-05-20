@@ -4,6 +4,7 @@ import packageJson from "@/package.json";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type {
   AIProvider,
+  DocAttachment,
   Message,
   ChatRequest,
   ChatResponse,
@@ -208,6 +209,9 @@ export default function Home() {
 
   // ─── Chat image attachments (cleared after each send) ──────────────────────
   const [chatAttachments, setChatAttachments] = useState<ImageAttachment[]>([]);
+
+  // ─── Chat doc attachments (cleared after each send) ────────────────────────
+  const [chatDocs, setChatDocs] = useState<DocAttachment[]>([]);
 
   // ─── Agent image attachments (cleared after each send) ─────────────────────
   const [agentAttachments, setAgentAttachments] = useState<ImageAttachment[]>([]);
@@ -1129,10 +1133,23 @@ export default function Home() {
 
     const convId = ensureActiveConversation(text);
     autoRenameConversation(convId, text);
+
+    // Build prompt with doc text appended (for API), but display original input
+    const promptWithDocs =
+      chatDocs.length > 0
+        ? `${text}\n\n${chatDocs
+            .map((d) => `---\n[Document: ${d.name}]\n${d.text}\n---`)
+            .join("\n\n")}`
+        : text;
+
     const userMsg = createMessage("user", text);
     if (chatAttachments.length > 0) {
       userMsg.attachments = [...chatAttachments];
       setChatAttachments([]);
+    }
+    if (chatDocs.length > 0) {
+      userMsg.docs = [...chatDocs];
+      setChatDocs([]);
     }
     addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -1199,7 +1216,8 @@ export default function Home() {
 
       // ── Server-side commands (macOS system calls) ────────────────────────
       try {
-        const history = buildHistory([...messages, userMsg]);
+        const historyMsgs = [...messages, { ...userMsg, content: promptWithDocs }];
+        const history = buildHistory(historyMsgs);
         const body: ChatRequest = {
           messages: history,
           model: selectedModel,
@@ -1235,7 +1253,7 @@ export default function Home() {
 
     // 4. AI response (streaming for Groq, non-streaming for Ollama)
     try {
-      const history = buildHistory([...messages, userMsg]);
+      const history = buildHistory([...messages, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
         messages: history,
         model: selectedModel,
@@ -1649,6 +1667,8 @@ export default function Home() {
         onSaveMCPServers={handleSaveMCPServers}
         chatAttachments={chatAttachments}
         onAttachmentsChange={setChatAttachments}
+        chatDocs={chatDocs}
+        onChatDocsChange={setChatDocs}
         agentAttachments={agentAttachments}
         onAgentAttachmentsChange={setAgentAttachments}
         onSlashCommand={handleSlashCommand}
