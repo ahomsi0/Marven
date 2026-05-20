@@ -8,6 +8,12 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
+import {
+  DEFAULT_KEYBINDINGS,
+  loadKeybindings,
+  saveKeybindings,
+  resetKeybindings,
+} from "@/lib/keybindings";
 
 type SttProviderId = "local" | "groq";
 type LocalModelId = "whisper-tiny" | "whisper-base" | "distil-tiny";
@@ -35,6 +41,7 @@ type SettingsPage =
   | "connectors"
   | "browser"
   | "shortcuts"
+  | "keyboard"
   | "templates"
   | "commands"
   | "about";
@@ -119,6 +126,7 @@ const SECTIONS: Array<{
     heading: "Customization",
     items: [
       { id: "shortcuts", label: "Shortcuts" },
+      { id: "keyboard", label: "Keyboard" },
       { id: "templates", label: "Templates" },
     ],
   },
@@ -152,6 +160,10 @@ const PAGE_META: Record<SettingsPage, { title: string; description: string }> = 
   shortcuts: {
     title: "Shortcuts",
     description: "Custom trigger phrases that open URLs via voice or text.",
+  },
+  keyboard: {
+    title: "Keyboard",
+    description: "Keyboard shortcut reference and customization.",
   },
   templates: {
     title: "Templates",
@@ -353,6 +365,13 @@ export function SettingsModal({
   const [editState, setEditState] = useState<EditState | null>(null);
   const [editError, setEditError] = useState("");
 
+  // Keyboard bindings state
+  const [kbOverrides, setKbOverrides] = useState<Record<string, string>>({});
+  const [capturingId, setCapturingId] = useState<string | null>(null);
+  useEffect(() => {
+    setKbOverrides(loadKeybindings());
+  }, []);
+
   async function handleSaveKeys() {
     if (!electron) return;
     // Merge with current settings so we don't clobber unrelated keys like
@@ -525,6 +544,19 @@ export function SettingsModal({
 
   const inputClass =
     "w-full rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[13px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-text-faint)] transition-colors";
+
+  function formatKeyEvent(e: KeyboardEvent): string {
+    const isMac = navigator.platform.toLowerCase().includes("mac");
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push(isMac ? "⌃" : "Ctrl+");
+    if (e.altKey) parts.push(isMac ? "⌥" : "Alt+");
+    if (e.shiftKey) parts.push(isMac ? "⇧" : "Shift+");
+    if (e.metaKey) parts.push(isMac ? "⌘" : "Win+");
+    const key =
+      e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    parts.push(key);
+    return parts.join("");
+  }
 
   // ─── Page content renderer ───────────────────────────────────────────────
 
@@ -1463,6 +1495,107 @@ export function SettingsModal({
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Keyboard ── */}
+        {activePage === "keyboard" && (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-[var(--m-border-subtle)] overflow-hidden">
+              {DEFAULT_KEYBINDINGS.map((kb, i) => {
+                const current = kbOverrides[kb.id] ?? kb.defaultKey;
+                const isOverridden = Boolean(kbOverrides[kb.id]);
+                const isCapturing = capturingId === kb.id;
+
+                return (
+                  <div
+                    key={kb.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 ${
+                      i < DEFAULT_KEYBINDINGS.length - 1
+                        ? "border-b border-[var(--m-border-subtle)]"
+                        : ""
+                    }`}
+                  >
+                    {/* Label */}
+                    <span className="min-w-[160px] flex-1 text-[12px] text-[var(--m-text)]">
+                      {kb.label}
+                    </span>
+
+                    {/* Binding chip */}
+                    <button
+                      type="button"
+                      title={isCapturing ? "Press a key combo, or Escape to cancel" : "Click to reassign"}
+                      onClick={() => {
+                        if (isCapturing) {
+                          setCapturingId(null);
+                          return;
+                        }
+                        setCapturingId(kb.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!isCapturing) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.key === "Escape") {
+                          setCapturingId(null);
+                          return;
+                        }
+                        // Ignore bare modifier presses
+                        if (
+                          ["Control", "Meta", "Alt", "Shift"].includes(e.key)
+                        ) {
+                          return;
+                        }
+                        const combo = formatKeyEvent(e.nativeEvent);
+                        const next = { ...kbOverrides, [kb.id]: combo };
+                        setKbOverrides(next);
+                        saveKeybindings(next);
+                        setCapturingId(null);
+                      }}
+                      className={`inline-flex min-w-[64px] items-center justify-center rounded border px-1.5 py-0.5 font-mono text-[11px] transition-all ${
+                        isCapturing
+                          ? "animate-pulse border-[#d19a66]/60 bg-[#d19a66]/10 text-[#d19a66] outline-none"
+                          : "border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-text)] hover:border-[#d19a66]/40 hover:bg-[#d19a66]/5"
+                      }`}
+                    >
+                      {isCapturing ? "Press key…" : current}
+                    </button>
+
+                    {/* Reset button — only shown when overridden */}
+                    <div className="w-[48px] flex items-center justify-end">
+                      {isOverridden && (
+                        <button
+                          type="button"
+                          title="Reset to default"
+                          onClick={() => {
+                            const next = { ...kbOverrides };
+                            delete next[kb.id];
+                            setKbOverrides(next);
+                            saveKeybindings(next);
+                            if (capturingId === kb.id) setCapturingId(null);
+                          }}
+                          className="rounded px-1.5 py-0.5 text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                resetKeybindings();
+                setKbOverrides({});
+                setCapturingId(null);
+              }}
+              className="w-full rounded-lg border border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+            >
+              Reset all shortcuts
+            </button>
           </div>
         )}
 
