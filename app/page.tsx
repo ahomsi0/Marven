@@ -10,6 +10,7 @@ import type {
   OllamaModel,
   TokenUsage,
   Conversation,
+  ConversationFolder,
   CustomShortcut,
   HistoryMessage,
   AgentResponse,
@@ -37,6 +38,9 @@ import {
   deleteConversation,
   loadCustomShortcuts,
   saveCustomShortcuts,
+  loadConversationFolders,
+  saveConversationFolders,
+  createConversationFolder,
 } from "@/lib/storage";
 import {
   loadProfile,
@@ -173,6 +177,7 @@ export default function Home() {
 
   // ─── Conversations ──────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [folders, setFolders] = useState<ConversationFolder[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
@@ -289,6 +294,7 @@ export default function Home() {
     if (convs.length > 0) {
       setActiveConversationId(convs[convs.length - 1].id);
     }
+    setFolders(loadConversationFolders());
     setCustomShortcuts(loadCustomShortcuts());
 
     const profile = loadProfile();
@@ -1386,6 +1392,45 @@ export default function Home() {
     upsertConversation(id, (conv) => ({ ...conv, pinned }));
   }
 
+  const handleCreateFolder = useCallback(() => {
+    const folder = createConversationFolder("New folder");
+    setFolders((prev) => {
+      const next = [...prev, folder];
+      saveConversationFolders(next);
+      return next;
+    });
+  }, []);
+
+  const handleRenameFolder = useCallback((id: string, name: string) => {
+    setFolders((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, name: name.trim() || f.name } : f));
+      saveConversationFolders(next);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteFolder = useCallback((id: string) => {
+    // Remove folderId from conversations belonging to this folder
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.folderId === id ? { ...c, folderId: null } : c));
+      saveConversations(next);
+      return next;
+    });
+    setFolders((prev) => {
+      const next = prev.filter((f) => f.id !== id);
+      saveConversationFolders(next);
+      return next;
+    });
+  }, []);
+
+  const handleMoveConversation = useCallback((convId: string, folderId: string | null) => {
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.id === convId ? { ...c, folderId } : c));
+      saveConversations(next);
+      return next;
+    });
+  }, []);
+
   function handleSystemPromptChange(value: string) {
     if (!activeConversationId) return;
     upsertConversation(activeConversationId, (conv) => ({
@@ -1630,6 +1675,11 @@ export default function Home() {
         onCloseTab={closeTab}
         onReorderTabs={reorderTabs}
         onOpenSettings={openSettingsTab}
+        folders={folders}
+        onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
+        onDeleteFolder={handleDeleteFolder}
+        onMoveConversation={handleMoveConversation}
       />
       {profileLoaded && userProfile === null && (
         <SetupModal onSave={handleProfileSave} />

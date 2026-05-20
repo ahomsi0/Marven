@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Conversation } from "@/types";
+import { useState, useEffect } from "react";
+import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { filterConversations } from "@/lib/chatHelpers";
 
@@ -15,6 +15,11 @@ interface SidebarProps {
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
   onOpenSettings: () => void;
+  folders: ConversationFolder[];
+  onCreateFolder: () => void;
+  onRenameFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  onMoveConversation: (convId: string, folderId: string | null) => void;
 }
 
 function relativeDate(isoString: string): string {
@@ -48,12 +53,14 @@ function ConvRow({
   onSelect,
   onDelete,
   onPin,
+  onContextMenu,
 }: {
   conv: Conversation;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onPin: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
     // role=button + keyboard handler instead of a real <button>, because the
@@ -68,6 +75,7 @@ function ConvRow({
           : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
       }`}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -120,6 +128,76 @@ function ConvRow({
   );
 }
 
+function FolderRow({
+  folder,
+  isCollapsed,
+  isRenaming,
+  renameValue,
+  onToggle,
+  onContextMenu,
+  onRenameChange,
+  onRenameCommit,
+  onRenameCancel,
+  children,
+}: {
+  folder: ConversationFolder;
+  isCollapsed: boolean;
+  isRenaming: boolean;
+  renameValue: string;
+  onToggle: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onRenameChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-1">
+      <div
+        className="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+        onClick={onToggle}
+        onContextMenu={onContextMenu}
+      >
+        <svg
+          className={`h-3 w-3 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+        </svg>
+        <svg className="h-3 w-3 shrink-0 text-[#d19a66]/60" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V10.5a2.25 2.25 0 0 0-2.25-2.25H17.69Z" />
+        </svg>
+        {isRenaming ? (
+          <input
+            autoFocus
+            className="flex-1 bg-transparent text-[12px] text-[var(--m-text)] outline-none"
+            value={renameValue}
+            onChange={onRenameChange}
+            onBlur={onRenameCommit}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") onRenameCommit();
+              if (e.key === "Escape") onRenameCancel();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="flex-1 truncate text-[12px]">{folder.name}</span>
+        )}
+      </div>
+      {!isCollapsed && <div className="pl-3">{children}</div>}
+    </div>
+  );
+}
+
+type ContextMenuState =
+  | { kind: "conversation"; convId: string; x: number; y: number }
+  | { kind: "folder"; folderId: string; x: number; y: number }
+  | null;
+
 export function Sidebar({
   conversations,
   activeConversationId,
@@ -130,15 +208,30 @@ export function Sidebar({
   onDeleteConversation,
   onPinConversation,
   onOpenSettings,
+  folders,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveConversation,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [contextMenu]);
 
   const pinnedConvs = conversations.filter((c) => c.pinned);
   const unpinnedConvs = conversations.filter((c) => !c.pinned);
 
   const isSearching = searchQuery.trim().length > 0;
   const searchResults = isSearching ? filterConversations(conversations, searchQuery) : null;
-  const grouped = isSearching ? null : groupConversations(unpinnedConvs);
 
   return (
     <aside
@@ -220,6 +313,7 @@ export function Sidebar({
                     onSelect={() => onSelectConversation(conv.id)}
                     onDelete={() => onDeleteConversation(conv.id)}
                     onPin={() => onPinConversation(conv.id, !conv.pinned)}
+                    onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                   />
                 ))
               )
@@ -240,35 +334,157 @@ export function Sidebar({
                         onSelect={() => onSelectConversation(conv.id)}
                         onDelete={() => onDeleteConversation(conv.id)}
                         onPin={() => onPinConversation(conv.id, false)}
+                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                       />
                     ))}
                   </div>
                 )}
 
-                {/* Date-grouped unpinned conversations */}
-                {grouped!.length === 0 && pinnedConvs.length === 0 && (
-                  <p className="px-2 text-[12px] text-[var(--m-text-faint)]">No conversations yet</p>
-                )}
-                {grouped!.map(({ label, items }) => (
-                  <div key={label} className="mb-3">
-                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">
-                      {label}
-                    </p>
-                    {items.map((conv) => (
-                      <ConvRow
-                        key={conv.id}
-                        conv={conv}
-                        isActive={conv.id === activeConversationId}
-                        onSelect={() => onSelectConversation(conv.id)}
-                        onDelete={() => onDeleteConversation(conv.id)}
-                        onPin={() => onPinConversation(conv.id, true)}
-                      />
-                    ))}
-                  </div>
-                ))}
+                {/* Folders */}
+                {folders.map((folder) => {
+                  const folderConvs = unpinnedConvs.filter((c) => c.folderId === folder.id);
+                  const isCollapsed = collapsedFolders.has(folder.id);
+                  return (
+                    <FolderRow
+                      key={folder.id}
+                      folder={folder}
+                      isCollapsed={isCollapsed}
+                      isRenaming={renamingFolderId === folder.id}
+                      renameValue={renameValue}
+                      onToggle={() =>
+                        setCollapsedFolders((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
+                          return next;
+                        })
+                      }
+                      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "folder", folderId: folder.id, x: e.clientX, y: e.clientY }); }}
+                      onRenameChange={(e) => setRenameValue(e.target.value)}
+                      onRenameCommit={() => { onRenameFolder(folder.id, renameValue); setRenamingFolderId(null); }}
+                      onRenameCancel={() => setRenamingFolderId(null)}
+                    >
+                      {folderConvs.map((conv) => (
+                        <ConvRow
+                          key={conv.id}
+                          conv={conv}
+                          isActive={conv.id === activeConversationId}
+                          onSelect={() => onSelectConversation(conv.id)}
+                          onDelete={() => onDeleteConversation(conv.id)}
+                          onPin={() => onPinConversation(conv.id, !conv.pinned)}
+                          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
+                        />
+                      ))}
+                      {folderConvs.length === 0 && (
+                        <p className="px-2 py-1 text-[11px] text-[var(--m-text-faint)]">Empty</p>
+                      )}
+                    </FolderRow>
+                  );
+                })}
+                {/* "+ New folder" small button */}
+                <button
+                  type="button"
+                  onClick={onCreateFolder}
+                  className="mb-2 mt-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)]"
+                >
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  New folder
+                </button>
+
+                {/* Unfiled date-grouped */}
+                {(() => {
+                  const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId);
+                  const unfiledGrouped = groupConversations(unfiledConvs);
+                  return (
+                    <>
+                      {unfiledGrouped.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
+                        <p className="px-2 text-[12px] text-[var(--m-text-faint)]">No conversations yet</p>
+                      )}
+                      {unfiledGrouped.map(({ label, items }) => (
+                        <div key={label} className="mb-3">
+                          <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">{label}</p>
+                          {items.map((conv) => (
+                            <ConvRow
+                              key={conv.id}
+                              conv={conv}
+                              isActive={conv.id === activeConversationId}
+                              onSelect={() => onSelectConversation(conv.id)}
+                              onDelete={() => onDeleteConversation(conv.id)}
+                              onPin={() => onPinConversation(conv.id, true)}
+                              onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </>
             )}
           </div>
+
+          {/* Context menu */}
+          {contextMenu && (
+            <div
+              className="fixed z-50 min-w-[160px] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] py-1 shadow-xl"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {contextMenu.kind === "conversation" && (
+                <>
+                  <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">Move to</p>
+                  {folders.map((folder) => (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                      onClick={() => { onMoveConversation(contextMenu.convId, folder.id); setContextMenu(null); }}
+                    >
+                      {folder.name}
+                    </button>
+                  ))}
+                  {(() => {
+                    const conv = conversations.find((c) => c.id === contextMenu.convId);
+                    return conv?.folderId ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                        onClick={() => { onMoveConversation(contextMenu.convId, null); setContextMenu(null); }}
+                      >
+                        Remove from folder
+                      </button>
+                    ) : null;
+                  })()}
+                  {folders.length === 0 && (
+                    <p className="px-3 py-1.5 text-[11px] text-[var(--m-text-faint)]">No folders yet</p>
+                  )}
+                </>
+              )}
+              {contextMenu.kind === "folder" && (
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                    onClick={() => {
+                      const folder = folders.find((f) => f.id === contextMenu.folderId);
+                      if (folder) { setRenamingFolderId(folder.id); setRenameValue(folder.name); }
+                      setContextMenu(null);
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400/80 hover:bg-[var(--m-surface-2)] hover:text-red-400"
+                    onClick={() => { onDeleteFolder(contextMenu.folderId); setContextMenu(null); }}
+                  >
+                    Delete folder
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Settings gear at bottom */}
           <div className="border-t border-[var(--m-border-subtle)] px-3 py-3">

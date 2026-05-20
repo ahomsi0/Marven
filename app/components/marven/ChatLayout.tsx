@@ -5,6 +5,7 @@ import type {
   AIProvider,
   AgentMessage,
   Conversation,
+  ConversationFolder,
   ConversationMode,
   Message as ChatMessage,
   OllamaModel,
@@ -109,6 +110,11 @@ interface ChatLayoutProps {
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
   onOpenSettings: () => void;
+  folders: ConversationFolder[];
+  onCreateFolder: () => void;
+  onRenameFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  onMoveConversation: (convId: string, folderId: string | null) => void;
 }
 
 function TypingRow() {
@@ -209,6 +215,11 @@ export function ChatLayout({
   onCloseTab,
   onReorderTabs,
   onOpenSettings,
+  folders,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveConversation,
 }: ChatLayoutProps) {
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -289,6 +300,11 @@ export function ChatLayout({
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
           onOpenSettings={() => setSettingsOpen(true)}
+          folders={folders}
+          onCreateFolder={onCreateFolder}
+          onRenameFolder={onRenameFolder}
+          onDeleteFolder={onDeleteFolder}
+          onMoveConversation={onMoveConversation}
         />
 
         {/* Main panel */}
