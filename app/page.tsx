@@ -27,7 +27,7 @@ import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import { speak, stopSpeaking } from "@/lib/speak";
-import { getRequireWriteApproval } from "@/lib/agentSettings";
+import { getRequireWriteApproval, getPlanMode, setPlanMode } from "@/lib/agentSettings";
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
 import { parseCommand } from "@/lib/commandParser";
@@ -261,6 +261,8 @@ export default function Home() {
   // need to save/restore.
   const lastAgentConvIdRef = useRef<string | null>(null);
 
+  const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
+
   const {
     messages: agentStreamMessages,
     isRunning: agentStreamIsRunning,
@@ -280,6 +282,7 @@ export default function Home() {
     memory: memories.length > 0 ? memories.map((m) => `- ${m}`).join("\n") : undefined,
     mcpServers,
     requireWriteApproval: getRequireWriteApproval(),
+    planMode,
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
@@ -1462,6 +1465,11 @@ export default function Home() {
     });
   }, []);
 
+  const handlePlanModeChange = useCallback((v: boolean) => {
+    setPlanMode(v);
+    setPlanModeState(v);
+  }, []);
+
   function handleSystemPromptChange(value: string) {
     if (!activeConversationId) return;
     upsertConversation(activeConversationId, (conv) => ({
@@ -1658,6 +1666,8 @@ export default function Home() {
         onSend={() => sendMessage(input.trim())}
         onVoiceClick={startManualListen}
         onAgentVoiceClick={startManualListen}
+        agentPlanMode={planMode}
+        onAgentPlanModeChange={handlePlanModeChange}
         onProviderChange={setProvider}
         onModelChange={handleModelChange}
         onToggleWakeWord={toggleWakeWord}

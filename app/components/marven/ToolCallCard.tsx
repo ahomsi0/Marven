@@ -167,7 +167,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
             isActive ? "text-[#d19a66]" : isDone ? "text-[var(--m-text-muted)]" : isError ? "text-red-400" : "text-[var(--m-text-muted)]"
           }`}
         >
-          {tool}
+          {tool === "__plan__" ? "Plan" : tool}
         </span>
         <span className="min-w-0 flex-1 truncate">
           <ArgSummary tool={tool} args={args} />
@@ -212,7 +212,40 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         <DiffBlock diff={toolCall.preview.diff} />
       )}
 
-      {toolCall.status === "awaiting_approval" && (
+      {toolCall.tool === "__plan__" && toolCall.status === "awaiting_approval" && (
+        <div className="border-t border-[var(--m-border-subtle)] px-3 py-3 space-y-3">
+          <p className="text-[11px] font-medium text-[var(--m-text-muted)] uppercase tracking-wider">Agent&apos;s plan</p>
+          <pre className="whitespace-pre-wrap rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-3 py-2 text-[11px] text-[var(--m-text-muted)] font-sans leading-relaxed">
+            {String(toolCall.args?.plan ?? "")}
+          </pre>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onApprove?.(toolCall.callId, true); }}
+              className="rounded-md border border-green-700/40 bg-green-950/30 px-4 py-1.5 text-[11px] text-green-400 transition-colors hover:border-green-600/60 hover:bg-green-950/50"
+            >
+              Execute plan
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onApprove?.(toolCall.callId, false); }}
+              className="rounded-md border border-[var(--m-border)] px-4 py-1.5 text-[11px] text-[var(--m-text-muted)] transition-colors hover:border-red-700/40 hover:text-red-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toolCall.tool === "__plan__" && (toolCall.status === "done" || toolCall.status === "rejected") && (
+        <div className="border-t border-[var(--m-border-subtle)] px-3 py-2">
+          <p className="text-[11px] text-[var(--m-text-faint)]">
+            {toolCall.status === "done" ? "Plan approved — executing" : "Plan cancelled"}
+          </p>
+        </div>
+      )}
+
+      {toolCall.tool !== "__plan__" && toolCall.status === "awaiting_approval" && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
           <span className="text-[10px] text-[#d19a66]">
             {approvalSecondsLeft > 0
@@ -238,7 +271,7 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         </div>
       )}
 
-      {expanded && canExpand && (
+      {expanded && canExpand && toolCall.tool !== "__plan__" && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 space-y-2">
           <div>
             <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Input</p>

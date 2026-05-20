@@ -8,9 +8,10 @@ interface UseAgentStreamOptions {
   memory?: string;
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
+  planMode?: boolean;
 }
 
-export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval }: UseAgentStreamOptions) {
+export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval, planMode }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, attachments: attachments ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: planMode ?? false, attachments: attachments ?? [] }),
         signal: abort.signal,
       });
 
@@ -147,14 +148,30 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
           }
 
           if (event.type === "pending_approval") {
-            updateLastAssistant((msg) => ({
-              ...msg,
-              toolCalls: (msg.toolCalls ?? []).map((tc) =>
-                tc.callId === event.callId
-                  ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
-                  : tc
-              ),
-            }));
+            if (event.tool === "__plan__") {
+              // Plan approval: no prior tool_call was emitted — insert the entry now
+              updateLastAssistant((msg) => ({
+                ...msg,
+                toolCalls: [
+                  ...(msg.toolCalls ?? []),
+                  {
+                    callId: event.callId,
+                    tool: "__plan__",
+                    args: event.args,
+                    status: "awaiting_approval" as const,
+                  },
+                ],
+              }));
+            } else {
+              updateLastAssistant((msg) => ({
+                ...msg,
+                toolCalls: (msg.toolCalls ?? []).map((tc) =>
+                  tc.callId === event.callId
+                    ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
+                    : tc
+                ),
+              }));
+            }
           }
 
           if (event.type === "checkpoint") {
@@ -186,7 +203,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers]);
+  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers, planMode]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();

@@ -19,6 +19,7 @@ interface StreamRequestBody {
   memory?: string;
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
+  planMode?: boolean;
   attachments?: ImageAttachment[];
 }
 
@@ -113,6 +114,7 @@ export async function POST(req: NextRequest) {
           providerStep,
           onProgress,
           requireWriteApproval: body.requireWriteApproval ?? false,
+          planMode: body.planMode ?? false,
           executeToolFn: async (name, args, root, onProgressCb) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);

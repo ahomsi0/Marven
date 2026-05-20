@@ -59,6 +59,7 @@ interface LoopOptions {
   executeToolFn?: typeof executeTool;
   onProgress?: (callId: string, chunk: string) => void;
   requireWriteApproval?: boolean;
+  planMode?: boolean;
   /** Internal test-only: when set, resolves every registerApproval with this value instead of blocking. */
   _testApprovalResult?: boolean;
 }
@@ -74,6 +75,17 @@ export async function* runAgentLoop(
     ...options.messages,
   ];
 
+  if (options.planMode) {
+    const sysIdx = history.findIndex(m => m.role === "system");
+    if (sysIdx >= 0) {
+      const sysMsg = history[sysIdx] as { role: "system"; content: string };
+      history[sysIdx] = {
+        role: "system",
+        content: sysMsg.content + "\n\nPLAN MODE: Before making any tool calls, you MUST first output a numbered plan of ALL the steps you will take to complete the task. Format:\n\nPLAN:\n1. [First step]\n2. [Second step]\n...\n\nDo NOT use any tools in this first response — only output the plan. You will be prompted to execute after the plan is approved.",
+      };
+    }
+  }
+
   clearCheckpoints();
 
   async function ensureCheckpoint(absPath: string): Promise<void> {
@@ -87,6 +99,7 @@ export async function* runAgentLoop(
   }
 
   let toolCallCount = 0;
+  let planApprovalDone = false;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     let result: ProviderStepResult;
@@ -113,6 +126,45 @@ export async function* runAgentLoop(
       }
       yield { type: "error", code: "provider_error", message: err.message };
       return;
+    }
+
+    if (options.planMode && !planApprovalDone && result.type === "text") {
+      planApprovalDone = true;
+      const planText = result.content;
+      const callId = `plan-${Date.now()}`;
+
+      // Emit the text delta for display
+      yield { type: "text_delta", delta: planText };
+
+      // Add to history as assistant message
+      history.push({ role: "assistant", content: planText });
+
+      // Register approval gate for the plan
+      yield {
+        type: "pending_approval",
+        callId,
+        tool: "__plan__",
+        args: { plan: planText },
+      };
+
+      const approved = options._testApprovalResult !== undefined
+        ? options._testApprovalResult
+        : await registerApproval(callId, 120_000);
+
+      if (!approved) {
+        yield {
+          type: "tool_result",
+          callId,
+          output: "Plan cancelled by user.",
+          truncated: false,
+        };
+        yield { type: "done", toolCallCount: 0 };
+        return;
+      }
+
+      // Inject approval confirmation and continue execution
+      history.push({ role: "user", content: "Plan approved. Please proceed with execution step by step." });
+      continue;
     }
 
     if (result.type === "text") {

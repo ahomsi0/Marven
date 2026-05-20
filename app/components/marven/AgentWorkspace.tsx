@@ -276,6 +276,8 @@ interface AgentWorkspaceProps {
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   onAgentVoiceClick?: () => void;
+  planMode?: boolean;
+  onPlanModeChange?: (v: boolean) => void;
 }
 
 export function AgentWorkspace({
@@ -335,6 +337,8 @@ export function AgentWorkspace({
   attachments,
   onAttachmentsChange,
   onAgentVoiceClick,
+  planMode,
+  onPlanModeChange,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1033,6 +1037,8 @@ export function AgentWorkspace({
                   isVoiceSupported={isVoiceSupported}
                   voiceState={voiceState}
                   onVoiceClick={onAgentVoiceClick}
+                  planMode={planMode}
+                  onPlanModeChange={onPlanModeChange}
                 />
               </div>
             </>
