@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
+import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
@@ -273,6 +273,8 @@ interface AgentWorkspaceProps {
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   onSaveTemplates: (templates: PromptTemplate[]) => void;
   onSaveMCPServers: (servers: MCPServer[]) => void;
+  attachments?: ImageAttachment[];
+  onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
 }
 
 export function AgentWorkspace({
@@ -329,6 +331,8 @@ export function AgentWorkspace({
   onSaveShortcuts,
   onSaveTemplates,
   onSaveMCPServers,
+  attachments,
+  onAttachmentsChange,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1022,6 +1026,8 @@ export function AgentWorkspace({
                   onStop={onStop}
                   onSlashCommand={onSlashCommand}
                   onApproveToolCall={onApproveToolCall}
+                  attachments={attachments}
+                  onAttachmentsChange={onAttachmentsChange}
                 />
               </div>
             </>

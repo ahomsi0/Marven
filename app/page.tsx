@@ -209,6 +209,9 @@ export default function Home() {
   // ─── Chat image attachments (cleared after each send) ──────────────────────
   const [chatAttachments, setChatAttachments] = useState<ImageAttachment[]>([]);
 
+  // ─── Agent image attachments (cleared after each send) ─────────────────────
+  const [agentAttachments, setAgentAttachments] = useState<ImageAttachment[]>([]);
+
   // ─── User profile + memories (declared early for useAgentStream) ─────────
   const [userProfile, setUserProfile] = useState<UserProfile | null | undefined>(undefined);
   const [memories, setMemories] = useState<string[]>([]);
@@ -1605,7 +1608,7 @@ export default function Home() {
         onSelectRecent={openWorkspaceFolder}
         appVersion={packageJson.version}
         onAgentInputChange={setAgentInput}
-        onAgentSend={() => { agentStreamSend(agentInput); setAgentInput(""); }}
+        onAgentSend={() => { agentStreamSend(agentInput, agentAttachments); setAgentInput(""); setAgentAttachments([]); }}
         onAgentStop={agentStreamStop}
         onAgentSlashCommand={(cmd) => {
           switch (cmd) {
@@ -1646,6 +1649,8 @@ export default function Home() {
         onSaveMCPServers={handleSaveMCPServers}
         chatAttachments={chatAttachments}
         onAttachmentsChange={setChatAttachments}
+        agentAttachments={agentAttachments}
+        onAgentAttachmentsChange={setAgentAttachments}
         onSlashCommand={handleSlashCommand}
         onSelectAgentFile={(path) => {
           openFileTab(path);

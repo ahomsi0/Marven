@@ -8,7 +8,7 @@ import { openaiAgentStep } from "@/lib/agent/openai";
 import { anthropicAgentStep } from "@/lib/agent/anthropic";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agent/tools";
 import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
-import type { AIProvider, InternalMessage, HistoryMessage, MCPServer } from "@/types";
+import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment } from "@/types";
 
 interface StreamRequestBody {
   prompt?: string;
@@ -19,6 +19,7 @@ interface StreamRequestBody {
   memory?: string;
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
+  attachments?: ImageAttachment[];
 }
 
 export async function POST(req: NextRequest) {
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     role: m.role as "user" | "assistant",
     content: m.content,
   }));
-  history.push({ role: "user", content: prompt });
+  history.push({ role: "user", content: prompt, ...(body.attachments?.length ? { attachments: body.attachments } : {}) });
 
   const providerStep =
     provider === "groq"       ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => groqAgentStep(msgs, tools, model) :

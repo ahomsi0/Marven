@@ -94,6 +94,8 @@ interface ChatLayoutProps {
   onSaveMCPServers: (servers: MCPServer[]) => void;
   chatAttachments: ImageAttachment[];
   onAttachmentsChange: (attachments: ImageAttachment[]) => void;
+  agentAttachments?: ImageAttachment[];
+  onAgentAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   onSlashCommand: (cmd: string) => void;
   onSelectAgentFile: (path: string) => void;
   onAgentFileContentChange: (value: string) => void;
@@ -200,6 +202,8 @@ export function ChatLayout({
   onSaveMCPServers,
   chatAttachments,
   onAttachmentsChange,
+  agentAttachments,
+  onAgentAttachmentsChange,
   onSlashCommand,
   onSelectAgentFile,
   onAgentFileContentChange,
@@ -419,6 +423,8 @@ export function ChatLayout({
               onSaveShortcuts={onSaveShortcuts}
               onSaveTemplates={onSaveTemplates}
               onSaveMCPServers={onSaveMCPServers}
+              attachments={agentAttachments}
+              onAttachmentsChange={onAgentAttachmentsChange}
             />
           ) : (
             <>

@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { buildOpenAIContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 function toOpenAIMessages(
@@ -13,7 +14,10 @@ function toOpenAIMessages(
       return { role: "system", content: m.content };
     }
     if (m.role === "user") {
-      return { role: "user", content: m.content };
+      const content = m.attachments?.length
+        ? buildOpenAIContent(m.content, m.attachments)
+        : m.content;
+      return { role: "user", content } as OpenAI.Chat.ChatCompletionUserMessageParam;
     }
     if (m.role === "assistant") {
       return { role: "assistant", content: m.content };

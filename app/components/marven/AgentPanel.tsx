@@ -7,7 +7,7 @@ import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import { GroupedModelDropdown } from "./GroupedModelDropdown";
 import { UsageIndicator } from "./UsageIndicator";
-import type { AgentMessage, AIProvider, TokenUsage } from "@/types";
+import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment } from "@/types";
 
 interface AgentPanelProps {
   messages: AgentMessage[];
@@ -24,6 +24,22 @@ interface AgentPanelProps {
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
   onApproveToolCall?: (callId: string, accept: boolean) => void;
+  attachments?: ImageAttachment[];
+  onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
+}
+
+function fileToAttachment(file: File): Promise<ImageAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve({
+        base64: reader.result as string,
+        mimeType: file.type as ImageAttachment["mimeType"],
+        name: file.name,
+      });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export function AgentPanel({
@@ -41,9 +57,12 @@ export function AgentPanel({
   onStop,
   onSlashCommand,
   onApproveToolCall,
+  attachments,
+  onAttachmentsChange,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const menuOpen = input.startsWith("/") && !input.includes(" ");
   const query = menuOpen ? input.slice(1) : "";
@@ -65,6 +84,13 @@ export function AgentPanel({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isRunning]);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const newAttachments = await Promise.all(files.filter((f) => f.type.startsWith("image/")).map(fileToAttachment));
+    if (newAttachments.length > 0) onAttachmentsChange?.([...(attachments ?? []), ...newAttachments]);
+    e.target.value = "";
+  }
 
   function selectCommand(cmd: string) {
     onSlashCommand(cmd);
@@ -99,6 +125,13 @@ export function AgentPanel({
             <div key={msg.id}>
               {msg.role === "user" ? (
                 <div className="rounded-md bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[12px] text-[var(--m-text)]">
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {msg.attachments.map((att, i) => (
+                        <img key={i} src={att.base64} alt={att.name} className="max-h-32 max-w-[200px] rounded border border-[var(--m-border)] object-cover" />
+                      ))}
+                    </div>
+                  )}
                   {msg.content}
                 </div>
               ) : (
@@ -160,50 +193,107 @@ export function AgentPanel({
       </div>
 
       <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 pt-3 pb-2">
-        <div className="relative flex items-end gap-2">
-          {menuOpen && (
-            <SlashMenu
-              query={query}
-              activeIndex={menuActiveIdx}
-              commands={AGENT_SLASH_COMMANDS}
-              onSelect={selectCommand}
-              onSetActive={setMenuActiveIdx}
+        <div
+          className="relative flex flex-col rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)]"
+          onDrop={async (e) => {
+            e.preventDefault();
+            const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+            const newAttachments = await Promise.all(files.map(fileToAttachment));
+            if (newAttachments.length > 0) onAttachmentsChange?.([...(attachments ?? []), ...newAttachments]);
+          }}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          {attachments && attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 border-b border-[var(--m-border-subtle)] px-3 py-2">
+              {attachments.map((att, i) => (
+                <div key={i} className="group relative h-14 w-14 overflow-hidden rounded-md border border-[var(--m-border)]">
+                  <img src={att.base64} alt={att.name} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentsChange?.(attachments.filter((_, j) => j !== i))}
+                    className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="relative flex items-end gap-2 px-0 py-0">
+            {menuOpen && (
+              <SlashMenu
+                query={query}
+                activeIndex={menuActiveIdx}
+                commands={AGENT_SLASH_COMMANDS}
+                onSelect={selectCommand}
+                onSetActive={setMenuActiveIdx}
+              />
+            )}
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={async (e) => {
+                const items = Array.from(e.clipboardData.items).filter((item) => item.type.startsWith("image/"));
+                if (items.length === 0) return;
+                e.preventDefault();
+                const files = items.map((item) => item.getAsFile()).filter(Boolean) as File[];
+                const newAttachments = await Promise.all(files.map(fileToAttachment));
+                onAttachmentsChange?.([...(attachments ?? []), ...newAttachments]);
+              }}
+              disabled={isRunning}
+              rows={1}
+              placeholder="Describe task... or / for commands"
+              className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
+              style={{ maxHeight: 120, overflowY: "auto" }}
             />
-          )}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isRunning}
-            rows={1}
-            placeholder="Describe task... or / for commands"
-            className="min-h-[36px] flex-1 resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none transition-colors focus:border-[var(--m-text-faint)] disabled:opacity-40"
-            style={{ maxHeight: 120, overflowY: "auto" }}
-          />
-          {isRunning ? (
-            <button
-              type="button"
-              onClick={onStop}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-red-700/50 bg-red-950/30 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/50"
-              title="Stop agent"
-            >
-              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="5" y="5" width="14" height="14" rx="2" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={!input.trim()}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-              </svg>
-            </button>
-          )}
+            <div className="flex shrink-0 items-center gap-1 pr-1.5 pb-1.5">
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Attach image"
+                  className="rounded p-1.5 text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                </button>
+              </>
+              {isRunning ? (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="flex h-9 w-9 items-center justify-center rounded-md border border-red-700/50 bg-red-950/30 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/50"
+                  title="Stop agent"
+                >
+                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSend}
+                  disabled={!input.trim()}
+                  className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Status line — below input, like Claude Code */}

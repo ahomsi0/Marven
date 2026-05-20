@@ -162,7 +162,7 @@ export interface ToolDefinition {
 /** A message inside the running tool-use loop (not the same as HistoryMessage) */
 export type InternalMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string; attachments?: ImageAttachment[] }
   | { role: "assistant"; content: string }
   | { role: "assistant_tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { role: "tool_result"; callId: string; content: string };
@@ -198,6 +198,7 @@ export interface AgentMessage {
   role: "user" | "assistant";
   content: string;
   toolCalls?: ToolCallState[];
+  attachments?: ImageAttachment[];
 }
 
 /** Per-tool-call UI state rendered by ToolCallCard */

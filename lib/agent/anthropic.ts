@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { buildAnthropicContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 /** Extract system prompt and convert remaining messages to Anthropic format. */
@@ -17,7 +18,10 @@ function toAnthropicMessages(messages: InternalMessage[]): {
     .filter((m) => m.role !== "system")
     .flatMap((m): Anthropic.MessageParam[] => {
       if (m.role === "user") {
-        return [{ role: "user" as const, content: m.content }];
+        const content = m.attachments?.length
+          ? buildAnthropicContent(m.content, m.attachments)
+          : m.content;
+        return [{ role: "user" as const, content: content as Anthropic.MessageParam["content"] }];
       }
       if (m.role === "assistant") {
         return [{ role: "assistant" as const, content: m.content }];

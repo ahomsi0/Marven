@@ -1,5 +1,6 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { stripAttachments } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const OLLAMA_BASE = "http://localhost:11434";
@@ -103,7 +104,12 @@ export function isToolCapableModel(model: string): boolean {
 function toOllamaMessages(messages: InternalMessage[]): Record<string, unknown>[] {
   return messages.flatMap((m) => {
     if (m.role === "system") return [{ role: "system", content: m.content }];
-    if (m.role === "user") return [{ role: "user", content: m.content }];
+    if (m.role === "user") {
+      const content = m.attachments?.length
+        ? stripAttachments(m.content, m.attachments)
+        : m.content;
+      return [{ role: "user", content }];
+    }
     if (m.role === "assistant") return [{ role: "assistant", content: m.content }];
     if (m.role === "assistant_tool_call") {
       return [{

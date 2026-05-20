@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer } from "@/types";
+import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment } from "@/types";
 
 interface UseAgentStreamOptions {
   provider: AIProvider;
@@ -33,7 +33,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       return next;
     });
 
-  const send = useCallback(async (prompt: string) => {
+  const send = useCallback(async (prompt: string, attachments?: ImageAttachment[]) => {
     if (!prompt.trim() || isRunning) return;
     setError(null);
     setIsRunning(true);
@@ -42,6 +42,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       id: `u-${Date.now()}`,
       role: "user",
       content: prompt,
+      ...(attachments?.length ? { attachments } : {}),
     };
     addMessage(userMsg);
 
@@ -69,7 +70,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, attachments: attachments ?? [] }),
         signal: abort.signal,
       });
 

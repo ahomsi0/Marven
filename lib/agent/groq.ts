@@ -1,4 +1,5 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
+import { buildOpenAIContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -13,7 +14,12 @@ function toGroqMessages(
 ): Array<Record<string, unknown>> {
   return messages.flatMap((m) => {
     if (m.role === "system") return [{ role: "system", content: m.content }];
-    if (m.role === "user") return [{ role: "user", content: m.content }];
+    if (m.role === "user") {
+      const content = m.attachments?.length
+        ? buildOpenAIContent(m.content, m.attachments)
+        : m.content;
+      return [{ role: "user", content }];
+    }
     if (m.role === "assistant") return [{ role: "assistant", content: m.content }];
     if (m.role === "assistant_tool_call") {
       return [{
