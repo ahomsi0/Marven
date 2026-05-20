@@ -298,8 +298,7 @@ export function Sidebar({
 
   function handleFolderDrop(e: React.DragEvent, folderId: string) {
     e.preventDefault();
-    const convId = e.dataTransfer.getData("text/plain");
-    if (convId) onMoveConversation(convId, folderId);
+    if (draggingConvId) onMoveConversation(draggingConvId, folderId);
     setDraggingConvId(null);
     setDragOverTarget(null);
   }
@@ -319,8 +318,7 @@ export function Sidebar({
 
   function handleUnfiledDrop(e: React.DragEvent) {
     e.preventDefault();
-    const convId = e.dataTransfer.getData("text/plain");
-    if (convId) onMoveConversation(convId, null);
+    if (draggingConvId) onMoveConversation(draggingConvId, null);
     setDraggingConvId(null);
     setDragOverTarget(null);
   }
