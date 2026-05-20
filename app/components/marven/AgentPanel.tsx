@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
-import { GroupedModelDropdown } from "./GroupedModelDropdown";
+import { ModelSelector } from "./ModelSelector";
 import { UsageIndicator } from "./UsageIndicator";
 import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment } from "@/types";
 
@@ -354,10 +354,9 @@ export function AgentPanel({
 
         {/* Status line — below input, like Claude Code */}
         <div className="mt-1.5 flex items-center gap-0.5 pl-0.5">
-          <GroupedModelDropdown
+          <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
-            direction="up"
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
           />

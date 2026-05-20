@@ -4,7 +4,7 @@ import { KeyboardEvent, useEffect, useRef, useState, Fragment } from "react";
 import type { VoiceState } from "@/hooks/useVoice";
 import type { AIProvider, DocAttachment, ImageAttachment, PromptTemplate } from "@/types";
 import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
-import { GroupedModelDropdown } from "@/app/components/marven/GroupedModelDropdown";
+import { ModelSelector } from "@/app/components/marven/ModelSelector";
 import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
 import type { TokenUsage } from "@/types";
 
@@ -348,7 +348,7 @@ export function InputBar({
 
         {/* Bottom strip */}
         <div className="flex items-center border-t border-[var(--m-border-subtle)] px-3 py-1">
-          <GroupedModelDropdown
+          <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
             onProviderChange={onProviderChange}
