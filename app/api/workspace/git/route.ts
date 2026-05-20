@@ -1,59 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGit } from "@/lib/agent/git";
-
-export interface GitFileEntry {
-  path: string;
-  statusCode: string;
-}
-
-export interface ParsedStatus {
-  branch: string;
-  staged: GitFileEntry[];
-  unstaged: GitFileEntry[];
-  untracked: GitFileEntry[];
-}
-
-/**
- * Parse git status --porcelain output into staged/unstaged/untracked buckets.
- *
- * Format: "XY filename\n" where X=index (staged) status, Y=worktree (unstaged) status.
- * Renamed files appear as "R old -> new" but porcelain v1 uses "R  old\x00new" in v2;
- * in v1 they appear as "R  new -> old" with a space — we handle both forms.
- */
-export function parsePorcelain(output: string): Omit<ParsedStatus, "branch"> {
-  const staged: GitFileEntry[] = [];
-  const unstaged: GitFileEntry[] = [];
-  const untracked: GitFileEntry[] = [];
-
-  const lines = output.split("\n");
-  for (const raw of lines) {
-    if (raw.length < 2) continue;
-    const X = raw[0];
-    const Y = raw[1];
-    // Everything after the "XY " prefix is the path (may include " -> " for renames)
-    const rest = raw.slice(3);
-    // For renames/copies, porcelain v1 uses "R  dest -> src" — take the dest (left part)
-    const path = rest.includes(" -> ") ? rest.split(" -> ")[0].trim() : rest.trim();
-    if (!path) continue;
-
-    if (X === "?" && Y === "?") {
-      untracked.push({ path, statusCode: "?" });
-      continue;
-    }
-
-    // Index (staged) change
-    if (X !== " " && X !== "?") {
-      staged.push({ path, statusCode: X });
-    }
-
-    // Worktree (unstaged) change
-    if (Y !== " " && Y !== "?") {
-      unstaged.push({ path, statusCode: Y });
-    }
-  }
-
-  return { staged, unstaged, untracked };
-}
+import { parsePorcelain } from "@/lib/gitUtils";
 
 export async function POST(req: NextRequest) {
   let body: Record<string, string>;

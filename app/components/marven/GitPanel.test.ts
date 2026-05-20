@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePorcelain } from "@/app/api/workspace/git/route";
+import { parsePorcelain } from "@/lib/gitUtils";
 
 describe("parsePorcelain", () => {
   it("parses a staged modified file (M in index)", () => {
