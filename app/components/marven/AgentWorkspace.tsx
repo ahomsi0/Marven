@@ -8,6 +8,7 @@ import { EditorPanel } from "./EditorPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { GlobalSearchPanel } from "./GlobalSearchPanel";
+import { GitPanel } from "./GitPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
@@ -373,6 +374,12 @@ export function AgentWorkspace({
   // Global search (⌘⇧F) — when true, the left column shows GlobalSearchPanel
   // instead of FileExplorer. We restore the explorer when closed.
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Git panel (⌥G) — when true, the left column shows GitPanel instead of
+  // FileExplorer/GlobalSearch. Persisted across sessions.
+  const [showGitPanel, setShowGitPanel] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("marven-show-git") === "true";
+  });
   // Handle on the underlying CodeEditor so we can scroll to a specific line
   // after the global-search panel triggers a file open.
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
@@ -395,6 +402,12 @@ export function AgentWorkspace({
       localStorage.setItem("marven-show-right", String(showRightPanel));
     }
   }, [showRightPanel]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("marven-show-git", String(showGitPanel));
+    }
+  }, [showGitPanel]);
 
   const [memory, setMemory] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -592,6 +605,13 @@ export function AgentWorkspace({
         return next;
       });
     },
+    onGitPanel: () => {
+      setShowGitPanel((v) => {
+        const next = !v;
+        if (next) setShowExplorer(true);
+        return next;
+      });
+    },
   });
 
   // ── Global-search match-click flow ───────────────────────────────────────
@@ -650,6 +670,7 @@ export function AgentWorkspace({
     { label: "Find and Replace", keybinding: "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Search files", keybinding: "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
     { label: "Inline AI Edit (selection)", keybinding: "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
+    { label: "Git panel", keybinding: "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
@@ -715,6 +736,32 @@ export function AgentWorkspace({
             <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" />
           </svg>
         </button>
+
+        {/* Git panel toggle */}
+        {workspaceRoot && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowGitPanel((v) => {
+                const next = !v;
+                if (next) setShowExplorer(true);
+                return next;
+              });
+            }}
+            className={`rounded p-1 transition-colors ${
+              showGitPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
+            }`}
+            title={showGitPanel ? "Hide git panel" : "Show git panel (⌥G)"}
+          >
+            {/* Git branch icon: two-path fork */}
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <circle cx="6" cy="5" r="2" />
+              <circle cx="18" cy="5" r="2" />
+              <circle cx="6" cy="19" r="2" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M6 7c0 4 12 5 12-2" />
+            </svg>
+          </button>
+        )}
 
         {checkpoints.length > 0 && showRightPanel && (
           <button
@@ -882,6 +929,27 @@ export function AgentWorkspace({
                   },
                 },
                 {
+                  key: "git",
+                  label: "Git panel",
+                  hint: "⌥G",
+                  icon: (
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <circle cx="6" cy="5" r="2" />
+                      <circle cx="18" cy="5" r="2" />
+                      <circle cx="6" cy="19" r="2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M6 7c0 4 12 5 12-2" />
+                    </svg>
+                  ),
+                  disabled: !workspaceRoot,
+                  onClick: () => {
+                    setShowGitPanel((v) => {
+                      const next = !v;
+                      if (next) setShowExplorer(true);
+                      return next;
+                    });
+                  },
+                },
+                {
                   key: "tasks",
                   label: "Background tasks",
                   badge: isRunning,
@@ -926,7 +994,12 @@ export function AgentWorkspace({
               className="flex flex-col border-r border-[var(--m-border)]"
               style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
             >
-              {globalSearchOpen ? (
+              {showGitPanel && workspaceRoot ? (
+                <GitPanel
+                  workspaceRoot={workspaceRoot}
+                  onClose={() => setShowGitPanel(false)}
+                />
+              ) : globalSearchOpen ? (
                 <GlobalSearchPanel
                   onClose={() => setGlobalSearchOpen(false)}
                   onSelectMatch={handleSelectMatch}

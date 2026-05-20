@@ -21,6 +21,9 @@ export interface EditorShortcutsOptions {
   // ⌘⇧F global search across the workspace — fires even from inputs so users
   // can pop the panel open from anywhere.
   onGlobalSearch?: () => void;
+  // ⌥G — toggle the built-in git panel. Fires always so users can open it
+  // while typing in the commit textarea or elsewhere.
+  onGitPanel?: () => void;
   enabled?: boolean;
 }
 
@@ -44,6 +47,7 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindPrev,
     onInlineEdit,
     onGlobalSearch,
+    onGitPanel,
     enabled = true,
   } = opts;
 
@@ -195,6 +199,16 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
         }
       }
 
+      // ⌥G — Toggle git panel. Fires even from inputs so users can open the
+      // panel while typing in the commit textarea.
+      if (e.altKey && !mod && !shift && (e.key === "g" || e.key === "G")) {
+        if (onGitPanel) {
+          e.preventDefault();
+          onGitPanel();
+          return;
+        }
+      }
+
       // Skip remaining combos when focused in an input/textarea/contenteditable
       if (inInput) return;
     }
@@ -217,5 +231,6 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
     onFindPrev,
     onInlineEdit,
     onGlobalSearch,
+    onGitPanel,
   ]);
 }

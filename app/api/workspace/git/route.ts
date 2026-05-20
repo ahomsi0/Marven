@@ -1,0 +1,131 @@
+import { NextRequest, NextResponse } from "next/server";
+import { runGit } from "@/lib/agent/git";
+
+export interface GitFileEntry {
+  path: string;
+  statusCode: string;
+}
+
+export interface ParsedStatus {
+  branch: string;
+  staged: GitFileEntry[];
+  unstaged: GitFileEntry[];
+  untracked: GitFileEntry[];
+}
+
+/**
+ * Parse git status --porcelain output into staged/unstaged/untracked buckets.
+ *
+ * Format: "XY filename\n" where X=index (staged) status, Y=worktree (unstaged) status.
+ * Renamed files appear as "R old -> new" but porcelain v1 uses "R  old\x00new" in v2;
+ * in v1 they appear as "R  new -> old" with a space — we handle both forms.
+ */
+export function parsePorcelain(output: string): Omit<ParsedStatus, "branch"> {
+  const staged: GitFileEntry[] = [];
+  const unstaged: GitFileEntry[] = [];
+  const untracked: GitFileEntry[] = [];
+
+  const lines = output.split("\n");
+  for (const raw of lines) {
+    if (raw.length < 2) continue;
+    const X = raw[0];
+    const Y = raw[1];
+    // Everything after the "XY " prefix is the path (may include " -> " for renames)
+    const rest = raw.slice(3);
+    // For renames/copies, porcelain v1 uses "R  dest -> src" — take the dest (left part)
+    const path = rest.includes(" -> ") ? rest.split(" -> ")[0].trim() : rest.trim();
+    if (!path) continue;
+
+    if (X === "?" && Y === "?") {
+      untracked.push({ path, statusCode: "?" });
+      continue;
+    }
+
+    // Index (staged) change
+    if (X !== " " && X !== "?") {
+      staged.push({ path, statusCode: X });
+    }
+
+    // Worktree (unstaged) change
+    if (Y !== " " && Y !== "?") {
+      unstaged.push({ path, statusCode: Y });
+    }
+  }
+
+  return { staged, unstaged, untracked };
+}
+
+export async function POST(req: NextRequest) {
+  let body: Record<string, string>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { workspaceRoot, action } = body;
+  if (!workspaceRoot) {
+    return NextResponse.json({ error: "workspaceRoot required" }, { status: 400 });
+  }
+
+  try {
+    switch (action) {
+      case "status": {
+        const [porcelain, branch] = await Promise.all([
+          runGit(["status", "--porcelain"], workspaceRoot),
+          runGit(["branch", "--show-current"], workspaceRoot),
+        ]);
+        const { staged, unstaged, untracked } = parsePorcelain(porcelain);
+        return NextResponse.json({ branch: branch.trim(), staged, unstaged, untracked });
+      }
+
+      case "stage": {
+        const { path } = body;
+        if (!path) return NextResponse.json({ error: "path required" }, { status: 400 });
+        await runGit(["add", "--", path], workspaceRoot);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "unstage": {
+        const { path } = body;
+        if (!path) return NextResponse.json({ error: "path required" }, { status: 400 });
+        await runGit(["restore", "--staged", "--", path], workspaceRoot);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "stage_all": {
+        await runGit(["add", "-A"], workspaceRoot);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "commit": {
+        const { message } = body;
+        if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+        const output = await runGit(["commit", "-m", message], workspaceRoot);
+        return NextResponse.json({ ok: true, output });
+      }
+
+      case "push": {
+        const output = await runGit(["push"], workspaceRoot);
+        return NextResponse.json({ ok: true, output });
+      }
+
+      case "diff": {
+        const { path, staged: isStagedStr } = body;
+        if (!path) return NextResponse.json({ error: "path required" }, { status: 400 });
+        const isStaged = isStagedStr === "true";
+        const args = isStaged
+          ? ["diff", "--cached", "--", path]
+          : ["diff", "HEAD", "--", path];
+        const diff = await runGit(args, workspaceRoot);
+        return NextResponse.json({ diff });
+      }
+
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
