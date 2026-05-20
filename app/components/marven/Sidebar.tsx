@@ -75,7 +75,7 @@ function ConvRow({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`group relative flex w-full cursor-grab items-center rounded-md px-2 py-1.5 text-left transition-colors active:cursor-grabbing ${
+      className={`group relative flex w-full select-none items-center rounded-md px-2 py-1.5 text-left transition-colors ${
         isDragging
           ? "opacity-40"
           : isActive
