@@ -12,6 +12,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.6.1",
+    items: [
+      { tag: "fix", label: "AI Backends toggles now reflect in model selector immediately" },
+      { tag: "fix", label: "Model selector stays the same size across all tabs and states" },
+    ],
+  },
+  {
     version: "2.6.0",
     items: [
       { tag: "new", label: "LM Studio local backend support" },
