@@ -12,8 +12,9 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
-    version: "2.5.2",
+    version: "2.5.3",
     items: [
+      { tag: "new", label: "What's New card on first launch after update" },
       { tag: "new", label: "Midnight & Aurora themes" },
       { tag: "fix", label: "Voice no longer double-fires" },
       { tag: "fix", label: "STT audio fix for Groq" },
