@@ -246,3 +246,8 @@
 }
 .prose td { padding: 0.4em 0.75em; border: 1px solid rgba(255, 255, 255, 0.07); color: #c0c0c8; }
 .prose tr:nth-child(even) td { background: rgba(255, 255, 255, 0.025); }
+
+@keyframes whatsNewIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
