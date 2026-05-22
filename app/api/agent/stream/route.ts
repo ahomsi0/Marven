@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
           messages: history,
           tools: allTools,
           workspaceRoot,
-          memory: body.memory,
+          memory: body.memory,   // loop fallback only — systemPrompt already embeds memory
           systemPrompt,
           providerStep,
           onProgress,
