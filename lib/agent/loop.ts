@@ -12,12 +12,15 @@ import type { WritePreview } from "@/types";
 import { makeFullSystemPrompt } from "./systemPrompts";
 
 const MAX_ITERATIONS = 20;
+const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"] as const;
 
 /** Rough token estimate: 1 token ≈ 4 characters. */
 function estimateTokens(messages: InternalMessage[]): number {
   return messages.reduce((sum, m) => {
-    const raw = "content" in m ? m.content : JSON.stringify(m);
-    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    const text =
+      "content" in m && typeof m.content === "string"
+        ? m.content
+        : JSON.stringify(m);
     return sum + Math.ceil(text.length / 4);
   }, 0);
 }
@@ -80,7 +83,10 @@ export async function* runAgentLoop(
   let toolCallCount = 0;
   let retryCount = 0;
   let planApprovalDone = false;
-  /** Cumulative token count of trimmed-away output content (chars/4), for context-pruning decisions. */
+  // trimmedAwayTokens tracks how many tokens were in tool output that was cut by
+  // the 4000-char output cap before storage. Without this, a single 50KB output
+  // would only contribute ~1000 tokens to the estimate (4000 chars / 4), making
+  // context pruning never trigger for large-but-capped outputs.
   let trimmedAwayTokens = 0;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -131,7 +137,6 @@ export async function* runAgentLoop(
     if (result.type === "text") {
       // Retry on stall: when the model outputs text mid-task without a terminal phrase,
       // push a single recovery prompt and continue.
-      const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"];
       const lower = result.content.toLowerCase();
       const isTerminal = TERMINAL_PHRASES.some((p) => lower.includes(p));
 
@@ -285,9 +290,8 @@ export async function* runAgentLoop(
 
     history.push({ role: "tool_result", callId: result.callId, content: trimmed });
 
-    // Accumulate tokens that were trimmed away from raw output, so the context-pruning
-    // decision reflects the true size of content the model originally produced.
     if (truncated) {
+      // Account for the content that was cut before being stored in history
       trimmedAwayTokens += Math.ceil((output.length - 4_000) / 4);
     }
 
