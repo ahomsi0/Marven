@@ -258,7 +258,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers, planMode]);
+  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers, planMode, liteAgentMode]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
