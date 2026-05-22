@@ -42,4 +42,16 @@ describe("classifyTask", () => {
   it("classifies 'refactor the color utility' as standard (refactor is a complexity word)", () => {
     expect(classifyTask("refactor the color utility")).toBe("standard");
   });
+
+  it("does not treat 'frontend' as a signal for 'font'", () => {
+    expect(classifyTask("build a frontend component")).toBe("standard");
+  });
+
+  it("does not treat 'context' as a signal for 'text'", () => {
+    expect(classifyTask("fetch the context")).toBe("standard");
+  });
+
+  it("does not treat 'customize' as a signal for 'size'", () => {
+    expect(classifyTask("customize the enterprise theme")).toBe("standard");
+  });
 });
