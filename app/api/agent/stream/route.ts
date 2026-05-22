@@ -9,6 +9,11 @@ import { anthropicAgentStep } from "@/lib/agent/anthropic";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agent/tools";
 import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
 import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment } from "@/types";
+import { classifyTask, type AgentTier } from "@/lib/agent/taskClassifier";
+import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPrompts";
+
+const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
+const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
 
 interface StreamRequestBody {
   prompt?: string;
@@ -21,6 +26,7 @@ interface StreamRequestBody {
   requireWriteApproval?: boolean;
   planMode?: boolean;
   attachments?: ImageAttachment[];
+  liteAgentMode?: boolean; // true = force lite, false = force standard, undefined = auto
 }
 
 export async function POST(req: NextRequest) {
@@ -51,6 +57,29 @@ export async function POST(req: NextRequest) {
   }
 
   const provider = (body.provider ?? "groq") as AIProvider;
+
+  // ── Tier selection (Adaptive Agent Lite Mode) ─────────────────────────────
+  // Override rules:
+  //   liteAgentMode === true  → always "simple"
+  //   liteAgentMode === false → always "standard"
+  //   liteAgentMode === undefined (auto) → local: classifier result; cloud: "standard"
+  const isLocalProvider = (LOCAL_PROVIDERS as ReadonlyArray<string>).includes(provider);
+
+  let tier: AgentTier;
+  if (body.liteAgentMode === true) {
+    tier = "simple";
+  } else if (body.liteAgentMode === false) {
+    tier = "standard";
+  } else {
+    // auto
+    tier = isLocalProvider ? classifyTask(prompt) : "standard";
+  }
+
+  const systemPrompt =
+    tier === "simple"
+      ? makeLiteSystemPrompt(workspaceRoot, body.memory)
+      : makeFullSystemPrompt(workspaceRoot, body.memory);
+
   const model = body.model ?? (
     provider === "groq"      ? "llama-3.3-70b-versatile" :
     provider === "nim"       ? "mistralai/mistral-nemotron" :
@@ -75,7 +104,11 @@ export async function POST(req: NextRequest) {
 
   // Merge MCP tools from enabled servers
   const enabledMcpServers = (body.mcpServers ?? []).filter((s) => s.enabled);
-  const allTools = [...TOOL_DEFINITIONS];
+  const baseToolDefs =
+    tier === "simple"
+      ? TOOL_DEFINITIONS.filter((t) => (SIMPLE_TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
+      : [...TOOL_DEFINITIONS];
+  const allTools = [...baseToolDefs];
   const mcpToolOwners = new Map<string, string>(); // namespaced tool name → server id
 
   for (const server of enabledMcpServers) {
@@ -111,6 +144,7 @@ export async function POST(req: NextRequest) {
           tools: allTools,
           workspaceRoot,
           memory: body.memory,
+          systemPrompt,
           providerStep,
           onProgress,
           requireWriteApproval: body.requireWriteApproval ?? false,
