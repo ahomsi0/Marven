@@ -9,42 +9,17 @@ import { recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointS
 import { createPatch } from "diff";
 import { simulateApplyPatch } from "./applyPatch";
 import type { WritePreview } from "@/types";
+import { makeFullSystemPrompt } from "./systemPrompts";
 
 const MAX_ITERATIONS = 20;
 
-function makeSystemPrompt(workspaceRoot: string, memory?: string): string {
-  let base = `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
-
-CRITICAL — TOOL CALLING:
-You MUST invoke the appropriate tool to actually do work. NEVER describe a tool call as text — invoke the tool directly using the function-calling protocol.
-
-Failure patterns to AVOID:
-- Writing "I would call write_file with content..." instead of CALLING write_file
-- Returning the file contents in a markdown code block (e.g., \`\`\`html ... \`\`\`) instead of calling write_file with that content as the "content" argument
-- Saying "Here's the component:" followed by code, when the user asked you to add/create/build it
-- Saying "Run: npm start" instead of calling run_command({ command: "npm start" })
-- Listing a tool name like "list_files()" as text in your reply
-
-If the user asks you to create, add, build, write, modify, or fix a file: CALL write_file. The code goes inside the tool's "content" argument — not in your message text.
-If the user asks you to run, start, open, install, build (as a verb): CALL run_command.
-If the user asks about the project or its files: CALL list_files / read_file first.
-
-IMPORTANT RULES:
-- When the user mentions their project, files, or asks you to analyze/modify something, ALWAYS call list_files first to discover what exists — never ask the user for a file path you can find yourself.
-- Use read_file to inspect files before modifying them.
-- Use apply_patch for SMALL/MEDIUM EDITS to existing files. Each edit is a search/replace pair — only send the snippets that change, not the whole file. Prefer this over write_file whenever you're modifying a file that already exists; it's faster, cheaper, and less risky than rewriting the entire file. CRITICAL apply_patch rule: every 'search' string MUST be unique within the file. If the exact text appears more than once (e.g. "color: #fff;" in a CSS file), expand the search to include 1-2 surrounding lines to make it unique — e.g. "header {\n    background-color: #333;\n    color: #fff;". Never retry with the same ambiguous search string after a uniqueness error; always add context. For very small files (under ~60 lines) that you have already read in full, it is acceptable to use write_file to replace the entire content.
-- Use write_file to create NEW files or to fully replace a file's contents. The full file contents go in the "content" argument. Do NOT also echo the code in your reply.
-- Use run_command to install dependencies, run builds, start servers, etc. — invoke it, do not narrate it.
-- When a run_command output contains "Live URL:" or "SERVER READY", you MUST surface that exact URL back to the user as a clickable link (e.g., "Your site is live at http://localhost:3000"). Never tell the user "the port may vary" — the URL is in the tool output.
-- Use web_search to look up documentation, APIs, or current information.
-- Use fetch_url to read a specific webpage, README, or raw file from the internet.
-- Use remember to save important facts about the user's project or preferences for future sessions.
-- After your tools complete, be precise and concise in your final reply. Do not repeat what the tools already wrote.`;
-
-  if (memory && memory.trim()) {
-    base = `### Memory\n${memory.trim()}\n\n---\n\n` + base;
-  }
-  return base;
+/** Rough token estimate: 1 token ≈ 4 characters. */
+function estimateTokens(messages: InternalMessage[]): number {
+  return messages.reduce((sum, m) => {
+    const raw = "content" in m ? m.content : JSON.stringify(m);
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    return sum + Math.ceil(text.length / 4);
+  }, 0);
 }
 
 interface LoopOptions {
@@ -52,6 +27,7 @@ interface LoopOptions {
   tools: ToolDefinition[];
   workspaceRoot: string;
   memory?: string;
+  systemPrompt?: string;
   providerStep: (
     messages: InternalMessage[],
     tools: ToolDefinition[],
@@ -71,7 +47,10 @@ export async function* runAgentLoop(
   const exec = options.executeToolFn ?? executeTool;
 
   const history: InternalMessage[] = [
-    { role: "system", content: makeSystemPrompt(workspaceRoot, options.memory) },
+    {
+      role: "system",
+      content: options.systemPrompt ?? makeFullSystemPrompt(workspaceRoot, options.memory),
+    },
     ...options.messages,
   ];
 
@@ -99,7 +78,10 @@ export async function* runAgentLoop(
   }
 
   let toolCallCount = 0;
+  let retryCount = 0;
   let planApprovalDone = false;
+  /** Cumulative token count of trimmed-away output content (chars/4), for context-pruning decisions. */
+  let trimmedAwayTokens = 0;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     let result: ProviderStepResult;
@@ -147,6 +129,22 @@ export async function* runAgentLoop(
     }
 
     if (result.type === "text") {
+      // Retry on stall: when the model outputs text mid-task without a terminal phrase,
+      // push a single recovery prompt and continue.
+      const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"];
+      const lower = result.content.toLowerCase();
+      const isTerminal = TERMINAL_PHRASES.some((p) => lower.includes(p));
+
+      if (i > 0 && retryCount < 1 && !isTerminal) {
+        const toolNames = tools.map((t) => t.name).join(", ");
+        history.push({
+          role: "user",
+          content: `You must call a tool next. Do not describe what you will do — call the tool directly. Available tools: ${toolNames}.`,
+        });
+        retryCount++;
+        continue;
+      }
+
       yield { type: "text_delta", delta: result.content };
       yield { type: "done", toolCallCount };
       return;
@@ -286,6 +284,27 @@ export async function* runAgentLoop(
     };
 
     history.push({ role: "tool_result", callId: result.callId, content: trimmed });
+
+    // Accumulate tokens that were trimmed away from raw output, so the context-pruning
+    // decision reflects the true size of content the model originally produced.
+    if (truncated) {
+      trimmedAwayTokens += Math.ceil((output.length - 4_000) / 4);
+    }
+
+    // Context pruning: when history grows large, truncate old tool_result content
+    // to keep the model's context window manageable for weak local models.
+    const nonSysMessages = history.filter((m) => m.role !== "system");
+    if (estimateTokens(nonSysMessages) + trimmedAwayTokens > 3_000) {
+      const toolResults = history.filter(
+        (m): m is Extract<InternalMessage, { role: "tool_result" }> => m.role === "tool_result",
+      );
+      const toTruncate = toolResults.slice(0, -2); // preserve last 2
+      for (const msg of toTruncate) {
+        if (!msg.content.endsWith("[…truncated]")) {
+          msg.content = msg.content.slice(0, 200) + " […truncated]";
+        }
+      }
+    }
   }
 
   yield {

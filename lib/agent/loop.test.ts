@@ -210,4 +210,172 @@ describe("runAgentLoop", () => {
       expect(mockExec).toHaveBeenCalledOnce();
     });
   });
+
+  describe("retry on stall", () => {
+    it("sends a recovery message when model returns text mid-task with no terminal phrase", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c1", tool: "echo", args: { text: "hi" } })
+        .mockResolvedValueOnce({ type: "text", content: "I will now write the file." })  // stall — no terminal phrase
+        .mockResolvedValueOnce({ type: "text", content: "Done." });                      // terminal after retry
+
+      const mockExec = vi.fn().mockResolvedValue("hi");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do something" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+      })) {
+        events.push(event);
+      }
+
+      // providerStep called 3 times: tool call, stall, recovery result
+      expect(mockStep).toHaveBeenCalledTimes(3);
+      // Final text_delta should be "Done."
+      const lastDelta = events.filter((e) => e.type === "text_delta").at(-1);
+      expect(lastDelta?.type === "text_delta" && lastDelta.delta).toBe("Done.");
+    });
+
+    it("does NOT retry when the model text contains a terminal phrase", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c1", tool: "echo", args: { text: "hi" } })
+        .mockResolvedValueOnce({ type: "text", content: "All done, the file is updated." });
+
+      const mockExec = vi.fn().mockResolvedValue("hi");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do something" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+      })) {
+        events.push(event);
+      }
+
+      // Only 2 calls — no retry
+      expect(mockStep).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT retry twice — stall after recovery ends the loop normally", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c1", tool: "echo", args: { text: "hi" } })
+        .mockResolvedValueOnce({ type: "text", content: "I will write the file now." })   // stall → retry
+        .mockResolvedValueOnce({ type: "text", content: "I will write the file now." });  // stall again → no second retry
+
+      const mockExec = vi.fn().mockResolvedValue("hi");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do something" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+      })) {
+        events.push(event);
+      }
+
+      // 3 calls total — retried once, then fell through on second stall
+      expect(mockStep).toHaveBeenCalledTimes(3);
+      // Ends with done event (not error)
+      expect(events.some((e) => e.type === "done")).toBe(true);
+    });
+
+    it("does NOT retry when i === 0 (model never saw a tool result)", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "text", content: "I will write the file now." });
+
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do something" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+      })) {
+        events.push(event);
+      }
+
+      // Only 1 call — no retry on first response
+      expect(mockStep).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("context pruning", () => {
+    it("truncates old tool_result content when token estimate exceeds 3000", async () => {
+      // 12004 chars = 3001 estimated tokens (chars/4), which exceeds the 3000 threshold
+      const bigOutput = "x".repeat(12_004);
+
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c1", tool: "echo", args: { text: "a" } })
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c2", tool: "echo", args: { text: "b" } })
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c3", tool: "echo", args: { text: "c" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+
+      // First result is large; second and third are small
+      const mockExec = vi.fn()
+        .mockResolvedValueOnce(bigOutput)
+        .mockResolvedValueOnce("small result")
+        .mockResolvedValueOnce("tiny");
+
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do work" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+      })) {
+        events.push(event);
+      }
+
+      // Check the history that providerStep received on its final call
+      const lastCallMessages = mockStep.mock.calls[3][0] as Array<{ role: string; content?: string }>;
+      const toolResults = lastCallMessages.filter((m) => m.role === "tool_result");
+      // 3 tool_results; the first (not last 2) should be truncated
+      expect(toolResults.length).toBe(3);
+      expect(toolResults[0].content).toMatch(/\[…truncated\]$/);
+      // The last 2 results are untouched
+      expect(toolResults[1].content).toBe("small result");
+      expect(toolResults[2].content).toBe("tiny");
+    });
+
+    it("keeps last 2 tool_results intact regardless of size", async () => {
+      const bigOutput = "x".repeat(12_004);
+
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c1", tool: "echo", args: { text: "a" } })
+        .mockResolvedValueOnce({ type: "tool_call", callId: "c2", tool: "echo", args: { text: "b" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+
+      // Both results are large; only 2 results total, so both are "last 2" → neither pruned
+      const mockExec = vi.fn()
+        .mockResolvedValueOnce(bigOutput)
+        .mockResolvedValueOnce(bigOutput);
+
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "do work" }],
+        tools: [echoTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+      })) {
+        events.push(event);
+      }
+
+      const lastCallMessages = mockStep.mock.calls[2][0] as Array<{ role: string; content?: string }>;
+      const toolResults = lastCallMessages.filter((m) => m.role === "tool_result");
+      expect(toolResults.length).toBe(2);
+      // Both are last-2, so neither should end with truncation marker
+      expect(toolResults[0].content).not.toMatch(/\[…truncated\]$/);
+      expect(toolResults[1].content).not.toMatch(/\[…truncated\]$/);
+    });
+  });
 });
