@@ -1030,6 +1030,7 @@ export function SettingsModal({
                     const next = !liteAgentMode;
                     setLiteAgentModeState(next);
                     await saveBackendSettings({ liteAgentMode: next });
+                    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                   }}
                   className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
                     liteAgentMode ? "bg-[#d19a66]" : "bg-[var(--m-border)]"

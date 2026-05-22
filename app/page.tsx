@@ -492,14 +492,7 @@ export default function Home() {
       ? (window as any).marvenElectron
       : null;
     if (!el?.getSettings) return;
-    el.getSettings()
-      .then((s: { liteAgentMode?: boolean }) => {
-        if (typeof s.liteAgentMode === "boolean") {
-          setLiteAgentModeLocal(s.liteAgentMode);
-        }
-      })
-      .catch(() => {});
-    const onChange = () => {
+    const refresh = () => {
       el.getSettings()
         .then((s: { liteAgentMode?: boolean }) => {
           if (typeof s.liteAgentMode === "boolean") {
@@ -508,8 +501,9 @@ export default function Home() {
         })
         .catch(() => {});
     };
-    window.addEventListener("marven:settings-changed", onChange);
-    return () => window.removeEventListener("marven:settings-changed", onChange);
+    refresh();
+    window.addEventListener("marven:settings-changed", refresh);
+    return () => window.removeEventListener("marven:settings-changed", refresh);
   }, []);
 
   useEffect(() => {
