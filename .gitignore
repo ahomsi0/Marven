@@ -18,3 +18,4 @@ dist/
 *.pem
 npm-debug.log*
 .superpowers/
+.worktrees/
