@@ -253,6 +253,7 @@ export function SettingsModal({
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
+  const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
@@ -325,6 +326,9 @@ export function SettingsModal({
       if (s.llamaServerUrl) {
         setLlamaServerUrl(s.llamaServerUrl);
         persistedLlamaServerUrlRef.current = s.llamaServerUrl;
+      }
+      if (typeof s.liteAgentMode === "boolean") {
+        setLiteAgentModeState(s.liteAgentMode);
       }
     });
     electron.getVersion().then(setVersion);
@@ -999,6 +1003,41 @@ export function SettingsModal({
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
                       requireWriteApproval ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Agent section */}
+            <h3 className="text-[13px] font-medium text-[var(--m-text)]">Agent</h3>
+
+            {/* Lite agent mode toggle */}
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Lite agent mode</h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Automatically uses a reduced tool set and shorter instructions.
+                    On by default for local models.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={liteAgentMode}
+                  onClick={async () => {
+                    const next = !liteAgentMode;
+                    setLiteAgentModeState(next);
+                    await saveBackendSettings({ liteAgentMode: next });
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    liteAgentMode ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      liteAgentMode ? "translate-x-5" : "translate-x-1"
                     }`}
                   />
                 </button>

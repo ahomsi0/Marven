@@ -266,6 +266,7 @@ export default function Home() {
   const lastAgentConvIdRef = useRef<string | null>(null);
 
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
+  const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
 
   const {
     messages: agentStreamMessages,
@@ -287,6 +288,7 @@ export default function Home() {
     mcpServers,
     requireWriteApproval: getRequireWriteApproval(),
     planMode,
+    liteAgentMode,
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
@@ -482,6 +484,34 @@ export default function Home() {
     window.addEventListener("marven:settings-changed", onChange);
     return () => window.removeEventListener("marven:settings-changed", onChange);
   }, []);
+
+  // Read liteAgentMode from electron settings and keep in sync with changes.
+  useEffect(() => {
+    const el = typeof window !== "undefined"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (window as any).marvenElectron
+      : null;
+    if (!el?.getSettings) return;
+    el.getSettings()
+      .then((s: { liteAgentMode?: boolean }) => {
+        if (typeof s.liteAgentMode === "boolean") {
+          setLiteAgentModeLocal(s.liteAgentMode);
+        }
+      })
+      .catch(() => {});
+    const onChange = () => {
+      el.getSettings()
+        .then((s: { liteAgentMode?: boolean }) => {
+          if (typeof s.liteAgentMode === "boolean") {
+            setLiteAgentModeLocal(s.liteAgentMode);
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("marven:settings-changed", onChange);
+    return () => window.removeEventListener("marven:settings-changed", onChange);
+  }, []);
+
   useEffect(() => {
     if (agentStreamIsRunning) {
       agentStartedAtRef.current = Date.now();

@@ -12,9 +12,10 @@ interface UseAgentStreamOptions {
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
   planMode?: boolean;
+  liteAgentMode?: boolean;
 }
 
-export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval, planMode }: UseAgentStreamOptions) {
+export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval, planMode, liteAgentMode }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +125,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode }),
         signal: abort.signal,
       });
 
