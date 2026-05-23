@@ -1,4 +1,7 @@
-const { describe, it, expect } = require("vitest");
+// Note: vitest must be ESM-imported (require fails per vitest 4.x).
+import { describe, it, expect } from "vitest";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 const { LSP_SERVERS: mainServers } = require("../lspServers");
 
 describe("electron/lsp/lspServers.js", () => {
