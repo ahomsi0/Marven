@@ -101,3 +101,92 @@ describe("LspManager (framing + transport)", () => {
     expect(exits).toEqual([{ languageId: "typescript", code: 1, signal: null }]);
   });
 });
+
+describe("LspManager (install)", () => {
+  let LspManager;
+  beforeEach(() => {
+    vi.resetModules();
+    ({ LspManager } = require("../lspManager"));
+  });
+
+  it("returns ready immediately when bin already installed", async () => {
+    const runInstall = vi.fn();
+    const mgr = new LspManager({
+      installRoot: "/tmp/marven-lsp-test",
+      isInstalled: () => true,
+      runInstall,
+      spawnFn: vi.fn(() => makeFakeChild()),
+    });
+    const events = [];
+    mgr.on("install-status", (e) => events.push(e));
+    const r = await mgr.ensure("typescript");
+    expect(r.status).toBe("ready");
+    expect(runInstall).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it("calls runInstall when bin missing and emits installing/installed events", async () => {
+    let installed = false;
+    const runInstall = vi.fn(async () => {
+      installed = true;
+      return { code: 0, stderr: "" };
+    });
+    const mgr = new LspManager({
+      installRoot: "/tmp/marven-lsp-test",
+      isInstalled: () => installed,
+      runInstall,
+      spawnFn: vi.fn(() => makeFakeChild()),
+    });
+    const events = [];
+    mgr.on("install-status", (e) => events.push(e));
+
+    const r = await mgr.ensure("typescript");
+    expect(r.status).toBe("ready");
+    expect(runInstall).toHaveBeenCalledWith(
+      "typescript",
+      expect.objectContaining({ npmPackages: expect.arrayContaining(["typescript-language-server"]) })
+    );
+    expect(events.map((e) => e.state)).toEqual(["installing", "installed"]);
+  });
+
+  it("returns failed status on install error", async () => {
+    const runInstall = vi.fn(async () => ({ code: 1, stderr: "boom" }));
+    const mgr = new LspManager({
+      installRoot: "/tmp/marven-lsp-test",
+      isInstalled: () => false,
+      runInstall,
+      spawnFn: vi.fn(() => makeFakeChild()),
+    });
+    const events = [];
+    mgr.on("install-status", (e) => events.push(e));
+    const r = await mgr.ensure("typescript");
+    expect(r.status).toBe("failed");
+    expect(r.error).toContain("boom");
+    expect(events.map((e) => e.state)).toEqual(["installing", "install-failed"]);
+  });
+
+  it("dedupes concurrent ensure() calls during install", async () => {
+    let installed = false;
+    let inflight = 0;
+    let maxInflight = 0;
+    const runInstall = vi.fn(async () => {
+      inflight++;
+      maxInflight = Math.max(maxInflight, inflight);
+      await new Promise((r) => setTimeout(r, 10));
+      inflight--;
+      installed = true;
+      return { code: 0, stderr: "" };
+    });
+    const mgr = new LspManager({
+      installRoot: "/tmp/marven-lsp-test",
+      isInstalled: () => installed,
+      runInstall,
+      spawnFn: vi.fn(() => makeFakeChild()),
+    });
+    const [a, b] = await Promise.all([mgr.ensure("typescript"), mgr.ensure("typescript")]);
+    expect(a.status).toBe("ready");
+    expect(b.status).toBe("ready");
+    expect(runInstall).toHaveBeenCalledTimes(1);
+    expect(maxInflight).toBe(1);
+  });
+});

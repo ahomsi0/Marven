@@ -8,6 +8,17 @@ const { LSP_SERVERS } = require("./lspServers");
 
 const DEFAULT_INSTALL_ROOT = path.join(os.homedir(), ".marven", "lsp");
 
+function defaultRunNpmInstall(languageId, { installDir, npmPackages }) {
+  return new Promise((resolve) => {
+    const args = ["install", ...npmPackages, "--prefix", installDir, "--no-audit", "--no-fund"];
+    const child = spawn("npm", args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+    let stderr = "";
+    child.stderr.on("data", (b) => { stderr += b.toString("utf8"); });
+    child.on("exit", (code) => resolve({ code: code ?? 1, stderr }));
+    child.on("error", (err) => resolve({ code: 1, stderr: String(err && err.message || err) }));
+  });
+}
+
 class LspManager extends EventEmitter {
   constructor(opts = {}) {
     super();
@@ -144,6 +155,33 @@ class LspManager extends EventEmitter {
 
   _sendNotification(languageId, method, params) {
     this._writeFrame(languageId, { jsonrpc: "2.0", method, params });
+  }
+
+  async _install(languageId) {
+    if (this._installing.has(languageId)) return this._installing.get(languageId);
+    const spec = LSP_SERVERS[languageId];
+    if (!spec) return { status: "failed", error: `unknown languageId: ${languageId}` };
+
+    const p = (async () => {
+      this.emit("install-status", { languageId, state: "installing" });
+      const installDir = path.join(this.installRoot, languageId);
+      try { fs.mkdirSync(installDir, { recursive: true }); } catch {}
+      const runner = this._runInstall || defaultRunNpmInstall;
+      const { code, stderr } = await runner(languageId, { installDir, npmPackages: spec.npmPackages });
+      if (code === 0 && this._isInstalled(languageId)) {
+        this.emit("install-status", { languageId, state: "installed" });
+        return { status: "ready" };
+      }
+      this.emit("install-status", { languageId, state: "install-failed", error: stderr });
+      return { status: "failed", error: stderr || `npm install exited with code ${code}` };
+    })();
+
+    this._installing.set(languageId, p);
+    try {
+      return await p;
+    } finally {
+      this._installing.delete(languageId);
+    }
   }
 }
 
