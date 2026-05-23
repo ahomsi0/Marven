@@ -190,3 +190,115 @@ describe("LspManager (install)", () => {
     expect(maxInflight).toBe(1);
   });
 });
+
+describe("LspManager (sessions + handshake)", () => {
+  let mgr, child, LspManager;
+  let localFakeSpawn;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ LspManager } = require("../lspManager"));
+    localFakeSpawn = vi.fn(() => makeFakeChild());
+    mgr = new LspManager({
+      installRoot: "/tmp/marven-lsp-test",
+      isInstalled: () => true,
+      spawnFn: localFakeSpawn,
+    });
+    await mgr.ensure("typescript");
+    child = localFakeSpawn.mock.results[0].value;
+  });
+
+  function lastFrames(c) {
+    return c.stdin.write.mock.calls.map(([buf]) => {
+      const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+      const sep = b.indexOf("\r\n\r\n");
+      return JSON.parse(b.slice(sep + 4).toString("utf8"));
+    });
+  }
+
+  it("openSession sends initialize on first session, didOpen always", async () => {
+    const pending = mgr.openSession({
+      languageId: "typescript",
+      filePath: "/tmp/foo.ts",
+      workspaceRoot: "/tmp",
+    });
+
+    // Respond to initialize.
+    const initReq = lastFrames(child).find((f) => f.method === "initialize");
+    expect(initReq).toBeDefined();
+    expect(initReq.params.rootUri).toBe("file:///tmp");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: initReq.id, result: { capabilities: {} } }));
+
+    const { sessionId } = await pending;
+    expect(typeof sessionId).toBe("string");
+
+    const frames = lastFrames(child);
+    const initialized = frames.find((f) => f.method === "initialized");
+    const didOpen = frames.find((f) => f.method === "textDocument/didOpen");
+    expect(initialized).toBeDefined();
+    expect(didOpen).toBeDefined();
+    expect(didOpen.params.textDocument.uri).toBe("file:///tmp/foo.ts");
+    expect(didOpen.params.textDocument.languageId).toBe("typescript");
+  });
+
+  it("second openSession reuses the server and skips initialize", async () => {
+    // First session — full handshake.
+    const p1 = mgr.openSession({ languageId: "typescript", filePath: "/tmp/a.ts", workspaceRoot: "/tmp" });
+    const init = lastFrames(child).find((f) => f.method === "initialize");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    await p1;
+
+    const before = lastFrames(child).filter((f) => f.method === "initialize").length;
+    const p2 = await mgr.openSession({ languageId: "typescript", filePath: "/tmp/b.ts", workspaceRoot: "/tmp" });
+    const after = lastFrames(child).filter((f) => f.method === "initialize").length;
+    expect(after).toBe(before);
+    expect(p2.sessionId).toBeDefined();
+  });
+
+  it("didChange sends framed textDocument/didChange with incrementing version", async () => {
+    const p = mgr.openSession({ languageId: "typescript", filePath: "/tmp/c.ts", workspaceRoot: "/tmp" });
+    const init = lastFrames(child).find((f) => f.method === "initialize");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    const { sessionId } = await p;
+
+    mgr.didChange(sessionId, { version: 2, text: "const x = 1;" });
+    const last = lastFrames(child).at(-1);
+    expect(last.method).toBe("textDocument/didChange");
+    expect(last.params.textDocument.version).toBe(2);
+    expect(last.params.contentChanges[0].text).toBe("const x = 1;");
+  });
+
+  it("closeSession sends didClose and shuts the server when last session closes", async () => {
+    const p = mgr.openSession({ languageId: "typescript", filePath: "/tmp/d.ts", workspaceRoot: "/tmp" });
+    const init = lastFrames(child).find((f) => f.method === "initialize");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    const { sessionId } = await p;
+
+    await mgr.closeSession(sessionId);
+    const didClose = lastFrames(child).find((f) => f.method === "textDocument/didClose");
+    expect(didClose).toBeDefined();
+    expect(didClose.params.textDocument.uri).toBe("file:///tmp/d.ts");
+  });
+
+  it("request() routes through the right server and resolves with the response", async () => {
+    const p = mgr.openSession({ languageId: "typescript", filePath: "/tmp/e.ts", workspaceRoot: "/tmp" });
+    const init = lastFrames(child).find((f) => f.method === "initialize");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    const { sessionId } = await p;
+
+    const hoverP = mgr.request(sessionId, "textDocument/hover", { position: { line: 0, character: 0 } });
+    const sentHover = lastFrames(child).find((f) => f.method === "textDocument/hover");
+    expect(sentHover.params.textDocument.uri).toBe("file:///tmp/e.ts");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: sentHover.id, result: { contents: "x: number" } }));
+    await expect(hoverP).resolves.toEqual({ contents: "x: number" });
+  });
+
+  it("encodes URIs with spaces correctly", async () => {
+    const p = mgr.openSession({ languageId: "typescript", filePath: "/tmp/has space/foo.ts", workspaceRoot: "/tmp/has space" });
+    const init = lastFrames(child).find((f) => f.method === "initialize");
+    child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    await p;
+    const didOpen = lastFrames(child).find((f) => f.method === "textDocument/didOpen");
+    expect(didOpen.params.textDocument.uri).toBe("file:///tmp/has%20space/foo.ts");
+  });
+});

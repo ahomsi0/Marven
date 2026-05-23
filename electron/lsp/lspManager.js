@@ -157,6 +157,121 @@ class LspManager extends EventEmitter {
     this._writeFrame(languageId, { jsonrpc: "2.0", method, params });
   }
 
+  _filePathToUri(filePath) {
+    // Convert absolute path to file:// URI with percent-encoding.
+    const norm = filePath.replace(/\\/g, "/");
+    const withSlash = norm.startsWith("/") ? norm : "/" + norm;
+    return "file://" + withSlash.split("/").map(encodeURIComponent).join("/").replace(/%2F/g, "/");
+  }
+
+  _languageIdToLspId(languageId) {
+    // LSP "languageId" for didOpen — for our TS server we send "typescript".
+    return languageId;
+  }
+
+  async openSession({ languageId, filePath, workspaceRoot, text = "" }) {
+    // Fast path: server already running — send initialize synchronously (no awaits) so
+    // tests and callers can observe the framed bytes before awaiting the returned promise.
+    if (!this._servers.has(languageId)) {
+      const r = await this.ensure(languageId);
+      if (r.status !== "ready") throw new Error(`LSP not ready: ${r.error || r.status}`);
+    }
+    const state = this._servers.get(languageId);
+
+    let initPromise = null;
+    if (!state.initialized) {
+      const rootUri = this._filePathToUri(workspaceRoot);
+      initPromise = this._sendRequest(languageId, "initialize", {
+        processId: process.pid,
+        rootUri,
+        capabilities: {
+          textDocument: {
+            synchronization: { dynamicRegistration: false, didSave: true },
+            hover: { contentFormat: ["markdown", "plaintext"] },
+            completion: { completionItem: { snippetSupport: false } },
+            definition: {},
+            rename: {},
+            publishDiagnostics: { relatedInformation: true },
+          },
+          workspace: { workspaceEdit: { documentChanges: true } },
+        },
+        initializationOptions: LSP_SERVERS[languageId].initializationOptions || {},
+        workspaceFolders: [{ uri: rootUri, name: path.basename(workspaceRoot) }],
+      });
+      state.initialized = true;
+    }
+    if (initPromise) {
+      await initPromise;
+      this._sendNotification(languageId, "initialized", {});
+    }
+
+    const sessionId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const session = { sessionId, languageId, filePath, version: 1, text };
+    this._sessions.set(sessionId, session);
+    state.sessions.add(sessionId);
+
+    this._sendNotification(languageId, "textDocument/didOpen", {
+      textDocument: {
+        uri: this._filePathToUri(filePath),
+        languageId: this._languageIdToLspId(languageId),
+        version: 1,
+        text,
+      },
+    });
+
+    return { sessionId };
+  }
+
+  didChange(sessionId, { version, text }) {
+    const s = this._sessions.get(sessionId);
+    if (!s) return;
+    s.version = version;
+    s.text = text;
+    this._sendNotification(s.languageId, "textDocument/didChange", {
+      textDocument: { uri: this._filePathToUri(s.filePath), version },
+      contentChanges: [{ text }],
+    });
+  }
+
+  async closeSession(sessionId) {
+    const s = this._sessions.get(sessionId);
+    if (!s) return;
+    this._sendNotification(s.languageId, "textDocument/didClose", {
+      textDocument: { uri: this._filePathToUri(s.filePath) },
+    });
+    this._sessions.delete(sessionId);
+    const state = this._servers.get(s.languageId);
+    if (state) {
+      state.sessions.delete(sessionId);
+      if (state.sessions.size === 0) {
+        try { state.child.kill(); } catch {}
+      }
+    }
+  }
+
+  async request(sessionId, method, params) {
+    const s = this._sessions.get(sessionId);
+    if (!s) throw new Error(`unknown sessionId ${sessionId}`);
+    const merged = {
+      ...params,
+      textDocument: { uri: this._filePathToUri(s.filePath), ...(params && params.textDocument) },
+    };
+    return this._sendRequest(s.languageId, method, merged);
+  }
+
+  async restart(languageId) {
+    const state = this._servers.get(languageId);
+    if (state) {
+      try { state.child.kill(); } catch {}
+      // _onExit removes the state.
+    }
+    return this.ensure(languageId);
+  }
+
+  listSessions() {
+    return Array.from(this._sessions.values()).map((s) => ({ ...s }));
+  }
+
   async _install(languageId) {
     if (this._installing.has(languageId)) return this._installing.get(languageId);
     const spec = LSP_SERVERS[languageId];
