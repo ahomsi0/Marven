@@ -154,6 +154,51 @@ ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
 });
 
+// ── LSP (Language Server Protocol) ───────────────────────────────────────────
+const { LspManager } = require('./lsp/lspManager');
+const lspManager = new LspManager();
+
+function broadcastToAllWindows(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+}
+
+lspManager.on('notification', (n) => broadcastToAllWindows('lsp-notification', n));
+lspManager.on('install-status', (s) => broadcastToAllWindows('lsp-status', { kind: 'install', ...s }));
+lspManager.on('server-exit', (e) => broadcastToAllWindows('lsp-status', { kind: 'server-exit', ...e }));
+lspManager.on('stderr', (s) => broadcastToAllWindows('lsp-status', { kind: 'stderr', ...s }));
+
+ipcMain.handle('lsp-ensure', async (_event, languageId) => {
+  return lspManager.ensure(languageId);
+});
+
+ipcMain.handle('lsp-open-session', async (_event, opts) => {
+  return lspManager.openSession(opts);
+});
+
+ipcMain.handle('lsp-close-session', async (_event, sessionId) => {
+  await lspManager.closeSession(sessionId);
+  return { ok: true };
+});
+
+ipcMain.on('lsp-did-change', (_event, { sessionId, payload }) => {
+  try { lspManager.didChange(sessionId, payload); }
+  catch (err) { console.error('[Marven] lsp didChange:', err && err.message); }
+});
+
+ipcMain.handle('lsp-request', async (_event, { sessionId, method, params }) => {
+  try {
+    return { ok: true, result: await lspManager.request(sessionId, method, params) };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
+
+ipcMain.handle('lsp-restart', async (_event, languageId) => {
+  return lspManager.restart(languageId);
+});
+
 // ── Tray icon — dedicated transparent PNG, set as template so macOS renders
 //    it correctly in both light and dark menu bars ─────────────────────────────
 function buildTrayIcon() {
