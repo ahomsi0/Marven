@@ -111,12 +111,23 @@ function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+// Default values applied for keys missing from the user's settings.json.
+// New settings (e.g. inline-completion knobs) live alongside existing flags
+// like `liteAgentMode` and `codebaseIndexEnabled`.
+const SETTINGS_DEFAULTS = {
+  inlineCompletionsEnabled: false,
+  inlineCompletionProvider: 'ollama',
+  inlineCompletionModel: '',
+  inlineCompletionDebounceMs: 350,
+};
+
 function loadSettings() {
+  let stored = {};
   try {
     const p = settingsPath();
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (fs.existsSync(p)) stored = JSON.parse(fs.readFileSync(p, 'utf8'));
   } catch {}
-  return {};
+  return { ...SETTINGS_DEFAULTS, ...stored };
 }
 
 function persistSettings(settings) {
