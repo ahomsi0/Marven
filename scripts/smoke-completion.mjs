@@ -31,16 +31,23 @@ const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const { completeOnce } = await import(
   pathToFileURL(path.join(repoRoot, "lib/completion/providers.ts")).href
 );
+const { buildFimPrompt } = await import(
+  pathToFileURL(path.join(repoRoot, "lib/completion/fimPrompt.ts")).href
+);
 
-const FIM_PROMPT = {
+// Real ContextWindow shape (matches lib/completion/contextWindow.ts) so
+// buildFimPrompt() produces the correct provider-specific prompt format.
+const CTX = {
   prefix:
     "function fibonacci(n) {\n" +
     "  if (n < 2) return n;\n" +
     "  ",
   suffix: "\n}\n",
-  language: "javascript",
-  cursorOffset: 0,
+  filename: "fib.js",
+  languageId: "javascript",
+  cursorLine: 2,
 };
+const FIM_PROMPT = buildFimPrompt(CTX, modelArg);
 
 async function probe(label, requestOpts) {
   const start = Date.now();
