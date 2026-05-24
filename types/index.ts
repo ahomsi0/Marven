@@ -339,3 +339,14 @@ export interface InlineCompletionRequest {
 export interface InlineCompletionResponse {
   completion: string;
 }
+
+// @-mention context injection
+export type {
+  Mention,
+  MentionKind,
+  FileMention,
+  FolderMention,
+  CodebaseMention,
+  WebMention,
+  ResolvedMention,
+} from "@/lib/mentions/types";
