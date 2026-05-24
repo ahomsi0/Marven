@@ -51,10 +51,6 @@ class LspManager extends EventEmitter {
     if (this._servers.has(languageId)) return { status: "ready" };
 
     if (!this._isInstalled(languageId)) {
-      // Install path is wired in Task 4. For now, fail clearly.
-      if (!this._runInstall) {
-        return { status: "failed", error: "not installed and no installer configured" };
-      }
       const installRes = await this._install(languageId);
       if (installRes.status !== "ready") return installRes;
     }

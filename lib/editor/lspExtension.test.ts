@@ -22,7 +22,9 @@ beforeEach(() => {
     (globalThis as any)[k] = (dom.window as any)[k];
   }
   // jsdom doesn't ship rAF; patch onto the window so CodeMirror finds it.
-  (dom.window as any).requestAnimationFrame = (cb: any) => setTimeout(() => cb(Date.now()), 0);
+  (dom.window as any).requestAnimationFrame = (cb: any) => {
+    return setTimeout(() => { try { cb(Date.now()); } catch { /* jsdom torn down */ } }, 0);
+  };
   (dom.window as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
 });
 

@@ -789,6 +789,8 @@ export function EditorPanel({
                     theme={theme}
                     onSave={onSaveFile}
                     showMinimap={showMinimap}
+                    filePath={selectedFilePath ?? undefined}
+                    workspaceRoot={workspaceRoot ?? undefined}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
                       // Mirror the handle outward so parents (AgentWorkspace)

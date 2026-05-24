@@ -52,7 +52,7 @@ describe("lspClient", () => {
 
   it("request() throws when the bridge returns ok:false", async () => {
     const { bridge } = installFakeBridge();
-    bridge.request.mockResolvedValueOnce({ ok: false, error: "boom" });
+    bridge.request.mockResolvedValueOnce({ ok: false, error: "boom" } as any);
     const { lspClient } = await import("./lspClient");
     await expect(lspClient.request("sess_1", "textDocument/hover", {})).rejects.toThrow("boom");
   });
