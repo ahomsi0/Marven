@@ -70,7 +70,7 @@ interface ChatLayoutProps {
   onSelectRecent?: (path: string) => void;
   appVersion?: string;
   onAgentInputChange: (v: string) => void;
-  onAgentSend: () => void;
+  onAgentSend: (opts?: { mentions?: import("@/types").Mention[] }) => void;
   onAgentStop: () => void;
   onAgentSlashCommand: (cmd: string) => void;
   onOpenFolder: () => void;

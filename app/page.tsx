@@ -1858,7 +1858,7 @@ export default function Home() {
         onSelectRecent={openWorkspaceFolder}
         appVersion={packageJson.version}
         onAgentInputChange={setAgentInput}
-        onAgentSend={() => { agentStreamSend(agentInput, agentAttachments); setAgentInput(""); setAgentAttachments([]); }}
+        onAgentSend={(opts) => { agentStreamSend(agentInput, { attachments: agentAttachments, mentions: opts?.mentions }); setAgentInput(""); setAgentAttachments([]); }}
         onAgentStop={agentStreamStop}
         onAgentSlashCommand={(cmd) => {
           switch (cmd) {
