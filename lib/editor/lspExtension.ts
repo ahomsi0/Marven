@@ -198,7 +198,14 @@ export function lspExtension(opts: LspExtensionOpts): Extension {
   const clickHandler = EditorView.domEventHandlers({
     mousedown(event, view) {
       if (!(event.metaKey || event.ctrlKey)) return false;
-      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
+      // posAtCoords can throw in test environments lacking a full layout (jsdom).
+      // Fall back to the current selection head when coords cannot be resolved.
+      let pos: number;
+      try {
+        pos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
+      } catch {
+        pos = view.state.selection.main.head;
+      }
       const doc = view.state.doc.toString();
       const lspPos = offsetToPos(doc, pos);
       void client.request<unknown>(sessionId, "textDocument/definition", { position: lspPos }).then((res) => {

@@ -131,3 +131,80 @@ describe("lspExtension wiring", () => {
     expect(out).toMatch(/x: number/);
   });
 });
+
+describe("lspExtension go-to-definition", () => {
+  let fakeClient: any;
+  let notifSubs: Array<(n: any) => void> = [];
+
+  beforeEach(() => {
+    notifSubs = [];
+    fakeClient = {
+      didChange: vi.fn(),
+      closeSession: vi.fn(),
+      request: vi.fn(async (_s, method) => {
+        if (method === "textDocument/definition") {
+          return { uri: "file:///tmp/has%20space/target.ts", range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } } };
+        }
+        if (method === "textDocument/rename") {
+          return {
+            changes: {
+              "file:///tmp/a.ts": [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }, newText: "renamed" }],
+            },
+          };
+        }
+        return null;
+      }),
+      onNotification: vi.fn((cb) => { notifSubs.push(cb); return () => {}; }),
+    };
+  });
+
+  it("Cmd+click triggers definition request and decodes URI", async () => {
+    const opens: Array<{ path: string; pos?: any }> = [];
+    const ext = lspExtension({
+      sessionId: "s1", languageId: "typescript", filePath: "/tmp/foo.ts",
+      client: fakeClient, onApplyWorkspaceEdit: async () => {},
+      onOpenFile: (path, pos) => opens.push({ path, pos }),
+    });
+    const view = makeView("hello", ext);
+    const ev = new (window as any).MouseEvent("mousedown", { metaKey: true, clientX: 0, clientY: 0, bubbles: true, button: 0 });
+    view.contentDOM.dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fakeClient.request).toHaveBeenCalledWith("s1", "textDocument/definition", expect.any(Object));
+    expect(opens[0]?.path).toBe("/tmp/has space/target.ts");
+    expect(opens[0]?.pos).toEqual({ line: 4, character: 2 });
+    view.destroy();
+  });
+
+  it("F2 calls rename and forwards WorkspaceEdit to onApplyWorkspaceEdit", async () => {
+    const applied: any[] = [];
+    (window as any).prompt = () => "newName";
+    const ext = lspExtension({
+      sessionId: "s1", languageId: "typescript", filePath: "/tmp/foo.ts",
+      client: fakeClient,
+      onOpenFile: () => {},
+      onApplyWorkspaceEdit: async (edit) => { applied.push(edit); },
+    });
+    const view = makeView("abc", ext);
+    const ev = new (window as any).KeyboardEvent("keydown", { key: "F2", bubbles: true });
+    view.contentDOM.dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(applied).toHaveLength(1);
+    expect(applied[0].changes["file:///tmp/a.ts"][0].newText).toBe("renamed");
+    view.destroy();
+  });
+
+  it("handles array-form definition response (Location[])", async () => {
+    fakeClient.request.mockImplementationOnce(async () => [{ uri: "file:///tmp/x.ts", range: { start: { line: 1, character: 1 }, end: { line: 1, character: 2 } } }]);
+    const opens: Array<{ path: string }> = [];
+    const view = makeView("hi", lspExtension({
+      sessionId: "s1", languageId: "typescript", filePath: "/tmp/foo.ts",
+      client: fakeClient, onApplyWorkspaceEdit: async () => {},
+      onOpenFile: (path) => opens.push({ path }),
+    }));
+    const ev = new (window as any).MouseEvent("mousedown", { metaKey: true, clientX: 0, clientY: 0, bubbles: true, button: 0 });
+    view.contentDOM.dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(opens[0]?.path).toBe("/tmp/x.ts");
+    view.destroy();
+  });
+});
