@@ -25,6 +25,12 @@ import { lspExtension } from "@/lib/editor/lspExtension";
 import { lspClient } from "@/lib/editor/lspClient";
 import { languageIdForExtension, type LanguageId } from "@/lib/editor/lspServers";
 import type { LspWorkspaceEdit, LspPosition } from "@/types";
+import {
+  inlineCompletionExtension,
+  inlineCompletionCompartment,
+} from "@/lib/editor/inlineCompletionExtension";
+import type { InlineCompletionSettings } from "@/lib/completion/settingsClient";
+import { recordAccept, recordDismiss } from "@/lib/completion/telemetry";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -76,6 +82,28 @@ export interface CodeEditorProps {
   onOpenFile?: (path: string, position?: LspPosition) => void;
   /** Called when LSP rename produces a multi-file edit. */
   onApplyWorkspaceEdit?: (edit: LspWorkspaceEdit) => Promise<void>;
+  /** Inline-completion settings (ghost-text suggestions). Disabled when null/undefined or `enabled: false`. */
+  inlineCompletions?: InlineCompletionSettings | null;
+}
+
+// ── Inline-completion helper ──────────────────────────────────────────────────
+
+function buildInlineCompletionExt(
+  c: InlineCompletionSettings | null | undefined,
+  filePath: string | undefined,
+  workspaceRoot: string | undefined,
+): Extension {
+  if (!c?.enabled || !filePath) return [];
+  return inlineCompletionExtension({
+    enabled: true,
+    provider: c.provider,
+    model: c.model,
+    debounceMs: c.debounceMs,
+    filePath,
+    workspaceRoot: workspaceRoot ?? "",
+    onAccept: recordAccept,
+    onDismiss: recordDismiss,
+  });
 }
 
 // ── Language picker ───────────────────────────────────────────────────────────
@@ -288,6 +316,7 @@ export function CodeEditor({
   workspaceRoot,
   onOpenFile,
   onApplyWorkspaceEdit,
+  inlineCompletions,
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -345,6 +374,7 @@ export function CodeEditor({
       ),
       search({ top: true }),
       lspCompartment.current.of([]),
+      inlineCompletionCompartment.of(buildInlineCompletionExt(inlineCompletions, filePath, workspaceRoot)),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           // If this change came from our own external-value sync (parent
@@ -468,6 +498,18 @@ export function CodeEditor({
     // dedicated reconfigure effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─ Inline completion reconfigure ────────────────────────────────────────────
+  // Rebuild the inline-completion extension whenever settings or file context
+  // changes. The extension itself owns its debounce/abort state.
+  useEffect(() => {
+    if (!viewRef.current) return;
+    viewRef.current.dispatch({
+      effects: inlineCompletionCompartment.reconfigure(
+        buildInlineCompletionExt(inlineCompletions, filePath, workspaceRoot),
+      ),
+    });
+  }, [inlineCompletions, filePath, workspaceRoot]);
 
   // ─ LSP wiring ───────────────────────────────────────────────────────────────
   // Open an LSP session when (filePath, workspaceRoot) change and the file

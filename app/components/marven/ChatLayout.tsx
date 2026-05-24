@@ -112,6 +112,7 @@ interface ChatLayoutProps {
   activeTabIndex: number;
   fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }>;
   onApplyWorkspaceEdit?: (edit: import("@/types").LspWorkspaceEdit) => Promise<void>;
+  inlineCompletions?: import("@/lib/completion/settingsClient").InlineCompletionSettings | null;
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
@@ -227,6 +228,7 @@ export function ChatLayout({
   activeTabIndex,
   fileBuffers,
   onApplyWorkspaceEdit,
+  inlineCompletions,
   onSelectTab,
   onCloseTab,
   onReorderTabs,
@@ -432,6 +434,7 @@ export function ChatLayout({
               activeTabIndex={activeTabIndex}
               fileBuffers={fileBuffers}
               onApplyWorkspaceEdit={onApplyWorkspaceEdit}
+              inlineCompletions={inlineCompletions}
               onSelectTab={onSelectTab}
               onCloseTab={onCloseTab}
               onReorderTabs={onReorderTabs}

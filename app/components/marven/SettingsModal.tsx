@@ -14,6 +14,7 @@ import {
   saveKeybindings,
   resetKeybindings,
 } from "@/lib/keybindings";
+import { readStats as readInlineStats, resetStats as resetInlineStats } from "@/lib/completion/telemetry";
 
 type SttProviderId = "local" | "groq";
 type LocalModelId = "whisper-tiny" | "whisper-base" | "distil-tiny";
@@ -259,6 +260,11 @@ export function SettingsModal({
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
   const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
+  const [inlineCompletionsEnabled, setInlineCompletionsEnabled] = useState<boolean>(false);
+  const [inlineCompletionProvider, setInlineCompletionProvider] = useState<string>("ollama");
+  const [inlineCompletionModel, setInlineCompletionModel] = useState<string>("");
+  const [inlineCompletionDebounceMs, setInlineCompletionDebounceMs] = useState<number>(350);
+  const [inlineStatsTick, setInlineStatsTick] = useState(0);
   const [indexStatus, setIndexStatus] = useState<{
     running: boolean;
     stats: { fileCount: number; chunkCount: number; dbSizeBytes: number } | null;
@@ -341,6 +347,18 @@ export function SettingsModal({
       }
       if (typeof s.codebaseIndexEnabled === "boolean") {
         setCodebaseIndexEnabled(s.codebaseIndexEnabled);
+      }
+      if (typeof s.inlineCompletionsEnabled === "boolean") {
+        setInlineCompletionsEnabled(s.inlineCompletionsEnabled);
+      }
+      if (typeof s.inlineCompletionProvider === "string" && s.inlineCompletionProvider) {
+        setInlineCompletionProvider(s.inlineCompletionProvider);
+      }
+      if (typeof s.inlineCompletionModel === "string") {
+        setInlineCompletionModel(s.inlineCompletionModel);
+      }
+      if (typeof s.inlineCompletionDebounceMs === "number") {
+        setInlineCompletionDebounceMs(s.inlineCompletionDebounceMs);
       }
     });
     electron.getVersion().then(setVersion);
@@ -1191,6 +1209,138 @@ export function SettingsModal({
                   Clear index
                 </button>
               </div>
+            </div>
+
+            {/* Inline Completions */}
+            <div
+              className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4"
+              data-testid="setting-inline-completions"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">
+                    Inline completions
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Ghost-text suggestions appear as you type in the editor. Tab to accept, Esc to dismiss.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={inlineCompletionsEnabled}
+                  onClick={async () => {
+                    const next = !inlineCompletionsEnabled;
+                    setInlineCompletionsEnabled(next);
+                    await saveBackendSettings({ inlineCompletionsEnabled: next });
+                    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    inlineCompletionsEnabled ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      inlineCompletionsEnabled ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {inlineCompletionsEnabled && (
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-[var(--m-text-faint)]">Provider</label>
+                    <select
+                      className="mt-1 w-full rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] px-2 py-1 text-[12px] text-[var(--m-text)]"
+                      value={inlineCompletionProvider}
+                      onChange={async (e) => {
+                        const next = e.target.value;
+                        setInlineCompletionProvider(next);
+                        await saveBackendSettings({ inlineCompletionProvider: next });
+                        window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                      }}
+                    >
+                      <option value="ollama">Ollama (local)</option>
+                      <option value="lmstudio">LM Studio (local)</option>
+                      <option value="llamaserver">llama-server (local)</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="groq">Groq</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="nim">NVIDIA NIM</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-[var(--m-text-faint)]">
+                      Model
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. qwen2.5-coder:1.5b"
+                      className="mt-1 w-full rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] px-2 py-1 text-[12px] text-[var(--m-text)]"
+                      value={inlineCompletionModel}
+                      onChange={(e) => setInlineCompletionModel(e.target.value)}
+                      onBlur={async () => {
+                        await saveBackendSettings({ inlineCompletionModel });
+                        window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                      }}
+                    />
+                    <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
+                      Tip: small, fast models work best. Qwen2.5-Coder and DeepSeek-Coder support FIM natively.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-[var(--m-text-faint)]">
+                      Trigger delay: {inlineCompletionDebounceMs} ms
+                    </label>
+                    <input
+                      type="range"
+                      min={100}
+                      max={1500}
+                      step={50}
+                      value={inlineCompletionDebounceMs}
+                      onChange={(e) => setInlineCompletionDebounceMs(Number(e.target.value))}
+                      onMouseUp={async () => {
+                        await saveBackendSettings({ inlineCompletionDebounceMs });
+                        window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                      }}
+                      onTouchEnd={async () => {
+                        await saveBackendSettings({ inlineCompletionDebounceMs });
+                        window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                      }}
+                      className="mt-1 w-full"
+                    />
+                  </div>
+
+                  <div className="rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] p-2">
+                    {(() => {
+                      void inlineStatsTick;
+                      const s = readInlineStats();
+                      return (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] text-[var(--m-text-faint)]">
+                            Stats this session: {s.accepts} accepted · {s.dismisses} dismissed ·{" "}
+                            {Math.round(s.rate * 100)}% accept rate
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[10px] text-[var(--m-text)] hover:bg-[var(--m-surface)]"
+                            onClick={() => {
+                              resetInlineStats();
+                              setInlineStatsTick((t) => t + 1);
+                            }}
+                          >
+                            Reset stats
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

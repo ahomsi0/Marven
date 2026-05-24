@@ -32,6 +32,8 @@ interface EditorPanelProps {
   fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }>;
   /** Cross-file LSP edit handler (F2 rename, etc.). When omitted, multi-file edits are dropped. */
   onApplyWorkspaceEdit?: (edit: import("@/types").LspWorkspaceEdit) => Promise<void>;
+  /** Inline-completion settings (enabled/provider/model/debounce). When null/undefined or disabled, no ghost text. */
+  inlineCompletions?: import("@/lib/completion/settingsClient").InlineCompletionSettings | null;
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
@@ -191,6 +193,7 @@ export function EditorPanel({
   activeTabIndex,
   fileBuffers,
   onApplyWorkspaceEdit,
+  inlineCompletions,
   onSelectTab,
   onCloseTab,
   onReorderTabs,
@@ -796,6 +799,7 @@ export function EditorPanel({
                     filePath={selectedFilePath ?? undefined}
                     workspaceRoot={workspaceRoot ?? undefined}
                     onApplyWorkspaceEdit={onApplyWorkspaceEdit}
+                    inlineCompletions={inlineCompletions}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
                       // Mirror the handle outward so parents (AgentWorkspace)

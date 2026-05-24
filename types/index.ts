@@ -324,3 +324,18 @@ export interface IndexProgress {
   filesTotal: number;
   chunksDone: number;
 }
+
+/** Body for POST /api/completion/inline */
+export interface InlineCompletionRequest {
+  prefix: string;
+  suffix: string;
+  filePath: string;
+  languageId: string;
+  provider: AIProvider;
+  model: string;
+}
+
+/** Response from POST /api/completion/inline */
+export interface InlineCompletionResponse {
+  completion: string;
+}

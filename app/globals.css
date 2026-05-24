@@ -251,3 +251,11 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Inline AI completion ghost text (lib/editor/inlineCompletionExtension.ts) */
+.cm-inline-completion {
+  opacity: 0.45;
+  font-style: italic;
+  white-space: pre;
+  pointer-events: none;
+}
