@@ -195,6 +195,18 @@ ipcMain.handle('lsp-request', async (_event, { sessionId, method, params }) => {
   }
 });
 
+// ── Codebase Indexing ────────────────────────────────────────────────────────
+const { IndexerHost, registerIpc: registerIndexIpc } = require('./index/indexerHost');
+const indexerHost = new IndexerHost({
+  broadcast: (channel, payload) => broadcastToAllWindows(channel, payload),
+});
+registerIndexIpc(ipcMain, indexerHost);
+// Honor the persisted setting on startup.
+try {
+  const _s = loadSettings();
+  indexerHost.setEnabled(_s.codebaseIndexEnabled !== false);
+} catch (_) { /* ignore */ }
+
 ipcMain.handle('lsp-restart', async (_event, languageId) => {
   return lspManager.restart(languageId);
 });
