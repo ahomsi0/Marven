@@ -299,3 +299,28 @@ export interface LspWorkspaceEdit {
   documentChanges?: Array<{ textDocument: { uri: string; version: number | null }; edits: LspTextEdit[] }>;
 }
 
+
+// Codebase indexing
+export interface Chunk {
+  path: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+export interface SearchResult {
+  path: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+  distance: number;
+}
+export interface IndexStats {
+  fileCount: number;
+  chunkCount: number;
+  dbSizeBytes: number;
+}
+export interface IndexProgress {
+  filesDone: number;
+  filesTotal: number;
+  chunksDone: number;
+}
