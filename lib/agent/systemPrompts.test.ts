@@ -22,6 +22,26 @@ describe("makeLiteSystemPrompt", () => {
     const p = makeLiteSystemPrompt("/ws", "");
     expect(p).not.toContain("### Memory");
   });
+
+  it("embeds the workspace file tree when provided", () => {
+    const p = makeLiteSystemPrompt("/ws", undefined, "index.html\nstyle.css");
+    expect(p).toContain("Workspace files:");
+    expect(p).toContain("index.html");
+    expect(p).toContain("style.css");
+  });
+
+  it("omits the workspace block when fileTree is empty", () => {
+    const p = makeLiteSystemPrompt("/ws", undefined, "   ");
+    expect(p).not.toContain("Workspace files:");
+  });
+
+  it("combines memory and fileTree together when both provided", () => {
+    const p = makeLiteSystemPrompt("/ws", "user prefers tabs", "index.html");
+    expect(p.startsWith("### Memory")).toBe(true);
+    expect(p).toContain("user prefers tabs");
+    expect(p).toContain("Workspace files:");
+    expect(p).toContain("index.html");
+  });
 });
 
 describe("makeFullSystemPrompt", () => {

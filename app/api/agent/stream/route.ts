@@ -11,6 +11,7 @@ import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
 import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment, Mention } from "@/types";
 import { classifyTask, type AgentTier } from "@/lib/agent/taskClassifier";
 import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPrompts";
+import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
 
@@ -78,9 +79,14 @@ export async function POST(req: NextRequest) {
     tier = isLocalProvider ? classifyTask(prompt) : "standard";
   }
 
+  // For the simple tier, embed the workspace file tree so weak models don't
+  // hallucinate directories (e.g. writing to a phantom `public/` folder).
+  const fileTree =
+    tier === "simple" ? await listWorkspaceTree(workspaceRoot) : undefined;
+
   const systemPrompt =
     tier === "simple"
-      ? makeLiteSystemPrompt(workspaceRoot, body.memory)
+      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree)
       : makeFullSystemPrompt(workspaceRoot, body.memory);
 
   const model = body.model ?? (

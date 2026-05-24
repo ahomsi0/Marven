@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     "@huggingface/transformers",
     "onnxruntime-node",
     "sharp",
+    // sqlite-vec's ESM build uses `import.meta.resolve`, which Next.js's
+    // bundler turns into `{}.resolve()` (TypeError at runtime). Keeping it
+    // (and its peer better-sqlite3) external lets Node load them natively.
+    "sqlite-vec",
+    "better-sqlite3",
   ],
 };
 

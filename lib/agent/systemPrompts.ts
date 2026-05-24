@@ -1,19 +1,31 @@
 /**
  * Short prompt for simple single-file tasks (style tweaks, typo fixes).
  * Used by the "lite" tier to reduce noise for weak local models.
+ *
+ * @param fileTree Optional listing (from listWorkspaceTree) — embed it so the
+ *   model doesn't hallucinate directories like `public/` when discovering files.
  */
-export function makeLiteSystemPrompt(workspaceRoot: string, memory?: string): string {
+export function makeLiteSystemPrompt(
+  workspaceRoot: string,
+  memory?: string,
+  fileTree?: string,
+): string {
   let base = `You are Marven Agent. The workspace is at: ${workspaceRoot}
 
 Your job: make exactly the change the user asked for. Nothing more.
 
 RULES:
-- Always call list_files or search_files first to find the right file.
+- Use the file tree below to pick the right path. Do NOT invent directories that aren't listed.
 - Call read_file before editing any file.
 - Call write_file to save your change. Put the FULL file content in "content".
+- The 'path' for write_file must use a directory that exists in the file tree (or no directory at all). Never write to a folder you can't see below.
 - Make ONE change at a time. Call one tool per response.
 - Do NOT describe what you are doing — just call the tool.
 - When done, say "Done." in one sentence.`;
+
+  if (fileTree && fileTree.trim()) {
+    base += `\n\nWorkspace files:\n${fileTree.trim()}`;
+  }
 
   if (memory && memory.trim()) {
     base = `### Memory\n${memory.trim()}\n\n---\n\n` + base;

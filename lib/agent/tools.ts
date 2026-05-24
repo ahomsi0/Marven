@@ -244,6 +244,55 @@ export function assertSafePath(workspaceRoot: string, relPath: string): string {
   return resolved;
 }
 
+const FIND_IGNORED = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".turbo",
+  ".cache",
+  "coverage",
+  ".worktrees",
+  ".vercel",
+]);
+
+/**
+ * Search the workspace (up to two levels deep) for files whose basename
+ * exactly matches `basename`. Used by the write_file phantom-directory guard
+ * to suggest real paths when the model invents a non-existent parent folder.
+ */
+async function findFilesByBasename(
+  workspaceRoot: string,
+  basename: string,
+  maxResults: number,
+): Promise<string[]> {
+  const matches: string[] = [];
+
+  async function scan(dir: string, depth: number): Promise<void> {
+    if (matches.length >= maxResults || depth > 2) return;
+    let entries: import("fs").Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (matches.length >= maxResults) return;
+      if (FIND_IGNORED.has(entry.name) || entry.name.startsWith(".")) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await scan(abs, depth + 1);
+      } else if (entry.name === basename) {
+        matches.push(path.relative(workspaceRoot, abs));
+      }
+    }
+  }
+
+  await scan(workspaceRoot, 0);
+  return matches;
+}
+
 const MAX_READ = 8_000;
 
 function findFreePort(start: number): Promise<number> {
@@ -398,7 +447,32 @@ export async function executeTool(
 
     case "write_file": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
-      await fs.mkdir(path.dirname(abs), { recursive: true });
+      const parentDir = path.dirname(abs);
+
+      // Phantom-directory guard: if the parent directory doesn't exist AND a
+      // file with the same basename already lives somewhere in the workspace,
+      // refuse the write and suggest the real location. Catches the common
+      // weak-model failure of writing `public/style.css` when only `style.css`
+      // exists at the root.
+      if (parentDir !== workspaceRoot) {
+        let parentExists = true;
+        try {
+          await fs.stat(parentDir);
+        } catch {
+          parentExists = false;
+        }
+        if (!parentExists) {
+          const basename = path.basename(abs);
+          const matches = await findFilesByBasename(workspaceRoot, basename, 5);
+          if (matches.length > 0) {
+            const rel = path.relative(workspaceRoot, parentDir);
+            const list = matches.map((m) => `- ${m}`).join("\n");
+            return `write_file refused: directory "${rel}/" does not exist in the workspace, but a file named "${basename}" already exists here:\n${list}\nDid you mean one of those paths? Re-call write_file with the correct path.`;
+          }
+        }
+      }
+
+      await fs.mkdir(parentDir, { recursive: true });
       // Models sometimes emit literal \n instead of actual newlines
       const content = (args.content as string)
         .replace(/\\n/g, "\n")

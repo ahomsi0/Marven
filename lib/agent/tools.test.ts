@@ -74,6 +74,49 @@ describe("executeTool – write_file + read_file", () => {
     const result = await executeTool("read_file", { path: "hello.txt" }, tmpDir);
     expect(result).toBe("world");
   });
+
+  it("refuses to write into a phantom directory when the basename already exists at the root", async () => {
+    await fs.writeFile(path.join(tmpDir, "style.css"), "body{}");
+    const result = await executeTool(
+      "write_file",
+      { path: "public/style.css", content: "body{color:red}" },
+      tmpDir,
+    );
+    expect(result).toMatch(/refused/i);
+    expect(result).toContain("public/");
+    expect(result).toContain("style.css");
+    // The phantom path was NOT created
+    await expect(
+      fs.access(path.join(tmpDir, "public", "style.css")),
+    ).rejects.toThrow();
+    // The real file is unchanged
+    const real = await fs.readFile(path.join(tmpDir, "style.css"), "utf-8");
+    expect(real).toBe("body{}");
+  });
+
+  it("allows writing to a brand-new directory when no collision exists", async () => {
+    const result = await executeTool(
+      "write_file",
+      { path: "src/lib/util.ts", content: "export const x = 1;" },
+      tmpDir,
+    );
+    expect(result).toMatch(/^Written:/);
+    const written = await fs.readFile(
+      path.join(tmpDir, "src", "lib", "util.ts"),
+      "utf-8",
+    );
+    expect(written).toBe("export const x = 1;");
+  });
+
+  it("allows writes into an existing directory normally", async () => {
+    await fs.mkdir(path.join(tmpDir, "src"));
+    const result = await executeTool(
+      "write_file",
+      { path: "src/app.ts", content: "ok" },
+      tmpDir,
+    );
+    expect(result).toMatch(/^Written:/);
+  });
 });
 
 describe("executeTool – list_files", () => {
