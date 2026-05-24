@@ -39,33 +39,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     return () => ipcRenderer.removeListener('pty-exit', handler);
   },
 
-  // ── Codebase indexing bridge ─────────────────────────────────────────────
-  index: {
-    status: () => ipcRenderer.invoke('index:status'),
-    runFull: () => ipcRenderer.invoke('index:run-full'),
-    search: (query, limit) => ipcRenderer.invoke('index:search', query, limit),
-    cancel: () => ipcRenderer.invoke('index:cancel'),
-    clear: () => ipcRenderer.invoke('index:clear'),
-    setWorkspace: (root) => ipcRenderer.invoke('index:set-workspace', root),
-    setEnabled: (enabled) => ipcRenderer.invoke('index:set-enabled', enabled),
-    updateFile: (abs) => ipcRenderer.invoke('index:update-file', abs),
-    deleteFile: (abs) => ipcRenderer.invoke('index:delete-file', abs),
-    onProgress: (cb) => {
-      const h = (_e, data) => cb(data);
-      ipcRenderer.on('index:progress', h);
-      return () => ipcRenderer.removeListener('index:progress', h);
-    },
-    onDone: (cb) => {
-      const h = (_e, data) => cb(data);
-      ipcRenderer.on('index:done', h);
-      return () => ipcRenderer.removeListener('index:done', h);
-    },
-    onError: (cb) => {
-      const h = (_e, data) => cb(data);
-      ipcRenderer.on('index:error', h);
-      return () => ipcRenderer.removeListener('index:error', h);
-    },
-  },
+  // Codebase indexing — moved to /api/index/* (see lib/index/client.ts). The
+  // renderer talks to the Next.js server directly; no IPC bridge needed.
 
   // ── LSP bridge ────────────────────────────────────────────────────────────
   lsp: {
