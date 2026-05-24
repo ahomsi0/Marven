@@ -264,3 +264,38 @@ export interface RestCollection {
   name: string;
   requests: RestRequest[];
 }
+
+// ── LSP types ────────────────────────────────────────────────────────────────
+export type LspEnsureStatus = "ready" | "installing" | "failed";
+export interface LspEnsureResult {
+  status: LspEnsureStatus;
+  error?: string;
+}
+export interface LspOpenSessionOpts {
+  languageId: string;
+  filePath: string;
+  workspaceRoot: string;
+  text?: string;
+}
+export interface LspNotification {
+  languageId: string;
+  method: string;
+  params: unknown;
+}
+export interface LspStatusEvent {
+  kind: "install" | "server-exit" | "stderr";
+  languageId: string;
+  state?: "installing" | "installed" | "install-failed";
+  code?: number | null;
+  signal?: string | null;
+  text?: string;
+  error?: string;
+}
+export interface LspPosition { line: number; character: number; }
+export interface LspRange { start: LspPosition; end: LspPosition; }
+export interface LspTextEdit { range: LspRange; newText: string; }
+export interface LspWorkspaceEdit {
+  changes?: Record<string, LspTextEdit[]>;
+  documentChanges?: Array<{ textDocument: { uri: string; version: number | null }; edits: LspTextEdit[] }>;
+}
+

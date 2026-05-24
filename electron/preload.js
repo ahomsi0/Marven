@@ -38,4 +38,25 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     ipcRenderer.on('pty-exit', handler);
     return () => ipcRenderer.removeListener('pty-exit', handler);
   },
+
+  // ── LSP bridge ────────────────────────────────────────────────────────────
+  lsp: {
+    ensure: (languageId) => ipcRenderer.invoke("lsp-ensure", languageId),
+    openSession: (opts) => ipcRenderer.invoke("lsp-open-session", opts),
+    closeSession: (sessionId) => ipcRenderer.invoke("lsp-close-session", sessionId),
+    didChange: (sessionId, payload) => ipcRenderer.send("lsp-did-change", { sessionId, payload }),
+    request: (sessionId, method, params) =>
+      ipcRenderer.invoke("lsp-request", { sessionId, method, params }),
+    restart: (languageId) => ipcRenderer.invoke("lsp-restart", languageId),
+    onNotification: (cb) => {
+      const handler = (_e, data) => cb(data);
+      ipcRenderer.on("lsp-notification", handler);
+      return () => ipcRenderer.removeListener("lsp-notification", handler);
+    },
+    onStatus: (cb) => {
+      const handler = (_e, data) => cb(data);
+      ipcRenderer.on("lsp-status", handler);
+      return () => ipcRenderer.removeListener("lsp-status", handler);
+    },
+  },
 });

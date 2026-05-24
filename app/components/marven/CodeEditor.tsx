@@ -21,6 +21,10 @@ import { xml } from "@codemirror/lang-xml";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { search, openSearchPanel, closeSearchPanel } from "@codemirror/search";
 import type { Extension } from "@codemirror/state";
+import { lspExtension } from "@/lib/editor/lspExtension";
+import { lspClient } from "@/lib/editor/lspClient";
+import { languageIdForExtension, type LanguageId } from "@/lib/editor/lspServers";
+import type { LspWorkspaceEdit, LspPosition } from "@/types";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -64,6 +68,14 @@ export interface CodeEditorProps {
   placeholderText?: string;
   /** When true, renders a thin scroll progress indicator on the right edge. */
   showMinimap?: boolean;
+  /** Absolute path of the file being edited; required to enable LSP. */
+  filePath?: string;
+  /** Absolute path of the workspace root; required to enable LSP. */
+  workspaceRoot?: string;
+  /** Called when LSP go-to-definition wants to open a file. */
+  onOpenFile?: (path: string, position?: LspPosition) => void;
+  /** Called when LSP rename produces a multi-file edit. */
+  onApplyWorkspaceEdit?: (edit: LspWorkspaceEdit) => Promise<void>;
 }
 
 // ── Language picker ───────────────────────────────────────────────────────────
@@ -272,6 +284,10 @@ export function CodeEditor({
   onReady,
   placeholderText,
   showMinimap = false,
+  filePath,
+  workspaceRoot,
+  onOpenFile,
+  onApplyWorkspaceEdit,
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -283,6 +299,7 @@ export function CodeEditor({
   const themeCompartment = useRef(new Compartment());
   const readOnlyCompartment = useRef(new Compartment());
   const saveKeymapCompartment = useRef(new Compartment());
+  const lspCompartment = useRef(new Compartment());
 
   // Latest values reachable from inside extensions without recreating them.
   const onChangeRef = useRef(onChange);
@@ -327,6 +344,7 @@ export function CodeEditor({
         readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
       ),
       search({ top: true }),
+      lspCompartment.current.of([]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           // If this change came from our own external-value sync (parent
@@ -450,6 +468,60 @@ export function CodeEditor({
     // dedicated reconfigure effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─ LSP wiring ───────────────────────────────────────────────────────────────
+  // Open an LSP session when (filePath, workspaceRoot) change and the file
+  // has a known LSP language. Reconfigures the lspCompartment with a fresh
+  // extension. Closes the session on unmount or when inputs change.
+  useEffect(() => {
+    const ext = filePath ? filePath.split(".").pop() ?? "" : "";
+    const langId: LanguageId | null = languageIdForExtension(ext);
+    if (!langId || !filePath || !workspaceRoot || !viewRef.current) return;
+
+    let cancelled = false;
+    let sessionIdLocal: string | null = null;
+
+    (async () => {
+      const r = await lspClient.ensure(langId);
+      if (r.status !== "ready" || cancelled || !viewRef.current) return;
+      try {
+        const { sessionId } = await lspClient.openSession({
+          languageId: langId,
+          filePath,
+          workspaceRoot,
+          text: viewRef.current.state.doc.toString(),
+        });
+        if (cancelled) {
+          lspClient.closeSession(sessionId);
+          return;
+        }
+        sessionIdLocal = sessionId;
+        viewRef.current.dispatch({
+          effects: lspCompartment.current.reconfigure(
+            lspExtension({
+              sessionId,
+              languageId: langId,
+              filePath,
+              client: lspClient,
+              onOpenFile: onOpenFile ?? (() => {}),
+              onApplyWorkspaceEdit: onApplyWorkspaceEdit ?? (async () => {}),
+            }),
+          ),
+        });
+      } catch {
+        // Swallow — LSP failures should not break the editor.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (sessionIdLocal) lspClient.closeSession(sessionIdLocal);
+      if (viewRef.current) {
+        viewRef.current.dispatch({ effects: lspCompartment.current.reconfigure([]) });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath, workspaceRoot]);
 
   // ─ External value updates ───────────────────────────────────────────────────
   // When the parent pushes a new `value` prop (e.g. file just finished loading

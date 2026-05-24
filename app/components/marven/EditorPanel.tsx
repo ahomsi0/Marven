@@ -30,6 +30,8 @@ interface EditorPanelProps {
   openTabs: EditorTab[];
   activeTabIndex: number;
   fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }>;
+  /** Cross-file LSP edit handler (F2 rename, etc.). When omitted, multi-file edits are dropped. */
+  onApplyWorkspaceEdit?: (edit: import("@/types").LspWorkspaceEdit) => Promise<void>;
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
@@ -188,6 +190,7 @@ export function EditorPanel({
   openTabs,
   activeTabIndex,
   fileBuffers,
+  onApplyWorkspaceEdit,
   onSelectTab,
   onCloseTab,
   onReorderTabs,
@@ -789,6 +792,9 @@ export function EditorPanel({
                     theme={theme}
                     onSave={onSaveFile}
                     showMinimap={showMinimap}
+                    filePath={selectedFilePath ?? undefined}
+                    workspaceRoot={workspaceRoot ?? undefined}
+                    onApplyWorkspaceEdit={onApplyWorkspaceEdit}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
                       // Mirror the handle outward so parents (AgentWorkspace)
