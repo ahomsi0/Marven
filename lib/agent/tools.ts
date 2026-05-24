@@ -418,6 +418,14 @@ export async function executeTool(
   args: Record<string, unknown>,
   workspaceRoot: string,
   onProgress?: (chunk: string) => void,
+  /**
+   * Set of absolute paths the agent has read in the current loop run.
+   * Populated by the `read_file` case and consulted by the `write_file` case
+   * to enforce read-before-write on existing files and guard against
+   * catastrophic shrink-overwrites. Optional — when omitted, guards are skipped
+   * (preserves existing test/CLI behavior).
+   */
+  recentReads?: Set<string>,
 ): Promise<string> {
   switch (name) {
     case "list_files": {
@@ -436,6 +444,9 @@ export async function executeTool(
     case "read_file": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
       const content = await fs.readFile(abs, "utf-8");
+      // Record the read so write_file can verify the file was actually
+      // inspected before the model overwrites it.
+      recentReads?.add(abs);
       if (content.length > MAX_READ) {
         return (
           content.slice(0, MAX_READ) +
@@ -472,12 +483,47 @@ export async function executeTool(
         }
       }
 
-      await fs.mkdir(parentDir, { recursive: true });
-      // Models sometimes emit literal \n instead of actual newlines
+      // Unescape literal \n / \t / \r the way the file expects them.
       const content = (args.content as string)
         .replace(/\\n/g, "\n")
         .replace(/\\t/g, "\t")
         .replace(/\\r/g, "\r");
+
+      // Determine if the target file already exists and grab its size for
+      // the read-before-write + size-shrink guards.
+      let existingSize: number | null = null;
+      try {
+        const st = await fs.stat(abs);
+        if (st.isFile()) existingSize = st.size;
+      } catch {
+        existingSize = null;
+      }
+
+      // Guards only apply when the file already exists AND we have read-set
+      // tracking enabled (i.e. running inside the agent loop). In tests and
+      // CLI usage where recentReads is undefined we leave behavior unchanged.
+      if (existingSize !== null && recentReads) {
+        const wasRead = recentReads.has(abs);
+
+        // Read-before-write guard — model is about to overwrite content it
+        // never inspected this session. Refuse and tell it to read first.
+        if (!wasRead) {
+          return `write_file refused: "${args.path}" already exists (${existingSize} bytes) but you have NOT called read_file on it in this conversation. Refusing to overwrite unseen content. Call read_file("${args.path}") first, then re-issue write_file with the full new content that preserves what should stay.`;
+        }
+
+        // Size-shrink sanity guard — even after a read, if the model is
+        // dumping back <30% of what it read, that's almost certainly an
+        // accidental wipe. Refuse and ask for the full content.
+        const SHRINK_THRESHOLD = 0.3;
+        if (
+          existingSize >= 500 &&
+          content.length < existingSize * SHRINK_THRESHOLD
+        ) {
+          return `write_file refused: new content is ${content.length} bytes but the existing "${args.path}" is ${existingSize} bytes — that's a ${Math.round((1 - content.length / existingSize) * 100)}% reduction. This usually means you forgot to include the existing content. Re-call write_file with the FULL file (existing content + your additions/changes). If you genuinely intend to shrink the file, delete it first or rewrite it explicitly.`;
+        }
+      }
+
+      await fs.mkdir(parentDir, { recursive: true });
       await fs.writeFile(abs, content, "utf-8");
       return `Written: ${args.path}`;
     }

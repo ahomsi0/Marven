@@ -49,6 +49,11 @@ export async function* runAgentLoop(
   const { tools, workspaceRoot, providerStep } = options;
   const exec = options.executeToolFn ?? executeTool;
 
+  // Tracks absolute paths the agent has read via read_file this run.
+  // Consumed by write_file's read-before-write + size-shrink guards in tools.ts
+  // so weak models can't silently overwrite content they never inspected.
+  const recentReads = new Set<string>();
+
   const history: InternalMessage[] = [
     {
       role: "system",
@@ -273,7 +278,7 @@ export async function* runAgentLoop(
       const progressCb = options.onProgress
         ? (chunk: string) => options.onProgress!(result.callId, chunk)
         : undefined;
-      output = await exec(result.tool, result.args, workspaceRoot, progressCb);
+      output = await exec(result.tool, result.args, workspaceRoot, progressCb, recentReads);
     } catch (err) {
       output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
     }

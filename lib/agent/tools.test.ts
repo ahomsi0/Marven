@@ -117,6 +117,77 @@ describe("executeTool – write_file + read_file", () => {
     );
     expect(result).toMatch(/^Written:/);
   });
+
+  it("refuses to overwrite an existing file that was not read this session (recentReads enabled)", async () => {
+    const original = "x".repeat(1200);
+    await fs.writeFile(path.join(tmpDir, "data.txt"), original);
+    const reads = new Set<string>();
+    const result = await executeTool(
+      "write_file",
+      { path: "data.txt", content: "tiny" },
+      tmpDir,
+      undefined,
+      reads,
+    );
+    expect(result).toMatch(/refused.*read_file/i);
+    const onDisk = await fs.readFile(path.join(tmpDir, "data.txt"), "utf-8");
+    expect(onDisk).toBe(original);
+  });
+
+  it("allows the overwrite once read_file has been called on the same path", async () => {
+    const original = "x".repeat(1200);
+    await fs.writeFile(path.join(tmpDir, "data.txt"), original);
+    const reads = new Set<string>();
+    await executeTool("read_file", { path: "data.txt" }, tmpDir, undefined, reads);
+    const result = await executeTool(
+      "write_file",
+      { path: "data.txt", content: original + "\nadded line" },
+      tmpDir,
+      undefined,
+      reads,
+    );
+    expect(result).toMatch(/^Written:/);
+  });
+
+  it("refuses a catastrophic shrink (<30% of original) even after read", async () => {
+    const original = "x".repeat(1200);
+    await fs.writeFile(path.join(tmpDir, "data.txt"), original);
+    const reads = new Set<string>();
+    await executeTool("read_file", { path: "data.txt" }, tmpDir, undefined, reads);
+    const result = await executeTool(
+      "write_file",
+      { path: "data.txt", content: "tiny" },
+      tmpDir,
+      undefined,
+      reads,
+    );
+    expect(result).toMatch(/refused.*reduction/i);
+  });
+
+  it("allows shrink on small files (<500 bytes) — guard only fires on substantial files", async () => {
+    await fs.writeFile(path.join(tmpDir, "tiny.txt"), "abcdef");
+    const reads = new Set<string>();
+    await executeTool("read_file", { path: "tiny.txt" }, tmpDir, undefined, reads);
+    const result = await executeTool(
+      "write_file",
+      { path: "tiny.txt", content: "a" },
+      tmpDir,
+      undefined,
+      reads,
+    );
+    expect(result).toMatch(/^Written:/);
+  });
+
+  it("skips guards entirely when recentReads is not provided (backward compat)", async () => {
+    const original = "x".repeat(1200);
+    await fs.writeFile(path.join(tmpDir, "data.txt"), original);
+    const result = await executeTool(
+      "write_file",
+      { path: "data.txt", content: "tiny" },
+      tmpDir,
+    );
+    expect(result).toMatch(/^Written:/);
+  });
 });
 
 describe("executeTool – list_files", () => {
