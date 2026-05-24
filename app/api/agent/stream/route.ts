@@ -8,9 +8,11 @@ import { openaiAgentStep } from "@/lib/agent/openai";
 import { anthropicAgentStep } from "@/lib/agent/anthropic";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agent/tools";
 import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
-import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment } from "@/types";
+import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment, Mention } from "@/types";
 import { classifyTask, type AgentTier } from "@/lib/agent/taskClassifier";
 import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPrompts";
+import { resolveMentions } from "@/lib/mentions/resolver";
+import { formatContextBlock } from "@/lib/mentions/formatter";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -27,6 +29,7 @@ interface StreamRequestBody {
   planMode?: boolean;
   attachments?: ImageAttachment[];
   liteAgentMode?: boolean; // true = force lite, false = force standard, undefined = auto
+  mentions?: Mention[];
 }
 
 export async function POST(req: NextRequest) {
@@ -37,7 +40,7 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const prompt = body.prompt?.trim() ?? "";
+  let prompt = body.prompt?.trim() ?? "";
   const workspaceRoot = body.workspaceRoot?.trim() ?? "";
 
   if (!prompt) {
@@ -87,6 +90,20 @@ export async function POST(req: NextRequest) {
     provider === "anthropic" ? "claude-sonnet-4-5" :
     "qwen2.5-coder"
   );
+
+  // ── Expand @-mentions into a <context> block prepended to the prompt ─────
+  if (body.mentions && body.mentions.length > 0) {
+    try {
+      const resolved = await resolveMentions(body.mentions, { workspaceRoot });
+      const ctxBlock = formatContextBlock(resolved);
+      if (ctxBlock) {
+        prompt = `${ctxBlock}\n\n${prompt}`;
+      }
+    } catch {
+      // Resolution should never throw, but if it does, fall through with the
+      // original prompt rather than failing the whole request.
+    }
+  }
 
   const history: InternalMessage[] = (body.history ?? []).map((m) => ({
     role: m.role as "user" | "assistant",
