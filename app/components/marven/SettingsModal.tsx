@@ -36,6 +36,9 @@ interface SettingsModalProps {
   onSaveTemplates: (templates: PromptTemplate[]) => void;
   onSaveMCPServers: (servers: MCPServer[]) => void;
   inline?: boolean;
+  // Currently-open workspace root, if any. The codebase-indexing controls
+  // (Reindex now / Clear index) require this to talk to /api/index/*.
+  workspaceRoot?: string | null;
 }
 
 type SettingsPage =
@@ -248,6 +251,7 @@ export function SettingsModal({
   onSaveTemplates,
   onSaveMCPServers,
   inline = false,
+  workspaceRoot = null,
 }: SettingsModalProps) {
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
@@ -344,35 +348,32 @@ export function SettingsModal({
       setUpdateStatus(data.type);
       setUpdateInfo(data);
     });
-    // Index status + event subscriptions
-    const idx = (electron as any).index;
-    let unsubIdx: (() => void) | undefined;
-    if (idx) {
-      idx.status?.().then((s: any) => {
-        if (s) setIndexStatus({ running: !!s.running, stats: s.stats ?? null });
-      });
-      const u1 = idx.onProgress?.(() =>
-        setIndexStatus((prev) => ({ ...prev, running: true })),
-      );
-      const u2 = idx.onDone?.(() => {
-        idx.status?.().then((s: any) =>
-          setIndexStatus({ running: false, stats: s?.stats ?? null }),
-        );
-      });
-      const u3 = idx.onError?.(() =>
-        setIndexStatus((prev) => ({ ...prev, running: false })),
-      );
-      unsubIdx = () => {
-        u1?.();
-        u2?.();
-        u3?.();
-      };
-    }
+    // Codebase indexing status — poll /api/index/status every 2s while the
+    // modal is open. The indexer runs in the Next.js server (not Electron
+    // main), so we just hit the route directly.
+    let cancelled = false;
+    const refreshIndex = async () => {
+      try {
+        const qs = workspaceRoot
+          ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}`
+          : "";
+        const r = await fetch(`/api/index/status${qs}`);
+        if (!r.ok) return;
+        const s = await r.json();
+        if (cancelled) return;
+        setIndexStatus({ running: !!s.running, stats: s.stats ?? null });
+      } catch {
+        /* ignore */
+      }
+    };
+    refreshIndex();
+    const idxTimer = setInterval(refreshIndex, 2000);
     return () => {
       unsub?.();
-      unsubIdx?.();
+      cancelled = true;
+      clearInterval(idxTimer);
     };
-  }, []);
+  }, [workspaceRoot]);
 
   // Templates state
   const [templates, setTemplates] = useState<PromptTemplate[]>(
@@ -1108,7 +1109,16 @@ export function SettingsModal({
                         ...cur,
                         codebaseIndexEnabled: next,
                       });
-                      await (electron as any).index?.setEnabled?.(next);
+                      // Mirror the toggle into the server-side indexer state.
+                      try {
+                        await fetch("/api/index/set-enabled", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: next }),
+                        });
+                      } catch {
+                        /* non-fatal — the route will catch up next request */
+                      }
                       window.dispatchEvent(
                         new CustomEvent("marven:settings-changed"),
                       );
@@ -1144,19 +1154,34 @@ export function SettingsModal({
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)]"
-                  onClick={() => (electron as any)?.index?.runFull?.()}
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)] disabled:opacity-50"
+                  disabled={!workspaceRoot}
+                  onClick={() => {
+                    if (!workspaceRoot) return;
+                    fetch("/api/index/run-full", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ workspaceRoot, stream: false }),
+                    }).catch(() => {});
+                  }}
                 >
                   Reindex now
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)]"
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)] disabled:opacity-50"
+                  disabled={!workspaceRoot}
                   onClick={async () => {
-                    const idx = (electron as any)?.index;
-                    if (!idx) return;
-                    await idx.clear?.();
-                    const s = await idx.status?.();
+                    if (!workspaceRoot) return;
+                    await fetch("/api/index/clear", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ workspaceRoot }),
+                    });
+                    const r = await fetch(
+                      `/api/index/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+                    );
+                    const s = r.ok ? await r.json() : null;
                     setIndexStatus({
                       running: !!s?.running,
                       stats: s?.stats ?? null,
