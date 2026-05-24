@@ -306,6 +306,9 @@ export default function Home() {
 
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
   const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
+  const [inlineCompletionSettings, setInlineCompletionSettings] = useState<
+    import("@/lib/completion/settingsClient").InlineCompletionSettings | null
+  >(null);
 
   const {
     messages: agentStreamMessages,
@@ -543,6 +546,24 @@ export default function Home() {
     refresh();
     window.addEventListener("marven:settings-changed", refresh);
     return () => window.removeEventListener("marven:settings-changed", refresh);
+  }, []);
+
+  // Inline-completion settings — load on mount + subscribe to changes.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      import("@/lib/completion/settingsClient").then(({ readInlineCompletionSettings }) =>
+        readInlineCompletionSettings(),
+      ).then((s) => {
+        if (!cancelled) setInlineCompletionSettings(s);
+      }).catch(() => {});
+    };
+    refresh();
+    window.addEventListener("marven:settings-changed", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("marven:settings-changed", refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -1911,6 +1932,7 @@ export default function Home() {
         activeTabIndex={activeTabIndex}
         fileBuffers={fileBuffers}
         onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+        inlineCompletions={inlineCompletionSettings}
         onSelectTab={setActiveTabIndex}
         onCloseTab={closeTab}
         onReorderTabs={reorderTabs}
