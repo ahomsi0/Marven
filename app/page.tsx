@@ -1882,6 +1882,7 @@ export default function Home() {
         onAgentVoiceClick={startManualListen}
         agentPlanMode={planMode}
         onAgentPlanModeChange={handlePlanModeChange}
+        liteAgentMode={liteAgentMode}
         onProviderChange={setProvider}
         onModelChange={handleModelChange}
         onToggleWakeWord={toggleWakeWord}

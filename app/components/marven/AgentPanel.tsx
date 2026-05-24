@@ -35,6 +35,8 @@ interface AgentPanelProps {
   onVoiceClick?: () => void;
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
+  /** When true, render a small "Lite" pill in the status line. */
+  liteAgentMode?: boolean;
 }
 
 function fileToAttachment(file: File): Promise<ImageAttachment> {
@@ -74,6 +76,7 @@ export function AgentPanel({
   planMode,
   onPlanModeChange,
   workspaceFiles,
+  liteAgentMode,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -343,7 +346,7 @@ export function AgentPanel({
               }}
               disabled={isRunning}
               rows={1}
-              placeholder={!input && mentions.length === 0 ? "Describe task… Type @ to attach files, folders, code search, or URLs." : "Describe task…"}
+              placeholder="Describe task… @ to attach"
               className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
               style={{ maxHeight: 120, overflowY: "auto" }}
             />
@@ -434,6 +437,14 @@ export function AgentPanel({
             onProviderChange={onProviderChange}
             onModelChange={onModelChange}
           />
+          {liteAgentMode === true && (
+            <span
+              className="ml-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-[1px] text-[10px] font-medium uppercase tracking-wide text-amber-400"
+              title="Lite agent mode is on — reduced tool set, shorter prompt, extra guards. Designed for weak local or small cloud models."
+            >
+              Lite
+            </span>
+          )}
           <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
         </div>
       </div>

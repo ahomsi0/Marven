@@ -282,6 +282,7 @@ interface AgentWorkspaceProps {
   onAgentVoiceClick?: () => void;
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
+  liteAgentMode?: boolean;
   onOpenPreviewTab?: (url: string) => void;
   onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
@@ -348,6 +349,7 @@ export function AgentWorkspace({
   onAgentVoiceClick,
   planMode,
   onPlanModeChange,
+  liteAgentMode,
   onOpenPreviewTab,
   onOpenRestTab,
   onJumpToLine,
@@ -1195,6 +1197,7 @@ export function AgentWorkspace({
                   onVoiceClick={onAgentVoiceClick}
                   planMode={planMode}
                   onPlanModeChange={onPlanModeChange}
+                  liteAgentMode={liteAgentMode}
                   workspaceFiles={files}
                 />
               </div>
