@@ -742,6 +742,7 @@ export function EditorPanel({
             <div className="min-h-0 flex-1 overflow-hidden bg-[var(--m-bg)]">
               <SettingsModal
                 inline
+                workspaceRoot={workspaceRoot}
                 shortcuts={shortcuts}
                 promptTemplates={promptTemplates}
                 mcpServers={mcpServers}

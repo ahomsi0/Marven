@@ -16,8 +16,8 @@ afterEach(async () => {
 });
 
 describe("TOOL_DEFINITIONS", () => {
-  it("exports 15 tools", () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(15);
+  it("exports 16 tools", () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(16);
     const names = TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toContain("list_files");
     expect(names).toContain("read_file");
@@ -34,6 +34,37 @@ describe("TOOL_DEFINITIONS", () => {
     expect(names).toContain("git_commit");
     expect(names).toContain("git_branch");
     expect(names).toContain("git_checkout");
+    expect(names).toContain("search_codebase");
+  });
+});
+
+describe("executeTool – search_codebase", () => {
+  it("formats results as numbered chunks", async () => {
+    const mod = await import("@/lib/index/search");
+    const spy = vi.spyOn(mod, "searchCodebase").mockResolvedValue([
+      { path: "a.ts", startLine: 0, endLine: 4, text: "function f(){}", distance: 0.2 },
+    ]);
+    const out = await executeTool("search_codebase", { query: "f" }, tmpDir);
+    expect(out).toContain("[1] a.ts:1-5");
+    expect(out).toContain("function f(){}");
+    spy.mockRestore();
+  });
+  it("returns 'No matches.' for empty result", async () => {
+    const mod = await import("@/lib/index/search");
+    const spy = vi.spyOn(mod, "searchCodebase").mockResolvedValue([]);
+    expect(await executeTool("search_codebase", { query: "x" }, tmpDir)).toBe(
+      "No matches.",
+    );
+    spy.mockRestore();
+  });
+  it("returns error JSON when search disabled", async () => {
+    const mod = await import("@/lib/index/search");
+    const spy = vi
+      .spyOn(mod, "searchCodebase")
+      .mockResolvedValue({ error: "disabled" } as any);
+    const out = await executeTool("search_codebase", { query: "x" }, tmpDir);
+    expect(out).toContain("disabled");
+    spy.mockRestore();
   });
 });
 

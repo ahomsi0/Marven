@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     return () => ipcRenderer.removeListener('pty-exit', handler);
   },
 
+  // Codebase indexing — moved to /api/index/* (see lib/index/client.ts). The
+  // renderer talks to the Next.js server directly; no IPC bridge needed.
+
   // ── LSP bridge ────────────────────────────────────────────────────────────
   lsp: {
     ensure: (languageId) => ipcRenderer.invoke("lsp-ensure", languageId),

@@ -235,6 +235,42 @@ export default function Home() {
     try { return JSON.parse(localStorage.getItem("marven-recent-workspaces") ?? "[]"); }
     catch { return []; }
   });
+  // ─── Codebase indexing: trigger a reindex when the workspace changes ──────
+  // The indexer now lives in Next.js API routes (lib/index/* runs server-side),
+  // not in the Electron main process. We honor the `codebaseIndexEnabled`
+  // setting before kicking off a run.
+  useEffect(() => {
+    if (!workspaceRoot) return;
+    const electron = (typeof window !== "undefined"
+      ? (window as any).marvenElectron
+      : null);
+    let cancelled = false;
+    (async () => {
+      let enabled = true;
+      if (electron?.getSettings) {
+        try {
+          const s = await electron.getSettings();
+          if (typeof s?.codebaseIndexEnabled === "boolean") enabled = s.codebaseIndexEnabled;
+        } catch {
+          /* default to enabled */
+        }
+      }
+      if (cancelled || !enabled) return;
+      try {
+        await fetch("/api/index/run-full", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceRoot, stream: false }),
+        });
+      } catch {
+        /* indexer unavailable — non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceRoot]);
+
   // ─── Multi-tab editor state ─────────────────────────────────────────────────
   const [openTabs, setOpenTabs] = useState<EditorTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
@@ -923,6 +959,16 @@ export default function Home() {
       return next;
     });
     await loadWorkspaceFiles();
+
+    // Fire-and-forget incremental index update — the route is a no-op if
+    // indexing is disabled, and we don't want save latency to depend on it.
+    if (workspaceRoot && activeFilePath) {
+      fetch("/api/index/update-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceRoot, path: activeFilePath }),
+      }).catch(() => {});
+    }
   }
 
   async function openWorkspaceFolder(folderPath: string) {

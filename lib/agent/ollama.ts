@@ -13,6 +13,7 @@ const KNOWN_TOOLS = new Set([
   "list_files", "read_file", "write_file", "run_command", "search_files",
   "web_search", "fetch_url", "remember",
   "git_status", "git_diff", "git_log", "git_commit", "git_branch", "git_checkout",
+  "search_codebase",
 ]);
 
 export function extractJsonToolCall(text: string): JsonToolCall | null {

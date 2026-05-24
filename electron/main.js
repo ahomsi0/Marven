@@ -195,6 +195,13 @@ ipcMain.handle('lsp-request', async (_event, { sessionId, method, params }) => {
   }
 });
 
+// ── Codebase Indexing ────────────────────────────────────────────────────────
+// Moved out of Electron main into Next.js API routes under /api/index/*.
+// Electron main cannot dynamically import the TypeScript modules under
+// `lib/index/` at runtime, so the previous IndexerHost silently failed in
+// production. The renderer now talks to the routes directly via
+// `lib/index/client.ts`. See `app/api/index/` for the new server.
+
 ipcMain.handle('lsp-restart', async (_event, languageId) => {
   return lspManager.restart(languageId);
 });

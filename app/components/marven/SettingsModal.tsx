@@ -36,6 +36,9 @@ interface SettingsModalProps {
   onSaveTemplates: (templates: PromptTemplate[]) => void;
   onSaveMCPServers: (servers: MCPServer[]) => void;
   inline?: boolean;
+  // Currently-open workspace root, if any. The codebase-indexing controls
+  // (Reindex now / Clear index) require this to talk to /api/index/*.
+  workspaceRoot?: string | null;
 }
 
 type SettingsPage =
@@ -248,12 +251,18 @@ export function SettingsModal({
   onSaveTemplates,
   onSaveMCPServers,
   inline = false,
+  workspaceRoot = null,
 }: SettingsModalProps) {
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
+  const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
+  const [indexStatus, setIndexStatus] = useState<{
+    running: boolean;
+    stats: { fileCount: number; chunkCount: number; dbSizeBytes: number } | null;
+  }>({ running: false, stats: null });
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
@@ -330,14 +339,41 @@ export function SettingsModal({
       if (typeof s.liteAgentMode === "boolean") {
         setLiteAgentModeState(s.liteAgentMode);
       }
+      if (typeof s.codebaseIndexEnabled === "boolean") {
+        setCodebaseIndexEnabled(s.codebaseIndexEnabled);
+      }
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
       setUpdateStatus(data.type);
       setUpdateInfo(data);
     });
-    return unsub;
-  }, []);
+    // Codebase indexing status — poll /api/index/status every 2s while the
+    // modal is open. The indexer runs in the Next.js server (not Electron
+    // main), so we just hit the route directly.
+    let cancelled = false;
+    const refreshIndex = async () => {
+      try {
+        const qs = workspaceRoot
+          ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}`
+          : "";
+        const r = await fetch(`/api/index/status${qs}`);
+        if (!r.ok) return;
+        const s = await r.json();
+        if (cancelled) return;
+        setIndexStatus({ running: !!s.running, stats: s.stats ?? null });
+      } catch {
+        /* ignore */
+      }
+    };
+    refreshIndex();
+    const idxTimer = setInterval(refreshIndex, 2000);
+    return () => {
+      unsub?.();
+      cancelled = true;
+      clearInterval(idxTimer);
+    };
+  }, [workspaceRoot]);
 
   // Templates state
   const [templates, setTemplates] = useState<PromptTemplate[]>(
@@ -1041,6 +1077,118 @@ export function SettingsModal({
                       liteAgentMode ? "translate-x-5" : "translate-x-1"
                     }`}
                   />
+                </button>
+              </div>
+            </div>
+
+            {/* Codebase Indexing */}
+            <div
+              className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4"
+              data-testid="setting-codebase-indexing"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">
+                    Codebase indexing
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Lets the agent search your code semantically. Uses Ollama
+                    (nomic-embed-text). Index lives at ~/.marven/index/.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={codebaseIndexEnabled}
+                  onClick={async () => {
+                    const next = !codebaseIndexEnabled;
+                    setCodebaseIndexEnabled(next);
+                    if (electron) {
+                      const cur = await electron.getSettings();
+                      await electron.saveSettings({
+                        ...cur,
+                        codebaseIndexEnabled: next,
+                      });
+                      // Mirror the toggle into the server-side indexer state.
+                      try {
+                        await fetch("/api/index/set-enabled", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: next }),
+                        });
+                      } catch {
+                        /* non-fatal — the route will catch up next request */
+                      }
+                      window.dispatchEvent(
+                        new CustomEvent("marven:settings-changed"),
+                      );
+                    }
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    codebaseIndexEnabled ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      codebaseIndexEnabled ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-3 text-[11px] text-[var(--m-text-faint)]">
+                Status:{" "}
+                {indexStatus.running
+                  ? "Indexing…"
+                  : indexStatus.stats
+                    ? "Ready"
+                    : "Idle"}
+                {indexStatus.stats && (
+                  <>
+                    {" · "}
+                    {indexStatus.stats.fileCount} files ·{" "}
+                    {indexStatus.stats.chunkCount} chunks ·{" "}
+                    {(indexStatus.stats.dbSizeBytes / 1_000_000).toFixed(1)} MB
+                  </>
+                )}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)] disabled:opacity-50"
+                  disabled={!workspaceRoot}
+                  onClick={() => {
+                    if (!workspaceRoot) return;
+                    fetch("/api/index/run-full", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ workspaceRoot, stream: false }),
+                    }).catch(() => {});
+                  }}
+                >
+                  Reindex now
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)] disabled:opacity-50"
+                  disabled={!workspaceRoot}
+                  onClick={async () => {
+                    if (!workspaceRoot) return;
+                    await fetch("/api/index/clear", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ workspaceRoot }),
+                    });
+                    const r = await fetch(
+                      `/api/index/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+                    );
+                    const s = r.ok ? await r.json() : null;
+                    setIndexStatus({
+                      running: !!s?.running,
+                      stats: s?.stats ?? null,
+                    });
+                  }}
+                >
+                  Clear index
                 </button>
               </div>
             </div>
