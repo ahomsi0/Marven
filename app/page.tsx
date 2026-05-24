@@ -22,6 +22,9 @@ import type {
   ImageAttachment,
   EditorTab,
   AgentMessage,
+  LspWorkspaceEdit,
+  LspTextEdit,
+  LspPosition,
 } from "@/types";
 import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
@@ -728,6 +731,102 @@ export default function Home() {
           return next;
         });
       });
+  }
+
+  // ── LSP cross-file rename / refactor support ───────────────────────────────
+  // When a language server returns a WorkspaceEdit spanning multiple files
+  // (e.g. F2 rename), apply each file's edits to its buffer (loading from
+  // disk first if the file isn't already open) and open the affected files
+  // as tabs so the user sees the changes.
+  function positionToOffset(text: string, pos: LspPosition): number {
+    // Walk lines until reaching pos.line. Each newline (\n) counts as 1 char.
+    // LSP uses UTF-16 code units for `character`; JS strings are UTF-16, so a
+    // direct slice is correct for the common case (no astral-plane fixups).
+    let line = 0;
+    let i = 0;
+    while (line < pos.line && i < text.length) {
+      const nl = text.indexOf("\n", i);
+      if (nl < 0) return text.length;
+      i = nl + 1;
+      line++;
+    }
+    return Math.min(i + pos.character, text.length);
+  }
+
+  function applyEditsToText(text: string, edits: LspTextEdit[]): string {
+    // Sort by start position DESCENDING so earlier offsets remain valid as we
+    // splice later ranges first.
+    const sorted = [...edits].sort((a, b) => {
+      if (a.range.start.line !== b.range.start.line) return b.range.start.line - a.range.start.line;
+      return b.range.start.character - a.range.start.character;
+    });
+    let next = text;
+    for (const e of sorted) {
+      const start = positionToOffset(next, e.range.start);
+      const end = positionToOffset(next, e.range.end);
+      next = next.slice(0, start) + e.newText + next.slice(end);
+    }
+    return next;
+  }
+
+  async function handleApplyWorkspaceEdit(edit: LspWorkspaceEdit): Promise<void> {
+    if (!workspaceRoot) return;
+    // Flatten both LspWorkspaceEdit shapes into (uri, edits) tuples.
+    const groups: Array<{ uri: string; edits: LspTextEdit[] }> = [];
+    if (edit.changes) {
+      for (const [uri, edits] of Object.entries(edit.changes)) {
+        groups.push({ uri, edits });
+      }
+    }
+    if (edit.documentChanges) {
+      for (const dc of edit.documentChanges) {
+        groups.push({ uri: dc.textDocument.uri, edits: dc.edits });
+      }
+    }
+    if (groups.length === 0) return;
+
+    const newlyOpened: string[] = [];
+
+    for (const { uri, edits } of groups) {
+      // LSP URIs are file://… ; convert to absolute path, then to workspace-relative.
+      const absPath = decodeURIComponent(uri.replace(/^file:\/\//, ""));
+      const relPath = absPath.startsWith(workspaceRoot)
+        ? absPath.slice(workspaceRoot.length).replace(/^\/+/, "")
+        : absPath;
+
+      // Pull current content from the open buffer; otherwise read from disk.
+      let current: string;
+      const buffered = fileBuffers.get(relPath)?.content;
+      if (buffered !== undefined) {
+        current = buffered;
+      } else {
+        const res = await readWorkspaceFile(relPath, workspaceRoot);
+        if (!res.ok || typeof res.data?.content !== "string") {
+          console.error("[applyWorkspaceEdit] failed to read", relPath, res.status);
+          continue;
+        }
+        current = res.data.content;
+      }
+
+      const next = applyEditsToText(current, edits);
+      if (next === current) continue;
+
+      setFileBuffers((prev) => {
+        const map = new Map(prev);
+        map.set(relPath, { content: next, dirty: true, loading: false });
+        return map;
+      });
+
+      // Track files we need to open as tabs so the user sees the edits.
+      if (!openTabs.some((t) => t.kind === "file" && t.path === relPath) && !newlyOpened.includes(relPath)) {
+        newlyOpened.push(relPath);
+      }
+    }
+
+    // Open any newly affected files as tabs (in batch — avoid one re-render per file).
+    if (newlyOpened.length > 0) {
+      setOpenTabs((prev) => [...prev, ...newlyOpened.map((path) => ({ kind: "file" as const, path }))]);
+    }
   }
 
   function openSettingsTab() {
@@ -1765,6 +1864,7 @@ export default function Home() {
         openTabs={openTabs}
         activeTabIndex={activeTabIndex}
         fileBuffers={fileBuffers}
+        onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
         onSelectTab={setActiveTabIndex}
         onCloseTab={closeTab}
         onReorderTabs={reorderTabs}

@@ -265,6 +265,7 @@ interface AgentWorkspaceProps {
   openTabs: EditorTab[];
   activeTabIndex: number;
   fileBuffers: Map<string, { content: string; dirty: boolean; loading: boolean }>;
+  onApplyWorkspaceEdit?: (edit: import("@/types").LspWorkspaceEdit) => Promise<void>;
   onSelectTab: (index: number) => void;
   onCloseTab: (index: number) => void;
   onReorderTabs: (from: number, to: number) => void;
@@ -330,6 +331,7 @@ export function AgentWorkspace({
   openTabs,
   activeTabIndex,
   fileBuffers,
+  onApplyWorkspaceEdit,
   onSelectTab,
   onCloseTab,
   onReorderTabs,
@@ -1116,6 +1118,7 @@ export function AgentWorkspace({
             openTabs={openTabs}
             activeTabIndex={activeTabIndex}
             fileBuffers={fileBuffers}
+            onApplyWorkspaceEdit={onApplyWorkspaceEdit}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
             onReorderTabs={onReorderTabs}
