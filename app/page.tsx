@@ -235,6 +235,15 @@ export default function Home() {
     try { return JSON.parse(localStorage.getItem("marven-recent-workspaces") ?? "[]"); }
     catch { return []; }
   });
+  // ─── Codebase indexing: tell main process about workspace changes ──────────
+  useEffect(() => {
+    if (!workspaceRoot) return;
+    const idx = (typeof window !== "undefined"
+      ? (window as any).marvenElectron?.index
+      : null);
+    idx?.setWorkspace?.(workspaceRoot);
+  }, [workspaceRoot]);
+
   // ─── Multi-tab editor state ─────────────────────────────────────────────────
   const [openTabs, setOpenTabs] = useState<EditorTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);

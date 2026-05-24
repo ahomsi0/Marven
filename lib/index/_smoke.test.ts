@@ -17,7 +17,7 @@ describe("native deps", () => {
     sqliteVec.load(db);
     db.exec("CREATE VIRTUAL TABLE v USING vec0(embedding float[8])");
     db.prepare("INSERT INTO v(rowid, embedding) VALUES (?, ?)").run(
-      1n,
+      BigInt(1),
       Buffer.from(new Float32Array([1, 0, 0, 0, 0, 0, 0, 0]).buffer),
     );
     const row = db.prepare("SELECT COUNT(*) AS n FROM v").get() as { n: number };

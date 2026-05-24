@@ -254,6 +254,11 @@ export function SettingsModal({
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
+  const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
+  const [indexStatus, setIndexStatus] = useState<{
+    running: boolean;
+    stats: { fileCount: number; chunkCount: number; dbSizeBytes: number } | null;
+  }>({ running: false, stats: null });
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
@@ -330,13 +335,43 @@ export function SettingsModal({
       if (typeof s.liteAgentMode === "boolean") {
         setLiteAgentModeState(s.liteAgentMode);
       }
+      if (typeof s.codebaseIndexEnabled === "boolean") {
+        setCodebaseIndexEnabled(s.codebaseIndexEnabled);
+      }
     });
     electron.getVersion().then(setVersion);
     const unsub = electron.onUpdateStatus((data: any) => {
       setUpdateStatus(data.type);
       setUpdateInfo(data);
     });
-    return unsub;
+    // Index status + event subscriptions
+    const idx = (electron as any).index;
+    let unsubIdx: (() => void) | undefined;
+    if (idx) {
+      idx.status?.().then((s: any) => {
+        if (s) setIndexStatus({ running: !!s.running, stats: s.stats ?? null });
+      });
+      const u1 = idx.onProgress?.(() =>
+        setIndexStatus((prev) => ({ ...prev, running: true })),
+      );
+      const u2 = idx.onDone?.(() => {
+        idx.status?.().then((s: any) =>
+          setIndexStatus({ running: false, stats: s?.stats ?? null }),
+        );
+      });
+      const u3 = idx.onError?.(() =>
+        setIndexStatus((prev) => ({ ...prev, running: false })),
+      );
+      unsubIdx = () => {
+        u1?.();
+        u2?.();
+        u3?.();
+      };
+    }
+    return () => {
+      unsub?.();
+      unsubIdx?.();
+    };
   }, []);
 
   // Templates state
@@ -1041,6 +1076,94 @@ export function SettingsModal({
                       liteAgentMode ? "translate-x-5" : "translate-x-1"
                     }`}
                   />
+                </button>
+              </div>
+            </div>
+
+            {/* Codebase Indexing */}
+            <div
+              className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4"
+              data-testid="setting-codebase-indexing"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">
+                    Codebase indexing
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    Lets the agent search your code semantically. Uses Ollama
+                    (nomic-embed-text). Index lives at ~/.marven/index/.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={codebaseIndexEnabled}
+                  onClick={async () => {
+                    const next = !codebaseIndexEnabled;
+                    setCodebaseIndexEnabled(next);
+                    if (electron) {
+                      const cur = await electron.getSettings();
+                      await electron.saveSettings({
+                        ...cur,
+                        codebaseIndexEnabled: next,
+                      });
+                      await (electron as any).index?.setEnabled?.(next);
+                      window.dispatchEvent(
+                        new CustomEvent("marven:settings-changed"),
+                      );
+                    }
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    codebaseIndexEnabled ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      codebaseIndexEnabled ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-3 text-[11px] text-[var(--m-text-faint)]">
+                Status:{" "}
+                {indexStatus.running
+                  ? "Indexing…"
+                  : indexStatus.stats
+                    ? "Ready"
+                    : "Idle"}
+                {indexStatus.stats && (
+                  <>
+                    {" · "}
+                    {indexStatus.stats.fileCount} files ·{" "}
+                    {indexStatus.stats.chunkCount} chunks ·{" "}
+                    {(indexStatus.stats.dbSizeBytes / 1_000_000).toFixed(1)} MB
+                  </>
+                )}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)]"
+                  onClick={() => (electron as any)?.index?.runFull?.()}
+                >
+                  Reindex now
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-[var(--m-border-subtle)] px-2 py-1 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-raised)]"
+                  onClick={async () => {
+                    const idx = (electron as any)?.index;
+                    if (!idx) return;
+                    await idx.clear?.();
+                    const s = await idx.status?.();
+                    setIndexStatus({
+                      running: !!s?.running,
+                      stats: s?.stats ?? null,
+                    });
+                  }}
+                >
+                  Clear index
                 </button>
               </div>
             </div>
