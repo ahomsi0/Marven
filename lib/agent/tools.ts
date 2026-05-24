@@ -193,6 +193,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ["target"],
     },
   },
+  {
+    name: "search_codebase",
+    description:
+      "Semantic search across the workspace. Returns code chunks ranked by meaning, not just keywords. Use this BEFORE search_files when looking for concepts, patterns, or 'where do we do X' questions.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Natural-language search query." },
+        limit: {
+          type: "number",
+          description: "Number of chunks to return. Default 8, max 20.",
+        },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 const BLOCKED = [/sudo/, /rm\s+-rf\s+\//, /mkfs/, /dd\s+if=/, />\s*\/dev\//];
@@ -659,6 +675,24 @@ export async function executeTool(
       const target = (args.target as string | undefined)?.trim();
       if (!target) return "git_checkout failed: target is required.";
       return runGit(["checkout", target], workspaceRoot);
+    }
+
+    case "search_codebase": {
+      const mod = await import("@/lib/index/search");
+      const limit = typeof args.limit === "number" ? args.limit : 8;
+      const results = await mod.searchCodebase({
+        workspaceRoot,
+        query: String(args.query ?? ""),
+        limit,
+      });
+      if (!Array.isArray(results)) return JSON.stringify(results);
+      if (results.length === 0) return "No matches.";
+      return results
+        .map(
+          (r, i) =>
+            `[${i + 1}] ${r.path}:${r.startLine + 1}-${r.endLine + 1} (distance ${r.distance.toFixed(3)})\n${r.text}`,
+        )
+        .join("\n\n");
     }
 
     default:
