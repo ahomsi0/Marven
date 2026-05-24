@@ -7,7 +7,10 @@ import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import { ModelSelector } from "./ModelSelector";
 import { UsageIndicator } from "./UsageIndicator";
-import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment } from "@/types";
+import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment, Mention, WorkspaceFile } from "@/types";
+import { getActiveTrigger } from "@/lib/mentions/parser";
+import { MentionPopup } from "./MentionPopup";
+import { MentionChip } from "./MentionChip";
 
 interface AgentPanelProps {
   messages: AgentMessage[];
@@ -20,9 +23,10 @@ interface AgentPanelProps {
   onProviderChange: (p: AIProvider) => void;
   onModelChange: (m: string) => void;
   onInputChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (opts?: { mentions?: Mention[] }) => void;
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
+  workspaceFiles?: WorkspaceFile[];
   onApproveToolCall?: (callId: string, accept: boolean) => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
@@ -69,6 +73,7 @@ export function AgentPanel({
   onVoiceClick,
   planMode,
   onPlanModeChange,
+  workspaceFiles,
 }: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,6 +84,40 @@ export function AgentPanel({
   const matches = AGENT_SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
   const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
+
+  // ── @-mention state ─────────────────────────────────────────────────────
+  const [mentions, setMentions] = useState<Mention[]>([]);
+  const [mentionPopup, setMentionPopup] = useState<
+    { anchor: { x: number; y: number }; query: string; trigger: { startOffset: number } } | null
+  >(null);
+  const workspaceFilePaths = (workspaceFiles ?? []).map((f) => f.path);
+
+  function updateMentionTrigger() {
+    const ta = textareaRef.current;
+    if (!ta) { setMentionPopup(null); return; }
+    const trig = getActiveTrigger(ta.value, ta.selectionStart);
+    if (!trig) { setMentionPopup(null); return; }
+    // Anchor: just above the textarea's top-left for v1.
+    const rect = ta.getBoundingClientRect();
+    setMentionPopup({
+      anchor: { x: rect.left, y: rect.top },
+      query: trig.query,
+      trigger: { startOffset: trig.startOffset },
+    });
+  }
+
+  function pickMention(m: Mention) {
+    const ta = textareaRef.current;
+    if (ta && mentionPopup) {
+      const cursor = ta.selectionStart;
+      const before = ta.value.slice(0, mentionPopup.trigger.startOffset);
+      const after = ta.value.slice(cursor);
+      onInputChange(before + after);
+    }
+    setMentions((prev) => [...prev, m]);
+    setMentionPopup(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
 
   useEffect(() => {
     const electron = (window as any).marvenElectron;
@@ -115,9 +154,21 @@ export function AgentPanel({
       if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); const sel = matches[menuActiveIdx]; if (sel) selectCommand(sel.command); return; }
       if (e.key === "Escape") { e.preventDefault(); onInputChange(""); return; }
     }
+    // Backspace at offset 0 with chips → remove last chip.
+    if (e.key === "Backspace") {
+      const ta = textareaRef.current;
+      if (ta && ta.selectionStart === 0 && ta.selectionEnd === 0 && mentions.length > 0) {
+        e.preventDefault();
+        setMentions((prev) => prev.slice(0, -1));
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
+      // If the mention popup is open, let it consume Enter via its own listener.
+      if (mentionPopup) return;
       e.preventDefault();
-      onSend();
+      onSend({ mentions });
+      setMentions([]);
     }
   }
 
@@ -244,6 +295,26 @@ export function AgentPanel({
               ))}
             </div>
           )}
+          {mentions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2 pb-1">
+              {mentions.map((m, i) => (
+                <MentionChip
+                  key={`${m.kind}-${i}`}
+                  mention={m}
+                  onRemove={() => setMentions((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+            </div>
+          )}
+          {mentionPopup && (
+            <MentionPopup
+              anchor={mentionPopup.anchor}
+              query={mentionPopup.query}
+              workspaceFiles={workspaceFilePaths}
+              onPick={pickMention}
+              onClose={() => setMentionPopup(null)}
+            />
+          )}
           <div className="relative flex items-center gap-2 px-0 py-0">
             {menuOpen && (
               <SlashMenu
@@ -257,7 +328,10 @@ export function AgentPanel({
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => onInputChange(e.target.value)}
+              onChange={(e) => { onInputChange(e.target.value); setTimeout(updateMentionTrigger, 0); }}
+              onKeyUp={updateMentionTrigger}
+              onClick={updateMentionTrigger}
+              onBlur={() => setTimeout(() => setMentionPopup(null), 150)}
               onKeyDown={handleKeyDown}
               onPaste={async (e) => {
                 const items = Array.from(e.clipboardData.items).filter((item) => item.type.startsWith("image/"));
@@ -269,7 +343,7 @@ export function AgentPanel({
               }}
               disabled={isRunning}
               rows={1}
-              placeholder="Describe task…"
+              placeholder={!input && mentions.length === 0 ? "Describe task… Type @ to attach files, folders, code search, or URLs." : "Describe task…"}
               className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
               style={{ maxHeight: 120, overflowY: "auto" }}
             />
@@ -339,8 +413,8 @@ export function AgentPanel({
               ) : (
                 <button
                   type="button"
-                  onClick={onSend}
-                  disabled={!input.trim()}
+                  onClick={() => { onSend({ mentions }); setMentions([]); }}
+                  disabled={!input.trim() && mentions.length === 0}
                   className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
