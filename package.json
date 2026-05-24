@@ -13,7 +13,8 @@
     "launch": "concurrently \"npm run dev\" \"sleep 3 && menubar-helper/MarvenHelper\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "node scripts/fix-node-pty-perms.js",
+    "postinstall": "node scripts/fix-node-pty-perms.js && node scripts/rebuild-native.js",
+    "rebuild:native": "node scripts/rebuild-native.js",
     "electron:build": "next build && node scripts/prepare-standalone.js && node scripts/fix-node-pty-perms.js && electron-builder"
   },
   "build": {
@@ -23,7 +24,8 @@
     "afterPack": "scripts/after-pack.js",
     "afterSign": "scripts/after-sign.js",
     "asarUnpack": [
-      "node_modules/node-pty/**/*"
+      "node_modules/node-pty/**/*",
+      "node_modules/better-sqlite3/**/*"
     ],
     "directories": {
       "output": "dist"
@@ -122,6 +124,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
+    "better-sqlite3": "^11.10.0",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
     "electron-updater": "^6.8.3",
@@ -135,9 +138,11 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/diff": "^7.0.2",
     "@types/jsdom": "^28.0.3",
