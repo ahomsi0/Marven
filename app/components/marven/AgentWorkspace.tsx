@@ -245,7 +245,7 @@ interface AgentWorkspaceProps {
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   onInputChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (opts?: { mentions?: import("@/types").Mention[] }) => void;
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
   onOpenFolder: () => void;
@@ -1195,6 +1195,7 @@ export function AgentWorkspace({
                   onVoiceClick={onAgentVoiceClick}
                   planMode={planMode}
                   onPlanModeChange={onPlanModeChange}
+                  workspaceFiles={files}
                 />
               </div>
             </>

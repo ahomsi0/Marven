@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment } from "@/types";
+import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention } from "@/types";
 
 const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
 const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
@@ -40,7 +40,12 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       return next;
     });
 
-  const send = useCallback(async (prompt: string, attachments?: ImageAttachment[]) => {
+  const send = useCallback(async (
+    prompt: string,
+    opts?: { attachments?: ImageAttachment[]; mentions?: Mention[] },
+  ) => {
+    const attachments = opts?.attachments;
+    const mentions = opts?.mentions;
     if (!prompt.trim() || isRunning) return;
     setError(null);
     setIsRunning(true);
@@ -125,7 +130,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, mentions: mentions ?? [] }),
         signal: abort.signal,
       });
 
