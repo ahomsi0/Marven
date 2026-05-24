@@ -26,12 +26,14 @@ jobs:
           node-version: 20
           cache: npm
 
-      # `npm ci` runs our postinstall, which rebuilds native deps
-      # (better-sqlite3, node-pty, sqlite-vec) against the host platform.
-      # If this step fails on any platform, that's the canary that something
-      # in our native dep chain regressed before any build runs.
-      - name: Install dependencies (also exercises native rebuild)
+      # `npm ci` runs our postinstall, which normally rebuilds better-sqlite3
+      # against Electron's Node ABI. In CI we want to test against the
+      # *prebuilt Node* binary (so vitest under system Node can dlopen it), so
+      # we skip the Electron rebuild. The release workflow does its own rebuild.
+      - name: Install dependencies (host Node ABI)
         run: npm ci
+        env:
+          MARVEN_SKIP_ELECTRON_REBUILD: "1"
 
       - name: Typecheck
         run: npx tsc --noEmit
