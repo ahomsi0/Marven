@@ -15,7 +15,15 @@ function defaultRunNpmInstall(languageId, { installDir, npmPackages }) {
     let stderr = "";
     child.stderr.on("data", (b) => { stderr += b.toString("utf8"); });
     child.on("exit", (code) => resolve({ code: code ?? 1, stderr }));
-    child.on("error", (err) => resolve({ code: 1, stderr: String(err && err.message || err) }));
+    child.on("error", (err) => {
+      // ENOENT here means `npm` itself isn't on PATH — surface a clear,
+      // actionable message instead of the cryptic spawn error.
+      const raw = String((err && err.message) || err);
+      const friendly = /ENOENT/.test(raw)
+        ? `npm not found on PATH. Marven uses npm to install language servers (typescript-language-server, etc.) into ~/.marven/lsp/. Install Node.js from https://nodejs.org and restart Marven. Original error: ${raw}`
+        : raw;
+      resolve({ code: 1, stderr: friendly });
+    });
   });
 }
 

@@ -10,8 +10,8 @@ export interface EmbedderOptions {
 }
 
 export class Embedder {
-  private readonly url: string;
-  private readonly model: string;
+  readonly url: string;
+  readonly model: string;
   private readonly batchSize: number;
 
   constructor(opts: EmbedderOptions = {}) {

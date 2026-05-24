@@ -29,6 +29,8 @@ What leaves your machine depends on which provider is selected:
 
 If full privacy matters, use **Ollama** locally for chat/agent and the **Local** voice option (default).
 
+→ Full privacy policy: [PRIVACY.md](./PRIVACY.md). Build/release notes: [docs/BUILDING.md](./docs/BUILDING.md).
+
 ---
 
 ## Features

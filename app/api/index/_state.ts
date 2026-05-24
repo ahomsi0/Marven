@@ -26,7 +26,14 @@ export interface IndexRunHandle {
 export type IndexEvent =
   | { type: "progress"; data: IndexProgress }
   | { type: "done"; data: { filesIndexed: number; chunksIndexed: number; durationMs: number } }
-  | { type: "error"; data: { message: string } };
+  | { type: "error"; data: { message: string } }
+  /**
+   * Fired before indexing starts when the embedding model has to be downloaded
+   * via Ollama. UI can show "Downloading nomic-embed-text (274 MB)…" so first-
+   * time users aren't staring at a silent screen for a minute.
+   */
+  | { type: "embedding-model-pulling"; data: { model: string } }
+  | { type: "embedding-model-ready"; data: { model: string } };
 
 export type IndexEventListener = (e: IndexEvent) => void;
 
@@ -39,6 +46,9 @@ interface IndexState {
   stores: Map<string, IndexStore>;
   // Cached indexer per workspace root.
   indexers: Map<string, Indexer>;
+  // Cached embedder per workspace root — kept in parallel so startRun() can
+  // call ensureModelInstalled() without reaching into the Indexer internals.
+  embedders: Map<string, Embedder>;
   // Whether indexing is enabled (mirrors the codebaseIndexEnabled setting).
   // For now we trust the renderer not to call the routes when disabled, but
   // the search route also returns [] when disabled.
@@ -51,6 +61,7 @@ if (!g.__marvenIndexState) {
     currentRun: null,
     stores: new Map(),
     indexers: new Map(),
+    embedders: new Map(),
     enabled: true,
   };
 }
@@ -77,10 +88,17 @@ export function getIndexer(workspaceRoot: string): Indexer {
   if (!idx) {
     const store = getStore(workspaceRoot);
     const embedder = new Embedder();
+    state.embedders.set(workspaceRoot, embedder);
     idx = new Indexer({ workspaceRoot, store, embedder });
     state.indexers.set(workspaceRoot, idx);
   }
   return idx;
+}
+
+export function getEmbedder(workspaceRoot: string): Embedder {
+  // Make sure the indexer (and therefore the embedder) is initialised.
+  getIndexer(workspaceRoot);
+  return state.embedders.get(workspaceRoot)!;
 }
 
 export function getStats(workspaceRoot: string | null): IndexStats | null {
@@ -122,6 +140,7 @@ export function startRun(workspaceRoot: string): StartRunResult {
     state.currentRun.abort.abort();
   }
   const indexer = getIndexer(workspaceRoot);
+  const embedder = getEmbedder(workspaceRoot);
   const abort = new AbortController();
   const handle: IndexRunHandle = {
     workspaceRoot,
@@ -134,14 +153,57 @@ export function startRun(workspaceRoot: string): StartRunResult {
   };
   state.currentRun = handle;
 
-  handle.donePromise = indexer
-    .runFull({
+  handle.donePromise = (async () => {
+    // First-time setup: pull the embedding model via Ollama if it's missing.
+    // We do this through ensureModelInstalled() which handles tag-lookup, pull,
+    // and stream-drain internally. To surface progress to the UI we peek the
+    // /api/tags response first so we can emit "pulling" *before* the (long)
+    // pull starts. Any network error from the tags probe is treated as
+    // "Ollama unreachable" and surfaced with a friendly message.
+    if (/^https?:\/\/localhost|^https?:\/\/127\.0\.0\.1/.test(embedder.url)) {
+      // Only run the preflight for real local Ollama URLs. Test embedders
+      // (url: http://test-embedder) skip this and rely on their stubbed
+      // ensureModelInstalled.
+      let modelMissing = false;
+      try {
+        const tags = await fetch(`${embedder.url}/api/tags`);
+        if (tags.ok) {
+          const data = (await tags.json()) as { models?: Array<{ name: string }> };
+          modelMissing = !(data.models ?? []).some(
+            (m) => m.name.split(":")[0] === embedder.model,
+          );
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/fetch|ECONN|connect/i.test(msg)) {
+          throw new Error(
+            `Cannot reach Ollama at ${embedder.url}. Install from https://ollama.com and make sure it's running, then retry indexing.`,
+          );
+        }
+        throw e;
+      }
+      if (modelMissing) {
+        emit(handle, { type: "embedding-model-pulling", data: { model: embedder.model } });
+      }
+    }
+
+    const pullRes = await embedder.ensureModelInstalled();
+    if (!pullRes.ok) {
+      throw new Error(
+        `Embedding model "${embedder.model}" could not be downloaded: ${pullRes.error}. ` +
+          `Is Ollama running? Install from https://ollama.com and try again.`,
+      );
+    }
+    emit(handle, { type: "embedding-model-ready", data: { model: embedder.model } });
+
+    return indexer.runFull({
       signal: abort.signal,
       onProgress: (p) => {
         handle.progress = p;
         emit(handle, { type: "progress", data: p });
       },
-    })
+    });
+  })()
     .then(
       (result) => {
         emit(handle, { type: "done", data: result });
@@ -191,6 +253,7 @@ export function __resetForTests(): void {
   }
   state.stores.clear();
   state.indexers.clear();
+  state.embedders.clear();
   state.enabled = true;
 }
 
@@ -199,8 +262,27 @@ export function __resetForTests(): void {
 export interface TestInjection {
   store: IndexStore;
   indexer: Indexer;
+  /**
+   * Optional embedder injection. When provided, startRun() will use it for the
+   * "ensure model installed" preflight instead of constructing a real Embedder
+   * that talks to localhost:11434 — which would hang in tests.
+   */
+  embedder?: Embedder;
 }
 export function __injectForTests(workspaceRoot: string, inj: TestInjection): void {
   state.stores.set(workspaceRoot, inj.store);
   state.indexers.set(workspaceRoot, inj.indexer);
+  if (inj.embedder) {
+    state.embedders.set(workspaceRoot, inj.embedder);
+  } else {
+    // Default to a no-op embedder for tests that don't bring their own.
+    const noop = {
+      url: "http://test-embedder",
+      model: "test-model",
+      ensureModelInstalled: async () => ({ ok: true }),
+      embed: async () => new Float32Array(0),
+      embedBatch: async () => [],
+    } as unknown as Embedder;
+    state.embedders.set(workspaceRoot, noop);
+  }
 }
