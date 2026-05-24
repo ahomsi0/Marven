@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { AIProvider } from "@/types";
+import { CloudIcon, HexagonIcon } from "./Icons";
 
 // Re-export so InputBar can keep the same import path for shortModelName
 export function shortModelName(name: string): string {
@@ -193,7 +194,10 @@ export function ModelSelector({
                     : "border-transparent text-[#555] hover:text-[#888]"
                 }`}
               >
-                {t === "cloud" ? "☁ Cloud" : "⬡ Local"}
+                <span className="inline-flex items-center gap-1.5">
+                  {t === "cloud" ? <CloudIcon /> : <HexagonIcon />}
+                  {t === "cloud" ? "Cloud" : "Local"}
+                </span>
               </button>
             ))}
           </div>

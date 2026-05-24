@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { WorkspaceFile } from "@/types";
+import { FileIcon as FileGlyph, FolderIcon as FolderGlyph } from "./Icons";
 
 interface ContextMenuState {
   node: TreeNode;
@@ -415,7 +416,7 @@ export function FileExplorer({
       {creating && (
         <div className="border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-2 py-1">
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-[#555]">{creating === "file" ? "📄" : "📁"}</span>
+            <span className="inline-flex text-[#555]">{creating === "file" ? <FileGlyph /> : <FolderGlyph />}</span>
             <input
               autoFocus
               type="text"

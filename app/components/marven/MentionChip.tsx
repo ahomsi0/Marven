@@ -1,6 +1,7 @@
 "use client";
 
 import type { Mention } from "@/types";
+import { FileIcon, FolderIcon, SearchIcon, GlobeIcon } from "./Icons";
 
 interface MentionChipProps {
   mention: Mention;
@@ -20,12 +21,12 @@ function labelFor(m: Mention): string {
   }
 }
 
-function iconFor(kind: Mention["kind"]): string {
+function IconFor({ kind }: { kind: Mention["kind"] }) {
   switch (kind) {
-    case "file": return "📄";
-    case "folder": return "📁";
-    case "codebase": return "🔍";
-    case "web": return "🌐";
+    case "file":     return <FileIcon />;
+    case "folder":   return <FolderIcon />;
+    case "codebase": return <SearchIcon />;
+    case "web":      return <GlobeIcon />;
   }
 }
 
@@ -46,7 +47,7 @@ export function MentionChip({ mention, onRemove }: MentionChipProps) {
       }}
       title={labelFor(mention)}
     >
-      <span aria-hidden>{iconFor(mention.kind)}</span>
+      <span aria-hidden style={{ display: "inline-flex" }}><IconFor kind={mention.kind} /></span>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {labelFor(mention)}
       </span>

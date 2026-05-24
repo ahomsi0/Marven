@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type { Mention } from "@/types";
+import { FileIcon, FolderIcon, SearchIcon, GlobeIcon } from "./Icons";
 
 type Mode = "category" | "file" | "folder" | "codebase" | "web";
 
 const CATEGORIES: Array<{
   id: Exclude<Mode, "category">;
   label: string;
-  icon: string;
+  Icon: ComponentType<{ className?: string }>;
   hint: string;
 }> = [
-  { id: "file",     label: "File",     icon: "📄", hint: "Add a file" },
-  { id: "folder",   label: "Folder",   icon: "📁", hint: "Add a folder" },
-  { id: "codebase", label: "Codebase", icon: "🔍", hint: "Semantic search" },
-  { id: "web",      label: "Web",      icon: "🌐", hint: "Fetch a URL" },
+  { id: "file",     label: "File",     Icon: FileIcon,   hint: "Add a file" },
+  { id: "folder",   label: "Folder",   Icon: FolderIcon, hint: "Add a folder" },
+  { id: "codebase", label: "Codebase", Icon: SearchIcon, hint: "Semantic search" },
+  { id: "web",      label: "Web",      Icon: GlobeIcon,  hint: "Fetch a URL" },
 ];
 
 interface MentionPopupProps {
@@ -192,7 +193,7 @@ export function MentionPopup({
               onClick={() => setMode(c.id)}
               style={rowStyle(i === highlighted)}
             >
-              <span>{c.icon}</span>
+              <span style={{ display: "inline-flex", width: 12 }}><c.Icon /></span>
               <strong style={{ minWidth: 70 }}>{c.label}</strong>
               <span style={{ opacity: 0.6 }}>{c.hint}</span>
             </div>
@@ -213,7 +214,7 @@ export function MentionPopup({
               onClick={() => onPick({ kind: "file", path: p })}
               style={rowStyle(i === highlighted)}
             >
-              📄 {p}
+              <span style={{ display: "inline-flex", width: 12 }}><FileIcon /></span> {p}
             </div>
           ))}
         </>
@@ -232,7 +233,7 @@ export function MentionPopup({
               onClick={() => onPick({ kind: "folder", path: p })}
               style={rowStyle(i === highlighted)}
             >
-              📁 {p}
+              <span style={{ display: "inline-flex", width: 12 }}><FolderIcon /></span> {p}
             </div>
           ))}
         </>

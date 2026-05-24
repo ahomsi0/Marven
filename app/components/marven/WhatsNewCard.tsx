@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import packageJson from "@/package.json";
 import { getRelease } from "@/lib/changelog";
 import type { ChangeTag } from "@/lib/changelog";
+import { SparkleIcon } from "./Icons";
 
 const STORAGE_KEY = "marven_last_seen_version";
 
@@ -49,8 +50,9 @@ export function WhatsNewCard() {
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--m-border-subtle)] px-3 py-2">
-        <span className="text-[11px] font-semibold tracking-wide text-[var(--m-text)]">
-          ✦ What&apos;s new in v{version}
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[var(--m-text)]">
+          <SparkleIcon className="h-3 w-3 text-[var(--m-accent)]" />
+          What&apos;s new in v{version}
         </span>
         <button
           type="button"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
+import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon } from "./Icons";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
@@ -994,7 +995,7 @@ export function SettingsModal({
                         : "bg-[var(--m-accent-soft)] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20"
                     }`}
                   >
-                    {customWakeWordSaved ? "Saved ✓" : "Save"}
+                    {customWakeWordSaved ? <span className="inline-flex items-center gap-1">Saved <CheckIcon className="h-3 w-3" /></span> : "Save"}
                   </button>
                 </div>
               </div>
@@ -1353,11 +1354,11 @@ export function SettingsModal({
               Cloud
             </div>
             {([
-              { id: "groq",       label: "Groq",       icon: "⚡", meta: "5 models", badge: "cloud" },
-              { id: "openai",     label: "OpenAI",     icon: "◈", meta: "4 models", badge: "cloud" },
-              { id: "anthropic",  label: "Anthropic",  icon: "✦", meta: "3 models", badge: "cloud" },
-              { id: "nim",        label: "NIM",        icon: "◈", meta: "5 models", badge: "cloud" },
-              { id: "openrouter", label: "OpenRouter", icon: "◉", meta: "5 models", badge: "cloud" },
+              { id: "groq",       label: "Groq",       icon: <BoltIcon className="h-4 w-4" />,    meta: "5 models", badge: "cloud" },
+              { id: "openai",     label: "OpenAI",     icon: <span className="text-base">◈</span>, meta: "4 models", badge: "cloud" },
+              { id: "anthropic",  label: "Anthropic",  icon: <SparkleIcon className="h-4 w-4" />, meta: "3 models", badge: "cloud" },
+              { id: "nim",        label: "NIM",        icon: <span className="text-base">◈</span>, meta: "5 models", badge: "cloud" },
+              { id: "openrouter", label: "OpenRouter", icon: <span className="text-base">◉</span>, meta: "5 models", badge: "cloud" },
             ] as const).map(({ id, label, icon, meta, badge }) => (
               <div
                 key={id}
@@ -1401,9 +1402,9 @@ export function SettingsModal({
               Local
             </div>
             {([
-              { id: "ollama",      label: "Ollama",       icon: "🦙", badge: "local", hasUrl: false },
-              { id: "lmstudio",    label: "LM Studio",    icon: "◉",  badge: "local", hasUrl: true  },
-              { id: "llamaserver", label: "llama-server",  icon: "⬡",  badge: "local", hasUrl: true  },
+              { id: "ollama",      label: "Ollama",       icon: <CubeIcon className="h-4 w-4" />,    badge: "local", hasUrl: false },
+              { id: "lmstudio",    label: "LM Studio",    icon: <span className="text-base">◉</span>, badge: "local", hasUrl: true  },
+              { id: "llamaserver", label: "llama-server", icon: <span className="text-base">⬡</span>, badge: "local", hasUrl: true  },
             ] as const).map(({ id, label, icon, badge, hasUrl }) => (
               <div
                 key={id}
@@ -1423,7 +1424,7 @@ export function SettingsModal({
                     <div className="text-[10px] text-[var(--m-text-faint)]">
                       {backendStatus[id] === "checking" && "Checking…"}
                       {backendStatus[id] === "live"     && <span className="text-[#98c379]">● running</span>}
-                      {backendStatus[id] === "down"     && <span className="text-[#555]">✗ not running</span>}
+                      {backendStatus[id] === "down"     && <span className="inline-flex items-center gap-1 text-[#555]"><CloseIcon className="h-2.5 w-2.5" /> not running</span>}
                     </div>
                   </div>
                   <button
@@ -1606,7 +1607,7 @@ export function SettingsModal({
               disabled={!electron}
               className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2.5 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/15 hover:border-[#d19a66]/50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {keysSaved ? "Saved ✓" : "Save Keys"}
+              {keysSaved ? <span className="inline-flex items-center justify-center gap-1.5">Saved <CheckIcon className="h-3 w-3" /></span> : "Save Keys"}
             </button>
 
           </div>
