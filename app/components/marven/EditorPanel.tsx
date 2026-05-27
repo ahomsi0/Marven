@@ -584,11 +584,15 @@ export function EditorPanel({
                   type="button"
                   onClick={() => {
                     if (activeTab.kind === "file") {
-                      // Serve through HTTP so the iframe loads without
-                      // cross-origin (http → file://) errors in Chromium.
-                      const params = new URLSearchParams({ path: activeTab.path });
-                      if (workspaceRoot) params.set("root", workspaceRoot);
-                      onOpenPreview?.(`/api/workspace/serve?${params}`);
+                      // Use the *path-shaped* preview route so relative URLs
+                      // inside the HTML (style.css, app.js, /img/foo.png)
+                      // resolve back to the workspace correctly. Query-string
+                      // routes would 404 on every linked asset.
+                      const encoded = activeTab.path
+                        .split("/")
+                        .map(encodeURIComponent)
+                        .join("/");
+                      onOpenPreview?.(`/api/workspace/preview/${encoded}`);
                     }
                   }}
                   title="Preview in-app"
