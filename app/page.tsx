@@ -53,6 +53,16 @@ import {
   loadMemories,
   addMemory,
 } from "@/lib/userProfile";
+import {
+  loadChatProvider,
+  loadAgentProvider,
+  loadChatModelMap,
+  loadAgentModelMap,
+  saveChatProvider,
+  saveAgentProvider,
+  saveChatModelMap,
+  saveAgentModelMap,
+} from "@/lib/modelPrefs";
 import { formatBeforeSave, getFormatOnSave, isFormattable } from "@/lib/formatOnSave";
 import { createRestRequest } from "@/lib/restStorage";
 
@@ -170,6 +180,29 @@ export default function Home() {
   };
   const [chatModelByProvider, setChatModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);
   const [agentModelByProvider, setAgentModelByProvider] = useState<Record<AIProvider, string>>(emptyModelMap);
+
+  // Hydrate the persisted per-mode provider/model picks AFTER the initial
+  // render so they outlive an app restart. Without this, both modes get
+  // re-seeded with the same provider default on every launch — which made
+  // "chat and agent share a model" feel like an unfixed bug.
+  useEffect(() => {
+    const cp = loadChatProvider();
+    const ap = loadAgentProvider();
+    const cmm = loadChatModelMap();
+    const amm = loadAgentModelMap();
+    if (cp) setChatProvider(cp);
+    if (ap) setAgentProvider(ap);
+    if (cmm) setChatModelByProvider(cmm);
+    if (amm) setAgentModelByProvider(amm);
+    // Run-once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on every change. Cheap — localStorage writes are sync but small.
+  useEffect(() => { saveChatProvider(chatProvider); }, [chatProvider]);
+  useEffect(() => { saveAgentProvider(agentProvider); }, [agentProvider]);
+  useEffect(() => { saveChatModelMap(chatModelByProvider); }, [chatModelByProvider]);
+  useEffect(() => { saveAgentModelMap(agentModelByProvider); }, [agentModelByProvider]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   // selectedModel is computed per active mode — declared after activeMode below.
