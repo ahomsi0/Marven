@@ -240,16 +240,19 @@ describe("executeTool – search_files", () => {
 });
 
 describe("executeTool — remember", () => {
-  it("returns 'Remembered.' and calls appendMemory", async () => {
-    const spy = vi.spyOn(memoryClient, "appendMemory").mockImplementation(() => {});
+  it("returns scoped success text and calls appendScopedMemory", async () => {
+    const spy = vi.spyOn(memoryClient, "appendScopedMemory").mockImplementation(() => {});
     const result = await executeTool("remember", { content: "user prefers TypeScript" }, "/tmp");
-    expect(result).toBe("Remembered.");
-    expect(spy).toHaveBeenCalledWith("user prefers TypeScript");
+    expect(result).toBe("Remembered in project memory.");
+    expect(spy).toHaveBeenCalledWith("user prefers TypeScript", "project", {
+      workspaceRoot: "/tmp",
+      conversationId: undefined,
+    });
     spy.mockRestore();
   });
 
-  it("returns error string when appendMemory throws", async () => {
-    vi.spyOn(memoryClient, "appendMemory").mockImplementation(() => {
+  it("returns error string when appendScopedMemory throws", async () => {
+    vi.spyOn(memoryClient, "appendScopedMemory").mockImplementation(() => {
       throw new Error("disk full");
     });
     const result = await executeTool("remember", { content: "test" }, "/tmp");

@@ -8,14 +8,29 @@ interface UseAgentStreamOptions {
   provider: AIProvider;
   model: string;
   workspaceRoot: string | null;
+  conversationId?: string | null;
   memory?: string;
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
   planMode?: boolean;
   liteAgentMode?: boolean;
+  autoVerifyEnabled?: boolean;
+  autoVerifyCommands?: string;
 }
 
-export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServers, requireWriteApproval, planMode, liteAgentMode }: UseAgentStreamOptions) {
+export function useAgentStream({
+  provider,
+  model,
+  workspaceRoot,
+  conversationId,
+  memory,
+  mcpServers,
+  requireWriteApproval,
+  planMode,
+  liteAgentMode,
+  autoVerifyEnabled,
+  autoVerifyCommands,
+}: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +54,48 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
       }
       return next;
     });
+
+  const parseCommandList = useCallback((raw: string | undefined): string[] => {
+    return (raw ?? "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }, []);
+
+  const consumeSse = useCallback(async (
+    res: Response,
+    onEvent: (event: AgentEvent) => void | Promise<void>,
+  ) => {
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const dec = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const lines = part.trim().split("\n");
+        let eventType = "";
+        let dataLine = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) eventType = line.slice(7);
+          if (line.startsWith("data: ")) dataLine = line.slice(6);
+        }
+        if (!eventType || !dataLine) continue;
+
+        let event: AgentEvent;
+        try { event = JSON.parse(dataLine); } catch { continue; }
+        await onEvent(event);
+      }
+    }
+  }, []);
 
   const send = useCallback(async (
     prompt: string,
@@ -125,42 +182,154 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     // Consume a one-shot planMode override (used when re-triggering after plan approval)
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
     planModeOverrideRef.current = null;
+    const callIdToTool = new Map<string, string>();
+    let wroteFiles = false;
+    let streamHadError = false;
 
     try {
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, mentions: mentions ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, conversationId, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, mentions: mentions ?? [] }),
         signal: abort.signal,
       });
+      if (!res.ok) {
+        throw new Error(await res.text().catch(() => `Agent request failed (${res.status})`));
+      }
+      await consumeSse(res, async (event) => {
+        if (event.type === "tool_call") {
+          callIdToTool.set(event.callId, event.tool);
+          updateLastAssistant((msg) => ({
+            ...msg,
+            toolCalls: [
+              ...(msg.toolCalls ?? []),
+              {
+                callId: event.callId,
+                tool: event.tool,
+                args: event.args,
+                status: "running" as const,
+              },
+            ],
+          }));
+          return;
+        }
 
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No response body");
+        if (event.type === "tool_result") {
+          const tool = callIdToTool.get(event.callId);
+          if (tool === "write_file" || tool === "apply_patch") wroteFiles = true;
+          setLiveTerminalOutput("");
+          updateLastAssistant((msg) => ({
+            ...msg,
+            toolCalls: (msg.toolCalls ?? []).map((tc) => {
+              if (tc.callId !== event.callId) return tc;
+              const nextStatus: ToolCallState["status"] =
+                tc.status === "awaiting_approval" ? "rejected" : "done";
+              return { ...tc, status: nextStatus, output: event.output };
+            }),
+          }));
+          return;
+        }
 
-      const dec = new TextDecoder();
-      let buf = "";
+        if (event.type === "tool_progress") {
+          setLiveTerminalOutput((prev) => {
+            const next = prev + event.chunk;
+            const lines = next.split("\n");
+            if (lines.length > 500) return lines.slice(-500).join("\n");
+            return next;
+          });
+          updateLastAssistant((msg) => ({
+            ...msg,
+            toolCalls: (msg.toolCalls ?? []).map((tc) =>
+              tc.callId === event.callId
+                ? { ...tc, liveOutput: (tc.liveOutput ?? "") + event.chunk }
+                : tc
+            ),
+          }));
+          return;
+        }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-
-        const parts = buf.split("\n\n");
-        buf = parts.pop() ?? "";
-
-        for (const part of parts) {
-          const lines = part.trim().split("\n");
-          let eventType = "";
-          let dataLine = "";
-          for (const line of lines) {
-            if (line.startsWith("event: ")) eventType = line.slice(7);
-            if (line.startsWith("data: ")) dataLine = line.slice(6);
+        if (event.type === "pending_approval") {
+          if (event.tool === "__plan__") {
+            planPendingCallIdRef.current = event.callId;
+            updateLastAssistant((msg) => ({
+              ...msg,
+              toolCalls: [
+                ...(msg.toolCalls ?? []),
+                {
+                  callId: event.callId,
+                  tool: "__plan__",
+                  args: event.args,
+                  status: "awaiting_approval" as const,
+                },
+              ],
+            }));
+          } else {
+            updateLastAssistant((msg) => ({
+              ...msg,
+              toolCalls: (msg.toolCalls ?? []).map((tc) =>
+                tc.callId === event.callId
+                  ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
+                  : tc
+              ),
+            }));
           }
-          if (!eventType || !dataLine) continue;
+          return;
+        }
 
-          let event: AgentEvent;
-          try { event = JSON.parse(dataLine); } catch { continue; }
+        if (event.type === "checkpoint") {
+          setCheckpoints((prev) => prev.includes(event.path) ? prev : [...prev, event.path]);
+          return;
+        }
 
+        if (event.type === "text_delta") {
+          updateLastAssistant((msg) => ({
+            ...msg,
+            content: msg.content + event.delta,
+          }));
+          return;
+        }
+
+        if (event.type === "error") {
+          streamHadError = true;
+          setError(event.message);
+          updateLastAssistant((msg) => ({
+            ...msg,
+            toolCalls: (msg.toolCalls ?? []).map((tc) =>
+              tc.status === "running" ? { ...tc, status: "error" as const } : tc
+            ),
+          }));
+        }
+      });
+
+      const verifyCommands = parseCommandList(autoVerifyCommands);
+      if (
+        !abort.signal.aborted &&
+        !streamHadError &&
+        wroteFiles &&
+        autoVerifyEnabled &&
+        workspaceRoot
+      ) {
+        addMessage({
+          id: `verify-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          toolCalls: [],
+        });
+
+        const verifyRes = await fetch("/api/agent/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceRoot,
+            commands: verifyCommands,
+          }),
+          signal: abort.signal,
+        });
+        if (!verifyRes.ok) {
+          throw new Error(await verifyRes.text().catch(() => `Verify request failed (${verifyRes.status})`));
+        }
+
+        await consumeSse(verifyRes, async (event) => {
           if (event.type === "tool_call") {
             updateLastAssistant((msg) => ({
               ...msg,
@@ -174,19 +343,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
                 },
               ],
             }));
-          }
-
-          if (event.type === "tool_result") {
-            setLiveTerminalOutput("");
-            updateLastAssistant((msg) => ({
-              ...msg,
-              toolCalls: (msg.toolCalls ?? []).map((tc) => {
-                if (tc.callId !== event.callId) return tc;
-                const nextStatus: ToolCallState["status"] =
-                  tc.status === "awaiting_approval" ? "rejected" : "done";
-                return { ...tc, status: nextStatus, output: event.output };
-              }),
-            }));
+            return;
           }
 
           if (event.type === "tool_progress") {
@@ -204,38 +361,20 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
                   : tc
               ),
             }));
+            return;
           }
 
-          if (event.type === "pending_approval") {
-            if (event.tool === "__plan__") {
-              planPendingCallIdRef.current = event.callId;
-              // Plan approval: no prior tool_call was emitted — insert the entry now
-              updateLastAssistant((msg) => ({
-                ...msg,
-                toolCalls: [
-                  ...(msg.toolCalls ?? []),
-                  {
-                    callId: event.callId,
-                    tool: "__plan__",
-                    args: event.args,
-                    status: "awaiting_approval" as const,
-                  },
-                ],
-              }));
-            } else {
-              updateLastAssistant((msg) => ({
-                ...msg,
-                toolCalls: (msg.toolCalls ?? []).map((tc) =>
-                  tc.callId === event.callId
-                    ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
-                    : tc
-                ),
-              }));
-            }
-          }
-
-          if (event.type === "checkpoint") {
-            setCheckpoints((prev) => prev.includes(event.path) ? prev : [...prev, event.path]);
+          if (event.type === "tool_result") {
+            setLiveTerminalOutput("");
+            updateLastAssistant((msg) => ({
+              ...msg,
+              toolCalls: (msg.toolCalls ?? []).map((tc) =>
+                tc.callId === event.callId
+                  ? { ...tc, status: "done" as const, output: event.output }
+                  : tc
+              ),
+            }));
+            return;
           }
 
           if (event.type === "text_delta") {
@@ -243,6 +382,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
               ...msg,
               content: msg.content + event.delta,
             }));
+            return;
           }
 
           if (event.type === "error") {
@@ -254,7 +394,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
               ),
             }));
           }
-        }
+        });
       }
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") {
@@ -263,7 +403,7 @@ export function useAgentStream({ provider, model, workspaceRoot, memory, mcpServ
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, memory, mcpServers, planMode, liteAgentMode]);
+  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();

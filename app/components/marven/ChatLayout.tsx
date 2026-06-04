@@ -121,6 +121,7 @@ interface ChatLayoutProps {
   agentPlanMode?: boolean;
   onAgentPlanModeChange?: (v: boolean) => void;
   liteAgentMode?: boolean;
+  conversationId?: string | null;
   folders: ConversationFolder[];
   onCreateFolder: () => void;
   onRenameFolder: (id: string, name: string) => void;
@@ -238,6 +239,7 @@ export function ChatLayout({
   agentPlanMode,
   onAgentPlanModeChange,
   liteAgentMode,
+  conversationId,
   folders,
   onCreateFolder,
   onRenameFolder,
@@ -452,6 +454,7 @@ export function ChatLayout({
               planMode={agentPlanMode}
               onPlanModeChange={onAgentPlanModeChange}
               liteAgentMode={liteAgentMode}
+              conversationId={conversationId}
               onOpenPreviewTab={onOpenPreviewTab}
               onOpenRestTab={onOpenRestTab}
             />

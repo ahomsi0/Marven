@@ -51,8 +51,8 @@ import {
   loadProfile,
   saveProfile,
   loadMemories,
-  addMemory,
 } from "@/lib/userProfile";
+import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
 import {
   loadChatProvider,
   loadAgentProvider,
@@ -130,8 +130,28 @@ function buildHistory(messages: Message[], maxTurns = 20): HistoryMessage[] {
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content, attachments: m.attachments }));
 }
 
+type ScopedMemories = {
+  global: string[];
+  project: string[];
+  conversation: string[];
+  legacy: string[];
+};
+
+function combineScopedMemories(memories: ScopedMemories): string[] {
+  return [...memories.global, ...memories.project, ...memories.conversation, ...memories.legacy];
+}
+
+function buildMemoryContext(memories: ScopedMemories): string {
+  const block = buildScopedMemoryBlock({
+    global: [...memories.global, ...memories.legacy],
+    project: memories.project,
+    conversation: memories.conversation,
+  });
+  return block.trim();
+}
+
 // ─── System prompt builder ────────────────────────────────────────────────────
-function buildSystemPrompt(name: string | null, memories: string[]): string {
+function buildSystemPrompt(name: string | null, memories: ScopedMemories): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -139,7 +159,8 @@ function buildSystemPrompt(name: string | null, memories: string[]): string {
   let prompt = `You are Marven, a sophisticated AI assistant with direct access to macOS system commands. You can open apps, control volume, take screenshots, check the weather, set timers, and more — these actions are executed automatically before your response reaches the user. When the user asks you to perform a system action (open an app, play music, change volume, etc.), respond briefly confirming the action, e.g. "Opening Spotify now." or "Volume increased." Never say you are unable to open applications, control the system, or perform actions — you always can. Never call yourself a "text-based AI". You are intelligent, precise, and occasionally witty. Keep answers concise.`;
   prompt += `\n\nCurrent date and time: ${dateStr}, ${timeStr}. Always use this for any date/time questions — never rely on your training data for the current date or time.`;
   if (name) prompt += `\n\nThe user's name is ${name}. Address them by name occasionally.`;
-  if (memories.length > 0) prompt += `\n\nThings you remember about the user:\n${memories.map((m) => `- ${m}`).join("\n")}`;
+  const memoryBlock = buildMemoryContext(memories);
+  if (memoryBlock) prompt += `\n\n${memoryBlock}`;
   return prompt;
 }
 
@@ -258,7 +279,12 @@ export default function Home() {
 
   // ─── User profile + memories (declared early for useAgentStream) ─────────
   const [userProfile, setUserProfile] = useState<UserProfile | null | undefined>(undefined);
-  const [memories, setMemories] = useState<string[]>([]);
+  const [memories, setMemories] = useState<ScopedMemories>({
+    global: [],
+    project: [],
+    conversation: [],
+    legacy: [],
+  });
 
   // ─── Agent workspace ────────────────────────────────────────────────────────
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
@@ -339,6 +365,8 @@ export default function Home() {
 
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
   const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
+  const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
+  const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
   const [inlineCompletionSettings, setInlineCompletionSettings] = useState<
     import("@/lib/completion/settingsClient").InlineCompletionSettings | null
   >(null);
@@ -359,11 +387,14 @@ export default function Home() {
     provider,
     model: selectedModel,
     workspaceRoot,
-    memory: memories.length > 0 ? memories.map((m) => `- ${m}`).join("\n") : undefined,
+    conversationId: activeConversationId,
+    memory: buildMemoryContext(memories) || undefined,
     mcpServers,
     requireWriteApproval: getRequireWriteApproval(),
     planMode,
     liteAgentMode,
+    autoVerifyEnabled: agentAutoVerifyEnabled,
+    autoVerifyCommands: agentAutoVerifyCommands,
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
@@ -389,9 +420,8 @@ export default function Home() {
     setCustomShortcuts(loadCustomShortcuts());
 
     const profile = loadProfile();
-    const mems = loadMemories();
     setUserProfile(profile);
-    setMemories(mems);
+    setMemories((prev) => ({ ...prev, legacy: loadMemories() }));
 
     // Fetch weather
     fetch("/api/weather")
@@ -428,6 +458,25 @@ export default function Home() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
+    if (activeConversationId) params.set("conversationId", activeConversationId);
+    const qs = params.toString();
+    fetch(`/api/memory${qs ? `?${qs}` : ""}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const scopes = data?.scopes ?? {};
+        setMemories((prev) => ({
+          ...prev,
+          global: Array.isArray(scopes.global) ? scopes.global : [],
+          project: Array.isArray(scopes.project) ? scopes.project : [],
+          conversation: Array.isArray(scopes.conversation) ? scopes.conversation : [],
+        }));
+      })
+      .catch(() => {});
+  }, [workspaceRoot, activeConversationId]);
 
   // ─── Persist conversations on change ───────────────────────────────────────
   useEffect(() => {
@@ -581,6 +630,25 @@ export default function Home() {
     return () => window.removeEventListener("marven:settings-changed", refresh);
   }, []);
 
+  useEffect(() => {
+    const el = typeof window !== "undefined"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (window as any).marvenElectron
+      : null;
+    if (!el?.getSettings) return;
+    const refresh = () => {
+      el.getSettings()
+        .then((s: { agentAutoVerifyEnabled?: boolean; agentAutoVerifyCommands?: string }) => {
+          setAgentAutoVerifyEnabled(s.agentAutoVerifyEnabled === true);
+          setAgentAutoVerifyCommands(typeof s.agentAutoVerifyCommands === "string" ? s.agentAutoVerifyCommands : "");
+        })
+        .catch(() => {});
+    };
+    refresh();
+    window.addEventListener("marven:settings-changed", refresh);
+    return () => window.removeEventListener("marven:settings-changed", refresh);
+  }, []);
+
   // Inline-completion settings — load on mount + subscribe to changes.
   useEffect(() => {
     let cancelled = false;
@@ -725,7 +793,7 @@ export default function Home() {
       const r = await fetch("/api/workspace/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: relPath }),
+        body: JSON.stringify({ path: relPath, ...(root ? { root } : {}) }),
       });
       const d = await r.json().catch(() => ({}));
       return { ok: r.ok, status: r.status, data: d };
@@ -1003,6 +1071,7 @@ export default function Home() {
       body: JSON.stringify({
         path: activeFilePath,
         content,
+        ...(workspaceRoot ? { root: workspaceRoot } : {}),
       }),
     });
 
@@ -1280,11 +1349,33 @@ export default function Home() {
     const memoryMatch = useShortcuts ? text.match(MEMORY_RE) : null;
     if (memoryMatch) {
       const memoryStr = memoryMatch[2].trim();
-      const newMemories = addMemory(memoryStr);
-      setMemories(newMemories);
+      const memoryScope = "global";
+      try {
+        const res = await fetch("/api/memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: memoryStr,
+            scope: memoryScope,
+            workspaceRoot,
+            conversationId: activeConversationId,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.scopes) {
+          setMemories((prev) => ({
+            ...prev,
+            global: Array.isArray(data.scopes.global) ? data.scopes.global : prev.global,
+            project: Array.isArray(data.scopes.project) ? data.scopes.project : prev.project,
+            conversation: Array.isArray(data.scopes.conversation) ? data.scopes.conversation : prev.conversation,
+          }));
+        }
+      } catch {
+        // non-fatal; still continue with the acknowledgement
+      }
       const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
-      const reply = `Got it. I'll remember that ${memoryStr}.`;
+      const reply = `Got it. I'll remember that ${memoryStr} in ${memoryScope} memory.`;
       addMessageToConversation(convId, createMessage("assistant", reply));
       speakReply(reply);
       setIsLoading(false);
@@ -1973,6 +2064,7 @@ export default function Home() {
         onOpenSettings={openSettingsTab}
         onOpenPreviewTab={openPreviewTab}
         onOpenRestTab={openRestTab}
+        conversationId={activeConversationId}
         folders={folders}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}

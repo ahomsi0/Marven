@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
-import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 interface ReplaceRequest {
   query: string;
@@ -9,19 +9,20 @@ interface ReplaceRequest {
   caseSensitive?: boolean;
   regex?: boolean;
   files?: string[]; // relative paths; if absent, replace in ALL matched files
+  workspaceRoot?: string;
 }
 
 export async function POST(req: NextRequest) {
-  const root = getActiveWorkspaceRoot();
-  if (!root) {
-    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
-  }
-
   let body: ReplaceRequest;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const root = body.workspaceRoot?.trim() || getActiveWorkspaceRoot();
+  if (!root) {
+    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
   }
 
   const { query, replacement, caseSensitive = false, regex = false, files } = body;
@@ -63,8 +64,8 @@ export async function POST(req: NextRequest) {
   let replacedCount = 0;
 
   for (const relPath of targetFiles) {
-    const absPath = path.isAbsolute(relPath) ? relPath : path.join(root, relPath);
     try {
+      const absPath = resolveWorkspacePath(root, relPath);
       const content = await readFile(absPath, "utf8");
       let count = 0;
       const next = content.replace(pattern, (match) => { count++; return replacement; });
@@ -75,7 +76,10 @@ export async function POST(req: NextRequest) {
         // Reset regex lastIndex for global patterns
         pattern.lastIndex = 0;
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === "Path outside workspace") {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
       // Skip unreadable files
     }
   }

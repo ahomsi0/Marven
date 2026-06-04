@@ -58,11 +58,6 @@ function parseGrepLine(line: string): { path: string; lineNum: number; text: str
 }
 
 export async function POST(req: NextRequest) {
-  const root = getActiveWorkspaceRoot();
-  if (!root) {
-    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -70,10 +65,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = body as { query?: unknown; caseSensitive?: unknown; regex?: unknown };
+  const parsed = body as { query?: unknown; caseSensitive?: unknown; regex?: unknown; workspaceRoot?: unknown };
   const query = typeof parsed.query === "string" ? parsed.query : "";
   const caseSensitive = parsed.caseSensitive === true;
   const regex = parsed.regex === true;
+  const root =
+    typeof parsed.workspaceRoot === "string" && parsed.workspaceRoot.trim()
+      ? parsed.workspaceRoot.trim()
+      : getActiveWorkspaceRoot();
+
+  if (!root) {
+    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
+  }
 
   if (!query.trim()) {
     return NextResponse.json({ results: [], totalMatches: 0, truncated: false });

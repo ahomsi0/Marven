@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { readMemory, appendMemory, writeMemory, clearMemory } from "./memoryClient";
+import {
+  readMemory,
+  appendMemory,
+  writeMemory,
+  clearMemory,
+  buildScopedMemoryBlock,
+  resolveMemoryPath,
+  type MemoryContext,
+} from "./memoryClient";
 
 let tmpDir: string;
 let memPath: string;
@@ -63,5 +71,24 @@ describe("clearMemory", () => {
     writeMemory("some content", memPath);
     clearMemory(memPath);
     expect(readMemory(memPath)).toBe("");
+  });
+});
+
+describe("scoped memory helpers", () => {
+  it("resolves deterministic project and conversation paths", () => {
+    const ctx: MemoryContext = { workspaceRoot: "/tmp/project", conversationId: "conv-123" };
+    expect(resolveMemoryPath("project", ctx)).toContain("/projects/");
+    expect(resolveMemoryPath("conversation", ctx)).toContain("/conversations/conv-123.md");
+  });
+
+  it("builds a scoped memory block with labels", () => {
+    const text = buildScopedMemoryBlock({
+      global: ["prefers dark mode"],
+      project: ["uses pnpm"],
+      conversation: ["fix navbar spacing"],
+    });
+    expect(text).toContain("Global memory:");
+    expect(text).toContain("Project memory:");
+    expect(text).toContain("Conversation memory:");
   });
 });

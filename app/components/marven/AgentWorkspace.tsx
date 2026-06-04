@@ -100,12 +100,12 @@ function formatElapsed(seconds: number): string {
 // of the trigger button and drops down to the right.
 function MemoryPopover({
   anchor,
-  memory,
+  scopes,
   onClear,
 }: {
   anchor: HTMLElement | null;
-  memory: string;
-  onClear: () => void;
+  scopes: { global: string[]; project: string[]; conversation: string[] };
+  onClear: (scope?: "global" | "project" | "conversation") => void;
 }) {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return null;
@@ -114,17 +114,12 @@ function MemoryPopover({
   const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
   const top = rect.bottom + 6;
 
-  // Parse memory entries — each starts with "- [ISO timestamp] content"
-  const entries = memory
-    .split(/\n\s*\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const m = entry.match(/^-\s*\[([^\]]+)\]\s*([\s\S]*)$/);
-      return m
-        ? { timestamp: m[1], content: m[2].trim() }
-        : { timestamp: null, content: entry.replace(/^-\s*/, "") };
-    });
+  const sections = [
+    { key: "global", label: "Global", entries: scopes.global },
+    { key: "project", label: "Project", entries: scopes.project },
+    { key: "conversation", label: "Conversation", entries: scopes.conversation },
+  ] as const;
+  const visibleSections = sections.filter((section) => section.entries.length > 0);
 
   return (
     <div
@@ -137,25 +132,36 @@ function MemoryPopover({
         </span>
         <button
           type="button"
-          onClick={onClear}
+          onClick={() => onClear()}
           className="rounded px-1.5 py-0.5 text-[10px] text-[var(--m-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
         >
           Clear all
         </button>
       </div>
       <div className="max-h-72 overflow-y-auto divide-y divide-[var(--m-surface-2)]">
-        {entries.length === 0 ? (
+        {visibleSections.length === 0 ? (
           <p className="p-4 text-center text-[11px] text-[var(--m-text-faint)]">No memories yet.</p>
         ) : (
-          entries.map((e, i) => (
-            <div key={i} className="px-3 py-2.5">
-              {e.timestamp && (
-                <div className="mb-1 text-[9px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                  {formatRelativeTime(e.timestamp)}
+          visibleSections.map((section) => (
+            <div key={section.key} className="px-3 py-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-[9px] uppercase tracking-wider text-[var(--m-text-faint)]">
+                  {section.label}
                 </div>
-              )}
-              <div className="text-[12px] leading-relaxed text-[var(--m-text)] break-words">
-                {e.content}
+                <button
+                  type="button"
+                  onClick={() => onClear(section.key)}
+                  className="rounded px-1.5 py-0.5 text-[9px] text-[var(--m-text-faint)] transition-colors hover:bg-red-500/10 hover:text-red-400"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="space-y-2">
+                {section.entries.map((entry, i) => (
+                  <div key={`${section.key}-${i}`} className="text-[12px] leading-relaxed text-[var(--m-text)] break-words">
+                    {entry}
+                  </div>
+                ))}
               </div>
             </div>
           ))
@@ -286,6 +292,7 @@ interface AgentWorkspaceProps {
   onOpenPreviewTab?: (url: string) => void;
   onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
+  conversationId?: string | null;
 }
 
 export function AgentWorkspace({
@@ -353,6 +360,7 @@ export function AgentWorkspace({
   onOpenPreviewTab,
   onOpenRestTab,
   onJumpToLine,
+  conversationId,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -422,7 +430,11 @@ export function AgentWorkspace({
     }
   }, [showGitPanel]);
 
-  const [memory, setMemory] = useState("");
+  const [memoryScopes, setMemoryScopes] = useState<{ global: string[]; project: string[]; conversation: string[] }>({
+    global: [],
+    project: [],
+    conversation: [],
+  });
   const [memoryOpen, setMemoryOpen] = useState(false);
   const memoryRef = useRef<HTMLDivElement>(null);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
@@ -467,15 +479,22 @@ export function AgentWorkspace({
   }, [tasksOpen]);
 
   function refreshMemory() {
-    fetch("/api/memory")
+    const params = new URLSearchParams();
+    if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
+    if (conversationId) params.set("conversationId", conversationId);
+    fetch(`/api/memory${params.toString() ? `?${params.toString()}` : ""}`)
       .then((r) => r.json())
-      .then((d) => setMemory(d.memory ?? ""))
+      .then((d) => setMemoryScopes({
+        global: Array.isArray(d?.scopes?.global) ? d.scopes.global : [],
+        project: Array.isArray(d?.scopes?.project) ? d.scopes.project : [],
+        conversation: Array.isArray(d?.scopes?.conversation) ? d.scopes.conversation : [],
+      }))
       .catch(() => {});
   }
 
   useEffect(() => {
     refreshMemory();
-  }, []);
+  }, [workspaceRoot, conversationId]);
 
   const hasMounted = useRef(false);
   useEffect(() => {
@@ -499,7 +518,7 @@ export function AgentWorkspace({
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [memoryOpen]);
 
-  const memoryLineCount = memory ? memory.split("\n").filter((l) => l.trim()).length : 0;
+  const memoryLineCount = memoryScopes.global.length + memoryScopes.project.length + memoryScopes.conversation.length;
 
   // ── Explorer panel (left) drag ────────────────────────────────────────────
   const [explorerWidth, setExplorerWidth] = useState(() => {
@@ -831,10 +850,18 @@ export function AgentWorkspace({
             {memoryOpen && (
               <MemoryPopover
                 anchor={memoryRef.current}
-                memory={memory}
-                onClear={async () => {
-                  await fetch("/api/memory", { method: "DELETE" });
-                  setMemory("");
+                scopes={memoryScopes}
+                onClear={async (scope) => {
+                  await fetch("/api/memory", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ scope, workspaceRoot, conversationId }),
+                  });
+                  if (scope) {
+                    setMemoryScopes((prev) => ({ ...prev, [scope]: [] }));
+                  } else {
+                    setMemoryScopes({ global: [], project: [], conversation: [] });
+                  }
                   setMemoryOpen(false);
                 }}
               />
@@ -1038,10 +1065,13 @@ export function AgentWorkspace({
               {showGitPanel && workspaceRoot ? (
                 <GitPanel
                   workspaceRoot={workspaceRoot}
+                  provider={provider as AIProvider}
+                  model={model}
                   onClose={() => setShowGitPanel(false)}
                 />
               ) : globalSearchOpen ? (
                 <GlobalSearchPanel
+                  workspaceRoot={workspaceRoot}
                   onClose={() => setGlobalSearchOpen(false)}
                   onSelectMatch={handleSelectMatch}
                 />

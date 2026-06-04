@@ -4,7 +4,7 @@ import net from "net";
 import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
-import { appendMemory } from "@/lib/memoryClient";
+import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
 import { runGit } from "./git";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
@@ -121,11 +121,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "remember",
-    description: "Save information to persistent memory for future agent sessions. Use for user preferences, project context, or recurring facts.",
+    description: "Save information to persistent memory for future sessions. Use scope='global' for durable user preferences, scope='project' for repo-specific context, and scope='conversation' for task-local notes. If scope is omitted, default is project when a workspace exists, otherwise global.",
     parameters: {
       type: "object",
       properties: {
         content: { type: "string", description: "The information to save to memory." },
+        scope: { type: "string", description: "Optional memory scope: global, project, or conversation." },
       },
       required: ["content"],
     },
@@ -426,6 +427,7 @@ export async function executeTool(
    * (preserves existing test/CLI behavior).
    */
   recentReads?: Set<string>,
+  memoryContext?: MemoryContext,
 ): Promise<string> {
   switch (name) {
     case "list_files": {
@@ -758,8 +760,16 @@ export async function executeTool(
     case "remember": {
       const content = args.content as string;
       try {
-        appendMemory(content);
-        return "Remembered.";
+        const requestedScope = (args.scope as string | undefined)?.trim();
+        const scope: MemoryScope =
+          requestedScope === "global" || requestedScope === "project" || requestedScope === "conversation"
+            ? requestedScope
+            : workspaceRoot ? "project" : "global";
+        appendScopedMemory(content, scope, {
+          workspaceRoot,
+          conversationId: memoryContext?.conversationId,
+        });
+        return `Remembered in ${scope} memory.`;
       } catch (err) {
         return `Remember failed: ${err instanceof Error ? err.message : String(err)}`;
       }

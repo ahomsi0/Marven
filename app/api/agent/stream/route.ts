@@ -24,6 +24,7 @@ interface StreamRequestBody {
   model?: string;
   provider?: AIProvider;
   workspaceRoot?: string;
+  conversationId?: string;
   memory?: string;
   mcpServers?: MCPServer[];
   requireWriteApproval?: boolean;
@@ -172,7 +173,7 @@ export async function POST(req: NextRequest) {
           onProgress,
           requireWriteApproval: body.requireWriteApproval ?? false,
           planMode: body.planMode ?? false,
-          executeToolFn: async (name, args, root, onProgressCb) => {
+          executeToolFn: async (name, args, root, onProgressCb, recentReads) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);
             if (mcpServerId) {
@@ -184,7 +185,10 @@ export async function POST(req: NextRequest) {
               }
             }
             // Built-in tools
-            return executeTool(name, args, root, onProgressCb);
+            return executeTool(name, args, root, onProgressCb, recentReads, {
+              workspaceRoot: root,
+              conversationId: body.conversationId,
+            });
           },
         })) {
           emit(event.type, event);

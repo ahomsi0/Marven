@@ -259,6 +259,8 @@ export function SettingsModal({
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
+  const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
+  const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
   const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
   const [inlineCompletionsEnabled, setInlineCompletionsEnabled] = useState<boolean>(false);
@@ -345,6 +347,12 @@ export function SettingsModal({
       }
       if (typeof s.liteAgentMode === "boolean") {
         setLiteAgentModeState(s.liteAgentMode);
+      }
+      if (typeof s.agentAutoVerifyEnabled === "boolean") {
+        setAgentAutoVerifyEnabled(s.agentAutoVerifyEnabled);
+      }
+      if (typeof s.agentAutoVerifyCommands === "string") {
+        setAgentAutoVerifyCommands(s.agentAutoVerifyCommands);
       }
       if (typeof s.codebaseIndexEnabled === "boolean") {
         setCodebaseIndexEnabled(s.codebaseIndexEnabled);
@@ -1061,6 +1069,56 @@ export function SettingsModal({
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Auto-verify agent changes</h3>
+                  <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                    After the agent edits files, automatically run verification commands in the workspace and show the results inline.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={agentAutoVerifyEnabled}
+                  onClick={async () => {
+                    const next = !agentAutoVerifyEnabled;
+                    setAgentAutoVerifyEnabled(next);
+                    await saveBackendSettings({ agentAutoVerifyEnabled: next });
+                    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    agentAutoVerifyEnabled ? "bg-[#d19a66]" : "bg-[var(--m-border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      agentAutoVerifyEnabled ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-3">
+                <label className="mb-1 block text-[11px] text-[var(--m-text-muted)]">
+                  Verification commands
+                </label>
+                <textarea
+                  value={agentAutoVerifyCommands}
+                  onChange={(e) => setAgentAutoVerifyCommands(e.target.value)}
+                  onBlur={async () => {
+                    await saveBackendSettings({ agentAutoVerifyCommands });
+                    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                  }}
+                  rows={3}
+                  placeholder={"Leave blank to auto-detect lint, test, and build scripts.\nOne command per line, for example:\nnpm test"}
+                  className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+                />
+                <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
+                  Blank means smart mode: Marven looks for `lint`, `test`, and `build` scripts in `package.json`.
+                </p>
               </div>
             </div>
 

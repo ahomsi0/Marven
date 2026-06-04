@@ -64,7 +64,7 @@ IMPORTANT RULES:
 - When a run_command output contains "Live URL:" or "SERVER READY", you MUST surface that exact URL back to the user as a clickable link (e.g., "Your site is live at http://localhost:3000"). Never tell the user "the port may vary" — the URL is in the tool output.
 - Use web_search to look up documentation, APIs, or current information.
 - Use fetch_url to read a specific webpage, README, or raw file from the internet.
-- Use remember to save important facts about the user's project or preferences for future sessions.
+- Use remember to save important facts for future sessions. Prefer scope="project" for repo context, scope="conversation" for task-local notes, and scope="global" for durable user preferences.
 - After your tools complete, be precise and concise in your final reply. Do not repeat what the tools already wrote.`;
 
   if (memory && memory.trim()) {

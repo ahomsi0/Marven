@@ -10,13 +10,16 @@ import { useEffect, useState } from "react";
 interface ImagePreviewProps {
   path: string;
   name: string;
+  workspaceRoot?: string | null;
 }
 
-export function ImagePreview({ path, name }: ImagePreviewProps) {
+export function ImagePreview({ path, name, workspaceRoot }: ImagePreviewProps) {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const src = `/api/workspace/files/raw?path=${encodeURIComponent(path)}`;
+  const src = `/api/workspace/files/raw?path=${encodeURIComponent(path)}${
+    workspaceRoot ? `&root=${encodeURIComponent(workspaceRoot)}` : ""
+  }`;
 
   // Re-key on path so the <img> remounts when the user switches tabs to a
   // different image. Otherwise the previous image flashes momentarily.

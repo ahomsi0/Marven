@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 /**
  * Path-based preview server.
@@ -53,24 +54,22 @@ export async function GET(
     return NextResponse.json({ error: "path required" }, { status: 400 });
   }
 
-  const root = getActiveWorkspaceRoot();
+  const root = req.nextUrl.searchParams.get("root") || getActiveWorkspaceRoot();
   if (!root) {
     return NextResponse.json({ error: "No workspace open" }, { status: 400 });
   }
 
-  const abs = path.resolve(root, relPath);
-  if (!abs.startsWith(root + path.sep) && abs !== root) {
-    return NextResponse.json({ error: "Path outside workspace" }, { status: 400 });
-  }
-
   try {
+    const abs = resolveWorkspacePath(root, relPath);
     const buf = await fs.readFile(abs);
     const ext = path.extname(abs).slice(1).toLowerCase();
     const contentType = MIME[ext] ?? "application/octet-stream";
     return new Response(buf, {
       headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
     });
-  } catch {
-    return NextResponse.json({ error: "File not found" }, { status: 404 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "File not found";
+    const status = message === "Path outside workspace" ? 400 : 404;
+    return NextResponse.json({ error: message }, { status });
   }
 }

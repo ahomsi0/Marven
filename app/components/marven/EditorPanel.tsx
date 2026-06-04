@@ -76,7 +76,7 @@ interface EditorPanelProps {
 
 // ── Preview pane ───────────────────────────────────────────────────────────────
 
-function PreviewPane({ url, onClose: _onClose }: { url: string; workspaceRoot?: string; onClose?: () => void }) {
+function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; workspaceRoot?: string; onClose?: () => void }) {
   const [currentUrl, setCurrentUrl] = useState(url);
   const [inputUrl, setInputUrl] = useState(url);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -86,7 +86,9 @@ function PreviewPane({ url, onClose: _onClose }: { url: string; workspaceRoot?: 
     if (resolved.startsWith("file://")) {
       // Convert file:// → HTTP serve endpoint so the iframe can load it
       const filePath = resolved.replace(/^file:\/\//, "");
-      resolved = `/api/workspace/serve?path=${encodeURIComponent(filePath)}`;
+      resolved = `/api/workspace/serve?path=${encodeURIComponent(filePath)}${
+        workspaceRoot ? `&root=${encodeURIComponent(workspaceRoot)}` : ""
+      }`;
     } else if (!resolved.startsWith("http://") && !resolved.startsWith("https://") && !resolved.startsWith("/")) {
       resolved = `https://${resolved}`;
     }
@@ -592,7 +594,9 @@ export function EditorPanel({
                         .split("/")
                         .map(encodeURIComponent)
                         .join("/");
-                      onOpenPreview?.(`/api/workspace/preview/${encoded}`);
+                      onOpenPreview?.(`/api/workspace/preview/${encoded}${
+                        workspaceRoot ? `?root=${encodeURIComponent(workspaceRoot)}` : ""
+                      }`);
                     }
                   }}
                   title="Preview in-app"
@@ -776,9 +780,13 @@ export function EditorPanel({
                     Loading…
                   </div>
                 ) : isImage ? (
-                  <ImagePreview path={relativeFilePath ?? selectedFilePath ?? ""} name={activeFileName ?? ""} />
+                  <ImagePreview
+                    path={relativeFilePath ?? selectedFilePath ?? ""}
+                    name={activeFileName ?? ""}
+                    workspaceRoot={workspaceRoot}
+                  />
                 ) : isPdf ? (
-                  <PdfPreview path={relativeFilePath ?? selectedFilePath ?? ""} />
+                  <PdfPreview path={relativeFilePath ?? selectedFilePath ?? ""} workspaceRoot={workspaceRoot} />
                 ) : isMarkdown ? (
                   <MarkdownView
                     value={fileContent}

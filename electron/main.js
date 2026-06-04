@@ -119,6 +119,8 @@ const SETTINGS_DEFAULTS = {
   inlineCompletionProvider: 'ollama',
   inlineCompletionModel: '',
   inlineCompletionDebounceMs: 350,
+  agentAutoVerifyEnabled: false,
+  agentAutoVerifyCommands: '',
 };
 
 function loadSettings() {

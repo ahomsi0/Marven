@@ -6,8 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
-import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 const CONTENT_TYPE: Record<string, string> = {
   png: "image/png",
@@ -24,18 +24,15 @@ const CONTENT_TYPE: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const target = url.searchParams.get("path");
+  const root = url.searchParams.get("root") || getActiveWorkspaceRoot();
   if (!target) {
     return NextResponse.json({ error: "path query parameter is required" }, { status: 400 });
   }
-  const root = getActiveWorkspaceRoot();
   if (!root) {
     return NextResponse.json({ error: "No workspace folder open" }, { status: 400 });
   }
-  const abs = path.resolve(root, target);
-  if (!abs.startsWith(root)) {
-    return NextResponse.json({ error: "Path outside workspace" }, { status: 400 });
-  }
   try {
+    const abs = resolveWorkspacePath(root, target);
     const bytes = await fs.readFile(abs);
     const ext = abs.split(".").pop()?.toLowerCase() ?? "";
     const mime = CONTENT_TYPE[ext] ?? "application/octet-stream";
@@ -48,6 +45,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not read file";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message === "Path outside workspace" ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

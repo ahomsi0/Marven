@@ -22,6 +22,7 @@ interface SearchError {
 }
 
 interface GlobalSearchPanelProps {
+  workspaceRoot: string | null;
   /** Called when the panel should close (Escape, ✕ button, or shortcut toggle). */
   onClose: () => void;
   /** Called when the user clicks a match line. The parent opens the file and
@@ -83,7 +84,7 @@ function HighlightedLine({
 // Cap matches shown per file before requiring expansion.
 const MATCHES_PER_FILE_PREVIEW = 5;
 
-export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelProps) {
+export function GlobalSearchPanel({ workspaceRoot, onClose, onSelectMatch }: GlobalSearchPanelProps) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
@@ -133,7 +134,7 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
       fetch("/api/workspace/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, caseSensitive, regex }),
+        body: JSON.stringify({ query, caseSensitive, regex, workspaceRoot }),
         signal: controller.signal,
       })
         .then(async (r) => {
@@ -171,7 +172,7 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, caseSensitive, regex]);
+  }, [query, caseSensitive, regex, workspaceRoot]);
 
   // Escape closes the panel.
   useEffect(() => {
@@ -318,7 +319,7 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
                   const res = await fetch("/api/workspace/search-replace", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex }),
+                    body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex, workspaceRoot }),
                   });
                   const data = await res.json();
                   if (res.ok) {
@@ -396,7 +397,7 @@ export function GlobalSearchPanel({ onClose, onSelectMatch }: GlobalSearchPanelP
                         await fetch("/api/workspace/search-replace", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex, files: [file.path] }),
+                          body: JSON.stringify({ query, replacement: replaceQuery, caseSensitive, regex, files: [file.path], workspaceRoot }),
                         });
                         setReplaceResult(null); // clear previous result
                       } catch { /* ignore */ } finally { setReplacing(false); }

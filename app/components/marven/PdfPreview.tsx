@@ -6,10 +6,13 @@
 
 interface PdfPreviewProps {
   path: string;
+  workspaceRoot?: string | null;
 }
 
-export function PdfPreview({ path }: PdfPreviewProps) {
-  const src = `/api/workspace/files/raw?path=${encodeURIComponent(path)}`;
+export function PdfPreview({ path, workspaceRoot }: PdfPreviewProps) {
+  const src = `/api/workspace/files/raw?path=${encodeURIComponent(path)}${
+    workspaceRoot ? `&root=${encodeURIComponent(workspaceRoot)}` : ""
+  }`;
   return (
     <div className="flex h-full w-full flex-col bg-[var(--m-bg)]">
       <iframe
