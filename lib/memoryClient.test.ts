@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "fs";
-import { join } from "path";
+import { join, normalize } from "path";
 import { tmpdir } from "os";
 import {
   readMemory,
@@ -77,8 +77,10 @@ describe("clearMemory", () => {
 describe("scoped memory helpers", () => {
   it("resolves deterministic project and conversation paths", () => {
     const ctx: MemoryContext = { workspaceRoot: "/tmp/project", conversationId: "conv-123" };
-    expect(resolveMemoryPath("project", ctx)).toContain("/projects/");
-    expect(resolveMemoryPath("conversation", ctx)).toContain("/conversations/conv-123.md");
+    expect(normalize(resolveMemoryPath("project", ctx))).toContain(normalize("/projects/"));
+    expect(normalize(resolveMemoryPath("conversation", ctx))).toContain(
+      normalize("/conversations/conv-123.md"),
+    );
   });
 
   it("builds a scoped memory block with labels", () => {
