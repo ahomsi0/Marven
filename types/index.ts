@@ -63,6 +63,7 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  source?: "actual" | "estimated";
 }
 
 export interface ChatResponse {
@@ -135,6 +136,7 @@ export interface Conversation {
   systemPrompt?: string;
   workspaceRoot?: string;   // agent mode: which folder is open in this conversation
   folderId?: string | null; // user-defined grouping label; null/undefined = no folder
+  tokenUsage?: TokenUsage;
 }
 
 export interface ConversationFolder {

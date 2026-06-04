@@ -289,6 +289,7 @@ interface AgentWorkspaceProps {
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
   liteAgentMode?: boolean;
+  onEditPrompt?: (messageId: string) => void;
   onOpenPreviewTab?: (url: string) => void;
   onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
@@ -357,6 +358,7 @@ export function AgentWorkspace({
   planMode,
   onPlanModeChange,
   liteAgentMode,
+  onEditPrompt,
   onOpenPreviewTab,
   onOpenRestTab,
   onJumpToLine,
@@ -1228,6 +1230,7 @@ export function AgentWorkspace({
                   planMode={planMode}
                   onPlanModeChange={onPlanModeChange}
                   liteAgentMode={liteAgentMode}
+                  onEditPrompt={onEditPrompt}
                   workspaceFiles={files}
                 />
               </div>

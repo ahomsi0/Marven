@@ -107,6 +107,8 @@ interface ChatLayoutProps {
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
   onRetryMessage: (id: string) => void;
+  onEditPromptMessage: (id: string) => void;
+  onEditAgentPrompt: (id: string) => void;
   // Multi-tab props
   openTabs: EditorTab[];
   activeTabIndex: number;
@@ -226,6 +228,8 @@ export function ChatLayout({
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
+  onEditPromptMessage,
+  onEditAgentPrompt,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -414,6 +418,7 @@ export function ChatLayout({
               liveTerminalOutput={liveTerminalOutput}
               checkpoints={checkpoints}
               onApproveToolCall={onApproveToolCall}
+              onEditPrompt={onEditAgentPrompt}
               recentWorkspaces={recentWorkspaces}
               onSelectRecent={onSelectRecent}
               // Agent mode now opens Settings as a full-page overlay (same as chat),
@@ -478,6 +483,7 @@ export function ChatLayout({
                       disabled={isLoading}
                       onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
                       onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                      onEditPrompt={message.role === "assistant" ? () => onEditPromptMessage(message.id) : undefined}
                     />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (

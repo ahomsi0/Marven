@@ -28,6 +28,7 @@ interface AgentPanelProps {
   onSlashCommand: (cmd: string) => void;
   workspaceFiles?: WorkspaceFile[];
   onApproveToolCall?: (callId: string, accept: boolean) => void;
+  onEditPrompt?: (messageId: string) => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   isVoiceSupported?: boolean;
@@ -68,6 +69,7 @@ export function AgentPanel({
   onStop,
   onSlashCommand,
   onApproveToolCall,
+  onEditPrompt,
   attachments,
   onAttachmentsChange,
   isVoiceSupported,
@@ -201,7 +203,7 @@ export function AgentPanel({
               ) : (
                 <div>
                   {msg.role === "user" ? (
-                    <div className="rounded-md bg-[var(--m-surface-2)] border border-[var(--m-border)] px-3 py-2 text-[12px] text-[var(--m-text)]">
+                    <div className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)]">
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className="mb-2 flex flex-wrap gap-1.5">
                           {msg.attachments.map((att, i) => (
@@ -209,15 +211,28 @@ export function AgentPanel({
                           ))}
                         </div>
                       )}
-                      {msg.content}
+                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2">
+                    <div className="group flex min-w-0 flex-col gap-2">
                       {(msg.toolCalls ?? []).map((tc) => (
                         <ToolCallCard key={tc.callId} toolCall={tc} onApprove={onApproveToolCall} />
                       ))}
                       {msg.content && (
-                        <div className="prose prose-sm max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
+                        <div className="min-w-0">
+                          <div className="mb-1 flex justify-end opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                            {onEditPrompt && (
+                              <button
+                                type="button"
+                                onClick={() => onEditPrompt(msg.id)}
+                                disabled={isRunning}
+                                className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-accent)]/40 hover:text-[var(--m-accent)] disabled:opacity-40"
+                              >
+                                Edit prompt
+                              </button>
+                            )}
+                          </div>
+                          <div className="prose prose-sm min-w-0 max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
@@ -243,6 +258,7 @@ export function AgentPanel({
                           >
                             {msg.content}
                           </ReactMarkdown>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -262,7 +278,7 @@ export function AgentPanel({
           )}
 
           {error && (
-            <div className="rounded-md border border-red-700/40 bg-red-950/30 px-3 py-2 text-[11px] text-red-400">
+            <div className="min-w-0 overflow-auto rounded-md border border-red-700/40 bg-red-950/30 px-3 py-2 text-[11px] text-red-400">
               {error}
             </div>
           )}
@@ -283,7 +299,7 @@ export function AgentPanel({
           onDragOver={(e) => e.preventDefault()}
         >
           {attachments && attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 border-b border-[var(--m-border-subtle)] px-3 py-2">
+            <div className="flex flex-wrap gap-2 border-b border-[var(--m-border-subtle)] px-2.5 py-2">
               {attachments.map((att, i) => (
                 <div key={i} className="group relative h-14 w-14 overflow-hidden rounded-md border border-[var(--m-border)]">
                   <img src={att.base64} alt={att.name} className="h-full w-full object-cover" />
@@ -299,7 +315,7 @@ export function AgentPanel({
             </div>
           )}
           {mentions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2 pb-1">
+            <div className="flex flex-wrap gap-1.5 px-2.5 pt-2 pb-1">
               {mentions.map((m, i) => (
                 <MentionChip
                   key={`${m.kind}-${i}`}
@@ -318,7 +334,7 @@ export function AgentPanel({
               onClose={() => setMentionPopup(null)}
             />
           )}
-          <div className="relative flex items-center gap-2 px-0 py-0">
+            <div className="relative flex items-center gap-1 px-1.5 py-1.5">
             {menuOpen && (
               <SlashMenu
                 query={query}
@@ -328,7 +344,7 @@ export function AgentPanel({
                 onSetActive={setMenuActiveIdx}
               />
             )}
-            <textarea
+              <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => { onInputChange(e.target.value); setTimeout(updateMentionTrigger, 0); }}
@@ -346,39 +362,39 @@ export function AgentPanel({
               }}
               disabled={isRunning}
               rows={1}
-              placeholder="Describe task… @ to attach"
-              className="min-h-[36px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
-              style={{ maxHeight: 120, overflowY: "auto" }}
+              placeholder="Describe task..."
+              className="min-h-[34px] flex-1 resize-none border-0 bg-transparent px-2.5 py-1.5 text-[12px] leading-5 text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
+              style={{ maxHeight: 104, overflowY: "auto" }}
             />
-            <div className="flex shrink-0 items-center gap-1 pr-1.5">
+            <div className="ml-0.5 flex shrink-0 items-center gap-0.5 pr-0">
               <>
                 <button
                   type="button"
                   onClick={() => onPlanModeChange?.(!planMode)}
                   title={planMode ? "Plan first: ON (click to disable)" : "Plan first: OFF (click to enable)"}
-                  className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] transition-colors ${
+                  aria-label={planMode ? "Plan mode on" : "Plan mode off"}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] transition-colors ${
                     planMode
-                      ? "bg-[#d19a66]/15 text-[#d19a66] border border-[#d19a66]/30"
-                      : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]"
+                      ? "border border-[#d19a66]/30 bg-[#d19a66]/12 text-[#d19a66]"
+                      : "text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
                   }`}
                 >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />
                   </svg>
-                  Plan
                 </button>
                 {isVoiceSupported && (
                   <button
                     type="button"
                     onClick={onVoiceClick}
                     title={voiceState === "command-listening" ? "Listening…" : "Voice input"}
-                    className={`rounded p-1.5 transition-colors ${
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
                       voiceState === "command-listening"
                         ? "text-red-400 animate-pulse"
-                        : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]"
+                        : "text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
                     }`}
                   >
-                    <svg className="h-4 w-4" fill={voiceState === "command-listening" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <svg className="h-3.5 w-3.5" fill={voiceState === "command-listening" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
                     </svg>
                   </button>
@@ -395,9 +411,9 @@ export function AgentPanel({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   title="Attach image"
-                  className="rounded p-1.5 text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                   </svg>
                 </button>
@@ -406,7 +422,7 @@ export function AgentPanel({
                 <button
                   type="button"
                   onClick={onStop}
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-red-700/50 bg-red-950/30 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/50"
+                  className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-md border border-red-700/40 bg-red-950/25 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/45"
                   title="Stop agent"
                 >
                   <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -418,9 +434,9 @@ export function AgentPanel({
                   type="button"
                   onClick={() => { onSend({ mentions }); setMentions([]); }}
                   disabled={!input.trim() && mentions.length === 0}
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
+                  className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                   </svg>
                 </button>
@@ -430,7 +446,7 @@ export function AgentPanel({
         </div>
 
         {/* Status line — below input, like Claude Code */}
-        <div className="mt-1.5 flex items-center gap-0.5 pl-0.5">
+        <div className="mt-1.5 flex items-center gap-0.5 border-t border-[var(--m-border-subtle)] pl-0.5 pt-1.5">
           <ModelSelector
             provider={provider}
             selectedModel={selectedModel}

@@ -273,27 +273,27 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
 
       {expanded && canExpand && toolCall.tool !== "__plan__" && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 space-y-2">
-          <div>
+          <div className="min-w-0">
             <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Input</p>
-            <div className="overflow-y-auto max-h-[200px]">
+            <div className="max-h-[200px] overflow-auto">
               <pre className="font-mono text-[10px] text-[var(--m-text-muted)] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                 {JSON.stringify(args, null, 2)}
               </pre>
             </div>
           </div>
           {toolCall.liveOutput && toolCall.status === "running" && (
-            <div>
+            <div className="min-w-0">
               <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Live</p>
-              <div className="overflow-y-auto max-h-[200px]">
+              <div className="max-h-[200px] overflow-auto">
                 <pre className="font-mono text-[10px] text-[#d19a66] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                   {toolCall.liveOutput}
                 </pre>
               </div>
             </div>
           )}
-          <div>
+          <div className="min-w-0">
             <p className="text-[9px] uppercase tracking-widest text-[var(--m-border)] mb-1">Output</p>
-            <div className="overflow-y-auto max-h-[300px]">
+            <div className="max-h-[300px] overflow-auto">
               <pre className="font-mono text-[10px] text-[var(--m-text-muted)] whitespace-pre-wrap break-all bg-[var(--m-bg)] rounded p-2">
                 {output}
               </pre>

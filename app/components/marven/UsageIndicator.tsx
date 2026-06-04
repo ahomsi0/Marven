@@ -81,6 +81,7 @@ export function UsageIndicator({ usage, provider, model, align = "right" }: Usag
   const r = 7;
   const circumference = 2 * Math.PI * r;
   const dashOffset = circumference * (1 - pct);
+  const sourceLabel = usage.source === "estimated" ? "Estimated" : "Actual";
 
   return (
     <div className="relative">
@@ -88,8 +89,8 @@ export function UsageIndicator({ usage, provider, model, align = "right" }: Usag
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={`Token usage: ${usage.totalTokens.toLocaleString()} tokens`}
-        title={`${usage.totalTokens.toLocaleString()} tokens · click for details`}
+        aria-label={`${sourceLabel} token usage: ${usage.totalTokens.toLocaleString()} tokens`}
+        title={`${usage.totalTokens.toLocaleString()} tokens · ${sourceLabel.toLowerCase()} · click for details`}
         className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
       >
         <svg viewBox="0 0 16 16" className="h-4 w-4 -rotate-90" aria-hidden>
@@ -129,6 +130,7 @@ export function UsageIndicator({ usage, provider, model, align = "right" }: Usag
           </div>
 
           <div className="space-y-1.5 text-[11px]">
+            <Row label="Source"     value={sourceLabel} />
             <Row label="Prompt"     value={formatTokens(usage.promptTokens)} />
             <Row label="Completion" value={formatTokens(usage.completionTokens)} />
             <Row label="Total"      value={formatTokens(usage.totalTokens)} accent />

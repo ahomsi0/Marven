@@ -8,7 +8,7 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const SYSTEM_PROMPT =
   "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
 
-// Curated list of fast, free Groq models
+// Fallback list used if the live Groq models API is unavailable.
 export const GROQ_MODELS = [
   { name: "llama-3.1-8b-instant",    size: 0 },
   { name: "llama-3.3-70b-versatile", size: 0 },
@@ -16,6 +16,48 @@ export const GROQ_MODELS = [
   { name: "gemma2-9b-it",            size: 0 },
   { name: "mixtral-8x7b-32768",      size: 0 },
 ];
+
+const NON_CHAT_MODEL_PATTERNS = [
+  /^whisper/i,
+  /^playai-tts/i,
+  /prompt-guard/i,
+  /safeguard/i,
+  /tts/i,
+  /transcribe/i,
+];
+
+function isChatCapableGroqModel(id: string): boolean {
+  return !NON_CHAT_MODEL_PATTERNS.some((pattern) => pattern.test(id));
+}
+
+export async function fetchGroqModels(): Promise<Array<{ name: string; size: number }>> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) {
+    throw new Error("GROQ_API_KEY is not set. Add it to .env.local and restart the server.");
+  }
+
+  const res = await fetch("https://api.groq.com/openai/v1/models", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Groq models error (${res.status}): ${text || "Unknown error"}`);
+  }
+
+  const data = await res.json() as {
+    data?: Array<{ id?: string; active?: boolean }>;
+  };
+
+  return (data.data ?? [])
+    .filter((model) => model.id && model.active !== false && isChatCapableGroqModel(model.id))
+    .map((model) => ({ name: model.id!, size: 0 }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 import type { HistoryMessage } from "@/types";
 import { buildOpenAIContent } from "@/lib/imageHelpers";

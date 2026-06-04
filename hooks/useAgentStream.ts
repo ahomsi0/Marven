@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention } from "@/types";
+import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage } from "@/types";
 
 const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
 const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
@@ -16,6 +16,7 @@ interface UseAgentStreamOptions {
   liteAgentMode?: boolean;
   autoVerifyEnabled?: boolean;
   autoVerifyCommands?: string;
+  onUsage?: (usage: TokenUsage) => void;
 }
 
 export function useAgentStream({
@@ -30,6 +31,7 @@ export function useAgentStream({
   liteAgentMode,
   autoVerifyEnabled,
   autoVerifyCommands,
+  onUsage,
 }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -60,6 +62,12 @@ export function useAgentStream({
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
+  }, []);
+
+  const estimateTokens = useCallback((text: string): number => {
+    const trimmed = text.trim();
+    if (!trimmed) return 0;
+    return Math.max(1, Math.ceil(trimmed.length / 4));
   }, []);
 
   const consumeSse = useCallback(async (
@@ -185,6 +193,12 @@ export function useAgentStream({
     const callIdToTool = new Map<string, string>();
     let wroteFiles = false;
     let streamHadError = false;
+    let completionChars = 0;
+    const promptEstimate = estimateTokens([
+      memory ?? "",
+      prompt,
+      ...history.map((entry) => entry.content),
+    ].join("\n"));
 
     try {
       const res = await fetch("/api/agent/stream", {
@@ -218,6 +232,7 @@ export function useAgentStream({
           const tool = callIdToTool.get(event.callId);
           if (tool === "write_file" || tool === "apply_patch") wroteFiles = true;
           setLiveTerminalOutput("");
+          completionChars += event.output.length;
           updateLastAssistant((msg) => ({
             ...msg,
             toolCalls: (msg.toolCalls ?? []).map((tc) => {
@@ -282,6 +297,7 @@ export function useAgentStream({
         }
 
         if (event.type === "text_delta") {
+          completionChars += event.delta.length;
           updateLastAssistant((msg) => ({
             ...msg,
             content: msg.content + event.delta,
@@ -366,6 +382,7 @@ export function useAgentStream({
 
           if (event.type === "tool_result") {
             setLiveTerminalOutput("");
+            completionChars += event.output.length;
             updateLastAssistant((msg) => ({
               ...msg,
               toolCalls: (msg.toolCalls ?? []).map((tc) =>
@@ -378,6 +395,7 @@ export function useAgentStream({
           }
 
           if (event.type === "text_delta") {
+            completionChars += event.delta.length;
             updateLastAssistant((msg) => ({
               ...msg,
               content: msg.content + event.delta,
@@ -396,6 +414,14 @@ export function useAgentStream({
           }
         });
       }
+
+      const completionEstimate = Math.max(0, Math.ceil(completionChars / 4));
+      onUsage?.({
+        promptTokens: promptEstimate,
+        completionTokens: completionEstimate,
+        totalTokens: promptEstimate + completionEstimate,
+        source: "estimated",
+      });
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") {
         setError(err.message);
@@ -403,7 +429,7 @@ export function useAgentStream({
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList]);
+  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();

@@ -137,6 +137,26 @@ type ScopedMemories = {
   legacy: string[];
 };
 
+function zeroUsage(source: TokenUsage["source"] = "actual"): TokenUsage {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    source,
+  };
+}
+
+function mergeUsage(prev: TokenUsage | undefined, next: TokenUsage | undefined): TokenUsage {
+  const base = prev ?? zeroUsage(next?.source ?? "actual");
+  if (!next) return base;
+  return {
+    promptTokens: base.promptTokens + next.promptTokens,
+    completionTokens: base.completionTokens + next.completionTokens,
+    totalTokens: base.totalTokens + next.totalTokens,
+    source: next.source ?? base.source ?? "actual",
+  };
+}
+
 function combineScopedMemories(memories: ScopedMemories): string[] {
   return [...memories.global, ...memories.project, ...memories.conversation, ...memories.legacy];
 }
@@ -228,11 +248,8 @@ export default function Home() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   // selectedModel is computed per active mode — declared after activeMode below.
 
-  const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0,
-  });
+  const [chatTokenUsage, setChatTokenUsage] = useState<TokenUsage>(zeroUsage("actual"));
+  const [agentTokenUsage, setAgentTokenUsage] = useState<TokenUsage>(zeroUsage("estimated"));
 
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -252,6 +269,7 @@ export default function Home() {
     activeMode === "agent"
       ? agentModelByProvider[provider]
       : chatModelByProvider[provider];
+  const currentTokenUsage = activeMode === "agent" ? agentTokenUsage : chatTokenUsage;
 
   // ─── Custom shortcuts ───────────────────────────────────────────────────────
   const [customShortcuts, setCustomShortcuts] = useState<CustomShortcut[]>([]);
@@ -353,6 +371,7 @@ export default function Home() {
   // holds a single bucket of messages; without this, switching between agent
   // conversations would show the wrong thread.
   const agentMessagesByConvRef = useRef<Map<string, AgentMessage[]>>(new Map());
+  const agentUsageByConvRef = useRef<Map<string, TokenUsage>>(new Map());
   // Per-conversation cache of editor tabs & buffers — keeps each agent
   // conversation's open files isolated. Workspace root itself is persisted on
   // the Conversation object (so it survives a reload).
@@ -395,6 +414,7 @@ export default function Home() {
     liteAgentMode,
     autoVerifyEnabled: agentAutoVerifyEnabled,
     autoVerifyCommands: agentAutoVerifyCommands,
+    onUsage: (usage) => addAgentTokens(activeConversationId, usage),
   });
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
@@ -484,6 +504,20 @@ export default function Home() {
       saveConversations(conversations);
     }
   }, [conversations]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setChatTokenUsage(zeroUsage("actual"));
+      setAgentTokenUsage(zeroUsage("estimated"));
+      return;
+    }
+    const conv = conversations.find((c) => c.id === activeConversationId) ?? null;
+    if (activeMode === "chat") {
+      setChatTokenUsage(conv?.tokenUsage ?? zeroUsage("actual"));
+      return;
+    }
+    setAgentTokenUsage(agentUsageByConvRef.current.get(activeConversationId) ?? zeroUsage("estimated"));
+  }, [activeConversationId, activeMode, conversations]);
 
   // Save the active conversation's agent messages whenever they change so we
   // can restore them when the user switches between agent conversations.
@@ -1137,14 +1171,32 @@ export default function Home() {
     setFolderInputVisible(false);
   }
 
-  // ─── Token accumulator ─────────────────────────────────────────────────────
-  function addTokens(usage: TokenUsage | undefined) {
+  // ─── Token accounting ──────────────────────────────────────────────────────
+  function addChatTokens(convId: string, usage: TokenUsage | undefined) {
     if (!usage) return;
-    setTokenUsage((prev) => ({
-      promptTokens: prev.promptTokens + usage.promptTokens,
-      completionTokens: prev.completionTokens + usage.completionTokens,
-      totalTokens: prev.totalTokens + usage.totalTokens,
-    }));
+    let nextUsage = zeroUsage(usage.source ?? "actual");
+    upsertConversation(convId, (conv) => {
+      nextUsage = mergeUsage(conv.tokenUsage, { ...usage, source: usage.source ?? "actual" });
+      return {
+        ...conv,
+        tokenUsage: nextUsage,
+      };
+    });
+    if (activeConversationId === convId && activeMode === "chat") {
+      setChatTokenUsage(nextUsage);
+    }
+  }
+
+  function addAgentTokens(convId: string | null, usage: TokenUsage | undefined) {
+    if (!convId || !usage) return;
+    const nextUsage = mergeUsage(agentUsageByConvRef.current.get(convId), {
+      ...usage,
+      source: usage.source ?? "estimated",
+    });
+    agentUsageByConvRef.current.set(convId, nextUsage);
+    if (activeConversationId === convId && activeMode === "agent") {
+      setAgentTokenUsage(nextUsage);
+    }
   }
 
   // ─── Load models ───────────────────────────────────────────────────────────
@@ -1674,10 +1726,11 @@ export default function Home() {
         if (usageRaw) {
           try {
             const usage = JSON.parse(usageRaw.trim());
-            addTokens({
+            addChatTokens(convId, {
               promptTokens: usage.prompt_tokens ?? 0,
               completionTokens: usage.completion_tokens ?? 0,
               totalTokens: usage.total_tokens ?? 0,
+              source: "actual",
             });
           } catch { /* skip */ }
         }
@@ -1693,7 +1746,7 @@ export default function Home() {
         const data: ChatResponse = await res.json();
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);
-        addTokens(data.usage);
+        addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
 
         if (clipAction === "fix-grammar") {
           await navigator.clipboard.writeText(data.reply).catch(() => {});
@@ -1836,8 +1889,10 @@ export default function Home() {
     upsertConversation(activeConversationId, (conv) => ({
       ...conv,
       messages: [],
+      tokenUsage: zeroUsage("actual"),
       updatedAt: new Date().toISOString(),
     }));
+    setChatTokenUsage(zeroUsage("actual"));
   }
 
   async function handleEditMessage(messageId: string, newContent: string) {
@@ -1849,6 +1904,7 @@ export default function Home() {
       return {
         ...c,
         messages: c.messages.slice(0, idx),
+        tokenUsage: zeroUsage("actual"),
         updatedAt: new Date().toISOString(),
       };
     });
@@ -1876,10 +1932,61 @@ export default function Home() {
       return {
         ...c,
         messages: c.messages.slice(0, userIdx),
+        tokenUsage: zeroUsage("actual"),
         updatedAt: new Date().toISOString(),
       };
     });
     if (userContent) await sendMessage(userContent);
+  }
+
+  function handleEditPromptMessage(messageId: string) {
+    if (!activeConversationId || isLoading) return;
+    let userContent = "";
+    upsertConversation(activeConversationId, (c) => {
+      const idx = c.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return c;
+      let userIdx = -1;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (c.messages[i].role === "user") {
+          userContent = c.messages[i].content;
+          userIdx = i;
+          break;
+        }
+      }
+      if (userIdx === -1) return c;
+      return {
+        ...c,
+        messages: c.messages.slice(0, userIdx),
+        tokenUsage: zeroUsage("actual"),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (userContent) {
+      setInput(userContent);
+      setChatTokenUsage(zeroUsage("actual"));
+    }
+  }
+
+  function handleEditAgentPrompt(messageId: string) {
+    if (!activeConversationId || agentStreamIsRunning) return;
+    const idx = agentStreamMessages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    let userIdx = -1;
+    let userContent = "";
+    for (let i = idx - 1; i >= 0; i--) {
+      if (agentStreamMessages[i].role === "user") {
+        userIdx = i;
+        userContent = agentStreamMessages[i].content;
+        break;
+      }
+    }
+    if (userIdx === -1) return;
+    const nextMessages = agentStreamMessages.slice(0, userIdx);
+    agentMessagesByConvRef.current.set(activeConversationId, nextMessages);
+    agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
+    agentStreamLoadMessages(nextMessages);
+    setAgentInput(userContent);
+    setAgentTokenUsage(zeroUsage("estimated"));
   }
 
   async function handleSlashCommand(cmd: string) {
@@ -1961,7 +2068,7 @@ export default function Home() {
         speechEnabled={speechEnabled}
         sttProvider={sttProvider}
         isSpeakingNow={isSpeakingNow}
-        tokenUsage={tokenUsage}
+        tokenUsage={currentTokenUsage}
         customShortcuts={customShortcuts}
         agentFiles={workspaceFiles}
         workspaceRoot={workspaceRoot}
@@ -1988,6 +2095,10 @@ export default function Home() {
           switch (cmd) {
             case "/clear":
               agentStreamClearMessages();
+              if (activeConversationId) {
+                agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
+                setAgentTokenUsage(zeroUsage("estimated"));
+              }
               break;
             case "/refresh":
               loadWorkspaceFiles().catch(() => {});
@@ -2020,6 +2131,8 @@ export default function Home() {
         onSystemPromptChange={handleSystemPromptChange}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
+        onEditPromptMessage={handleEditPromptMessage}
+        onEditAgentPrompt={handleEditAgentPrompt}
         onSaveShortcuts={handleSaveShortcuts}
         promptTemplates={promptTemplates}
         mcpServers={mcpServers}

@@ -10,9 +10,10 @@ interface MessageProps {
   disabled?: boolean;
   onEdit?: (newContent: string) => void;   // user messages only
   onRetry?: () => void;                     // assistant messages only
+  onEditPrompt?: () => void;
 }
 
-export function Message({ message, disabled = false, onEdit, onRetry }: MessageProps) {
+export function Message({ message, disabled = false, onEdit, onRetry, onEditPrompt }: MessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -206,6 +207,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
         <div className="relative max-w-[88%] sm:max-w-[82%]">
           {/* Action bar — right of bubble, visible on hover */}
           <div className="absolute left-full top-1 ml-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            {onEditPrompt && actionBtn("Edit prompt", onEditPrompt, <PencilIcon />)}
             {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>

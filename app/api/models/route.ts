@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GROQ_MODELS, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { GROQ_MODELS, DEFAULT_MODEL as GROQ_DEFAULT_MODEL, fetchGroqModels } from "@/lib/groq";
 import { fetchInstalledModels, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
 import { NIM_MODELS, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { OPENROUTER_MODELS, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
@@ -95,5 +95,14 @@ export async function GET(req: NextRequest) {
       { status: 401 }
     );
   }
-  return NextResponse.json({ provider: "groq", models: GROQ_MODELS, defaultModel: GROQ_DEFAULT_MODEL });
+  try {
+    const models = await fetchGroqModels();
+    const defaultModel =
+      models.find((m) => m.name === GROQ_DEFAULT_MODEL)?.name ??
+      models[0]?.name ??
+      GROQ_DEFAULT_MODEL;
+    return NextResponse.json({ provider: "groq", models, defaultModel });
+  } catch {
+    return NextResponse.json({ provider: "groq", models: GROQ_MODELS, defaultModel: GROQ_DEFAULT_MODEL });
+  }
 }

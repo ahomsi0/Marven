@@ -12,6 +12,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.8.0",
+    items: [
+      { tag: "new", label: "Agent auto-verify runs lint, test, or build commands after file edits" },
+      { tag: "new", label: "Scoped memory separates global, project, and conversation context" },
+      { tag: "new", label: "Git assistant can generate commit messages, commit groups, PR summaries, and change explanations from the current diff" },
+      { tag: "fix", label: "Workspace file routes now enforce root boundaries consistently across previews, raw files, serve, search, and replace" },
+      { tag: "imp", label: "Git panel was redesigned into a cleaner status → inspect → commit workflow" },
+    ],
+  },
+  {
     version: "2.7.0",
     items: [
       { tag: "new", label: "Adaptive Agent Lite Mode for small / weak models (≤13B) — auto-classifier, 4-tool simple tier, shorter system prompt, retry-on-stall, context pruning" },
