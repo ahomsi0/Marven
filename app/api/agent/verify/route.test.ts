@@ -44,10 +44,9 @@ describe("POST /api/agent/verify", () => {
   });
 
   it("streams an explicit verification command and a passing summary", async () => {
-    const command = `${JSON.stringify(process.execPath)} -e "process.stdout.write('verify ok')"`;
     const res = await POST(makeReq({
       workspaceRoot: tmpRoot,
-      commands: [command],
+      commands: ["echo verify ok"],
     }));
 
     expect(res.status).toBe(200);
