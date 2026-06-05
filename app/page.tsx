@@ -2037,6 +2037,23 @@ export default function Home() {
     await sendMessage(newContent);
   }
 
+  async function handleEditAgentUserMessage(messageId: string, newContent: string) {
+    if (!activeConversationId || agentStreamIsRunning) return;
+    const idx = agentStreamMessages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    const msg = agentStreamMessages[idx];
+    if (msg.role !== "user") return;
+    const trimmed = newContent.trim();
+    if (!trimmed) return;
+    const attachments = msg.attachments ?? [];
+    const nextMessages = agentStreamMessages.slice(0, idx);
+    agentMessagesByConvRef.current.set(activeConversationId, nextMessages);
+    agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
+    agentStreamLoadMessages(nextMessages);
+    setAgentTokenUsage(zeroUsage("estimated"));
+    await agentStreamSend(trimmed, { attachments });
+  }
+
   async function handleRetryMessage(messageId: string) {
     if (!activeConversationId || isLoading) return;
     let userContent = "";
@@ -2293,6 +2310,7 @@ export default function Home() {
         onDeleteFolder={handleDeleteFolder}
         onMoveConversation={handleMoveConversation}
         onAgentEditorScroll={updateActiveTabScroll}
+        onEditAgentUserMessage={handleEditAgentUserMessage}
       />
       {diskConflictPath && (
         <DiskConflictModal

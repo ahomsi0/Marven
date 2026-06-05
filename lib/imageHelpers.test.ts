@@ -4,6 +4,8 @@ import {
   buildOpenAIContent,
   buildAnthropicContent,
   stripAttachments,
+  groqModelSupportsVision,
+  groqUserMessageContent,
 } from "./imageHelpers";
 import type { ImageAttachment } from "@/types";
 
@@ -12,6 +14,33 @@ const IMG: ImageAttachment = {
   mimeType: "image/png",
   name: "test.png",
 };
+
+describe("groqModelSupportsVision", () => {
+  it("is true for documented Llama 4 vision model ids", () => {
+    expect(groqModelSupportsVision("meta-llama/llama-4-scout-17b-16e-instruct")).toBe(true);
+    expect(groqModelSupportsVision("meta-llama/llama-4-maverick-17b-128e-instruct")).toBe(true);
+  });
+  it("is false for text-only Groq chat models", () => {
+    expect(groqModelSupportsVision("llama-3.1-8b-instant")).toBe(false);
+    expect(groqModelSupportsVision("llama-3.3-70b-versatile")).toBe(false);
+  });
+});
+
+describe("groqUserMessageContent", () => {
+  it("returns multipart content for vision models when attachments exist", () => {
+    const out = groqUserMessageContent("hi", [IMG], "meta-llama/llama-4-scout-17b-16e-instruct");
+    expect(Array.isArray(out)).toBe(true);
+  });
+  it("returns string with strip note for text models when attachments exist", () => {
+    const out = groqUserMessageContent("hi", [IMG], "llama-3.1-8b-instant");
+    expect(typeof out).toBe("string");
+    expect(out).toContain("hi");
+    expect(out).toContain("text-only");
+  });
+  it("returns plain text when no attachments", () => {
+    expect(groqUserMessageContent("hello", undefined, "llama-3.1-8b-instant")).toBe("hello");
+  });
+});
 
 describe("VISION_PROVIDERS", () => {
   it("includes groq, openai, anthropic", () => {

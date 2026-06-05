@@ -28,6 +28,8 @@ interface AgentPanelProps {
   onSlashCommand: (cmd: string) => void;
   workspaceFiles?: WorkspaceFile[];
   onApproveToolCall?: (callId: string, accept: boolean) => void;
+  /** Edit a past user line: truncates thread from that turn and resends the revised text. */
+  onEditUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   isVoiceSupported?: boolean;
@@ -68,6 +70,7 @@ export function AgentPanel({
   onStop,
   onSlashCommand,
   onApproveToolCall,
+  onEditUserMessage,
   attachments,
   onAttachmentsChange,
   isVoiceSupported,
@@ -87,6 +90,8 @@ export function AgentPanel({
   const matches = AGENT_SLASH_COMMANDS.filter((c) => c.command.slice(1).startsWith(query));
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
   const [preferredBrowser, setPreferredBrowser] = useState<string>("default");
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
 
   // ── @-mention state ─────────────────────────────────────────────────────
   const [mentions, setMentions] = useState<Mention[]>([]);
@@ -136,6 +141,15 @@ export function AgentPanel({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isRunning]);
+
+  useEffect(() => {
+    if (!editingUserId) return;
+    const stillThere = messages.some((m) => m.id === editingUserId && m.role === "user");
+    if (!stillThere) {
+      setEditingUserId(null);
+      setEditDraft("");
+    }
+  }, [messages, editingUserId]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -201,15 +215,92 @@ export function AgentPanel({
               ) : (
                 <div>
                   {msg.role === "user" ? (
-                    <div className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)]">
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="mb-2 flex flex-wrap gap-1.5">
-                          {msg.attachments.map((att, i) => (
-                            <img key={i} src={att.base64} alt={att.name} className="max-h-32 max-w-[200px] rounded border border-[var(--m-border)] object-cover" />
-                          ))}
-                        </div>
-                      )}
-                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    <div className="flex justify-end">
+                      <div className="relative group max-w-[min(100%,520px)]">
+                        {editingUserId === msg.id ? (
+                          <div className="flex flex-col gap-2">
+                            <textarea
+                              autoFocus
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  void (async () => {
+                                    const t = editDraft.trim();
+                                    if (!t || !onEditUserMessage || isRunning) return;
+                                    await Promise.resolve(onEditUserMessage(msg.id, t));
+                                    setEditingUserId(null);
+                                  })();
+                                }
+                                if (e.key === "Escape") {
+                                  setEditingUserId(null);
+                                  setEditDraft("");
+                                }
+                              }}
+                              rows={4}
+                              disabled={isRunning}
+                              className="w-full resize-none rounded-md border border-[var(--m-accent)]/40 bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] leading-relaxed outline-none focus:border-[var(--m-accent)]/60 disabled:opacity-50"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingUserId(null); setEditDraft(""); }}
+                                className="rounded-md border border-[var(--m-border)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isRunning || !editDraft.trim()}
+                                onClick={() => {
+                                  void (async () => {
+                                    const t = editDraft.trim();
+                                    if (!t || !onEditUserMessage || isRunning) return;
+                                    await Promise.resolve(onEditUserMessage(msg.id, t));
+                                    setEditingUserId(null);
+                                  })();
+                                }}
+                                className="rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2 py-1 text-[10px] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20 disabled:opacity-40"
+                              >
+                                Save & resend
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)]">
+                              {msg.attachments && msg.attachments.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1.5">
+                                  {msg.attachments.map((att, i) => (
+                                    <img key={i} src={att.base64} alt={att.name} className="max-h-32 max-w-[200px] rounded border border-[var(--m-border)] object-cover" />
+                                  ))}
+                                </div>
+                              )}
+                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            </div>
+                            {onEditUserMessage && (
+                              <div className="absolute right-full top-1 mr-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  disabled={isRunning}
+                                  title="Edit message"
+                                  aria-label="Edit message"
+                                  onClick={() => {
+                                    setEditingUserId(msg.id);
+                                    setEditDraft(msg.content);
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-text-muted)] shadow hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="group flex min-w-0 flex-col gap-2">

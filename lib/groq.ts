@@ -1,6 +1,9 @@
 // Groq API helper — server-side only (uses GROQ_API_KEY from .env.local)
 // The key is never sent to the browser; all requests go through /api/chat.
 
+import type { HistoryMessage } from "@/types";
+import { groqUserMessageContent } from "@/lib/imageHelpers";
+
 export const DEFAULT_MODEL = "llama-3.1-8b-instant";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -59,9 +62,6 @@ export async function fetchGroqModels(): Promise<Array<{ name: string; size: num
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-import type { HistoryMessage } from "@/types";
-import { buildOpenAIContent } from "@/lib/imageHelpers";
-
 export interface GroqResult {
   reply: string;
   promptTokens: number;
@@ -93,9 +93,10 @@ export async function askGroq(
         { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
         ...messages.map((m) => ({
           role: m.role,
-          content: m.role === "user" && m.attachments?.length
-            ? buildOpenAIContent(m.content, m.attachments) as string | unknown[]
-            : m.content,
+          content:
+            m.role === "user"
+              ? groqUserMessageContent(m.content, m.attachments, model)
+              : m.content,
         })),
       ],
       temperature: 0.7,
@@ -152,9 +153,10 @@ export function streamGroq(
               { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
               ...messages.map((m) => ({
                 role: m.role,
-                content: m.role === "user" && m.attachments?.length
-                  ? buildOpenAIContent(m.content, m.attachments) as string | unknown[]
-                  : m.content,
+                content:
+                  m.role === "user"
+                    ? groqUserMessageContent(m.content, m.attachments, model)
+                    : m.content,
               })),
             ],
             temperature: 0.7,

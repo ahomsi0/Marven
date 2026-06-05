@@ -1,5 +1,5 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
-import { buildOpenAIContent } from "@/lib/imageHelpers";
+import { groqUserMessageContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -10,14 +10,13 @@ export type ProviderStepResult =
 
 /** Convert internal loop messages to the Groq (OpenAI-compatible) format. */
 function toGroqMessages(
-  messages: InternalMessage[]
+  messages: InternalMessage[],
+  model: string
 ): Array<Record<string, unknown>> {
   return messages.flatMap((m) => {
     if (m.role === "system") return [{ role: "system", content: m.content }];
     if (m.role === "user") {
-      const content = m.attachments?.length
-        ? buildOpenAIContent(m.content, m.attachments)
-        : m.content;
+      const content = groqUserMessageContent(m.content, m.attachments, model);
       return [{ role: "user", content }];
     }
     if (m.role === "assistant") return [{ role: "assistant", content: m.content }];
@@ -58,7 +57,7 @@ export async function groqAgentStep(
     },
     body: JSON.stringify({
       model,
-      messages: toGroqMessages(messages),
+      messages: toGroqMessages(messages, model),
       tools: tools.map((t) => ({ type: "function", function: t })),
       tool_choice: "auto",
       temperature: 0.2,

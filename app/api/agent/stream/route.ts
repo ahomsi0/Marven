@@ -14,6 +14,7 @@ import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPr
 import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
+import { groqModelSupportsVision } from "@/lib/imageHelpers";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -63,15 +64,36 @@ export async function POST(req: NextRequest) {
 
   const provider = (body.provider ?? "groq") as AIProvider;
 
+  const model =
+    (typeof body.model === "string" && body.model.trim().length > 0
+      ? body.model.trim()
+      : null) ??
+    (provider === "groq"      ? "llama-3.3-70b-versatile" :
+    provider === "nim"       ? "mistralai/mistral-nemotron" :
+    provider === "openai"    ? "gpt-4o-mini" :
+    provider === "anthropic" ? "claude-sonnet-4-5" :
+    "qwen2.5-coder");
+
+  const hasImageTurn =
+    (body.attachments?.length ?? 0) > 0 ||
+    (body.history ?? []).some(
+      (m) => m.role === "user" && (m.attachments?.length ?? 0) > 0,
+    );
+
   // ── Tier selection (Adaptive Agent Lite Mode) ─────────────────────────────
   // Override rules:
   //   liteAgentMode === true  → always "simple"
   //   liteAgentMode === false → always "standard"
   //   liteAgentMode === undefined (auto) → local: classifier result; cloud: "standard"
+  // When Groq receives multimodal input on a vision model, force "standard" so the
+  // system prompt acknowledges images — the lite prompt is tool-only and models
+  // often falsely deny they can see attachments.
   const isLocalProvider = (LOCAL_PROVIDERS as ReadonlyArray<string>).includes(provider);
 
   let tier: AgentTier;
-  if (body.liteAgentMode === true) {
+  if (provider === "groq" && hasImageTurn && groqModelSupportsVision(model)) {
+    tier = "standard";
+  } else if (body.liteAgentMode === true) {
     tier = "simple";
   } else if (body.liteAgentMode === false) {
     tier = "standard";
@@ -85,18 +107,15 @@ export async function POST(req: NextRequest) {
   const fileTree =
     tier === "simple" ? await listWorkspaceTree(workspaceRoot) : undefined;
 
-  const systemPrompt =
+  let systemPrompt =
     tier === "simple"
       ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree)
       : makeFullSystemPrompt(workspaceRoot, body.memory);
 
-  const model = body.model ?? (
-    provider === "groq"      ? "llama-3.3-70b-versatile" :
-    provider === "nim"       ? "mistralai/mistral-nemotron" :
-    provider === "openai"    ? "gpt-4o-mini" :
-    provider === "anthropic" ? "claude-sonnet-4-5" :
-    "qwen2.5-coder"
-  );
+  if (hasImageTurn) {
+    systemPrompt +=
+      "\n\nIMAGE INPUT: One or more user turns include images attached via the API (as image parts in those messages). Inspect them when relevant. Do not claim you cannot view images — they are included in the conversation payload.";
+  }
 
   // ── Expand @-mentions into a <context> block prepended to the prompt ─────
   if (body.mentions && body.mentions.length > 0) {
@@ -115,6 +134,7 @@ export async function POST(req: NextRequest) {
   const history: InternalMessage[] = (body.history ?? []).map((m) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
+    ...(m.role === "user" && m.attachments?.length ? { attachments: m.attachments } : {}),
   }));
   history.push({ role: "user", content: prompt, ...(body.attachments?.length ? { attachments: body.attachments } : {}) });
 

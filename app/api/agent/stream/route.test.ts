@@ -4,12 +4,12 @@ import os from "os";
 import path from "path";
 import type { NextRequest } from "next/server";
 
-// Capture the messages handed to runAgentLoop.
-const captured: { messages: unknown[] } = { messages: [] };
+// Capture options handed to runAgentLoop.
+const captured: { opts: { messages: unknown[]; systemPrompt?: string } | null } = { opts: null };
 
 vi.mock("@/lib/agent/loop", () => ({
-  runAgentLoop: vi.fn(async function* (opts: { messages: unknown[] }) {
-    captured.messages = opts.messages;
+  runAgentLoop: vi.fn(async function* (opts: { messages: unknown[]; systemPrompt?: string }) {
+    captured.opts = opts;
     yield { type: "done", toolCallCount: 0 };
   }),
 }));
@@ -28,7 +28,7 @@ let tmpRoot: string;
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stream-route-"));
-  captured.messages = [];
+  captured.opts = null;
 });
 
 afterEach(async () => {
@@ -63,7 +63,7 @@ describe("POST /api/agent/stream — mention expansion", () => {
     expect(res.status).toBe(200);
     await drain(res.body!);
 
-    const lastUserMsg = captured.messages.find(
+    const lastUserMsg = captured.opts!.messages.find(
       (m: unknown): m is { role: string; content: string } =>
         typeof m === "object" && m !== null && (m as { role?: string }).role === "user",
     )!;
@@ -88,11 +88,63 @@ describe("POST /api/agent/stream — mention expansion", () => {
     expect(res.status).toBe(200);
     await drain(res.body!);
 
-    const lastUserMsg = captured.messages.find(
+    const lastUserMsg = captured.opts!.messages.find(
       (m: unknown): m is { role: string; content: string } =>
         typeof m === "object" && m !== null && (m as { role?: string }).role === "user",
     )!;
     expect(lastUserMsg.content).toBe("Hello there");
     expect(lastUserMsg.content).not.toContain("<context>");
+  });
+});
+
+describe("POST /api/agent/stream — vision + lite mode", () => {
+  const IMG = {
+    base64: "data:image/png;base64,abc",
+    mimeType: "image/png" as const,
+    name: "m.png",
+  };
+
+  it("forces standard tier and full system prompt when Groq vision model has attachments (even if lite is on)", async () => {
+    const res = await POST(
+      makeReq({
+        prompt: "Describe the menu",
+        history: [],
+        provider: "groq",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        workspaceRoot: tmpRoot,
+        liteAgentMode: true,
+        attachments: [IMG],
+      }),
+    );
+    expect(res.status).toBe(200);
+    await drain(res.body!);
+
+    const sys = captured.opts!.systemPrompt ?? "";
+    expect(sys).toContain("expert software engineer");
+    expect(sys).toContain("IMAGE INPUT");
+    expect(sys).not.toContain("Your job: make exactly the change");
+  });
+
+  it("preserves image attachments on prior user turns in internal history", async () => {
+    const res = await POST(
+      makeReq({
+        prompt: "Now use that style",
+        history: [
+          { role: "user", content: "see ref", attachments: [IMG] },
+          { role: "assistant", content: "OK." },
+        ],
+        provider: "groq",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        workspaceRoot: tmpRoot,
+      }),
+    );
+    expect(res.status).toBe(200);
+    await drain(res.body!);
+
+    const users = captured.opts!.messages.filter(
+      (m: unknown): m is { role: string; attachments?: unknown[] } =>
+        typeof m === "object" && m !== null && (m as { role?: string }).role === "user",
+    );
+    expect(users.some((u) => u.attachments?.length)).toBe(true);
   });
 });

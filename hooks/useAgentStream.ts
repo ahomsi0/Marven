@@ -176,13 +176,28 @@ export function useAgentStream({
     }
 
     const history = activeMessages
-      .map((m) => ({
-        role: m.role,
-        content: m.content || (m.toolCalls?.length
-          ? `[Used tools: ${m.toolCalls.map((tc) => tc.tool).join(", ")}]`
-          : ""),
-      }))
-      .filter((m) => m.content);
+      .map((m) => {
+        const content =
+          m.role === "assistant"
+            ? (m.content || (m.toolCalls?.length
+              ? `[Used tools: ${m.toolCalls.map((tc) => tc.tool).join(", ")}]`
+              : ""))
+            : (m.content || "");
+        const row: {
+          role: "user" | "assistant";
+          content: string;
+          attachments?: ImageAttachment[];
+        } = { role: m.role, content };
+        if (m.role === "user" && m.attachments?.length) {
+          row.attachments = m.attachments;
+        }
+        return row;
+      })
+      .filter(
+        (m) =>
+          m.content.trim().length > 0
+          || (m.role === "user" && (m.attachments?.length ?? 0) > 0),
+      );
 
     const abort = new AbortController();
     abortRef.current = abort;

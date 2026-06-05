@@ -12,6 +12,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.9.1",
+    items: [
+      { tag: "new", label: "Edit and resend past user messages in the agent panel (hover the bubble, then Save & resend)" },
+      { tag: "fix", label: "Groq chat only sends image parts on Llama 4 Scout/Maverick; text-only Groq models get a clear note instead of API 400 errors" },
+      { tag: "fix", label: "Agent with images on Groq vision models upgrades out of Lite tier, adds an image system cue, and keeps per-turn attachments in streamed history" },
+    ],
+  },
+  {
     version: "2.9.0",
     items: [
       { tag: "new", label: "Agent session persistence — thread messages, open editor tabs, and file buffers restore when you return to a conversation" },

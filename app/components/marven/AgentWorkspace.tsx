@@ -315,6 +315,7 @@ interface AgentWorkspaceProps {
   onJumpToLine?: (path: string, line: number) => void;
   conversationId?: string | null;
   onEditorScroll?: (scrollTop: number) => void;
+  onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
 }
 
 export function AgentWorkspace({
@@ -384,6 +385,7 @@ export function AgentWorkspace({
   onJumpToLine,
   conversationId,
   onEditorScroll,
+  onEditAgentUserMessage,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1326,6 +1328,7 @@ export function AgentWorkspace({
                   onPlanModeChange={onPlanModeChange}
                   liteAgentMode={liteAgentMode}
                   workspaceFiles={files}
+                  onEditUserMessage={onEditAgentUserMessage}
                 />
               </div>
             </>

@@ -131,6 +131,7 @@ interface ChatLayoutProps {
   onOpenRestTab?: () => void;
   /** Persist code editor scroll position for the active agent file tab. */
   onAgentEditorScroll?: (scrollTop: number) => void;
+  onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
 }
 
 function TypingRow() {
@@ -250,6 +251,7 @@ export function ChatLayout({
   onOpenPreviewTab,
   onOpenRestTab,
   onAgentEditorScroll,
+  onEditAgentUserMessage,
 }: ChatLayoutProps) {
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -461,6 +463,7 @@ export function ChatLayout({
               onOpenPreviewTab={onOpenPreviewTab}
               onOpenRestTab={onOpenRestTab}
               onEditorScroll={onAgentEditorScroll}
+              onEditAgentUserMessage={onEditAgentUserMessage}
             />
           ) : (
             <>
