@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   getVersion: () => ipcRenderer.invoke('get-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  /** Start watching a workspace root for file changes (Electron only). */
+  workspaceWatchStart: (rootPath) => ipcRenderer.invoke('marven-workspace-watch', rootPath),
+  workspaceWatchStop: () => ipcRenderer.invoke('marven-workspace-watch-stop'),
+  onWorkspaceFileEvent: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('marven-workspace-file-event', handler);
+    return () => ipcRenderer.removeListener('marven-workspace-file-event', handler);
+  },
   onUpdateStatus: (cb) => {
     ipcRenderer.on('update-status', (_event, data) => cb(data));
     return () => ipcRenderer.removeAllListeners('update-status');

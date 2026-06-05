@@ -21,7 +21,7 @@ import { xml } from "@codemirror/lang-xml";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { search, openSearchPanel, closeSearchPanel } from "@codemirror/search";
 import type { Extension } from "@codemirror/state";
-import { lspExtension } from "@/lib/editor/lspExtension";
+import { lspExtension, __test as lspEditorTest } from "@/lib/editor/lspExtension";
 import { lspClient } from "@/lib/editor/lspClient";
 import { languageIdForExtension, type LanguageId } from "@/lib/editor/lspServers";
 import type { LspWorkspaceEdit, LspPosition } from "@/types";
@@ -57,6 +57,8 @@ export interface CodeEditorActions {
   openSearch: () => void;
   /** Close the built-in CodeMirror search panel. */
   closeSearch: () => void;
+  /** LSP rename at cursor (same as F2). No-op if LSP session inactive. */
+  renameSymbol: () => Promise<void>;
 }
 
 export interface CodeEditorProps {
@@ -82,6 +84,10 @@ export interface CodeEditorProps {
   onOpenFile?: (path: string, position?: LspPosition) => void;
   /** Called when LSP rename produces a multi-file edit. */
   onApplyWorkspaceEdit?: (edit: LspWorkspaceEdit) => Promise<void>;
+  /** Restore vertical scroll after switching tabs (px). */
+  tabScrollRestore?: number;
+  /** Debounced scroll position while editing (px). */
+  onScrollPositionChange?: (scrollTop: number) => void;
   /** Inline-completion settings (ghost-text suggestions). Disabled when null/undefined or `enabled: false`. */
   inlineCompletions?: InlineCompletionSettings | null;
 }
@@ -316,11 +322,18 @@ export function CodeEditor({
   workspaceRoot,
   onOpenFile,
   onApplyWorkspaceEdit,
+  tabScrollRestore,
+  onScrollPositionChange,
   inlineCompletions,
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const lspSessionIdRef = useRef<string | null>(null);
+  const onScrollPositionChangeRef = useRef(onScrollPositionChange);
+  const lastScrollReportRef = useRef(0);
+  const scrollReportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAppliedScrollKeyRef = useRef<string>("");
 
   // Compartments allow us to dynamically swap extensions (language / theme /
   // read-only) without recreating the entire EditorView.
@@ -339,6 +352,18 @@ export function CodeEditor({
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
+  useEffect(() => {
+    onScrollPositionChangeRef.current = onScrollPositionChange;
+  }, [onScrollPositionChange]);
+
+  const filePathRef = useRef(filePath);
+  const onApplyLspRef = useRef(onApplyWorkspaceEdit);
+  useEffect(() => {
+    filePathRef.current = filePath;
+  }, [filePath]);
+  useEffect(() => {
+    onApplyLspRef.current = onApplyWorkspaceEdit;
+  }, [onApplyWorkspaceEdit]);
 
   // ─ Mount once ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -400,6 +425,18 @@ export function CodeEditor({
     const state = EditorState.create({ doc: value, extensions });
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+
+    const reportScroll = () => {
+      const top = view.scrollDOM.scrollTop;
+      if (Math.abs(top - lastScrollReportRef.current) < 4) return;
+      lastScrollReportRef.current = top;
+      if (scrollReportTimerRef.current) clearTimeout(scrollReportTimerRef.current);
+      scrollReportTimerRef.current = setTimeout(() => {
+        scrollReportTimerRef.current = null;
+        onScrollPositionChangeRef.current?.(top);
+      }, 220);
+    };
+    view.scrollDOM.addEventListener("scroll", reportScroll, { passive: true });
 
     if (onReady) {
       const actions: CodeEditorActions = {
@@ -486,11 +523,34 @@ export function CodeEditor({
         closeSearch: () => {
           if (viewRef.current) closeSearchPanel(viewRef.current);
         },
+        renameSymbol: async () => {
+          const v = viewRef.current;
+          const sid = lspSessionIdRef.current;
+          const fp = filePathRef.current;
+          if (!v || !sid || !fp) return;
+          const doc = v.state.doc.toString();
+          const cursor = v.state.selection.main.head;
+          const lspPos = lspEditorTest.offsetToPos(doc, cursor);
+          const newName = window.prompt("Rename symbol to:", "");
+          if (!newName) return;
+          try {
+            const edit = await lspClient.request<LspWorkspaceEdit | null>(
+              sid,
+              "textDocument/rename",
+              { position: lspPos, newName },
+            );
+            if (edit && onApplyLspRef.current) await onApplyLspRef.current(edit);
+          } catch {
+            /* LSP may not support rename for this symbol */
+          }
+        },
       };
       onReady(actions);
     }
 
     return () => {
+      view.scrollDOM.removeEventListener("scroll", reportScroll);
+      if (scrollReportTimerRef.current) clearTimeout(scrollReportTimerRef.current);
       view.destroy();
       viewRef.current = null;
     };
@@ -520,6 +580,8 @@ export function CodeEditor({
     const langId: LanguageId | null = languageIdForExtension(ext);
     if (!langId || !filePath || !workspaceRoot || !viewRef.current) return;
 
+    lspSessionIdRef.current = null;
+
     let cancelled = false;
     let sessionIdLocal: string | null = null;
 
@@ -538,6 +600,7 @@ export function CodeEditor({
           return;
         }
         sessionIdLocal = sessionId;
+        lspSessionIdRef.current = sessionId;
         viewRef.current.dispatch({
           effects: lspCompartment.current.reconfigure(
             lspExtension({
@@ -557,6 +620,7 @@ export function CodeEditor({
 
     return () => {
       cancelled = true;
+      lspSessionIdRef.current = null;
       if (sessionIdLocal) lspClient.closeSession(sessionIdLocal);
       if (viewRef.current) {
         viewRef.current.dispatch({ effects: lspCompartment.current.reconfigure([]) });
@@ -584,6 +648,20 @@ export function CodeEditor({
       });
     }
   }, [value]);
+
+  // Restore scroll position when switching file tabs (session persistence).
+  useEffect(() => {
+    const v = viewRef.current;
+    if (!v) return;
+    if (tabScrollRestore === undefined) return;
+    const key = `${filePath ?? ""}:${tabScrollRestore}`;
+    if (lastAppliedScrollKeyRef.current === key) return;
+    lastAppliedScrollKeyRef.current = key;
+    requestAnimationFrame(() => {
+      if (viewRef.current !== v) return;
+      v.scrollDOM.scrollTop = tabScrollRestore;
+    });
+  }, [filePath, tabScrollRestore]);
 
   // ─ Language swap ────────────────────────────────────────────────────────────
   useEffect(() => {

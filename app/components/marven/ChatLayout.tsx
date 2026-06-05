@@ -107,8 +107,6 @@ interface ChatLayoutProps {
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
   onRetryMessage: (id: string) => void;
-  onEditPromptMessage: (id: string) => void;
-  onEditAgentPrompt: (id: string) => void;
   // Multi-tab props
   openTabs: EditorTab[];
   activeTabIndex: number;
@@ -131,6 +129,8 @@ interface ChatLayoutProps {
   onMoveConversation: (convId: string, folderId: string | null) => void;
   onOpenPreviewTab?: (url: string) => void;
   onOpenRestTab?: () => void;
+  /** Persist code editor scroll position for the active agent file tab. */
+  onAgentEditorScroll?: (scrollTop: number) => void;
 }
 
 function TypingRow() {
@@ -228,8 +228,6 @@ export function ChatLayout({
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
-  onEditPromptMessage,
-  onEditAgentPrompt,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -251,6 +249,7 @@ export function ChatLayout({
   onMoveConversation,
   onOpenPreviewTab,
   onOpenRestTab,
+  onAgentEditorScroll,
 }: ChatLayoutProps) {
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -418,7 +417,6 @@ export function ChatLayout({
               liveTerminalOutput={liveTerminalOutput}
               checkpoints={checkpoints}
               onApproveToolCall={onApproveToolCall}
-              onEditPrompt={onEditAgentPrompt}
               recentWorkspaces={recentWorkspaces}
               onSelectRecent={onSelectRecent}
               // Agent mode now opens Settings as a full-page overlay (same as chat),
@@ -462,6 +460,7 @@ export function ChatLayout({
               conversationId={conversationId}
               onOpenPreviewTab={onOpenPreviewTab}
               onOpenRestTab={onOpenRestTab}
+              onEditorScroll={onAgentEditorScroll}
             />
           ) : (
             <>
@@ -483,7 +482,6 @@ export function ChatLayout({
                       disabled={isLoading}
                       onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
                       onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
-                      onEditPrompt={message.role === "assistant" ? () => onEditPromptMessage(message.id) : undefined}
                     />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (

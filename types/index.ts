@@ -237,7 +237,7 @@ export interface WritePreview {
 }
 
 export type EditorTab =
-  | { kind: "file"; path: string }
+  | { kind: "file"; path: string; scrollTop?: number }
   | { kind: "settings" }
   | { kind: "preview"; url: string }
   | { kind: "rest"; requestId: string };
@@ -299,6 +299,15 @@ export interface LspTextEdit { range: LspRange; newText: string; }
 export interface LspWorkspaceEdit {
   changes?: Record<string, LspTextEdit[]>;
   documentChanges?: Array<{ textDocument: { uri: string; version: number | null }; edits: LspTextEdit[] }>;
+}
+
+/** Flattened LSP diagnostic for the Problems panel */
+export interface EditorProblem {
+  path: string;
+  line: number;
+  column: number;
+  message: string;
+  severity: "error" | "warning" | "info";
 }
 
 

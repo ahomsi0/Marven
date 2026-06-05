@@ -10,10 +10,9 @@ interface MessageProps {
   disabled?: boolean;
   onEdit?: (newContent: string) => void;   // user messages only
   onRetry?: () => void;                     // assistant messages only
-  onEditPrompt?: () => void;
 }
 
-export function Message({ message, disabled = false, onEdit, onRetry, onEditPrompt }: MessageProps) {
+export function Message({ message, disabled = false, onEdit, onRetry }: MessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -207,7 +206,6 @@ export function Message({ message, disabled = false, onEdit, onRetry, onEditProm
         <div className="relative max-w-[88%] sm:max-w-[82%]">
           {/* Action bar — right of bubble, visible on hover */}
           <div className="absolute left-full top-1 ml-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            {onEditPrompt && actionBtn("Edit prompt", onEditPrompt, <PencilIcon />)}
             {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>
@@ -226,12 +224,18 @@ export function Message({ message, disabled = false, onEdit, onRetry, onEditProm
                           href={href}
                           onClick={(e) => {
                             e.preventDefault();
-                            if (!href) return;
+                            if (!href?.trim()) return;
+                            let target = href.trim();
+                            try {
+                              target = new URL(target, typeof window !== "undefined" ? window.location.href : undefined).href;
+                            } catch {
+                              return;
+                            }
                             const electron = (window as any).marvenElectron;
                             if (electron?.openExternal) {
-                              electron.openExternal(href, preferredBrowser);
+                              void electron.openExternal(target, preferredBrowser).catch(() => {});
                             } else {
-                              window.open(href, "_blank", "noopener,noreferrer");
+                              window.open(target, "_blank", "noopener,noreferrer");
                             }
                           }}
                           className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"

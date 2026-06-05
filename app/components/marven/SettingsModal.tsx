@@ -206,18 +206,26 @@ function AboutLink({
     <button
       type="button"
       onClick={() => {
+        const raw = href?.trim() ?? "";
+        if (!raw) return;
+        let target = raw;
+        try {
+          target = new URL(raw, typeof window !== "undefined" ? window.location.href : undefined).href;
+        } catch {
+          return;
+        }
         const el =
           typeof window !== "undefined"
             ? (
                 window as unknown as {
                   marvenElectron?: {
-                    openExternal?: (u: string, b: string) => void;
+                    openExternal?: (u: string, b: string) => Promise<unknown>;
                   };
                 }
               ).marvenElectron
             : null;
-        if (el?.openExternal) el.openExternal(href, "default");
-        else window.open(href, "_blank", "noopener,noreferrer");
+        if (el?.openExternal) void el.openExternal(target, "default").catch(() => {});
+        else window.open(target, "_blank", "noopener,noreferrer");
       }}
       className="group flex items-start justify-between gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-3 text-left transition-all hover:border-[var(--m-accent)]/30 hover:bg-[var(--m-surface-2)]"
     >

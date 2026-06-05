@@ -12,6 +12,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.9.0",
+    items: [
+      { tag: "new", label: "Agent session persistence — thread messages, open editor tabs, and file buffers restore when you return to a conversation" },
+      { tag: "new", label: "Workspace disk watcher with a conflict modal when files change on disk while you have unsaved editor edits" },
+      { tag: "new", label: "Problems tab in the agent workspace lists LSP diagnostics from open files" },
+      { tag: "imp", label: "Editor remembers scroll position per tab; command palette and LSP rename wiring improvements" },
+      { tag: "fix", label: "Safer open-in-browser and file:// handling for previews and external links (including Windows paths)" },
+      { tag: "fix", label: "Removed the assistant \"Edit prompt\" control so AI replies are not paired with a misleading edit action" },
+    ],
+  },
+  {
     version: "2.8.0",
     items: [
       { tag: "new", label: "Agent auto-verify runs lint, test, or build commands after file edits" },

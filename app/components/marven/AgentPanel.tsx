@@ -28,7 +28,6 @@ interface AgentPanelProps {
   onSlashCommand: (cmd: string) => void;
   workspaceFiles?: WorkspaceFile[];
   onApproveToolCall?: (callId: string, accept: boolean) => void;
-  onEditPrompt?: (messageId: string) => void;
   attachments?: ImageAttachment[];
   onAttachmentsChange?: (attachments: ImageAttachment[]) => void;
   isVoiceSupported?: boolean;
@@ -69,7 +68,6 @@ export function AgentPanel({
   onStop,
   onSlashCommand,
   onApproveToolCall,
-  onEditPrompt,
   attachments,
   onAttachmentsChange,
   isVoiceSupported,
@@ -220,18 +218,6 @@ export function AgentPanel({
                       ))}
                       {msg.content && (
                         <div className="min-w-0">
-                          <div className="mb-1 flex justify-end opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                            {onEditPrompt && (
-                              <button
-                                type="button"
-                                onClick={() => onEditPrompt(msg.id)}
-                                disabled={isRunning}
-                                className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-accent)]/40 hover:text-[var(--m-accent)] disabled:opacity-40"
-                              >
-                                Edit prompt
-                              </button>
-                            )}
-                          </div>
                           <div className="prose prose-sm min-w-0 max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -241,12 +227,18 @@ export function AgentPanel({
                                   href={href}
                                   onClick={(e) => {
                                     e.preventDefault();
-                                    if (!href) return;
+                                    if (!href?.trim()) return;
+                                    let target = href.trim();
+                                    try {
+                                      target = new URL(target, typeof window !== "undefined" ? window.location.href : undefined).href;
+                                    } catch {
+                                      return;
+                                    }
                                     const electron = (window as any).marvenElectron;
                                     if (electron?.openExternal) {
-                                      electron.openExternal(href, preferredBrowser);
+                                      void electron.openExternal(target, preferredBrowser).catch(() => {});
                                     } else {
-                                      window.open(href, "_blank", "noopener,noreferrer");
+                                      window.open(target, "_blank", "noopener,noreferrer");
                                     }
                                   }}
                                   className="underline decoration-[#d19a66]/40 underline-offset-2 hover:decoration-[#d19a66] cursor-pointer"

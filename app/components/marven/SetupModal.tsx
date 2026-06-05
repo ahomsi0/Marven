@@ -72,12 +72,18 @@ export function SetupModal({ onSave }: SetupModalProps) {
   function handleNameSubmit() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onSave(trimmed);
+    // Don't call onSave here — it triggers the parent to set userProfile
+    // non-null, which unmounts this modal immediately. We only commit the
+    // profile at the *end* of the wizard (handleFinish / handleSkip).
     setStep("backend");
   }
 
+  function handleFinish() {
+    onSave(name.trim() || "friend");
+    setStep("done");
+  }
+
   function handleSkip() {
-    // Save name (empty fallback ⇒ "friend") and exit immediately.
     onSave(name.trim() || "friend");
     setStep("done");
   }
@@ -241,7 +247,7 @@ export function SetupModal({ onSave }: SetupModalProps) {
 
             <button
               type="button"
-              onClick={handleSkip}
+              onClick={handleFinish}
               className="w-full rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-6 py-2.5 text-[14px] text-[#d19a66] hover:bg-[#d19a66]/20"
             >
               Got it — let me in

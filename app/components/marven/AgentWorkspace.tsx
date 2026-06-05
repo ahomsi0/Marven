@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment } from "@/types";
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment, EditorProblem } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
@@ -17,6 +17,27 @@ import type { PaletteCommand } from "./CommandPalette";
 import type { CodeEditorActions } from "./CodeEditor";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
 import { SymbolOutline } from "./SymbolOutline";
+import { lspClient } from "@/lib/editor/lspClient";
+import { absolutePathToFileUrl } from "@/lib/fileUrl";
+
+/** Map LSP file:// URI to workspace-relative posix path. */
+function uriToWorkspaceRel(uri: string, workspaceRoot: string): string | null {
+  try {
+    let tail = uri.replace(/^file:\/\//i, "");
+    if (/^\/?[A-Za-z]:\//.test(tail) || /^[A-Za-z]:/.test(tail)) {
+      tail = tail.replace(/^\//, "");
+    }
+    const decoded = decodeURIComponent(tail.replace(/\+/g, "%2B")).replace(/\\/g, "/");
+    const root = workspaceRoot.replace(/\\/g, "/");
+    const dec = decoded.replace(/\/+$/, "");
+    const rt = root.replace(/\/+$/, "");
+    if (dec === rt) return "";
+    if (dec.startsWith(rt + "/")) return dec.slice(rt.length + 1);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 // Background tasks popover — mirrors MemoryPopover's position:fixed pattern so
 // it can extend past the workspace's overflow-hidden bounds. Anchors at the
@@ -289,11 +310,11 @@ interface AgentWorkspaceProps {
   planMode?: boolean;
   onPlanModeChange?: (v: boolean) => void;
   liteAgentMode?: boolean;
-  onEditPrompt?: (messageId: string) => void;
   onOpenPreviewTab?: (url: string) => void;
   onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
   conversationId?: string | null;
+  onEditorScroll?: (scrollTop: number) => void;
 }
 
 export function AgentWorkspace({
@@ -358,11 +379,11 @@ export function AgentWorkspace({
   planMode,
   onPlanModeChange,
   liteAgentMode,
-  onEditPrompt,
   onOpenPreviewTab,
   onOpenRestTab,
   onJumpToLine,
   conversationId,
+  onEditorScroll,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -370,6 +391,7 @@ export function AgentWorkspace({
   });
   const [showOutline, setShowOutline] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
+  const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems">("terminal");
   const [showRightPanel, setShowRightPanel] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-show-right") !== "false";
@@ -413,6 +435,45 @@ export function AgentWorkspace({
   const [pendingJump, setPendingJump] = useState<
     { path: string; line: number; col: number; token: number } | null
   >(null);
+
+  const [lspProblems, setLspProblems] = useState<EditorProblem[]>([]);
+
+  useEffect(() => {
+    setLspProblems([]);
+  }, [workspaceRoot]);
+
+  useEffect(() => {
+    const unsub = lspClient.onNotification((n) => {
+      if (n.method !== "textDocument/publishDiagnostics") return;
+      if (!workspaceRoot) return;
+      const p = n.params as {
+        uri: string;
+        diagnostics: Array<{
+          range: { start: { line: number; character: number } };
+          message: string;
+          severity?: number;
+        }>;
+      };
+      const rel = uriToWorkspaceRel(p.uri, workspaceRoot);
+      if (rel === null) return;
+      setLspProblems((prev) => {
+        const others = prev.filter((x) => x.path !== rel);
+        if (!p.diagnostics.length) return others;
+        const mapped: EditorProblem[] = p.diagnostics.map((d) => ({
+          path: rel,
+          line: d.range.start.line,
+          column: d.range.start.character,
+          message: d.message,
+          severity:
+            d.severity === 2 ? "warning" : d.severity === 3 || d.severity === 4 ? "info" : "error",
+        }));
+        return [...others, ...mapped].sort(
+          (a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.column - b.column,
+        );
+      });
+    });
+    return unsub;
+  }, [workspaceRoot]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -610,7 +671,10 @@ export function AgentWorkspace({
     onSave: onSaveFile,
     onCloseTab: () => onCloseTab(activeTabIndex),
     onToggleExplorer: () => setShowExplorer((v) => !v),
-    onToggleTerminal: () => setShowTerminal((v) => !v),
+    onToggleTerminal: () => {
+      setEditorBottomTab("terminal");
+      setShowTerminal((v) => !v);
+    },
     onToggleChat: () => setShowRightPanel((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
     onCommandPalette: () => setCommandPalette(true),
@@ -661,6 +725,15 @@ export function AgentWorkspace({
     onSelectFile(relPath);
   }
 
+  const handleProblemSelect = useCallback(
+    (path: string, line0: number, col0: number) => {
+      jumpTokenRef.current += 1;
+      setPendingJump({ path, line: line0 + 1, col: col0 + 1, token: jumpTokenRef.current });
+      onSelectFile(path);
+    },
+    [onSelectFile],
+  );
+
   // selectedFilePath is the absolute or workspace-relative path stored by the
   // parent; the search panel emits the relative path it got from grep. We
   // compare by suffix so either form matches.
@@ -698,7 +771,15 @@ export function AgentWorkspace({
     { label: "Save File", keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
     { label: "Close Tab", keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
     { label: "Toggle Sidebar", keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
-    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: () => setShowTerminal((v) => !v) },
+    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: () => {
+      setEditorBottomTab("terminal");
+      setShowTerminal((v) => !v);
+    } },
+    { label: "Problems panel", action: () => {
+      setEditorBottomTab("problems");
+      setShowTerminal(true);
+    } },
+    { label: "Rename symbol (LSP)", keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
     { label: "Toggle Chat", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
     { label: "Open Quick File", keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
     { label: "Find", keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
@@ -747,7 +828,10 @@ export function AgentWorkspace({
 
         <button
           type="button"
-          onClick={() => setShowTerminal((v) => !v)}
+          onClick={() => {
+            setEditorBottomTab("terminal");
+            setShowTerminal((v) => !v);
+          }}
           className={`rounded p-1 transition-colors ${
             showTerminal ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
           }`}
@@ -925,11 +1009,14 @@ export function AgentWorkspace({
                       "ico",
                     ]);
                     if (!ext || !previewable.has(ext)) return;
-                    const abs = tab.path.startsWith("/") ? tab.path : `${workspaceRoot ?? ""}/${tab.path}`;
-                    const url = `file://${abs}`;
+                    if (!workspaceRoot?.trim()) return;
+                    const abs = tab.path.startsWith("/") || /^[a-zA-Z]:/.test(tab.path)
+                      ? tab.path
+                      : `${workspaceRoot.replace(/\/+$/, "")}/${tab.path.replace(/^\/+/, "")}`;
+                    const url = absolutePathToFileUrl(abs);
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const el = (window as any).marvenElectron;
-                    if (el?.openExternal) el.openExternal(url, "default");
+                    if (el?.openExternal) void el.openExternal(url, "default").catch(() => {});
                     else window.open(url, "_blank", "noopener,noreferrer");
                   },
                 },
@@ -1147,7 +1234,15 @@ export function AgentWorkspace({
             isFileDirty={isFileDirty}
             terminalOutput={liveTerminalOutput ?? terminalOutput}
             showTerminal={showTerminal}
-            onToggleTerminal={() => setShowTerminal((v) => !v)}
+            onToggleTerminal={() => {
+              setEditorBottomTab("terminal");
+              setShowTerminal((v) => !v);
+            }}
+            bottomTab={editorBottomTab}
+            onBottomTabChange={setEditorBottomTab}
+            problems={lspProblems}
+            onProblemSelect={handleProblemSelect}
+            onEditorScroll={onEditorScroll}
             onFileContentChange={onFileContentChange}
             onSaveFile={onSaveFile}
             onCloseFile={onCloseFile}
@@ -1230,7 +1325,6 @@ export function AgentWorkspace({
                   planMode={planMode}
                   onPlanModeChange={onPlanModeChange}
                   liteAgentMode={liteAgentMode}
-                  onEditPrompt={onEditPrompt}
                   workspaceFiles={files}
                 />
               </div>

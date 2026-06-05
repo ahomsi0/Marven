@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo, type MutableRefObject } from "react";
-import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate, AIProvider } from "@/types";
+import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate, AIProvider, EditorProblem } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
 import { InlineEditPrompt } from "./InlineEditPrompt";
@@ -12,6 +12,7 @@ import { PdfPreview } from "./PdfPreview";
 import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
 import { RestClientPanel } from "./RestClientPanel";
+import { ProblemsPanel } from "./ProblemsPanel";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -23,6 +24,9 @@ interface EditorPanelProps {
   terminalOutput: string;
   showTerminal: boolean;
   onToggleTerminal: () => void;
+  /** Which sub-view is active when the bottom panel is expanded. */
+  bottomTab?: "terminal" | "problems";
+  onBottomTabChange?: (tab: "terminal" | "problems") => void;
   onFileContentChange: (value: string) => void;
   onSaveFile: () => void;
   onCloseFile?: () => void;
@@ -72,6 +76,11 @@ interface EditorPanelProps {
   onOpenPreview?: (url: string) => void;
   /** When true, shows a scroll progress indicator on the right edge of the code editor. */
   showMinimap?: boolean;
+  /** LSP diagnostics aggregated for the Problems tab. */
+  problems?: EditorProblem[];
+  onProblemSelect?: (path: string, line: number, column: number) => void;
+  /** Persist editor scroll position per file tab (code files only). */
+  onEditorScroll?: (scrollTop: number) => void;
 }
 
 // ── Preview pane ───────────────────────────────────────────────────────────────
@@ -105,10 +114,18 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
   }
 
   function openInBrowser() {
+    const raw = currentUrl?.trim() ?? "";
+    if (!raw) return;
+    try {
+      // eslint-disable-next-line no-new
+      new URL(raw);
+    } catch {
+      return;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
-    if (electron?.openExternal) electron.openExternal(currentUrl, "default");
-    else window.open(currentUrl, "_blank", "noopener,noreferrer");
+    if (electron?.openExternal) void electron.openExternal(raw, "default").catch(() => {});
+    else window.open(raw, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -217,6 +234,11 @@ export function EditorPanel({
   model = "",
   onOpenPreview,
   showMinimap = false,
+  problems = [],
+  onProblemSelect,
+  onEditorScroll,
+  bottomTab = "terminal",
+  onBottomTabChange,
 }: EditorPanelProps) {
   const { theme } = useTheme();
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
@@ -265,6 +287,12 @@ export function EditorPanel({
   // who want to edit the raw markdown can disable it.
   const [markdownPreview, setMarkdownPreview] = useState(true);
   const projectName = workspaceRoot?.split("/").filter(Boolean).pop() ?? "workspace";
+  const activeTabForScroll =
+    activeTabIndex >= 0 && activeTabIndex < openTabs.length ? openTabs[activeTabIndex] : null;
+  const tabScrollRestore =
+    activeTabForScroll?.kind === "file" && typeof activeTabForScroll.scrollTop === "number"
+      ? activeTabForScroll.scrollTop
+      : undefined;
   const relativeFilePath = workspaceRoot && selectedFilePath
     ? selectedFilePath.startsWith(workspaceRoot)
       ? selectedFilePath.slice(workspaceRoot.length).replace(/^\//, "")
@@ -812,6 +840,8 @@ export function EditorPanel({
                     workspaceRoot={workspaceRoot ?? undefined}
                     onApplyWorkspaceEdit={onApplyWorkspaceEdit}
                     inlineCompletions={inlineCompletions}
+                    tabScrollRestore={tabScrollRestore}
+                    onScrollPositionChange={onEditorScroll}
                     onReady={(actions) => {
                       editorActionsRef.current = actions;
                       // Mirror the handle outward so parents (AgentWorkspace)
@@ -881,30 +911,67 @@ export function EditorPanel({
         </div>
       </div>
 
-      {/* Terminal — real interactive PTY-backed shell (xterm.js + node-pty).
-          When the workspace changes, ptyId changes, which triggers a fresh
-          shell in the new cwd. The legacy `terminalOutput` prop is no longer
-          rendered here — agent run_command output appears in the tool card. */}
+      {/* Bottom panel — Terminal + Problems (LSP diagnostics) */}
       <div className={`border-t border-[var(--m-border)] bg-[var(--m-bg)] ${showTerminal ? "h-[240px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
-        <div
-          className="flex h-7 cursor-pointer items-center gap-3 border-b border-[var(--m-border-subtle)] px-3"
-          onClick={onToggleTerminal}
-        >
-          <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-faint)]">Terminal</span>
-          <span className="text-[9px] text-[var(--m-text-faint)]">{showTerminal ? "▾" : "▸"}</span>
+        <div className="flex h-7 shrink-0 cursor-default items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
+          <button
+            type="button"
+            onClick={() => {
+              onBottomTabChange?.("terminal");
+              if (!showTerminal) onToggleTerminal();
+            }}
+            className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+              bottomTab === "terminal" && showTerminal
+                ? "text-[#d19a66]"
+                : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+            }`}
+            title="Terminal"
+          >
+            Terminal
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onBottomTabChange?.("problems");
+              if (!showTerminal) onToggleTerminal();
+            }}
+            className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+              bottomTab === "problems" && showTerminal
+                ? "text-[#d19a66]"
+                : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+            }`}
+            title="Problems"
+          >
+            Problems{problems.length > 0 ? ` (${problems.length})` : ""}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleTerminal}
+            className="ml-auto rounded px-2 py-0.5 text-[9px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+            title={showTerminal ? "Collapse panel" : "Expand panel"}
+          >
+            {showTerminal ? "▾" : "▸"}
+          </button>
         </div>
         {showTerminal && (
           <div className="min-h-0 flex-1 overflow-hidden">
-            {workspaceRoot ? (
-              <TerminalView
-                ptyId={`pty:${workspaceRoot}`}
-                cwd={workspaceRoot}
-                theme={theme}
-              />
+            {bottomTab === "terminal" ? (
+              workspaceRoot ? (
+                <TerminalView
+                  ptyId={`pty:${workspaceRoot}`}
+                  cwd={workspaceRoot}
+                  theme={theme}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-3 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">
+                  Open a workspace to use the terminal.
+                </div>
+              )
             ) : (
-              <div className="flex h-full items-center justify-center px-3 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">
-                Open a workspace to use the terminal.
-              </div>
+              <ProblemsPanel
+                problems={problems}
+                onSelect={(path, line, col) => onProblemSelect?.(path, line, col)}
+              />
             )}
           </div>
         )}

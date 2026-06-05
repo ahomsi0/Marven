@@ -1,7 +1,7 @@
 "use client";
 
 import packageJson from "@/package.json";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import type {
   AIProvider,
   DocAttachment,
@@ -65,6 +65,15 @@ import {
 } from "@/lib/modelPrefs";
 import { formatBeforeSave, getFormatOnSave, isFormattable } from "@/lib/formatOnSave";
 import { createRestRequest } from "@/lib/restStorage";
+import {
+  loadAgentSessionsFile,
+  saveAgentSessionsFile,
+  upsertPersistedSession,
+  removePersistedSession,
+  buffersToEntries,
+  entriesToBuffers,
+} from "@/lib/agentSession";
+import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -382,6 +391,24 @@ export default function Home() {
   // need to save/restore.
   const lastAgentConvIdRef = useRef<string | null>(null);
 
+  const persistAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingWatchPathsRef = useRef<Set<string>>(new Set());
+  const ignoreWorkspaceEventsRef = useRef<Set<string>>(new Set());
+  const [diskConflictPath, setDiskConflictPath] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const raw = loadAgentSessionsFile();
+    for (const [convId, session] of Object.entries(raw)) {
+      agentMessagesByConvRef.current.set(convId, session.messages);
+      agentEditorByConvRef.current.set(convId, {
+        openTabs: session.openTabs,
+        activeTabIndex: session.activeTabIndex,
+        fileBuffers: entriesToBuffers(session.buffers),
+      });
+    }
+  }, []);
+
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
   const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
@@ -535,6 +562,28 @@ export default function Home() {
     if (activeConversationId !== lastAgentConvIdRef.current) return;
     agentMessagesByConvRef.current.set(activeConversationId, agentStreamMessages);
   }, [agentStreamMessages, activeConversationId, activeMode]);
+
+  // Persist agent thread + editor to localStorage (survives app restart).
+  useEffect(() => {
+    if (activeMode !== "agent" || !activeConversationId) return;
+    if (activeConversationId !== lastAgentConvIdRef.current) return;
+    if (persistAgentTimerRef.current) clearTimeout(persistAgentTimerRef.current);
+    persistAgentTimerRef.current = setTimeout(() => {
+      persistAgentTimerRef.current = null;
+      const file = loadAgentSessionsFile();
+      saveAgentSessionsFile(
+        upsertPersistedSession(file, activeConversationId, {
+          messages: agentStreamMessages,
+          openTabs,
+          activeTabIndex,
+          buffers: buffersToEntries(fileBuffers),
+        }),
+      );
+    }, 450);
+    return () => {
+      if (persistAgentTimerRef.current) clearTimeout(persistAgentTimerRef.current);
+    };
+  }, [agentStreamMessages, openTabs, activeTabIndex, fileBuffers, activeConversationId, activeMode]);
 
   // When the active conversation changes (or we enter agent mode), swap the
   // agent stream's messages AND the editor state (tabs, buffers, workspace
@@ -765,6 +814,79 @@ export default function Home() {
       })
       .catch(() => {});
   }
+
+  const updateActiveTabScroll = useCallback((scrollTop: number) => {
+    setOpenTabs((prevTabs) => {
+      const idx = activeTabIndex;
+      if (idx < 0 || idx >= prevTabs.length) return prevTabs;
+      const tab = prevTabs[idx];
+      if (tab.kind !== "file") return prevTabs;
+      const prevTop = tab.scrollTop ?? 0;
+      if (Math.abs(prevTop - scrollTop) < 8) return prevTabs;
+      return prevTabs.map((t, i) =>
+        i === idx && t.kind === "file" ? { ...t, scrollTop } : t,
+      );
+    });
+  }, [activeTabIndex]);
+
+  const flushPendingWatchPaths = useCallback(() => {
+    const root = workspaceRoot;
+    if (!root) return;
+    const paths = [...pendingWatchPathsRef.current];
+    pendingWatchPathsRef.current.clear();
+    for (const relRaw of paths) {
+      const norm = relRaw.replace(/\\/g, "/");
+      if (ignoreWorkspaceEventsRef.current.has(norm)) continue;
+      setFileBuffers((prev) => {
+        const keys = [...prev.keys()];
+        const matchKey =
+          keys.find((k) => k === norm || k.endsWith("/" + norm)) ??
+          keys.find((k) => toRelativePath(k, root) === norm);
+        if (!matchKey) return prev;
+        const buf = prev.get(matchKey);
+        if (buf?.dirty) {
+          Promise.resolve().then(() => setDiskConflictPath(matchKey));
+        } else {
+          Promise.resolve().then(() => refreshFileBuffer(matchKey, root));
+        }
+        return prev;
+      });
+    }
+  }, [workspaceRoot]);
+
+  useEffect(() => {
+    type Bridge = {
+      workspaceWatchStart?: (r: string) => Promise<{ ok?: boolean }>;
+      workspaceWatchStop?: () => Promise<void>;
+      onWorkspaceFileEvent?: (cb: (data: { relPath?: string }) => void) => () => void;
+    };
+    const el =
+      typeof window !== "undefined"
+        ? (window as unknown as { marvenElectron?: Bridge }).marvenElectron
+        : null;
+    if (!workspaceRoot) {
+      void el?.workspaceWatchStop?.();
+      return;
+    }
+    if (!el?.workspaceWatchStart || !el.onWorkspaceFileEvent) return;
+    void el.workspaceWatchStart(workspaceRoot);
+    const unsub = el.onWorkspaceFileEvent((data) => {
+      const rel = (data?.relPath ?? "").replace(/\\/g, "/");
+      if (!rel) return;
+      pendingWatchPathsRef.current.add(rel);
+      if (watchDebounceRef.current) clearTimeout(watchDebounceRef.current);
+      watchDebounceRef.current = setTimeout(() => {
+        watchDebounceRef.current = null;
+        flushPendingWatchPaths();
+      }, 220);
+    });
+    return () => {
+      if (watchDebounceRef.current) clearTimeout(watchDebounceRef.current);
+      pendingWatchPathsRef.current.clear();
+      unsub();
+      void el.workspaceWatchStop?.();
+    };
+  }, [workspaceRoot, flushPendingWatchPaths]);
 
   // ─── Helpers to mutate conversation messages ────────────────────────────────
   const upsertConversation = useCallback(
@@ -1802,6 +1924,9 @@ export default function Home() {
   }
 
   function handleDeleteConversation(id: string) {
+    agentMessagesByConvRef.current.delete(id);
+    agentEditorByConvRef.current.delete(id);
+    saveAgentSessionsFile(removePersistedSession(loadAgentSessionsFile(), id));
     setConversations((prev) => {
       const updated = deleteConversation(prev, id);
       saveConversations(updated);
@@ -1939,56 +2064,6 @@ export default function Home() {
     if (userContent) await sendMessage(userContent);
   }
 
-  function handleEditPromptMessage(messageId: string) {
-    if (!activeConversationId || isLoading) return;
-    let userContent = "";
-    upsertConversation(activeConversationId, (c) => {
-      const idx = c.messages.findIndex((m) => m.id === messageId);
-      if (idx === -1) return c;
-      let userIdx = -1;
-      for (let i = idx - 1; i >= 0; i--) {
-        if (c.messages[i].role === "user") {
-          userContent = c.messages[i].content;
-          userIdx = i;
-          break;
-        }
-      }
-      if (userIdx === -1) return c;
-      return {
-        ...c,
-        messages: c.messages.slice(0, userIdx),
-        tokenUsage: zeroUsage("actual"),
-        updatedAt: new Date().toISOString(),
-      };
-    });
-    if (userContent) {
-      setInput(userContent);
-      setChatTokenUsage(zeroUsage("actual"));
-    }
-  }
-
-  function handleEditAgentPrompt(messageId: string) {
-    if (!activeConversationId || agentStreamIsRunning) return;
-    const idx = agentStreamMessages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
-    let userIdx = -1;
-    let userContent = "";
-    for (let i = idx - 1; i >= 0; i--) {
-      if (agentStreamMessages[i].role === "user") {
-        userIdx = i;
-        userContent = agentStreamMessages[i].content;
-        break;
-      }
-    }
-    if (userIdx === -1) return;
-    const nextMessages = agentStreamMessages.slice(0, userIdx);
-    agentMessagesByConvRef.current.set(activeConversationId, nextMessages);
-    agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
-    agentStreamLoadMessages(nextMessages);
-    setAgentInput(userContent);
-    setAgentTokenUsage(zeroUsage("estimated"));
-  }
-
   async function handleSlashCommand(cmd: string) {
     switch (cmd) {
       case "/clear":
@@ -2041,6 +2116,42 @@ export default function Home() {
     // independent so picking a fast chat model doesn't pin the agent to it.
     const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
     setter((prev) => ({ ...prev, [provider]: model }));
+  }
+
+  async function handleDiskConflictReload() {
+    const key = diskConflictPath;
+    if (!key || !workspaceRoot) {
+      setDiskConflictPath(null);
+      return;
+    }
+    const rel = toRelativePath(key, workspaceRoot) || key;
+    ignoreWorkspaceEventsRef.current.add(rel);
+    setTimeout(() => {
+      ignoreWorkspaceEventsRef.current.delete(rel);
+    }, 1200);
+    const { ok, data } = await readWorkspaceFile(rel, workspaceRoot);
+    if (ok && typeof data?.content === "string") {
+      setFileBuffers((prev) => {
+        const next = new Map(prev);
+        for (const k of prev.keys()) {
+          if (k === key || k === rel || k.endsWith("/" + rel) || toRelativePath(k, workspaceRoot) === rel) {
+            next.set(k, { content: data.content, dirty: false, loading: false });
+          }
+        }
+        return next;
+      });
+    }
+    setDiskConflictPath(null);
+  }
+
+  function handleDiskConflictKeep() {
+    const key = diskConflictPath;
+    if (key && workspaceRoot) {
+      const rel = toRelativePath(key, workspaceRoot) || key;
+      ignoreWorkspaceEventsRef.current.add(rel);
+      setTimeout(() => ignoreWorkspaceEventsRef.current.delete(rel), 1000);
+    }
+    setDiskConflictPath(null);
   }
 
   // userProfile is undefined during SSR/initial hydration — wait for it
@@ -2131,8 +2242,6 @@ export default function Home() {
         onSystemPromptChange={handleSystemPromptChange}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
-        onEditPromptMessage={handleEditPromptMessage}
-        onEditAgentPrompt={handleEditAgentPrompt}
         onSaveShortcuts={handleSaveShortcuts}
         promptTemplates={promptTemplates}
         mcpServers={mcpServers}
@@ -2183,7 +2292,15 @@ export default function Home() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversation={handleMoveConversation}
+        onAgentEditorScroll={updateActiveTabScroll}
       />
+      {diskConflictPath && (
+        <DiskConflictModal
+          path={diskConflictPath}
+          onReloadDisk={() => void handleDiskConflictReload()}
+          onKeepLocal={handleDiskConflictKeep}
+        />
+      )}
       {profileLoaded && userProfile === null && (
         <SetupModal onSave={handleProfileSave} />
       )}

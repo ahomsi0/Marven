@@ -388,9 +388,30 @@ ipcMain.on('window-close', () => {
   }
 });
 
+function isAllowedExternalUrl(urlString) {
+  if (!urlString || typeof urlString !== 'string') return false;
+  const trimmed = urlString.trim();
+  if (!trimmed) return false;
+  let u;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  const ok = ['http:', 'https:', 'mailto:', 'file:'].includes(u.protocol);
+  if (!ok) return false;
+  return true;
+}
+
 ipcMain.handle('open-external', async (_event, url, browser) => {
+  if (!isAllowedExternalUrl(url)) {
+    console.warn('[Marven] open-external: invalid or disallowed URL:', url);
+    return { ok: false, error: 'invalid-url' };
+  }
+  const trimmed = String(url).trim();
   if (!browser || browser === 'default') {
-    return shell.openExternal(url);
+    await shell.openExternal(trimmed);
+    return { ok: true };
   }
   const appName = {
     chrome: 'Google Chrome',
@@ -399,13 +420,16 @@ ipcMain.handle('open-external', async (_event, url, browser) => {
     edge: 'Microsoft Edge',
     arc: 'Arc',
   }[browser];
-  if (!appName) return shell.openExternal(url);
+  if (!appName) {
+    await shell.openExternal(trimmed);
+    return { ok: true };
+  }
   return new Promise((resolve) => {
-    exec(`open -a "${appName}" ${JSON.stringify(url)}`, (err) => {
+    exec(`open -a "${appName}" ${JSON.stringify(trimmed)}`, (err) => {
       if (err) {
-        shell.openExternal(url).finally(resolve);
+        shell.openExternal(trimmed).finally(() => resolve({ ok: true }));
       } else {
-        resolve();
+        resolve({ ok: true });
       }
     });
   });
@@ -416,6 +440,69 @@ ipcMain.handle('dialog-open-folder', async () => {
     properties: ['openDirectory'],
   });
   return result.canceled ? null : result.filePaths[0];
+});
+
+// ── Workspace file watcher (external edits → renderer refresh) ───────────────
+let workspaceFileWatcher = null;
+let workspaceWatcherRoot = null;
+
+function broadcastWorkspaceFileEvent(relPath) {
+  const payload = { root: workspaceWatcherRoot, relPath };
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('marven-workspace-file-event', payload);
+  }
+}
+
+ipcMain.handle('marven-workspace-watch', async (_event, rootPath) => {
+  if (workspaceFileWatcher) {
+    try { workspaceFileWatcher.close(); } catch {}
+    workspaceFileWatcher = null;
+    workspaceWatcherRoot = null;
+  }
+  if (!rootPath || typeof rootPath !== 'string') return { ok: true };
+  let resolved;
+  try {
+    resolved = path.resolve(rootPath);
+    if (!fs.existsSync(resolved)) return { ok: false, error: 'root-not-found' };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+  workspaceWatcherRoot = resolved;
+
+  const tryWatch = (recursive) => {
+    return fs.watch(resolved, recursive ? { recursive: true } : {}, (_ev, fname) => {
+      if (!fname || typeof fname !== 'string') return;
+      const rel = fname.split(path.sep).join('/');
+      broadcastWorkspaceFileEvent(rel);
+    });
+  };
+
+  try {
+    // Prefer recursive watch (macOS / Windows). Linux often rejects recursive.
+    workspaceFileWatcher = tryWatch(process.platform !== 'linux');
+  } catch (err) {
+    if (process.platform === 'linux') {
+      try {
+        workspaceFileWatcher = tryWatch(false);
+      } catch (err2) {
+        workspaceWatcherRoot = null;
+        return { ok: false, error: String(err2 && err2.message || err2) };
+      }
+    } else {
+      workspaceWatcherRoot = null;
+      return { ok: false, error: String(err && err.message || err) };
+    }
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('marven-workspace-watch-stop', () => {
+  if (workspaceFileWatcher) {
+    try { workspaceFileWatcher.close(); } catch {}
+    workspaceFileWatcher = null;
+    workspaceWatcherRoot = null;
+  }
+  return { ok: true };
 });
 
 // ── Interactive terminal (node-pty) ───────────────────────────────────────────
@@ -539,6 +626,11 @@ ipcMain.on('pty-kill', (_e, args) => {
 
 // Cleanup all PTYs on quit so we don't leak shells.
 app.on('before-quit', () => {
+  if (workspaceFileWatcher) {
+    try { workspaceFileWatcher.close(); } catch {}
+    workspaceFileWatcher = null;
+    workspaceWatcherRoot = null;
+  }
   for (const p of ptys.values()) {
     try { p.kill(); } catch {}
   }
