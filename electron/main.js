@@ -121,6 +121,9 @@ const SETTINGS_DEFAULTS = {
   inlineCompletionDebounceMs: 350,
   agentAutoVerifyEnabled: false,
   agentAutoVerifyCommands: '',
+  voiceTtsProvider: 'system',
+  elevenLabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
+  elevenLabsModel: 'eleven_flash_v2_5',
 };
 
 function loadSettings() {
@@ -141,14 +144,23 @@ function persistSettings(settings) {
 }
 
 function applySettings(settings) {
-  if (settings.groqApiKey)       process.env.GROQ_API_KEY        = settings.groqApiKey;
-  if (settings.ollamaUrl)        process.env.OLLAMA_URL          = settings.ollamaUrl;
-  if (settings.nimApiKey)        process.env.NIM_API_KEY         = settings.nimApiKey;
-  if (settings.openrouterApiKey) process.env.OPENROUTER_API_KEY  = settings.openrouterApiKey;
-  if (settings.openaiApiKey)     process.env.OPENAI_API_KEY      = settings.openaiApiKey;
-  if (settings.anthropicApiKey)  process.env.ANTHROPIC_API_KEY   = settings.anthropicApiKey;
-  if (settings.lmStudioUrl)      process.env.LM_STUDIO_URL       = settings.lmStudioUrl;
-  if (settings.llamaServerUrl)   process.env.LLAMA_SERVER_URL    = settings.llamaServerUrl;
+  const setEnv = (name, value) => {
+    const trimmed = typeof value === 'string' ? value.trim() : value;
+    if (trimmed) process.env[name] = String(trimmed);
+    else delete process.env[name];
+  };
+  setEnv('GROQ_API_KEY', settings.groqApiKey);
+  setEnv('OLLAMA_URL', settings.ollamaUrl);
+  setEnv('NIM_API_KEY', settings.nimApiKey);
+  setEnv('OPENROUTER_API_KEY', settings.openrouterApiKey);
+  setEnv('OPENAI_API_KEY', settings.openaiApiKey);
+  setEnv('ANTHROPIC_API_KEY', settings.anthropicApiKey);
+  setEnv('LM_STUDIO_URL', settings.lmStudioUrl);
+  setEnv('LLAMA_SERVER_URL', settings.llamaServerUrl);
+  setEnv('ELEVENLABS_API_KEY', settings.elevenLabsApiKey);
+  setEnv('ELEVENLABS_TTS_PROVIDER', settings.voiceTtsProvider);
+  setEnv('ELEVENLABS_VOICE_ID', settings.elevenLabsVoiceId);
+  setEnv('ELEVENLABS_MODEL', settings.elevenLabsModel);
 }
 
 ipcMain.handle('get-settings', () => loadSettings());

@@ -14,7 +14,6 @@ import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPr
 import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
-import { groqModelSupportsVision } from "@/lib/imageHelpers";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -85,13 +84,13 @@ export async function POST(req: NextRequest) {
   //   liteAgentMode === true  → always "simple"
   //   liteAgentMode === false → always "standard"
   //   liteAgentMode === undefined (auto) → local: classifier result; cloud: "standard"
-  // When Groq receives multimodal input on a vision model, force "standard" so the
-  // system prompt acknowledges images — the lite prompt is tool-only and models
-  // often falsely deny they can see attachments.
+  // When any turn includes images, always use the standard tier — the lite
+  // prompt is tool-only and models often deny they can see images even when
+  // image parts are present. This applies to all providers (Groq, OpenAI, etc.).
   const isLocalProvider = (LOCAL_PROVIDERS as ReadonlyArray<string>).includes(provider);
 
   let tier: AgentTier;
-  if (provider === "groq" && hasImageTurn && groqModelSupportsVision(model)) {
+  if (hasImageTurn) {
     tier = "standard";
   } else if (body.liteAgentMode === true) {
     tier = "simple";

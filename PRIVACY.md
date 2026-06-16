@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: 2026-05-24**
+**Last updated: 2026-06-15**
 
 Marven is built on a simple promise: **your code is yours.** This document
 explains exactly what data Marven handles, where it goes, and what it never
@@ -53,6 +53,15 @@ Marven operates on three kinds of data:
 - **Sent over the network:** Nothing. Embeddings are computed locally and
   stored locally.
 
+### 4. Voice input and speech output
+
+- **Voice input:** Local voice recognition runs on your machine. If you switch
+  voice recognition to Groq, recorded audio is sent to Groq Whisper for
+  transcription.
+- **Speech output:** The system voice runs locally. If you switch speech output
+  to ElevenLabs, Marven sends the assistant reply text to ElevenLabs to generate
+  audio.
+
 ---
 
 ## What gets sent to AI providers
@@ -78,6 +87,8 @@ they do with the data you send to them. Notably:
 - **Anthropic** and **OpenAI** do not use API requests for training by
   default (as of 2025), but verify their current terms.
 - **Groq** and other "fast" providers may retain logs for abuse prevention.
+- **ElevenLabs** receives assistant reply text only when ElevenLabs speech
+  output is selected.
 - **Local providers (Ollama, LM Studio, llama-server)** keep everything on
   your machine.
 
@@ -98,9 +109,9 @@ they do with the data you send to them. Notably:
 
 ## API keys
 
-API keys you enter in Settings (for cloud AI providers) are stored locally
-on your machine using Electron's secure store. They are never sent to any
-Marven-controlled service, because no such service exists.
+API keys you enter in Settings (for cloud AI providers and ElevenLabs) are stored
+locally on your machine in Marven's Electron settings file. They are never sent
+to any Marven-controlled service, because no such service exists.
 
 ---
 
@@ -110,8 +121,9 @@ Every claim above can be verified by reading the source code:
 
 - The list of network endpoints Marven contacts: `lib/groq.ts`,
   `lib/openai.ts`, `lib/anthropic.ts`, `lib/nim.ts`, `lib/openrouter.ts`,
-  `lib/ollama.ts`, `lib/lmstudio.ts`, `lib/llamaserver.ts` — those are
-  the only files that make outbound HTTP calls related to AI.
+  `lib/ollama.ts`, `lib/lmstudio.ts`, `lib/llamaserver.ts`, and
+  `app/api/tts/route.ts` for optional ElevenLabs speech output — those are
+  the files that make outbound HTTP calls related to AI and voice.
 - No analytics or telemetry SDK is listed in `package.json`. Search it for
   yourself: `grep -E "posthog|sentry|mixpanel|datadog|amplitude" package.json`.
 - The auto-updater code: `electron/main.js` — uses `electron-updater`

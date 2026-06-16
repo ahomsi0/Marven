@@ -25,6 +25,7 @@ What leaves your machine depends on which provider is selected:
 | **Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM** | To that provider's API (subject to their data-retention policy) |
 | **"Hey Marven" voice (Local)** | Nowhere — runs entirely on your machine after first model download |
 | **"Hey Marven" voice (Groq)** | Audio is sent to **Groq Whisper** for transcription |
+| **Speech output (ElevenLabs)** | Assistant reply text is sent to **ElevenLabs** for speech generation when selected |
 | **`fetch_url` / `web_search` agent tools** | The URL or query you ask for is fetched / sent to DuckDuckGo |
 
 If full privacy matters, use **Ollama** locally for chat/agent and the **Local** voice option (default).
@@ -77,7 +78,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 ### Chat mode
 - **Six providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, Ollama (local)
 - **Conversation management**: pin, search by title, per-conversation system prompt, markdown export
-- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice). Defaults to a fully-local Whisper-tiny model (~150MB, downloaded once) so no API key is needed; switch to Groq Whisper in Settings → General if you'd prefer cloud speed.
+- **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice), with optional ElevenLabs speech output. Speech recognition defaults to a fully-local Whisper-tiny model (~150MB, downloaded once) so no API key is needed; switch to Groq Whisper in Settings → General if you'd prefer cloud speed.
 - **Image attachments** for vision-capable models (paperclip, paste, drag-drop) — non-vision providers get a graceful note
 - **Slash commands** + user-defined prompt templates
 - **Natural-language actions**: "open Spotify", "open github", "what's the weather", "set a timer", "search Google for…", etc. App / website / search commands work on macOS, Windows, and Linux (Windows uses `start`, Linux uses `xdg-open`). Volume / media / screenshot / DND commands are macOS-only for now.
@@ -88,6 +89,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - WASM + fp32 backend is pinned so the model loads reliably across machines (the default WebGPU path occasionally ships a quantized variant whose scale tensors are missing).
 - Switch to Groq Whisper for lower latency in **Settings → General → Voice recognition**.
 - The input bar shows a **LOCAL** or **GROQ** chip so you can tell at a glance which backend is handling voice.
+- Speech output can use either the system voice or ElevenLabs in **Settings → General → Speech output**. ElevenLabs sends reply text to ElevenLabs and falls back to the system voice if unavailable.
 - Wake listener pauses automatically while Marven is speaking, so the mic doesn't pick up the TTS audio and re-trigger itself.
 
 ### System
@@ -162,11 +164,12 @@ Built artifacts land in `dist/`.
 
 ## First-time setup
 
-Open Settings (⌘, or the sidebar gear) and go to **Integrations → API Keys**:
+Open Settings (⌘, or the sidebar gear). Under **Integrations**, use **Model APIs** for chat and agent providers and **Speech APIs** for ElevenLabs; Groq (chat plus optional cloud Whisper) is configured on **Model APIs**.
 
 | Provider | Where to get a key | Free tier |
 |---|---|---|
 | **Groq** | [console.groq.com/keys](https://console.groq.com/keys) | Yes — fast Llama / Whisper |
+| **ElevenLabs** | [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) | Yes — realistic TTS voices |
 | **OpenRouter** | [openrouter.ai/keys](https://openrouter.ai/keys) | Yes — free models like Gemma, DeepSeek |
 | **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Pay-as-you-go |
 | **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | Pay-as-you-go |

@@ -48,6 +48,7 @@ interface ChatLayoutProps {
   voiceState: VoiceState;
   speechEnabled: boolean;
   sttProvider: "local" | "groq" | null;
+  ttsProvider: "system" | "elevenlabs";
   isSpeakingNow: boolean;
   tokenUsage: TokenUsage;
   customShortcuts: CustomShortcut[];
@@ -170,6 +171,7 @@ export function ChatLayout({
   voiceState,
   speechEnabled,
   sttProvider,
+  ttsProvider,
   isSpeakingNow,
   tokenUsage,
   customShortcuts,
@@ -408,6 +410,10 @@ export function ChatLayout({
               voiceState={voiceState}
               isVoiceSupported={isVoiceSupported}
               voiceError={voiceError}
+              sttProvider={sttProvider ?? "local"}
+              ttsProvider={ttsProvider}
+              isSpeakingNow={isSpeakingNow}
+              lastHeard={lastHeard}
               workspaceRoot={workspaceRoot}
               files={agentFiles}
               selectedFilePath={selectedAgentFilePath ?? null}
@@ -516,6 +522,7 @@ export function ChatLayout({
                     speechEnabled={speechEnabled}
                     wakeEnabled={wakeEnabled}
                     sttProvider={sttProvider}
+                    ttsProvider={ttsProvider}
                     tokenUsage={tokenUsage}
                     voiceError={voiceError}
                     lastHeard={lastHeard}
@@ -553,6 +560,17 @@ export function ChatLayout({
           onSaveTemplates={onSaveTemplates}
           onSaveMCPServers={onSaveMCPServers}
           onClose={() => setSettingsOpen(false)}
+          voiceDiagnostics={{
+            isVoiceSupported,
+            voiceState,
+            wakeEnabled,
+            speechEnabled,
+            sttProvider: sttProvider ?? "local",
+            ttsProvider,
+            isSpeakingNow,
+            voiceError,
+            lastHeard,
+          }}
         />
       )}
 

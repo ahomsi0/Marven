@@ -259,6 +259,10 @@ interface AgentWorkspaceProps {
   voiceState: VoiceState;
   isVoiceSupported: boolean;
   voiceError: string | null;
+  sttProvider: "local" | "groq";
+  ttsProvider: "system" | "elevenlabs";
+  isSpeakingNow: boolean;
+  lastHeard: string;
   workspaceRoot: string | null;
   files: WorkspaceFile[];
   selectedFilePath: string | null;
@@ -331,6 +335,10 @@ export function AgentWorkspace({
   voiceState,
   isVoiceSupported,
   voiceError,
+  sttProvider,
+  ttsProvider,
+  isSpeakingNow,
+  lastHeard,
   workspaceRoot,
   files,
   selectedFilePath,
@@ -1262,6 +1270,17 @@ export function AgentWorkspace({
             onSaveShortcuts={onSaveShortcuts}
             onSaveTemplates={onSaveTemplates}
             onSaveMCPServers={onSaveMCPServers}
+            voiceDiagnostics={{
+              isVoiceSupported,
+              voiceState,
+              wakeEnabled,
+              speechEnabled,
+              sttProvider,
+              ttsProvider,
+              isSpeakingNow,
+              voiceError,
+              lastHeard,
+            }}
             onToggleChat={() => setShowRightPanel((v) => !v)}
             onCommandPalette={() => setCommandPalette(true)}
             findOpen={findOpen}
@@ -1302,6 +1321,12 @@ export function AgentWorkspace({
                   {provider}
                 </span>
                 <span className="truncate text-[10px] text-[var(--m-text-muted)]">{model}</span>
+                <span
+                  title={ttsProvider === "elevenlabs" ? "Speech output uses ElevenLabs" : "Speech output uses the system voice"}
+                  className="ml-auto rounded border border-[var(--m-border-subtle)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
+                >
+                  TTS {ttsProvider === "elevenlabs" ? "11" : "SYS"}
+                </span>
               </div>
               <div className="min-h-0 flex-1">
                 <AgentPanel

@@ -16,6 +16,7 @@ const WAKE_WORD_REGEX =
 const SPEECH_THRESHOLD = 0.006; // RMS above = speaking
 const SPEECH_END_MS    = 600;   // ms of silence that ends an utterance
 const CMD_SILENCE_MS   = 2000;  // ms of silence that ends command recording
+const CMD_MAX_MS       = 12000; // hard stop if the mic opens and no clear end arrives
 
 function hasWakeWord(t: string) { return WAKE_WORD_REGEX.test(t); }
 function stripWakeWord(t: string) {
@@ -90,7 +91,7 @@ async function transcribeBlob(
         if (parsed.error) message = parsed.error;
       } catch { /* not json */ }
       if (res.status === 500 && /api key/i.test(message)) {
-        message = "Groq API key missing — add it in Settings → API Keys";
+        message = "Groq API key missing — add it in Settings → Model APIs";
       }
       return { text: "", error: message };
     }
@@ -289,9 +290,12 @@ export function useVoice(
               startRec();
 
               const customPhrase = customWakePhraseRef.current.trim();
-              const wakePrompt = customPhrase
-                ? `Hey Marven, Hey Marvin, ${customPhrase}`
-                : "Hey Marven, Hey Marvin";
+              // Whisper/Groq uses `prompt` as a vocabulary / style prior. Listing
+              // the user's custom wake here caused false tokens (e.g. hearing
+              // "doby" after "Hey Marven") when only the default wake was spoken.
+              // Custom phrases are still detected via `matchesCustomWake` on the
+              // unbiased transcript.
+              const wakePrompt = "Hey Marven, Hey Marvin";
               transcribeBlob(blob, wakePrompt, sttProviderRef.current)
                 .then(({ text, error }) => {
                   if (!wakeActiveRef.current) return;
@@ -305,11 +309,12 @@ export function useVoice(
 
                   const isCustomWake = matchesCustomWake(text, customPhrase);
                   const isWake = hasWakeWord(text) || isCustomWake;
-                  if (isWake) setLastHeard(text);
                   if (isWake) {
+                    const rest = isCustomWake ? stripCustomWake(text, customPhrase) : stripWakeWord(text);
+                    const wakeLabel = isCustomWake ? customPhrase : "Hey Marven";
+                    setLastHeard(rest.length > 0 ? `${wakeLabel} · ${rest}` : wakeLabel);
                     stopWakeListener();
                     onWakeRef.current?.();
-                    let rest = isCustomWake ? stripCustomWake(text, customPhrase) : stripWakeWord(text);
                     if (rest.length > 1) {
                       const now = Date.now();
                       if (now - lastCommandTimeRef.current >= 2500) {
@@ -387,6 +392,7 @@ export function useVoice(
           ? stripCustomWake(clean, customPhraseCmd)
           : hasWakeWord(clean) ? stripWakeWord(clean) : clean;
         if (cmd.length > 1) {
+          setLastHeard(cmd);
           const now = Date.now();
           if (now - lastCommandTimeRef.current >= 2500) {
             lastCommandTimeRef.current = now;
@@ -407,12 +413,17 @@ export function useVoice(
       src2.connect(analyser2);
       const buf2 = new Float32Array(analyser2.fftSize);
       cmdAudioRef.current = { ctx: ctx2, analyser: analyser2, buf: buf2 };
+      const startedAt = Date.now();
 
       const cmdTick = () => {
         if (!cmdActiveRef.current) return;
         analyser2.getFloatTimeDomainData(buf2);
         const rms2 = Math.sqrt(buf2.reduce((s, v) => s + v * v, 0) / buf2.length);
         const now2 = Date.now();
+        if (now2 - startedAt >= CMD_MAX_MS) {
+          if (mr.state !== "inactive") try { mr.stop(); } catch { /**/ }
+          return;
+        }
         if (rms2 > SPEECH_THRESHOLD) { cmdSpeaking.current = true; cmdSilStart.current = 0; }
         else if (cmdSpeaking.current) {
           if (!cmdSilStart.current) cmdSilStart.current = now2;
@@ -446,6 +457,7 @@ export function useVoice(
   function toggleWakeWord() { wakeEnabledRef.current ? disableWakeWord() : enableWakeWord(); }
 
   function startManualListen() {
+    onWakeRef.current?.();
     if (cmdActiveRef.current) {
       stopCommandCapture(); onInterimRef.current?.("");
       setVoiceState(wakeEnabledRef.current ? "wake-listening" : "idle");

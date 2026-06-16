@@ -6,6 +6,9 @@ import path from "path";
 import os from "os";
 
 const execAsync = promisify(exec);
+const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
+const DEFAULT_ELEVENLABS_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
+const DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5";
 
 // macOS voices in preference order — all use the high-quality neural engine
 const VOICE_FALLBACKS = ["Daniel", "Karen", "Samantha", "Alex"];
@@ -23,6 +26,49 @@ function isArabic(text: string): boolean {
   return arabic.length / letters.length > 0.25;
 }
 
+async function synthesizeWithElevenLabs(text: string, arabic: boolean): Promise<Response | null> {
+  const key = process.env.ELEVENLABS_API_KEY?.trim();
+  if (!key) return null;
+
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim() || DEFAULT_ELEVENLABS_VOICE_ID;
+  const modelId = process.env.ELEVENLABS_MODEL?.trim() || DEFAULT_ELEVENLABS_MODEL;
+  const url = `${ELEVENLABS_TTS_URL}/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "xi-api-key": key,
+    },
+    body: JSON.stringify({
+      text,
+      model_id: modelId,
+      ...(arabic ? { language_code: "ar" } : {}),
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: 0.75,
+        style: 0.2,
+        use_speaker_boost: true,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.warn(`[tts] ElevenLabs failed (${res.status}):`, err || res.statusText);
+    return null;
+  }
+
+  const audio = await res.arrayBuffer();
+  return new Response(audio, {
+    headers: {
+      "Content-Type": res.headers.get("Content-Type") ?? "audio/mpeg",
+      "Content-Length": String(audio.byteLength),
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   let body: { text?: string; voice?: string; forceLang?: "ar" | "en" };
   try {
@@ -35,6 +81,16 @@ export async function POST(req: NextRequest) {
   if (!text) return NextResponse.json({ error: "No text" }, { status: 400 });
 
   const arabic = body.forceLang === "ar" || (body.forceLang !== "en" && isArabic(text));
+  const ttsProvider = process.env.ELEVENLABS_TTS_PROVIDER?.trim();
+  if (ttsProvider === "elevenlabs") {
+    try {
+      const elevenLabsResponse = await synthesizeWithElevenLabs(text, arabic);
+      if (elevenLabsResponse) return elevenLabsResponse;
+    } catch (err) {
+      console.warn("[tts] ElevenLabs unavailable, falling back:", err instanceof Error ? err.message : err);
+    }
+  }
+
   const defaultVoice = arabic ? "Maged" : "Daniel";
   const voice = body.voice ?? defaultVoice;
   const tmpDir = os.tmpdir();

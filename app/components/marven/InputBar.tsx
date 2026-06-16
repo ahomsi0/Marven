@@ -22,6 +22,7 @@ interface InputBarProps {
   speechEnabled: boolean;
   wakeEnabled: boolean;
   sttProvider?: "local" | "groq" | null;
+  ttsProvider?: "system" | "elevenlabs";
   tokenUsage: TokenUsage;
   voiceError: string | null;
   lastHeard: string;
@@ -51,6 +52,7 @@ export function InputBar({
   speechEnabled,
   wakeEnabled,
   sttProvider,
+  ttsProvider = "system",
   tokenUsage,
   voiceError,
   lastHeard,
@@ -365,6 +367,12 @@ export function InputBar({
                 {sttProvider === "local" ? "Local" : "Groq"}
               </span>
             )}
+            <span
+              title={ttsProvider === "elevenlabs" ? "Speech output uses ElevenLabs" : "Speech output uses the system voice"}
+              className="mr-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
+            >
+              {ttsProvider === "elevenlabs" ? "11Labs" : "Sys"}
+            </span>
             <button
               type="button"
               onClick={onToggleSpeech}

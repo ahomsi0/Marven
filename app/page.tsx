@@ -14,7 +14,6 @@ import type {
   ConversationFolder,
   CustomShortcut,
   HistoryMessage,
-  AgentResponse,
   WorkspaceFile,
   ConversationMode,
   MCPServer,
@@ -447,7 +446,25 @@ export default function Home() {
   // ─── Speech ─────────────────────────────────────────────────────────────────
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [isSpeakingNow, setIsSpeakingNow] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<"system" | "elevenlabs">("system");
   const speechEnabledRef = useRef(false);
+  const speechRunRef = useRef(0);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = typeof window !== "undefined" ? (window as any).marvenElectron : null;
+    if (!electron?.getSettings) return;
+    const refresh = () => {
+      electron.getSettings()
+        .then((s: { voiceTtsProvider?: string }) => {
+          setTtsProvider(s.voiceTtsProvider === "elevenlabs" ? "elevenlabs" : "system");
+        })
+        .catch(() => setTtsProvider("system"));
+    };
+    refresh();
+    window.addEventListener("marven:settings-changed", refresh);
+    return () => window.removeEventListener("marven:settings-changed", refresh);
+  }, []);
 
   // ─── Weather + battery ──────────────────────────────────────────────────────
   const [weather, setWeather] = useState<{ city: string; temp: number; description: string } | null>(null);
@@ -1377,6 +1394,7 @@ export default function Home() {
   } = useVoice(
     (text) => sendVoiceCommandRef.current(text),
     () => {
+      speechRunRef.current += 1;
       stopSpeaking();
       setIsSpeakingNow(false);
     },
@@ -1414,6 +1432,7 @@ export default function Home() {
     speechEnabledRef.current = next;
     setSpeechEnabled(next);
     if (!next) {
+      speechRunRef.current += 1;
       stopSpeaking();
       setIsSpeakingNow(false);
       resumeWakeWord();
@@ -1422,6 +1441,7 @@ export default function Home() {
 
   function speakReply(text: string) {
     if (!speechEnabledRef.current) return;
+    const speechRun = ++speechRunRef.current;
     // Pause the wake listener while we speak — otherwise the mic picks up our
     // own TTS audio, transcribes it, and re-triggers wake every few seconds.
     // We resume in the onEnd callback below.
@@ -1432,7 +1452,8 @@ export default function Home() {
     const sp = (activeConversation?.systemPrompt ?? "").trim();
     const forceLang: "ar" | undefined =
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
-    speak(text, () => {
+    void speak(text, () => {
+      if (speechRun !== speechRunRef.current) return;
       setIsSpeakingNow(false);
       resumeWakeWord();
     }, forceLang ? { forceLang } : undefined);
@@ -1467,55 +1488,10 @@ export default function Home() {
     const useShortcuts = !customSystemPrompt;
 
     if (activeMode === "agent") {
-      const convId = ensureActiveConversation(text, "agent");
-      autoRenameConversation(convId, text);
-      const userMsg = createMessage("user", text);
-      addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
-
-      if (isAgentFileDirty) {
-        try {
-          await saveAgentFile();
-        } catch {
-          // Keep going with the in-memory file content if the manual save fails.
-        }
+      setIsLoading(false);
+      if (!agentStreamIsRunning) {
+        await agentStreamSend(text);
       }
-
-      try {
-        const history = buildHistory([...messages, userMsg]);
-        const res = await fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: text,
-            messages: history,
-            model: selectedModel,
-            provider,
-            selectedFilePath: selectedAgentFilePath,
-            selectedFileContent: selectedAgentFilePath ? selectedAgentFileContent : null,
-          }),
-        });
-        const data: AgentResponse = await res.json();
-        const changedFiles = Array.isArray(data.files) ? data.files.map((file) => file.path) : [];
-        const fileSummary = changedFiles.length > 0
-          ? `\n\nUpdated files:\n${changedFiles.map((file) => `- \`${file}\``).join("\n")}`
-          : "";
-
-        addMessageToConversation(convId, createMessage("assistant", `${data.reply}${fileSummary}`));
-
-        await loadWorkspaceFiles();
-
-        if (changedFiles.length > 0) {
-          openFileTab(changedFiles[0]);
-        }
-      } catch {
-        addMessageToConversation(
-          convId,
-          createMessage("assistant", "Marven Agent ran into a problem while editing the workspace.")
-        );
-      } finally {
-        setIsLoading(false);
-      }
-
       return;
     }
 
@@ -2195,6 +2171,7 @@ export default function Home() {
         voiceState={voiceState}
         speechEnabled={speechEnabled}
         sttProvider={sttProvider}
+        ttsProvider={ttsProvider}
         isSpeakingNow={isSpeakingNow}
         tokenUsage={currentTokenUsage}
         customShortcuts={customShortcuts}

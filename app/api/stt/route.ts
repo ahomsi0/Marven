@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const key = process.env.GROQ_API_KEY;
     if (!key) {
       return NextResponse.json(
-        { error: "No Groq API key — add one in Settings → API Keys" },
+        { error: "No Groq API key — add one in Settings → Model APIs" },
         { status: 500 }
       );
     }

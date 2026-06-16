@@ -1,12 +1,13 @@
 {
   "name": "marven",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "typecheck": "rm -rf .next/types && tsc --noEmit --tsBuildInfoFile /tmp/marven-typecheck.tsbuildinfo",
     "electron:dev": "node electron/create-icon.js && concurrently --kill-others-on-fail \"next dev -p 3000\" \"./node_modules/.bin/wait-on tcp:3000 && cross-env NODE_ENV=development ./node_modules/.bin/electron .\"",
     "electron:start": "cross-env NODE_ENV=development ./node_modules/.bin/electron .",
     "helper": "menubar-helper/MarvenHelper",
@@ -130,7 +131,7 @@
     "electron-updater": "^6.8.3",
     "fix-path": "^5.0.0",
     "mammoth": "^1.12.0",
-    "next": "^15.5.15",
+    "next": "^15.5.18",
     "node-pty": "^1.1.0",
     "openai": "^6.38.0",
     "pdf-parse": "^2.4.5",
@@ -161,5 +162,10 @@
     "typescript": "^6.0.2",
     "vitest": "^4.1.6",
     "wait-on": "^9.0.10"
+  },
+  "overrides": {
+    "protobufjs": "7.6.3",
+    "js-yaml": "4.2.0",
+    "postcss": "^8.5.10"
   }
 }

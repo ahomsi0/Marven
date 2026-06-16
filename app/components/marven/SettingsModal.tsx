@@ -16,8 +16,10 @@ import {
   resetKeybindings,
 } from "@/lib/keybindings";
 import { readStats as readInlineStats, resetStats as resetInlineStats } from "@/lib/completion/telemetry";
+import type { VoiceState } from "@/hooks/useVoice";
 
 type SttProviderId = "local" | "groq";
+type TtsProviderId = "system" | "elevenlabs";
 type LocalModelId = "whisper-tiny" | "whisper-base" | "distil-tiny";
 type ProviderId =
   | "groq" | "openai" | "anthropic" | "nim" | "openrouter"
@@ -27,6 +29,11 @@ const LOCAL_MODEL_OPTIONS: Array<{ id: LocalModelId; label: string; hint: string
   { id: "whisper-tiny", label: "Whisper Tiny.en",      hint: "Default • ~145 MB • Fastest download" },
   { id: "whisper-base", label: "Whisper Base.en",      hint: "~290 MB • More accurate on accents / noise" },
   { id: "distil-tiny",  label: "Distil-Whisper Small", hint: "~165 MB • Best speed/accuracy balance" },
+];
+
+const TTS_PROVIDER_OPTIONS: Array<{ id: TtsProviderId; label: string; hint: string }> = [
+  { id: "system", label: "System", hint: "Built-in voices • Offline • Free" },
+  { id: "elevenlabs", label: "ElevenLabs", hint: "Realistic AI voices • Requires API key" },
 ];
 
 interface SettingsModalProps {
@@ -41,12 +48,24 @@ interface SettingsModalProps {
   // Currently-open workspace root, if any. The codebase-indexing controls
   // (Reindex now / Clear index) require this to talk to /api/index/*.
   workspaceRoot?: string | null;
+  voiceDiagnostics?: {
+    isVoiceSupported: boolean;
+    voiceState: VoiceState;
+    wakeEnabled: boolean;
+    speechEnabled: boolean;
+    sttProvider: SttProviderId | null;
+    ttsProvider: TtsProviderId;
+    isSpeakingNow: boolean;
+    voiceError: string | null;
+    lastHeard: string;
+  };
 }
 
 type SettingsPage =
   | "general"
   | "ai-backends"
-  | "api-keys"
+  | "keys-ai"
+  | "keys-voice"
   | "connectors"
   | "browser"
   | "shortcuts"
@@ -127,7 +146,8 @@ const SECTIONS: Array<{
     heading: "Integrations",
     items: [
       { id: "ai-backends", label: "AI Backends" },
-      { id: "api-keys", label: "API Keys" },
+      { id: "keys-ai", label: "Model APIs" },
+      { id: "keys-voice", label: "Speech APIs" },
       { id: "connectors", label: "Connectors" },
       { id: "browser", label: "Browser" },
     ],
@@ -158,9 +178,15 @@ const PAGE_META: Record<SettingsPage, { title: string; description: string }> = 
     title: "AI Backends",
     description: "Enable and configure AI providers and local model servers.",
   },
-  "api-keys": {
-    title: "API Keys",
-    description: "Configure provider credentials.",
+  "keys-ai": {
+    title: "Model APIs",
+    description:
+      "Secrets and base URLs for chat and agent models: Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM, and Ollama.",
+  },
+  "keys-voice": {
+    title: "Speech APIs",
+    description:
+      "Credentials for cloud speech (ElevenLabs). Groq Whisper uses the Groq credential on Model APIs when you pick Groq for recognition.",
   },
   connectors: {
     title: "Connectors",
@@ -192,6 +218,93 @@ const PAGE_META: Record<SettingsPage, { title: string; description: string }> = 
     description: "Version info, updates, and links.",
   },
 };
+
+function VoiceDiagnosticsCard({
+  d,
+}: {
+  d: NonNullable<SettingsModalProps["voiceDiagnostics"]>;
+}) {
+  const micOk = d.isVoiceSupported;
+  const err = d.voiceError;
+  const rows: Array<{
+    k: string;
+    v: string;
+    tone?: "ok" | "warn" | "bad" | "neutral";
+  }> = [
+    { k: "Microphone", v: micOk ? "Available" : "Unavailable", tone: micOk ? "ok" : "bad" },
+    { k: "Voice state", v: d.voiceState.replace(/-/g, " "), tone: "neutral" },
+    { k: "Wake word", v: d.wakeEnabled ? "On" : "Off", tone: d.wakeEnabled ? "ok" : "neutral" },
+    { k: "Speech (TTS)", v: d.speechEnabled ? "On" : "Off", tone: d.speechEnabled ? "ok" : "neutral" },
+    { k: "Transcription", v: d.sttProvider === "groq" ? "Groq cloud" : "Local", tone: "neutral" },
+    { k: "Speech engine", v: d.ttsProvider === "elevenlabs" ? "ElevenLabs" : "System", tone: "neutral" },
+    { k: "Audio out", v: d.isSpeakingNow ? "Playing" : "Idle", tone: d.isSpeakingNow ? "warn" : "neutral" },
+    {
+      k: "Last error",
+      v: err ?? "None",
+      tone: err ? "bad" : "ok",
+    },
+  ];
+
+  const toneClass = (tone: NonNullable<(typeof rows)[0]["tone"]>) => {
+    if (tone === "ok") return "bg-emerald-500/12 text-emerald-300/95";
+    if (tone === "warn") return "bg-amber-500/12 text-amber-200/95";
+    if (tone === "bad") return "bg-red-500/12 text-red-300/95";
+    return "bg-[var(--m-surface-2)] text-[var(--m-text-muted)]";
+  };
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-bg)]">
+      <div className="flex items-center gap-3 border-b border-[var(--m-border-subtle)] px-3.5 py-2.5">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+            err
+              ? "border-red-500/25 bg-red-500/10"
+              : micOk
+                ? "border-[var(--m-accent)]/25 bg-[var(--m-accent)]/8"
+                : "border-[var(--m-border-subtle)] bg-[var(--m-surface-2)]"
+          }`}
+          aria-hidden
+        >
+          <svg className="h-4 w-4 text-[var(--m-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 14a3 3 0 003-3V5a3 3 0 10-6 0v6a3 3 0 003 3z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0M12 19v-3" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-medium text-[var(--m-text)]">Voice pipeline</p>
+          <p className="truncate text-[10px] text-[var(--m-text-faint)]">
+            Live readout of mic, wake, STT/TTS, and playback state
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+            err ? "bg-red-500/15 text-red-300" : micOk ? "bg-[var(--m-accent)]/15 text-[var(--m-accent)]" : "bg-[var(--m-surface-2)] text-[var(--m-text-faint)]"
+          }`}
+        >
+          {err ? "Issue" : micOk ? "Ready" : "Limited"}
+        </span>
+      </div>
+      <dl className="divide-y divide-[var(--m-border-subtle)] px-1">
+        {rows.map(({ k, v, tone = "neutral" }) => (
+          <div key={k} className="flex items-center justify-between gap-3 px-3 py-2">
+            <dt className="shrink-0 text-[11px] text-[var(--m-text-faint)]">{k}</dt>
+            <dd className="min-w-0 text-right">
+              <span className={`inline-block max-w-[min(200px,55vw)] truncate rounded-md px-2 py-0.5 text-[11px] font-medium ${toneClass(tone)}`}>
+                {v}
+              </span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {d.lastHeard ? (
+        <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-surface)]/60 px-3.5 py-2.5">
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">Last voice capture</p>
+          <p className="mt-1 font-mono text-[11px] leading-snug text-[var(--m-text-muted)]">&ldquo;{d.lastHeard}&rdquo;</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function AboutLink({
   label,
@@ -262,6 +375,7 @@ export function SettingsModal({
   onSaveMCPServers,
   inline = false,
   workspaceRoot = null,
+  voiceDiagnostics,
 }: SettingsModalProps) {
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
@@ -290,6 +404,7 @@ export function SettingsModal({
 
   // API Keys state
   const [groqKey, setGroqKey] = useState("");
+  const [elevenLabsKey, setElevenLabsKey] = useState("");
   const [nimKey, setNimKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -302,6 +417,10 @@ export function SettingsModal({
   // Default to "local" so first-time users get an offline-capable experience
   // without needing to plug in a Groq API key first.
   const [sttProvider, setSttProvider] = useState<SttProviderId>("local");
+  const [ttsProvider, setTtsProvider] = useState<TtsProviderId>("system");
+  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState("JBFqnCBsd6RMkjVDRZzb");
+  const [elevenLabsModel, setElevenLabsModel] = useState("eleven_flash_v2_5");
+  const [voiceTestStatus, setVoiceTestStatus] = useState<string | null>(null);
   const [customWakeWord, setCustomWakeWord] = useState<string>("");
   const [customWakeWordSaved, setCustomWakeWordSaved] = useState(false);
   const [localModel, setLocalModel] = useState<LocalModelId>("whisper-tiny");
@@ -332,6 +451,7 @@ export function SettingsModal({
     if (!electron) return;
     electron.getSettings().then((s: any) => {
       if (s.groqApiKey) setGroqKey(s.groqApiKey);
+      if (s.elevenLabsApiKey) setElevenLabsKey(s.elevenLabsApiKey);
       if (s.nimApiKey) setNimKey(s.nimApiKey);
       if (s.openrouterApiKey) setOpenrouterKey(s.openrouterApiKey);
       if (s.openaiApiKey) setOpenaiKey(s.openaiApiKey);
@@ -340,6 +460,9 @@ export function SettingsModal({
       if (s.preferredBrowser) setPreferredBrowser(s.preferredBrowser);
       if (s.voiceSttProvider === "groq") setSttProvider("groq");
       else setSttProvider("local");
+      setTtsProvider(s.voiceTtsProvider === "elevenlabs" ? "elevenlabs" : "system");
+      setElevenLabsVoiceId(s.elevenLabsVoiceId || "JBFqnCBsd6RMkjVDRZzb");
+      setElevenLabsModel(s.elevenLabsModel || "eleven_flash_v2_5");
       const validModels: LocalModelId[] = ["whisper-tiny", "whisper-base", "distil-tiny"];
       if (validModels.includes(s.voiceLocalModel)) setLocalModel(s.voiceLocalModel);
       else setLocalModel("whisper-tiny");
@@ -529,6 +652,7 @@ export function SettingsModal({
     await electron.saveSettings({
       ...current,
       groqApiKey: groqKey.trim(),
+      elevenLabsApiKey: elevenLabsKey.trim(),
       nimApiKey: nimKey.trim(),
       openrouterApiKey: openrouterKey.trim(),
       openaiApiKey: openaiKey.trim(),
@@ -536,6 +660,7 @@ export function SettingsModal({
       ollamaUrl: ollamaUrl.trim(),
       preferredBrowser,
     });
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 2500);
   }
@@ -557,6 +682,66 @@ export function SettingsModal({
     // Let useVoice (and any other listeners) pick up the change without
     // requiring a full app reload.
     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+  }
+
+  async function handleTtsProviderChange(choice: TtsProviderId) {
+    setTtsProvider(choice);
+    if (electron) {
+      const current = await electron.getSettings();
+      await electron.saveSettings({ ...current, voiceTtsProvider: choice });
+    }
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+  }
+
+  async function handleSaveElevenLabsVoice() {
+    if (!electron) return;
+    const current = await electron.getSettings();
+    await electron.saveSettings({
+      ...current,
+      elevenLabsVoiceId: elevenLabsVoiceId.trim() || "JBFqnCBsd6RMkjVDRZzb",
+      elevenLabsModel: elevenLabsModel.trim() || "eleven_flash_v2_5",
+    });
+    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+    setKeysSaved(true);
+    setTimeout(() => setKeysSaved(false), 2000);
+  }
+
+  async function handleTestVoice() {
+    if (!electron) return;
+    setVoiceTestStatus("Preparing sample...");
+    try {
+      const current = await electron.getSettings();
+      await electron.saveSettings({
+        ...current,
+        voiceTtsProvider: ttsProvider,
+        elevenLabsApiKey: elevenLabsKey.trim(),
+        elevenLabsVoiceId: elevenLabsVoiceId.trim() || "JBFqnCBsd6RMkjVDRZzb",
+        elevenLabsModel: elevenLabsModel.trim() || "eleven_flash_v2_5",
+      });
+      window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Marven voice check. Systems are online." }),
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => `TTS ${res.status}`));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setVoiceTestStatus("Sample played.");
+        setTimeout(() => setVoiceTestStatus(null), 2500);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setVoiceTestStatus("Could not play sample.");
+      };
+      await audio.play();
+      setVoiceTestStatus("Playing sample...");
+    } catch (err) {
+      setVoiceTestStatus(err instanceof Error ? err.message : "Voice test failed.");
+    }
   }
 
   async function handleLocalModelChange(choice: LocalModelId) {
@@ -716,7 +901,6 @@ export function SettingsModal({
 
     return (
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
-        {/* Page header */}
         <div className="mb-6">
           <h2 className="text-[18px] font-semibold text-[var(--m-text)]">
             {meta.title}
@@ -869,6 +1053,92 @@ export function SettingsModal({
               </div>
             </div>
 
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Speech output</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
+                Choose the voice engine Marven uses when speech is enabled.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {TTS_PROVIDER_OPTIONS.map((opt) => {
+                  const active = ttsProvider === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleTtsProviderChange(opt.id)}
+                      aria-pressed={active}
+                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-left transition-all ${
+                        active
+                          ? "border-[var(--m-accent)] bg-[var(--m-accent)]/5"
+                          : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
+                      }`}
+                    >
+                      <span className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-[var(--m-text-faint)]">{opt.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {ttsProvider === "elevenlabs" && (
+                <div className="mt-3 space-y-2 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-3">
+                  <div>
+                    <label className="mb-1 block text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
+                      Voice ID
+                    </label>
+                    <input
+                      type="text"
+                      value={elevenLabsVoiceId}
+                      onChange={(e) => setElevenLabsVoiceId(e.target.value)}
+                      placeholder="JBFqnCBsd6RMkjVDRZzb"
+                      disabled={!electron}
+                      className="w-full rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
+                    />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <label className="mb-1 block text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
+                        Model
+                      </label>
+                      <input
+                        type="text"
+                        value={elevenLabsModel}
+                        onChange={(e) => setElevenLabsModel(e.target.value)}
+                        placeholder="eleven_flash_v2_5"
+                        disabled={!electron}
+                        className="w-full rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
+                      />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSaveElevenLabsVoice}
+                        disabled={!electron}
+                        className="rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Save voice
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTestVoice}
+                        disabled={!electron}
+                        className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2.5 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Test
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[var(--m-text-muted)]">
+                    Add your ElevenLabs key under Integrations → Speech APIs. If ElevenLabs is unavailable, Marven falls back to the system voice.
+                  </p>
+                  {voiceTestStatus && (
+                    <p className="text-[10px] text-[var(--m-accent)]">{voiceTestStatus}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Voice recognition — picks where "Hey Marven" audio is
                 transcribed. Local uses Whisper-tiny.en in-browser via
                 transformers.js (no key required, model downloads once). */}
@@ -983,7 +1253,7 @@ export function SettingsModal({
               )}
               {sttProvider === "groq" && (
                 <p className="mt-2 text-[10px] text-[var(--m-text-muted)]">
-                  Requires a Groq API key in Integrations → API Keys. Audio is sent to Groq Whisper.
+                  Requires a Groq API key in Integrations → Model APIs. Audio is sent to Groq Whisper.
                 </p>
               )}
               <div className="mt-4 flex items-center justify-between py-2">
@@ -1015,6 +1285,7 @@ export function SettingsModal({
                   </button>
                 </div>
               </div>
+              {voiceDiagnostics && <VoiceDiagnosticsCard d={voiceDiagnostics} />}
             </div>
 
             {/* Format on save toggle */}
@@ -1549,133 +1820,206 @@ export function SettingsModal({
           </div>
         )}
 
-        {/* ── API Keys ── */}
-        {activePage === "api-keys" && (
-          <div className="space-y-5">
+        {/* ── Model APIs (credentials) ── */}
+        {activePage === "keys-ai" && (
+          <div className="space-y-6">
             {!electron && (
               <div className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] px-4 py-3">
-                <p className="font-mono text-[11px] text-[var(--m-text-muted)]">
-                  API key settings are only available in the packaged app.
+                <p className="text-[12px] text-[var(--m-text-muted)]">
+                  Key storage is only available in the packaged desktop app.
                 </p>
               </div>
             )}
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                Groq API Key
-              </label>
-              <input
-                type="password"
-                value={groqKey}
-                onChange={(e) => setGroqKey(e.target.value)}
-                placeholder="gsk_..."
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Free at console.groq.com — powers cloud AI chat.
-              </p>
-            </div>
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">
+                  Groq
+                </h3>
+                <p className="mt-1 text-[11px] text-[var(--m-text-muted)]">
+                  Cloud chat and tools; also used when Voice recognition is set to Groq Cloud (Whisper).
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-groq">
+                  API key
+                </label>
+                <input
+                  id="key-groq"
+                  type="password"
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                  placeholder="gsk_..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">console.groq.com</p>
+              </div>
+            </section>
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                NVIDIA NIM API Key
-              </label>
-              <input
-                type="password"
-                value={nimKey}
-                onChange={(e) => setNimKey(e.target.value)}
-                placeholder="nvapi-..."
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Free credits at build.nvidia.com — access llama-3.1-70b and
-                more.
-              </p>
-            </div>
+            <div className="h-px bg-[var(--m-border-subtle)]" aria-hidden />
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                OpenRouter API Key
-              </label>
-              <input
-                type="password"
-                value={openrouterKey}
-                onChange={(e) => setOpenrouterKey(e.target.value)}
-                placeholder="sk-or-..."
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Free at openrouter.ai — access Gemma, Llama, Mistral &amp; more
-                at no cost.
-              </p>
-            </div>
+            <section className="space-y-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">
+                Other model providers
+              </h3>
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                OpenAI API Key
-              </label>
-              <input
-                type="password"
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                placeholder="sk-..."
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Get yours at platform.openai.com — powers GPT-4o and GPT-4o
-                mini.
-              </p>
-            </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-nim">
+                  NVIDIA NIM
+                </label>
+                <input
+                  id="key-nim"
+                  type="password"
+                  value={nimKey}
+                  onChange={(e) => setNimKey(e.target.value)}
+                  placeholder="nvapi-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">build.nvidia.com — Llama 3.1 70B and more</p>
+              </div>
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                Anthropic API Key
-              </label>
-              <input
-                type="password"
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder="sk-ant-..."
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Get yours at console.anthropic.com — powers Claude Sonnet,
-                Haiku &amp; Opus.
-              </p>
-            </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-openrouter">
+                  OpenRouter
+                </label>
+                <input
+                  id="key-openrouter"
+                  type="password"
+                  value={openrouterKey}
+                  onChange={(e) => setOpenrouterKey(e.target.value)}
+                  placeholder="sk-or-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">openrouter.ai</p>
+              </div>
 
-            <div>
-              <label className="block font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase mb-2">
-                Ollama URL
-              </label>
-              <input
-                type="text"
-                value={ollamaUrl}
-                onChange={(e) => setOllamaUrl(e.target.value)}
-                placeholder="http://localhost:11434"
-                disabled={!electron}
-                className={inputClass}
-              />
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--m-text-faint)]">
-                Default: http://localhost:11434 — only change if Ollama runs on
-                a different machine.
-              </p>
-            </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-openai">
+                  OpenAI
+                </label>
+                <input
+                  id="key-openai"
+                  type="password"
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  placeholder="sk-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">platform.openai.com</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-anthropic">
+                  Anthropic
+                </label>
+                <input
+                  id="key-anthropic"
+                  type="password"
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+                  placeholder="sk-ant-..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">console.anthropic.com</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-ollama-url">
+                  Ollama base URL
+                </label>
+                <input
+                  id="key-ollama-url"
+                  type="text"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">Change only if Ollama runs on another host</p>
+              </div>
+            </section>
 
             <button
               type="button"
               onClick={handleSaveKeys}
               disabled={!electron}
-              className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2.5 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/15 hover:border-[#d19a66]/50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2.5 text-[12px] font-medium text-[#d19a66] transition-all hover:border-[#d19a66]/50 hover:bg-[#d19a66]/15 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {keysSaved ? <span className="inline-flex items-center justify-center gap-1.5">Saved <CheckIcon className="h-3 w-3" /></span> : "Save Keys"}
+              {keysSaved ? (
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  Saved <CheckIcon className="h-3.5 w-3.5" />
+                </span>
+              ) : (
+                "Save credentials"
+              )}
             </button>
+          </div>
+        )}
 
+        {/* ── Speech APIs (credentials) ── */}
+        {activePage === "keys-voice" && (
+          <div className="space-y-6">
+            {!electron && (
+              <div className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] px-4 py-3">
+                <p className="text-[12px] text-[var(--m-text-muted)]">
+                  Key storage is only available in the packaged desktop app.
+                </p>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)]/80 px-4 py-3">
+              <p className="text-[11px] leading-relaxed text-[var(--m-text-muted)]">
+                <span className="font-medium text-[var(--m-text)]">Groq speech-to-text</span> uses the same Groq API key as chat. Configure it under{" "}
+                <span className="text-[var(--m-accent)]">Integrations → Model APIs</span> when Voice recognition is set to Groq Cloud.
+              </p>
+            </div>
+
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">
+                  ElevenLabs
+                </h3>
+                <p className="mt-1 text-[11px] text-[var(--m-text-muted)]">
+                  Required when Speech output is set to ElevenLabs in General. Voice ID and model stay on the General page with the other voice controls.
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-elevenlabs">
+                  API key
+                </label>
+                <input
+                  id="key-elevenlabs"
+                  type="password"
+                  value={elevenLabsKey}
+                  onChange={(e) => setElevenLabsKey(e.target.value)}
+                  placeholder="sk_..."
+                  disabled={!electron}
+                  className={inputClass}
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">elevenlabs.io — realistic cloud voices</p>
+              </div>
+            </section>
+
+            <button
+              type="button"
+              onClick={handleSaveKeys}
+              disabled={!electron}
+              className="w-full rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 py-2.5 text-[12px] font-medium text-[#d19a66] transition-all hover:border-[#d19a66]/50 hover:bg-[#d19a66]/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {keysSaved ? (
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  Saved <CheckIcon className="h-3.5 w-3.5" />
+                </span>
+              ) : (
+                "Save credentials"
+              )}
+            </button>
           </div>
         )}
 
@@ -1683,7 +2027,7 @@ export function SettingsModal({
         {activePage === "connectors" && (
           <div className="space-y-2">
             {mcpList.length === 0 && (
-              <p className="text-[12px] text-[var(--m-text-faint)] px-1">
+              <p className="px-1 text-[12px] text-[var(--m-text-faint)]">
                 No MCP servers configured.
               </p>
             )}
@@ -1908,7 +2252,7 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={() => setShowAddForm(true)}
-                className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d19a66]/10 border border-[#d19a66]/30 px-4 py-2.5 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66]/15 hover:border-[#d19a66]/50"
+                className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[#d19a66]/30 bg-[#d19a66]/10 px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider text-[#d19a66] transition-all hover:border-[#d19a66]/50 hover:bg-[#d19a66]/15"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -1926,8 +2270,8 @@ export function SettingsModal({
                 Add New Shortcut
               </button>
             ) : (
-              <div className="mb-4 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4 space-y-2.5">
-                <p className="font-mono text-[9px] text-[var(--m-text-muted)] uppercase tracking-[0.2em] mb-3">
+              <div className="mb-4 space-y-2.5 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4">
+                <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-muted)]">
                   New Shortcut
                 </p>
                 <input
@@ -2001,10 +2345,10 @@ export function SettingsModal({
                     />
                   </svg>
                 </div>
-                <p className="font-mono text-[11px] tracking-wider text-[var(--m-text-faint)] uppercase">
+                <p className="font-mono text-[11px] uppercase tracking-wider text-[var(--m-text-faint)]">
                   No shortcuts yet.
                 </p>
-                <p className="font-mono text-[10px] text-[var(--m-text-faint)] mt-1">
+                <p className="mt-1 font-mono text-[10px] text-[var(--m-text-faint)]">
                   Add your first one above.
                 </p>
               </div>
@@ -2018,9 +2362,9 @@ export function SettingsModal({
                     return (
                       <div
                         key={i}
-                        className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4 space-y-2.5"
+                        className="space-y-2.5 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4"
                       >
-                        <p className="font-mono text-[9px] text-[var(--m-text-muted)] uppercase tracking-[0.2em] mb-3">
+                        <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-muted)]">
                           Edit Shortcut
                         </p>
                         <input
@@ -2087,9 +2431,9 @@ export function SettingsModal({
                   return (
                     <div
                       key={i}
-                      className="flex items-center gap-3 rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border-subtle)] px-4 py-3"
+                      className="flex items-center gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] px-4 py-3"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d19a66/10] border border-[#383838] font-mono text-[12px] font-medium text-[#d19a66]">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#383838] bg-[#d19a66]/10 font-mono text-[12px] font-medium text-[#d19a66]">
                         {avatarChar}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -2258,7 +2602,7 @@ export function SettingsModal({
         {activePage === "templates" && (
           <div className="space-y-2">
             {templates.length === 0 && (
-              <p className="text-[12px] text-[var(--m-text-faint)] px-1">
+              <p className="px-1 text-[12px] text-[var(--m-text-faint)]">
                 No templates yet. Add one below.
               </p>
             )}
@@ -2604,10 +2948,10 @@ export function SettingsModal({
 
   function renderSidebar() {
     return (
-      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto bg-[var(--m-surface)] border-r border-[var(--m-border-subtle)] py-4">
+      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-4">
         {SECTIONS.map((section) => (
           <div key={section.heading} className="mb-4">
-            <p className="px-4 pb-2 pt-1 font-semibold text-[11px] tracking-[0.18em] text-[var(--m-accent)]/85 uppercase">
+            <p className="px-4 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
               {section.heading}
             </p>
             {section.items.map((item) => {
@@ -2617,7 +2961,7 @@ export function SettingsModal({
                   key={item.id}
                   type="button"
                   onClick={() => setActivePage(item.id)}
-                  className={`relative w-full text-left px-4 py-2 text-[13px] transition-colors ${
+                  className={`relative w-full px-4 py-2 text-left text-[13px] transition-colors ${
                     isActive
                       ? "bg-[var(--m-surface-2)] text-[var(--m-text)]"
                       : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface)] hover:text-[var(--m-text)]"
@@ -2666,13 +3010,12 @@ export function SettingsModal({
         onClick={onClose}
       />
       <div className="relative z-10 m-auto flex h-[min(680px,92vh)] w-[min(880px,96vw)] flex-col overflow-hidden rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-bg)] shadow-[0_0_60px_rgba(0,0,0,0.9)]">
-        {/* Top bar */}
         <div className="flex shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-[var(--m-text-muted)] hover:text-[var(--m-text)] transition-colors"
+            className="text-[var(--m-text-muted)] transition-colors hover:text-[var(--m-text)]"
           >
             <svg
               className="h-4 w-4"
@@ -2688,9 +3031,7 @@ export function SettingsModal({
               />
             </svg>
           </button>
-          <h1 className="text-[15px] font-semibold text-[var(--m-text)]">
-            Settings
-          </h1>
+          <h1 className="text-[15px] font-semibold text-[var(--m-text)]">Settings</h1>
         </div>
         {innerLayout}
       </div>

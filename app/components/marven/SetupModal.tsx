@@ -224,7 +224,7 @@ export function SetupModal({ onSave }: SetupModalProps) {
                   title="Use a cloud provider for now"
                   body={
                     <>
-                      Add a free API key in <strong>Settings → AI Backends</strong>.
+                      Add a free API key in <strong>Settings → API Keys</strong>.
                       Recommended starters:
                       <ul className="mt-1.5 list-disc pl-5 text-[#999]">
                         <li>

@@ -13,6 +13,7 @@ import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
 import { RestClientPanel } from "./RestClientPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
+import type { VoiceState } from "@/hooks/useVoice";
 
 interface EditorPanelProps {
   workspaceRoot: string | null;
@@ -48,6 +49,17 @@ interface EditorPanelProps {
   onSaveShortcuts?: (shortcuts: CustomShortcut[]) => void;
   onSaveTemplates?: (templates: PromptTemplate[]) => void;
   onSaveMCPServers?: (servers: MCPServer[]) => void;
+  voiceDiagnostics?: {
+    isVoiceSupported: boolean;
+    voiceState: VoiceState;
+    wakeEnabled: boolean;
+    speechEnabled: boolean;
+    sttProvider: "local" | "groq";
+    ttsProvider: "system" | "elevenlabs";
+    isSpeakingNow: boolean;
+    voiceError: string | null;
+    lastHeard: string;
+  };
   // Empty state action props
   onToggleChat?: () => void;
   onCommandPalette?: () => void;
@@ -222,6 +234,7 @@ export function EditorPanel({
   onSaveShortcuts,
   onSaveTemplates,
   onSaveMCPServers,
+  voiceDiagnostics,
   onToggleChat,
   onCommandPalette,
   findOpen = false,
@@ -788,6 +801,7 @@ export function EditorPanel({
                 onSave={onSaveShortcuts ?? (() => {})}
                 onSaveTemplates={onSaveTemplates ?? (() => {})}
                 onSaveMCPServers={onSaveMCPServers ?? (() => {})}
+                voiceDiagnostics={voiceDiagnostics}
                 onClose={() => {
                   const settingsIdx = openTabs.findIndex((t) => t.kind === "settings");
                   if (settingsIdx >= 0) onCloseTab(settingsIdx);
