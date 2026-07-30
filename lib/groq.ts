@@ -4,7 +4,11 @@
 import type { HistoryMessage } from "@/types";
 import { groqUserMessageContent } from "@/lib/imageHelpers";
 
-export const DEFAULT_MODEL = "llama-3.1-8b-instant";
+// 70B is the default because the agent loop (multi-step tool use) needs a model
+// that reliably emits tool_calls and follows the full system prompt. The 8B
+// "instant" model is far weaker at agentic work — keep it only as a manual pick
+// for cheap/fast plain chat.
+export const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
