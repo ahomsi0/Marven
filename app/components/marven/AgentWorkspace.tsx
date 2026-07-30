@@ -9,6 +9,7 @@ import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
+import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
@@ -320,6 +321,7 @@ interface AgentWorkspaceProps {
   conversationId?: string | null;
   onEditorScroll?: (scrollTop: number) => void;
   onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
+  onRunAgentPrompt?: (prompt: string) => void;
 }
 
 export function AgentWorkspace({
@@ -394,6 +396,7 @@ export function AgentWorkspace({
   conversationId,
   onEditorScroll,
   onEditAgentUserMessage,
+  onRunAgentPrompt,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -429,6 +432,10 @@ export function AgentWorkspace({
   const [showGitPanel, setShowGitPanel] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("marven-show-git") === "true";
+  });
+  const [showWorkflowPanel, setShowWorkflowPanel] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("marven-show-workflow") === "true";
   });
   // Handle on the underlying CodeEditor so we can scroll to a specific line
   // after the global-search panel triggers a file open.
@@ -502,6 +509,12 @@ export function AgentWorkspace({
       localStorage.setItem("marven-show-git", String(showGitPanel));
     }
   }, [showGitPanel]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("marven-show-workflow", String(showWorkflowPanel));
+    }
+  }, [showWorkflowPanel]);
 
   const [memoryScopes, setMemoryScopes] = useState<{ global: string[]; project: string[]; conversation: string[] }>({
     global: [],
@@ -797,6 +810,7 @@ export function AgentWorkspace({
     { label: "Search files", keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
     { label: "Inline AI Edit (selection)", keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
     { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
+    { label: "Workflow intelligence", action: () => { setShowWorkflowPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
     { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
@@ -889,6 +903,31 @@ export function AgentWorkspace({
               <circle cx="18" cy="5" r="2" />
               <circle cx="6" cy="19" r="2" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M6 7c0 4 12 5 12-2" />
+            </svg>
+          </button>
+        )}
+
+        {workspaceRoot && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowWorkflowPanel((v) => {
+                const next = !v;
+                if (next) setShowExplorer(true);
+                return next;
+              });
+            }}
+            className={`rounded p-1 transition-colors ${
+              showWorkflowPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
+            }`}
+            title={showWorkflowPanel ? "Hide workflow panel" : "Show workflow intelligence"}
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
+              <circle cx="4" cy="7" r="2" />
+              <circle cx="4" cy="17" r="2" />
+              <circle cx="20" cy="10" r="2" />
+              <circle cx="20" cy="14" r="2" />
             </svg>
           </button>
         )}
@@ -1103,6 +1142,23 @@ export function AgentWorkspace({
                   },
                 },
                 {
+                  key: "workflow",
+                  label: "Workflow",
+                  icon: (
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
+                    </svg>
+                  ),
+                  disabled: !workspaceRoot,
+                  onClick: () => {
+                    setShowWorkflowPanel((v) => {
+                      const next = !v;
+                      if (next) setShowExplorer(true);
+                      return next;
+                    });
+                  },
+                },
+                {
                   key: "tasks",
                   label: "Background tasks",
                   badge: isRunning,
@@ -1161,7 +1217,19 @@ export function AgentWorkspace({
               className="flex flex-col border-r border-[var(--m-border)]"
               style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
             >
-              {showGitPanel && workspaceRoot ? (
+              {showWorkflowPanel && workspaceRoot ? (
+                <WorkflowPanel
+                  workspaceRoot={workspaceRoot}
+                  files={files}
+                  messages={messages}
+                  isRunning={isRunning}
+                  planMode={planMode}
+                  onPlanModeChange={onPlanModeChange}
+                  onRunAgentPrompt={onRunAgentPrompt}
+                  onSelectFile={onSelectFile}
+                  onClose={() => setShowWorkflowPanel(false)}
+                />
+              ) : showGitPanel && workspaceRoot ? (
                 <GitPanel
                   workspaceRoot={workspaceRoot}
                   provider={provider as AIProvider}

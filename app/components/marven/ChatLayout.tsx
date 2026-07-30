@@ -72,6 +72,7 @@ interface ChatLayoutProps {
   appVersion?: string;
   onAgentInputChange: (v: string) => void;
   onAgentSend: (opts?: { mentions?: import("@/types").Mention[] }) => void;
+  onAgentRunPrompt?: (prompt: string) => void;
   onAgentStop: () => void;
   onAgentSlashCommand: (cmd: string) => void;
   onOpenFolder: () => void;
@@ -195,6 +196,7 @@ export function ChatLayout({
   appVersion,
   onAgentInputChange,
   onAgentSend,
+  onAgentRunPrompt,
   onAgentStop,
   onAgentSlashCommand,
   onOpenFolder,
@@ -316,6 +318,10 @@ export function ChatLayout({
     });
   }, [messages, isLoading]);
 
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const chatTitle = activeConversation?.name?.trim() || "New chat";
+  const hasSystemPrompt = conversationSystemPrompt.trim().length > 0;
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--m-bg)] text-[var(--m-text)]">
       {/* TitleBar — draggable, frameless window controls */}
@@ -344,15 +350,15 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="gold-gradient bg-[var(--m-surface)] border-b border-[var(--m-border)] px-6 pb-3 pt-3 sm:px-8">
-            <div className={`mx-auto w-full space-y-2.5 ${mode === "agent" ? "max-w-none" : "max-w-[920px]"}`}>
+          <header className="border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
+            <div className={`mx-auto w-full ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   {/* Toggle sidebar */}
                   <button
                     type="button"
                     onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
+                    className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                     aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                     title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                   >
@@ -361,20 +367,35 @@ export function ChatLayout({
                     </svg>
                   </button>
 
-                  <div className="flex flex-col">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h1 className="text-[17px] font-semibold text-[var(--m-text)]">
-                        {mode === "agent" ? "Marven Agent" : "Marven"}
+                      <h1 className="truncate text-[14px] font-medium text-[var(--m-text)]">
+                        {mode === "agent" ? "Marven Agent" : chatTitle}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
-                    <span className="text-[12px] text-[var(--m-text-faint)]">
-                      {mode === "agent" ? "File-aware workspace" : "AI Interface"}
-                    </span>
+                    {mode === "agent" && (
+                      <span className="text-[11px] text-[var(--m-text-faint)]">File-aware workspace</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {mode === "chat" && (
+                    <button
+                      type="button"
+                      onClick={() => setSystemPromptOpen((v) => !v)}
+                      title="Conversation system prompt"
+                      aria-label="Conversation system prompt"
+                      className={`rounded-md border px-2 py-1 text-[10px] transition-colors ${
+                        systemPromptOpen || hasSystemPrompt
+                          ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
+                          : "border-[var(--m-border-subtle)] text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
+                      }`}
+                    >
+                      System
+                    </button>
+                  )}
                   {/* Export button — only in chat mode, only when there are messages */}
                   {mode === "chat" && messages.length > 0 && (
                     <button
@@ -382,7 +403,7 @@ export function ChatLayout({
                       onClick={handleExport}
                       title="Export as Markdown"
                       aria-label="Export conversation as Markdown"
-                      className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]"
+                      className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -437,6 +458,7 @@ export function ChatLayout({
               onToggleWakeWord={onToggleWakeWord}
               onInputChange={onAgentInputChange}
               onSend={onAgentSend}
+              onRunAgentPrompt={onAgentRunPrompt}
               onStop={onAgentStop}
               onSlashCommand={onAgentSlashCommand}
               onOpenFolder={onOpenFolder}
@@ -476,12 +498,13 @@ export function ChatLayout({
               {/* Messages */}
               <main
                 ref={messagesViewportRef}
-                className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-10"
+                className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
               >
-                <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
+                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
                   {messages.length === 0 && !isLoading && (
-                    <div className="message-in py-16 text-center text-[13px] text-[var(--m-text-faint)]">
-                      Start a conversation
+                    <div className="message-in py-12 text-center">
+                      <div className="text-[13px] text-[var(--m-text-muted)]">What are we working through?</div>
+                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">Ask, paste, attach, or use a saved prompt.</div>
                     </div>
                   )}
                   {messages.map((message) => (
@@ -500,18 +523,20 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="bg-[var(--m-surface)] border-t border-[var(--m-border)] mt-auto px-6 pb-10 pt-3 sm:px-10 sm:pb-12">
-                <div className="mx-auto w-full max-w-[720px]">
+              <footer className="mt-auto border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
+                <div className="mx-auto w-full max-w-[760px]">
                   {/* Per-conversation system prompt — collapsible strip
                       sitting directly above the input bar so the user is
                       aware of (and can edit) what's currently active while
                       typing. Toggle button on the right shows/hides. */}
-                  <SystemPromptStrip
-                    open={systemPromptOpen}
-                    onToggle={() => setSystemPromptOpen((v) => !v)}
-                    value={conversationSystemPrompt}
-                    onCommit={onSystemPromptChange}
-                  />
+                  {(systemPromptOpen || hasSystemPrompt) && (
+                    <SystemPromptStrip
+                      open={systemPromptOpen}
+                      onToggle={() => setSystemPromptOpen((v) => !v)}
+                      value={conversationSystemPrompt}
+                      onCommit={onSystemPromptChange}
+                    />
+                  )}
                   <InputBar
                     value={input}
                     isLoading={isLoading}
@@ -540,9 +565,6 @@ export function ChatLayout({
                     onToggleSpeech={onToggleSpeech}
                     onToggleWakeWord={onToggleWakeWord}
                   />
-                  <p className="mt-2 text-center text-[10px] text-[var(--m-text-faint)]">
-                    Enter to send · Shift + Enter for new line
-                  </p>
                 </div>
               </footer>
             </>

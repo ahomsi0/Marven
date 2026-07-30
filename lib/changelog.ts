@@ -12,6 +12,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.10.0",
+    items: [
+      { tag: "new", label: "Workflow Intelligence panel — one-click project scan (stack & entrypoints), change review with severity-ranked findings on your git diff, and a pre-release checklist; run any generated prompt straight through the agent" },
+      { tag: "imp", label: "Groq agent now defaults to Llama 3.3 70B instead of 8B — far more reliable multi-step tool calling and instruction following (8B remains selectable for cheap/fast chat)" },
+    ],
+  },
+  {
     version: "2.9.1",
     items: [
       { tag: "new", label: "Edit and resend past user messages in the agent panel (hover the bubble, then Save & resend)" },

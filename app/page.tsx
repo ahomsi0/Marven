@@ -2195,6 +2195,13 @@ export default function Home() {
         appVersion={packageJson.version}
         onAgentInputChange={setAgentInput}
         onAgentSend={(opts) => { agentStreamSend(agentInput, { attachments: agentAttachments, mentions: opts?.mentions }); setAgentInput(""); setAgentAttachments([]); }}
+        onAgentRunPrompt={(prompt) => {
+          const text = prompt.trim();
+          if (!text || agentStreamIsRunning) return;
+          setAgentInput("");
+          setAgentAttachments([]);
+          void agentStreamSend(text);
+        }}
         onAgentStop={agentStreamStop}
         onAgentSlashCommand={(cmd) => {
           switch (cmd) {

@@ -1,6 +1,6 @@
 {
   "name": "marven",
-  "version": "2.9.2",
+  "version": "2.10.0",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "electron:start": "cross-env NODE_ENV=development ./node_modules/.bin/electron .",
     "helper": "menubar-helper/MarvenHelper",
     "launch": "concurrently \"npm run dev\" \"sleep 3 && menubar-helper/MarvenHelper\"",
+    "pretest": "npm rebuild better-sqlite3 --silent",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "node scripts/fix-node-pty-perms.js && node scripts/rebuild-native.js",

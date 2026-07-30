@@ -190,7 +190,7 @@ export function InputBar({
           onSetActive={setMenuActiveIdx}
         />
       )}
-      <div className="rounded-2xl bg-[var(--m-surface-2)] border border-[var(--m-border)] transition-all focus-within:border-[var(--m-text-faint)]">
+      <div className="rounded-xl bg-[var(--m-surface)] border border-[var(--m-border-subtle)] shadow-sm transition-all focus-within:border-[var(--m-text-faint)]">
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
@@ -268,7 +268,7 @@ export function InputBar({
         )}
 
         {/* Input row */}
-        <div className="flex items-center gap-2 p-2">
+          <div className="flex items-end gap-1.5 p-1.5">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -287,7 +287,7 @@ export function InputBar({
             }}
             placeholder={placeholder}
             disabled={isLoading}
-            className="max-h-36 min-h-[38px] flex-1 resize-none rounded-lg bg-transparent px-3 py-2 text-[13px] leading-6 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] disabled:opacity-60"
+            className="max-h-32 min-h-[34px] flex-1 resize-none rounded-md bg-transparent px-2.5 py-1.5 text-[13px] leading-6 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] disabled:opacity-60"
             style={{ height: "auto" }}
           />
 
@@ -296,7 +296,7 @@ export function InputBar({
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             title="Attach image"
-            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)] disabled:opacity-30"
+            className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -308,7 +308,7 @@ export function InputBar({
             onClick={() => docFileInputRef.current?.click()}
             title="Attach PDF or DOCX"
             disabled={isLoading || docUploading}
-            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)] disabled:opacity-30"
+            className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -319,10 +319,10 @@ export function InputBar({
             <button
               type="button"
               onClick={onVoiceClick}
-              className={`h-9 w-9 shrink-0 rounded-lg transition-all flex items-center justify-center ${
+              className={`h-8 w-8 shrink-0 rounded-md transition-all flex items-center justify-center ${
                 isListening
                   ? "bg-red-950/20 border border-red-700/40 text-red-400"
-                  : "bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-3)]"
+                  : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
               }`}
               title={isListening ? "Stop listening" : "Start voice input"}
             >
@@ -340,7 +340,7 @@ export function InputBar({
             type="button"
             onClick={onSend}
             disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
-            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
+            className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
@@ -349,7 +349,7 @@ export function InputBar({
         </div>
 
         {/* Bottom strip */}
-        <div className="flex items-center border-t border-[var(--m-border-subtle)] px-3 py-1">
+        <div className="flex items-center border-t border-[var(--m-border-subtle)] px-2.5 py-1">
           <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
@@ -380,7 +380,7 @@ export function InputBar({
                 speechEnabled ? "text-[var(--m-accent)]" : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
-              {speechEnabled ? "Speech on" : "Speech off"}
+              {speechEnabled ? "TTS on" : "TTS off"}
             </button>
             <span className="text-[var(--m-border-subtle)] text-[10px]">/</span>
             <button
@@ -394,7 +394,7 @@ export function InputBar({
                   : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
-              {isVoiceSupported ? (wakeEnabled ? "Wake on" : "Wake off") : "Voice n/a"}
+              {isVoiceSupported ? (wakeEnabled ? "Wake on" : "Wake off") : "Mic n/a"}
             </button>
           </div>
         </div>

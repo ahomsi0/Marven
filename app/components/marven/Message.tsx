@@ -107,7 +107,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
         disabled={disabled}
         aria-label={title}
         title={title}
-        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--m-surface-2)] border border-[var(--m-border)] text-[var(--m-text-muted)] shadow transition-all duration-150 hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text-muted)] shadow-sm transition-all duration-150 hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:cursor-not-allowed"
       >
         {children}
       </button>
@@ -117,7 +117,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
   return (
     <div className={`message-in group flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       {isUser ? (
-        <div className="relative max-w-[86%] sm:max-w-[78%]">
+        <div className="relative max-w-[88%] sm:max-w-[72%]">
           {isEditing ? (
             /* ── Edit mode ── */
             <div className="flex flex-col gap-2">
@@ -130,7 +130,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                   if (e.key === "Escape") handleEditCancel();
                 }}
                 rows={3}
-                className="w-full resize-none rounded-2xl rounded-br-sm border border-[var(--m-accent)]/40 bg-[var(--m-surface-2)] px-4 py-3 text-[14px] text-[var(--m-text)] leading-7 outline-none focus:border-[var(--m-accent)]/60"
+                className="w-full resize-none rounded-xl border border-[var(--m-accent)]/40 bg-[var(--m-surface)] px-3 py-2 text-[13px] text-[var(--m-text)] leading-6 outline-none focus:border-[var(--m-accent)]/60"
               />
               <div className="flex justify-end gap-2">
                 <button
@@ -152,7 +152,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           ) : (
             /* ── Display mode ── */
             <>
-              <div className="bg-[var(--m-surface-2)] border border-[var(--m-border)] border-l border-l-[var(--m-accent)]/20 rounded-2xl rounded-br-sm px-4 py-3">
+              <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3.5 py-2.5">
                 {message.docs && message.docs.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-1.5">
                     {message.docs.map((doc, i) => (
@@ -179,13 +179,13 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                       ))}
                     </div>
                     {message.content && (
-                      <p className="text-[14px] text-[var(--m-text)] leading-7 whitespace-pre-wrap break-words">
+                      <p className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[14px] text-[var(--m-text)] leading-7 whitespace-pre-wrap break-words">
+                  <p className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
                     {message.content}
                   </p>
                 )}
@@ -203,15 +203,15 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           )}
         </div>
       ) : (
-        <div className="relative max-w-[88%] sm:max-w-[82%]">
+        <div className="relative max-w-[100%]">
           {/* Action bar — right of bubble, visible on hover */}
           <div className="absolute left-full top-1 ml-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>
 
-          <div className="pl-3 border-l border-[var(--m-border)]">
-            <div className="text-[14px] text-[var(--m-text)] leading-7">
+          <div className="rounded-xl px-1 py-1">
+            <div className="text-[13px] text-[var(--m-text)] leading-6">
               {message.isStreaming && !message.content ? (
                 <span className="streaming-cursor" />
               ) : (
@@ -256,7 +256,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           </div>
 
           {/* Timestamp shown on hover */}
-          <span className="mt-1 block pl-4 text-left text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <span className="mt-1 block text-left text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {timeLabel}
           </span>
         </div>
