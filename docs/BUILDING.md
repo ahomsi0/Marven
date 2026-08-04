@@ -82,3 +82,46 @@ npx tsx scripts/smoke-completion.mjs groq   llama-3.1-8b-instant
 
 Both scripts exit non-zero on failure — wire them into a pre-release manual
 checklist or a future `release-prep.yml` workflow.
+
+## Code signing & auto-update integrity ⚠️
+
+**Current state:** the macOS build ships **unsigned** (`build.mac.identity: null`
+in `package.json`) and the app **auto-downloads and installs** updates
+(`autoUpdater.autoDownload = true` in `electron/main.js`). With no code
+signature, `electron-updater` (Squirrel.Mac / NSIS) cannot verify that a
+downloaded update is authentic — the signature check it is designed around is
+absent. HTTPS from GitHub mitigates casual tampering in transit, but not a
+compromised or substituted release artifact.
+
+This is a **release-infrastructure task** that needs certificates only the
+maintainer holds, so it is intentionally left as config-you-must-complete
+rather than changed in a way that would break the current unsigned build.
+
+### macOS (Apple Developer ID — $99/yr)
+
+1. Obtain a **Developer ID Application** certificate; install it in your login keychain.
+2. In `package.json` → `build.mac`, replace `"identity": null` with your identity
+   (or remove the line to let electron-builder auto-discover it) and add:
+   ```json
+   "hardenedRuntime": true,
+   "gatekeeperAssess": false,
+   "entitlements": "build/entitlements.mac.plist",
+   "entitlementsInherit": "build/entitlements.mac.plist"
+   ```
+3. Notarize: set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
+   env vars (or configure `build.afterSign` with `@electron/notarize`).
+4. Verify: `spctl -a -vvv "dist/mac-arm64/Marven.app"` should report *accepted*.
+
+### Windows (Authenticode)
+
+1. Obtain a code-signing certificate (OV or EV).
+2. Set `CSC_LINK` (path/base64 of the `.pfx`) and `CSC_KEY_PASSWORD` env vars.
+3. In `build.win`, set `"verifyUpdateCodeSignature": true` and `"publisherName"`
+   matching the certificate subject, so updates with a mismatched signer are rejected.
+
+### Interim hardening (optional, no certs required)
+
+Until signing is in place, you can keep the user in the loop for updates by
+setting `autoUpdater.autoDownload = false` and prompting before download/install,
+rather than silently auto-installing unverified updates. Say the word and this
+can be wired into `electron/main.js`.

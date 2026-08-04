@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
+import { crossOriginRejection } from "@/lib/apiGuards";
 
 interface ReplaceRequest {
   query: string;
@@ -13,6 +14,9 @@ interface ReplaceRequest {
 }
 
 export async function POST(req: NextRequest) {
+  const rejection = crossOriginRejection(req);
+  if (rejection) return NextResponse.json({ error: rejection }, { status: 403 });
+
   let body: ReplaceRequest;
   try {
     body = await req.json();
@@ -58,6 +62,17 @@ export async function POST(req: NextRequest) {
       if (e.code === 1) return NextResponse.json({ replacedCount: 0, filesModified: [] }); // no matches
       return NextResponse.json({ error: "Search failed" }, { status: 500 });
     }
+  }
+
+  // Safety net against a runaway auto-discovered replace across the whole tree.
+  const MAX_FILES = 2000;
+  if (targetFiles.length > MAX_FILES) {
+    return NextResponse.json(
+      {
+        error: `Refusing to replace across ${targetFiles.length} files (limit ${MAX_FILES}). Narrow the search or pass an explicit file list.`,
+      },
+      { status: 400 },
+    );
   }
 
   const filesModified: string[] = [];

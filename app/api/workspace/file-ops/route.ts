@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { crossOriginRejection } from "@/lib/apiGuards";
+import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 
 function getRoot(bodyRoot?: string): string {
   const root = bodyRoot?.trim() || getActiveWorkspaceRoot();
@@ -14,7 +16,20 @@ function safePath(root: string, rel: string): string {
   if (!abs.startsWith(root + path.sep) && abs !== root) {
     throw new Error("Path outside workspace");
   }
+  assertRealpathInsideWorkspace(root, abs);
   return abs;
+}
+
+// Guard against catastrophic deletes: refuse to remove the workspace root
+// itself or a filesystem-root-level path, regardless of the supplied root.
+function assertDeletable(abs: string, root: string): void {
+  const resolved = path.resolve(abs);
+  if (resolved === path.resolve(root)) {
+    throw new Error("Refusing to delete the workspace root");
+  }
+  if (path.dirname(resolved) === resolved) {
+    throw new Error("Refusing to delete a filesystem root");
+  }
 }
 
 async function copyRecursive(src: string, dest: string): Promise<void> {
@@ -44,6 +59,9 @@ function deriveCopyPath(rel: string): string {
 // DELETE — delete a file or folder recursively
 export async function DELETE(req: NextRequest) {
   try {
+    const rejection = crossOriginRejection(req);
+    if (rejection) return NextResponse.json({ error: rejection }, { status: 403 });
+
     const body = await req.json();
     const targetPath = typeof body.path === "string" ? body.path : "";
     if (!targetPath.trim())
@@ -51,6 +69,7 @@ export async function DELETE(req: NextRequest) {
 
     const root = getRoot(body.root);
     const abs = safePath(root, targetPath);
+    assertDeletable(abs, root);
 
     const stat = await fs.stat(abs).catch(() => null);
     if (!stat) return NextResponse.json({ error: "Path not found" }, { status: 404 });
@@ -70,6 +89,9 @@ export async function DELETE(req: NextRequest) {
 // POST — copy (duplicate) a file or folder
 export async function POST(req: NextRequest) {
   try {
+    const rejection = crossOriginRejection(req);
+    if (rejection) return NextResponse.json({ error: rejection }, { status: 403 });
+
     const body = await req.json();
     const targetPath = typeof body.path === "string" ? body.path : "";
     if (!targetPath.trim())

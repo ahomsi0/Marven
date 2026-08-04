@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGit } from "@/lib/agent/git";
 import { parsePorcelain } from "@/lib/gitUtils";
+import { crossOriginRejection } from "@/lib/apiGuards";
 
 export async function POST(req: NextRequest) {
+  const rejection = crossOriginRejection(req);
+  if (rejection) return NextResponse.json({ error: rejection }, { status: 403 });
+
   let body: Record<string, string>;
   try {
     body = await req.json();

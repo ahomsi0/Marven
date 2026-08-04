@@ -1,9 +1,10 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
+const { sanitizedEnv } = require('./envSanitize');
 
 const isDev = !app.isPackaged;
 
@@ -251,6 +252,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   };
@@ -280,8 +282,16 @@ function createWindow() {
   // and prevent file:// URLs from opening in the system browser. External
   // http/https links are handled explicitly via the open-external IPC handler.
   mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Compare full origins, not a string prefix: startsWith('http://localhost:47891')
+    // would also accept http://localhost:47891.evil.com/ and http://localhost:478919/.
     const appUrl = `http://localhost:${appPort}`;
-    if (!url.startsWith(appUrl)) {
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(url).origin === appUrl;
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin) {
       event.preventDefault();
     }
   });
@@ -301,13 +311,21 @@ function createWindow() {
     if (isToggleDevTools) mainWindow.webContents.toggleDevTools();
   });
 
-  // Auto-grant microphone so SpeechRecognition (wake word) works.
+  // Auto-grant microphone so SpeechRecognition (wake word) works — but ONLY for
+  // our own app origin, not for any other content that might end up loaded.
   // Both handlers are required — check fires before request.
-  mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
-    return permission === 'media' || permission === 'microphone';
+  const appOrigin = `http://localhost:${appPort}`;
+  const originOf = (value) => {
+    try { return new URL(value).origin; } catch { return ''; }
+  };
+  const isMicPermission = (permission) => permission === 'media' || permission === 'microphone';
+  mainWindow.webContents.session.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+    const origin = requestingOrigin || (wc ? originOf(wc.getURL()) : '');
+    return isMicPermission(permission) && origin === appOrigin;
   });
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media' || permission === 'microphone');
+  mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const origin = originOf((details && details.requestingUrl) || (wc ? wc.getURL() : ''));
+    callback(isMicPermission(permission) && origin === appOrigin);
   });
 
   // Prime getUserMedia so Chromium's speech engine has an active mic grant
@@ -437,7 +455,10 @@ ipcMain.handle('open-external', async (_event, url, browser) => {
     return { ok: true };
   }
   return new Promise((resolve) => {
-    exec(`open -a "${appName}" ${JSON.stringify(trimmed)}`, (err) => {
+    // Use execFile with an argument array (no shell) so the URL can never be
+    // interpreted as shell syntax. Passing the URL through a shell string would
+    // let `$(...)`, backticks, or `$VAR` in the URL execute as commands.
+    execFile('open', ['-a', appName, trimmed], (err) => {
       if (err) {
         shell.openExternal(trimmed).finally(() => resolve({ ok: true }));
       } else {
@@ -588,7 +609,7 @@ ipcMain.handle('pty-start', (event, args) => {
       cols: Math.max(20, Math.floor(cols || 80)),
       rows: Math.max(5, Math.floor(rows || 24)),
       cwd: resolvedCwd,
-      env: { ...process.env, TERM: 'xterm-256color' },
+      env: sanitizedEnv({ TERM: 'xterm-256color' }),
     });
     ptys.set(id, p);
     p.onData((data) => {
@@ -692,6 +713,46 @@ app.whenReady().then(async () => {
 
     autoUpdater.checkForUpdates();
   }
+
+  // Content-Security-Policy for the renderer. The renderer only ever loads our
+  // own local app, so we stamp a CSP on responses served by the app origin.
+  // This locks down object/embed injection, base-tag hijacking, framing, and
+  // form exfiltration, and sets a default-src baseline. connect-src stays open
+  // because users configure arbitrary AI provider endpoints (Groq, OpenAI,
+  // Anthropic, OpenRouter, NIM, Ollama, ElevenLabs, custom local servers).
+  // NOTE: script-src still allows 'unsafe-inline' because Next.js App Router
+  // ships inline bootstrap scripts without nonces; tightening this to a
+  // nonce-based policy is a follow-up that requires launch-testing the build.
+  const APP_ORIGIN = `http://localhost:${isDev ? 3000 : 47891}`;
+  const scriptSrc = isDev
+    ? "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:" // HMR needs eval in dev
+    : "'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:"; // wasm-unsafe-eval for local STT/embeddings
+  const CSP = [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "media-src 'self' blob: data:",
+    "worker-src 'self' blob:",
+    "connect-src * data: blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+  ].join('; ');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (!details.url.startsWith(APP_ORIGIN)) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [CSP],
+      },
+    });
+  });
 
   // Fix for Web Speech API: Google's speech service checks the Origin header.
   // In Electron, requests may not carry a proper Origin. Inject it so

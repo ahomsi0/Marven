@@ -6,10 +6,21 @@ import path from "path";
 import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
 import { runGit } from "./git";
+import { safeFetch } from "@/lib/ssrfGuard";
+import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
   return GIT_MUTATION_TOOLS.has(toolName);
+}
+
+/** Some models serialize newlines as literal "\n"/"\t"/"\r" inside JSON strings.
+ *  Only un-escape when the string has NO real newline already — otherwise we'd
+ *  corrupt legitimate backslash-n/backslash-t in real file content (e.g. a
+ *  source file that literally contains the two characters backslash and n). */
+export function unescapeModelString(s: string): string {
+  if (s.includes("\n")) return s;
+  return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
 }
 
 const execAsync = promisify(exec);
@@ -212,7 +223,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-const BLOCKED = [/sudo/, /rm\s+-rf\s+\//, /mkfs/, /dd\s+if=/, />\s*\/dev\//];
+// Defense-in-depth only — the real safety boundary is the human approval gate
+// in loop.ts (every run_command is gated). These patterns short-circuit
+// obviously-catastrophic commands so they never even reach the approval prompt.
+const BLOCKED = [
+  /\bsudo\b/,
+  /\bmkfs\b/,
+  /\bdd\s+if=/,
+  // writing to a raw disk device (but NOT /dev/null, /dev/stdout, etc.)
+  />\s*\/dev\/(?:[sh]d[a-z]|disk\d|rdisk\d|nvme)/,
+  // classic fork bomb :(){ :|:& };:
+  /:\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
+  // pipe a fetched script straight into a shell (curl … | sh)
+  /\|\s*(?:sudo\s+)?(?:sh|bash|zsh|dash)\b/,
+  // rm with a recursive flag pointed at a filesystem-root-level target
+  // (/, /*, ~, $HOME) — catches -rf, -fr, -r -f, --recursive, etc.
+  /\brm\s+(?:-\S+\s+)*-\S*r\S*\s+(?:-\S+\s+)*(?:\/\*?|~|\$HOME)(?:\s|$)/,
+];
 
 export function formatWebSearchResult(data: {
   AbstractText?: string;
@@ -242,6 +269,9 @@ export function assertSafePath(workspaceRoot: string, relPath: string): string {
   if (!resolved.startsWith(workspaceRoot + path.sep) && resolved !== workspaceRoot) {
     throw new Error(`Path "${relPath}" escapes the workspace`);
   }
+  // Re-check after resolving symlinks so a symlink inside the workspace can't
+  // redirect a lexically-safe path outside it.
+  assertRealpathInsideWorkspace(workspaceRoot, resolved);
   return resolved;
 }
 
@@ -485,11 +515,9 @@ export async function executeTool(
         }
       }
 
-      // Unescape literal \n / \t / \r the way the file expects them.
-      const content = (args.content as string)
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\r/g, "\r");
+      // Unescape literal \n / \t / \r the way the file expects them (only when
+      // the payload has no real newlines — see unescapeModelString).
+      const content = unescapeModelString(args.content as string);
 
       // Determine if the target file already exists and grab its size for
       // the read-before-write + size-shrink guards.
@@ -540,9 +568,7 @@ export async function executeTool(
       // Unescape literal \n / \t / \r the same way write_file does — models
       // sometimes serialize newlines as backslash-n inside JSON strings.
       function unescape(s: unknown): string {
-        return typeof s === "string"
-          ? s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r")
-          : "";
+        return typeof s === "string" ? unescapeModelString(s) : "";
       }
 
       const edits = rawEdits.map((e: unknown) => {
@@ -695,7 +721,9 @@ export async function executeTool(
       const includeArgs = extensions.flatMap((ext) => ["--include", `*.${ext}`]);
 
       try {
-        const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, query, "."], {
+        // "--" ends option parsing so a query starting with "-" is treated as a
+        // search string, not a grep flag (e.g. -f<file> reading arbitrary files).
+        const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, "--", query, "."], {
           cwd: searchPath,
         });
         return stdout.trim() || "No matches found";
@@ -735,11 +763,13 @@ export async function executeTool(
         if (!/^https?:\/\//i.test(url)) {
           return `Fetch failed: only http:// and https:// URLs are supported.`;
         }
-        // SSRF note: loopback/LAN addresses are reachable on a desktop app.
-        // Accepted risk — the AI is a trusted local agent with workspace access.
+        // SSRF guard: loopback (the user's own dev server) is intentionally
+        // allowed, but private LAN, link-local/cloud-metadata, and reserved
+        // ranges are blocked — including across redirects — so injected content
+        // can't turn this into an internal-network pivot. See lib/ssrfGuard.ts.
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await safeFetch(url, { signal: controller.signal });
         clearTimeout(timer);
         if (!res.ok) return `Error ${res.status}: ${res.statusText}`;
         const text = await res.text();

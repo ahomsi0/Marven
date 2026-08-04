@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage } from "@/types";
 
 const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
@@ -450,6 +450,10 @@ export function useAgentStream({
     abortRef.current?.abort();
     setIsRunning(false);
   }, []);
+
+  // Abort any in-flight stream if the consuming component unmounts, so the
+  // fetch/SSE reader doesn't keep running and calling setState after teardown.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

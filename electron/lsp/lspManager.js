@@ -5,13 +5,14 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { LSP_SERVERS } = require("./lspServers");
+const { sanitizedEnv } = require("../envSanitize");
 
 const DEFAULT_INSTALL_ROOT = path.join(os.homedir(), ".marven", "lsp");
 
 function defaultRunNpmInstall(languageId, { installDir, npmPackages }) {
   return new Promise((resolve) => {
     const args = ["install", ...npmPackages, "--prefix", installDir, "--no-audit", "--no-fund"];
-    const child = spawn("npm", args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+    const child = spawn("npm", args, { stdio: ["ignore", "pipe", "pipe"], env: sanitizedEnv() });
     let stderr = "";
     child.stderr.on("data", (b) => { stderr += b.toString("utf8"); });
     child.on("exit", (code) => resolve({ code: code ?? 1, stderr }));
@@ -71,7 +72,7 @@ class LspManager extends EventEmitter {
     const spec = LSP_SERVERS[languageId];
     const child = this._spawnFn(this._binPath(languageId), spec.args, {
       stdio: "pipe",
-      env: process.env,
+      env: sanitizedEnv(),
     });
     const state = {
       child,

@@ -266,6 +266,7 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [folders, setFolders] = useState<ConversationFolder[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
@@ -472,6 +473,9 @@ export default function Home() {
 
   // ─── Greeting guard ─────────────────────────────────────────────────────────
   const hasGreetedRef = useRef(false);
+  // Skips the first persist effect run so the initial/loaded state isn't
+  // re-written, but still lets an emptied list (last conversation deleted) save.
+  const conversationsHydratedRef = useRef(false);
 
   // ─── Load from localStorage on mount ───────────────────────────────────────
   useEffect(() => {
@@ -544,8 +548,20 @@ export default function Home() {
 
   // ─── Persist conversations on change ───────────────────────────────────────
   useEffect(() => {
-    if (conversations.length > 0) {
-      saveConversations(conversations);
+    // Skip the first run (mount): it corresponds to the initial empty state and
+    // the value just loaded from storage — persisting either is pointless, and
+    // persisting the initial [] would wipe stored conversations before the load
+    // effect applies them. After that, always persist — including an emptied
+    // list, so deleting the last conversation actually sticks.
+    if (!conversationsHydratedRef.current) {
+      conversationsHydratedRef.current = true;
+      return;
+    }
+    const result = saveConversations(conversations);
+    if (result.trimmed) {
+      setStorageWarning(
+        "Storage is nearly full — image and document attachments won't be saved across restarts. Older conversations still persist as text.",
+      );
     }
   }, [conversations]);
 
@@ -2152,6 +2168,47 @@ export default function Home() {
 
   return (
     <>
+      {storageWarning && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+            maxWidth: 520,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            padding: "10px 14px",
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.4,
+            background: "var(--m-surface-raised, #2a2a2a)",
+            color: "var(--m-text, #eee)",
+            border: "1px solid var(--m-border, #444)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}
+        >
+          <span>{storageWarning}</span>
+          <button
+            onClick={() => setStorageWarning(null)}
+            aria-label="Dismiss storage warning"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--m-text-muted, #aaa)",
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <ChatLayout
         mode={activeMode}
         messages={messages}
