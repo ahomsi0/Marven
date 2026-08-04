@@ -1,6 +1,6 @@
 const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
@@ -437,7 +437,10 @@ ipcMain.handle('open-external', async (_event, url, browser) => {
     return { ok: true };
   }
   return new Promise((resolve) => {
-    exec(`open -a "${appName}" ${JSON.stringify(trimmed)}`, (err) => {
+    // Use execFile with an argument array (no shell) so the URL can never be
+    // interpreted as shell syntax. Passing the URL through a shell string would
+    // let `$(...)`, backticks, or `$VAR` in the URL execute as commands.
+    execFile('open', ['-a', appName, trimmed], (err) => {
       if (err) {
         shell.openExternal(trimmed).finally(() => resolve({ ok: true }));
       } else {

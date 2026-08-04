@@ -211,6 +211,68 @@ describe("runAgentLoop", () => {
     });
   });
 
+  describe("run_command approval gate", () => {
+    const runCommandTool: ToolDefinition = {
+      name: "run_command",
+      description: "Run a shell command",
+      parameters: {
+        type: "object",
+        properties: { command: { type: "string", description: "command" } },
+        required: ["command"],
+      },
+    };
+
+    it("always gates run_command, independent of requireWriteApproval", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "r1", tool: "run_command", args: { command: "ls" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("a.txt");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "list files" }],
+        tools: [runCommandTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: false, // write-approval off, run_command still gated
+        _testApprovalResult: true,
+      })) {
+        events.push(event);
+      }
+
+      const approval = events.find(
+        (e) => e.type === "pending_approval" && e.tool === "run_command"
+      );
+      expect(approval).toBeDefined();
+      expect(mockExec).toHaveBeenCalledOnce();
+    });
+
+    it("does not execute run_command when approval is rejected", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ type: "tool_call", callId: "r2", tool: "run_command", args: { command: "rm -rf tmp" } })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("ok");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "clean up" }],
+        tools: [runCommandTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        _testApprovalResult: false,
+      })) {
+        events.push(event);
+      }
+
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(
+        events.some((e) => e.type === "tool_result" && e.output === "Rejected by user.")
+      ).toBe(true);
+    });
+  });
+
   describe("retry on stall", () => {
     it("sends a recovery message when model returns text mid-task with no terminal phrase", async () => {
       const mockStep = vi.fn()

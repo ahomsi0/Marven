@@ -272,6 +272,28 @@ export async function* runAgentLoop(
       }
     }
 
+    // 2c. Approval gating for shell command execution. run_command spawns an
+    // arbitrary shell; the blocklist in tools.ts is only defense-in-depth, so
+    // the human approval is the real safety boundary — always gate it.
+    if (result.tool === "run_command") {
+      yield {
+        type: "pending_approval",
+        callId: result.callId,
+        tool: result.tool,
+        args: result.args,
+      };
+      const approved =
+        options._testApprovalResult !== undefined
+          ? options._testApprovalResult
+          : await registerApproval(result.callId, 60_000);
+      if (!approved) {
+        const rejection = "Rejected by user.";
+        yield { type: "tool_result", callId: result.callId, output: rejection, truncated: false };
+        history.push({ role: "tool_result", callId: result.callId, content: rejection });
+        continue;
+      }
+    }
+
     // 3. Execute tool with optional progress forwarding
     let output: string;
     try {

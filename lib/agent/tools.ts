@@ -212,7 +212,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-const BLOCKED = [/sudo/, /rm\s+-rf\s+\//, /mkfs/, /dd\s+if=/, />\s*\/dev\//];
+// Defense-in-depth only — the real safety boundary is the human approval gate
+// in loop.ts (every run_command is gated). These patterns short-circuit
+// obviously-catastrophic commands so they never even reach the approval prompt.
+const BLOCKED = [
+  /\bsudo\b/,
+  /\bmkfs\b/,
+  /\bdd\s+if=/,
+  // writing to a raw disk device (but NOT /dev/null, /dev/stdout, etc.)
+  />\s*\/dev\/(?:[sh]d[a-z]|disk\d|rdisk\d|nvme)/,
+  // classic fork bomb :(){ :|:& };:
+  /:\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
+  // pipe a fetched script straight into a shell (curl … | sh)
+  /\|\s*(?:sudo\s+)?(?:sh|bash|zsh|dash)\b/,
+  // rm with a recursive flag pointed at a filesystem-root-level target
+  // (/, /*, ~, $HOME) — catches -rf, -fr, -r -f, --recursive, etc.
+  /\brm\s+(?:-\S+\s+)*-\S*r\S*\s+(?:-\S+\s+)*(?:\/\*?|~|\$HOME)(?:\s|$)/,
+];
 
 export function formatWebSearchResult(data: {
   AbstractText?: string;
