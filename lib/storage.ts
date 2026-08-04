@@ -41,12 +41,50 @@ export function loadConversations(): Conversation[] {
   }
 }
 
-export function saveConversations(conversations: Conversation[]): void {
-  if (typeof window === "undefined") return;
+export interface SaveResult {
+  ok: boolean;
+  /** true when the save succeeded only after dropping image/document blobs */
+  trimmed: boolean;
+  error?: string;
+}
+
+/** Drop the heavy, non-text payloads (image data URLs, extracted doc text) so a
+ *  conversation's text history can still be persisted when it would otherwise
+ *  exceed the localStorage quota. */
+function stripHeavyAttachments(conversations: Conversation[]): Conversation[] {
+  return conversations.map((c) => ({
+    ...c,
+    messages: c.messages.map((m) => {
+      if (!m.attachments && !m.docs) return m;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { attachments, docs, ...rest } = m;
+      return rest;
+    }),
+  }));
+}
+
+export function saveConversations(conversations: Conversation[]): SaveResult {
+  if (typeof window === "undefined") return { ok: false, trimmed: false };
   try {
     localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
-  } catch {
-    // Ignore storage quota errors
+    return { ok: true, trimmed: false };
+  } catch (err) {
+    // Almost always QuotaExceededError, usually from large base64 image
+    // attachments. Retry without the heavy blobs so the conversation TEXT
+    // still persists instead of everything being silently lost on restart.
+    try {
+      localStorage.setItem(
+        CONVERSATIONS_KEY,
+        JSON.stringify(stripHeavyAttachments(conversations)),
+      );
+      console.warn(
+        "[Marven] localStorage quota exceeded — conversations saved without image/document attachments.",
+      );
+      return { ok: true, trimmed: true, error: err instanceof Error ? err.message : String(err) };
+    } catch (err2) {
+      console.error("[Marven] Failed to persist conversations:", err2);
+      return { ok: false, trimmed: false, error: err2 instanceof Error ? err2.message : String(err2) };
+    }
   }
 }
 
