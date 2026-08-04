@@ -4,6 +4,7 @@ const { execFile } = require('child_process');
 const net  = require('net');
 const fs   = require('fs');
 const path = require('path');
+const { sanitizedEnv } = require('./envSanitize');
 
 const isDev = !app.isPackaged;
 
@@ -251,6 +252,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   };
@@ -309,13 +311,21 @@ function createWindow() {
     if (isToggleDevTools) mainWindow.webContents.toggleDevTools();
   });
 
-  // Auto-grant microphone so SpeechRecognition (wake word) works.
+  // Auto-grant microphone so SpeechRecognition (wake word) works — but ONLY for
+  // our own app origin, not for any other content that might end up loaded.
   // Both handlers are required — check fires before request.
-  mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
-    return permission === 'media' || permission === 'microphone';
+  const appOrigin = `http://localhost:${appPort}`;
+  const originOf = (value) => {
+    try { return new URL(value).origin; } catch { return ''; }
+  };
+  const isMicPermission = (permission) => permission === 'media' || permission === 'microphone';
+  mainWindow.webContents.session.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+    const origin = requestingOrigin || (wc ? originOf(wc.getURL()) : '');
+    return isMicPermission(permission) && origin === appOrigin;
   });
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media' || permission === 'microphone');
+  mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const origin = originOf((details && details.requestingUrl) || (wc ? wc.getURL() : ''));
+    callback(isMicPermission(permission) && origin === appOrigin);
   });
 
   // Prime getUserMedia so Chromium's speech engine has an active mic grant
@@ -599,7 +609,7 @@ ipcMain.handle('pty-start', (event, args) => {
       cols: Math.max(20, Math.floor(cols || 80)),
       rows: Math.max(5, Math.floor(rows || 24)),
       cwd: resolvedCwd,
-      env: { ...process.env, TERM: 'xterm-256color' },
+      env: sanitizedEnv({ TERM: 'xterm-256color' }),
     });
     ptys.set(id, p);
     p.onData((data) => {

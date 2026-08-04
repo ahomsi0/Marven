@@ -7,6 +7,7 @@ import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
 import { runGit } from "./git";
 import { safeFetch } from "@/lib/ssrfGuard";
+import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
@@ -259,6 +260,9 @@ export function assertSafePath(workspaceRoot: string, relPath: string): string {
   if (!resolved.startsWith(workspaceRoot + path.sep) && resolved !== workspaceRoot) {
     throw new Error(`Path "${relPath}" escapes the workspace`);
   }
+  // Re-check after resolving symlinks so a symlink inside the workspace can't
+  // redirect a lexically-safe path outside it.
+  assertRealpathInsideWorkspace(workspaceRoot, resolved);
   return resolved;
 }
 
@@ -712,7 +716,9 @@ export async function executeTool(
       const includeArgs = extensions.flatMap((ext) => ["--include", `*.${ext}`]);
 
       try {
-        const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, query, "."], {
+        // "--" ends option parsing so a query starting with "-" is treated as a
+        // search string, not a grep flag (e.g. -f<file> reading arbitrary files).
+        const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, "--", query, "."], {
           cwd: searchPath,
         });
         return stdout.trim() || "No matches found";

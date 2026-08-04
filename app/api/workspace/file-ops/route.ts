@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
 import { crossOriginRejection } from "@/lib/apiGuards";
+import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 
 function getRoot(bodyRoot?: string): string {
   const root = bodyRoot?.trim() || getActiveWorkspaceRoot();
@@ -15,6 +16,7 @@ function safePath(root: string, rel: string): string {
   if (!abs.startsWith(root + path.sep) && abs !== root) {
     throw new Error("Path outside workspace");
   }
+  assertRealpathInsideWorkspace(root, abs);
   return abs;
 }
 

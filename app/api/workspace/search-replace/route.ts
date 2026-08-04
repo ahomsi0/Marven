@@ -64,6 +64,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Safety net against a runaway auto-discovered replace across the whole tree.
+  const MAX_FILES = 2000;
+  if (targetFiles.length > MAX_FILES) {
+    return NextResponse.json(
+      {
+        error: `Refusing to replace across ${targetFiles.length} files (limit ${MAX_FILES}). Narrow the search or pass an explicit file list.`,
+      },
+      { status: 400 },
+    );
+  }
+
   const filesModified: string[] = [];
   let replacedCount = 0;
 
