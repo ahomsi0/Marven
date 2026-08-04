@@ -14,6 +14,15 @@ export function isGitMutation(toolName: string): boolean {
   return GIT_MUTATION_TOOLS.has(toolName);
 }
 
+/** Some models serialize newlines as literal "\n"/"\t"/"\r" inside JSON strings.
+ *  Only un-escape when the string has NO real newline already — otherwise we'd
+ *  corrupt legitimate backslash-n/backslash-t in real file content (e.g. a
+ *  source file that literally contains the two characters backslash and n). */
+export function unescapeModelString(s: string): string {
+  if (s.includes("\n")) return s;
+  return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+}
+
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
@@ -506,11 +515,9 @@ export async function executeTool(
         }
       }
 
-      // Unescape literal \n / \t / \r the way the file expects them.
-      const content = (args.content as string)
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\r/g, "\r");
+      // Unescape literal \n / \t / \r the way the file expects them (only when
+      // the payload has no real newlines — see unescapeModelString).
+      const content = unescapeModelString(args.content as string);
 
       // Determine if the target file already exists and grab its size for
       // the read-before-write + size-shrink guards.
@@ -561,9 +568,7 @@ export async function executeTool(
       // Unescape literal \n / \t / \r the same way write_file does — models
       // sometimes serialize newlines as backslash-n inside JSON strings.
       function unescape(s: unknown): string {
-        return typeof s === "string"
-          ? s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r")
-          : "";
+        return typeof s === "string" ? unescapeModelString(s) : "";
       }
 
       const edits = rawEdits.map((e: unknown) => {

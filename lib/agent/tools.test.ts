@@ -208,6 +208,20 @@ describe("executeTool – path escape guard", () => {
   });
 });
 
+describe("unescapeModelString", () => {
+  it("unescapes when there are no real newlines (escaped-only payload)", async () => {
+    const { unescapeModelString } = await import("./tools");
+    expect(unescapeModelString("a\\nb\\tc")).toBe("a\nb\tc");
+  });
+
+  it("leaves content untouched when it already has real newlines", async () => {
+    const { unescapeModelString } = await import("./tools");
+    // A source line that legitimately contains the two chars backslash + n.
+    const src = 'const re = /\\n/;\nconst x = 1;';
+    expect(unescapeModelString(src)).toBe(src);
+  });
+});
+
 describe("executeTool – run_command blocks dangerous patterns", () => {
   it("blocks sudo", async () => {
     const result = await executeTool("run_command", { command: "sudo ls" }, tmpDir);
