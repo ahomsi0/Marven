@@ -17,6 +17,7 @@ function makeReq(url: string, body?: unknown): NextRequest {
   return {
     url,
     nextUrl: new URL(url),
+    headers: new Headers(),
     json: async () => body ?? {},
   } as unknown as NextRequest;
 }

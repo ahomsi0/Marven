@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
+import { crossOriginRejection } from "@/lib/apiGuards";
 
 interface ReplaceRequest {
   query: string;
@@ -13,6 +14,9 @@ interface ReplaceRequest {
 }
 
 export async function POST(req: NextRequest) {
+  const rejection = crossOriginRejection(req);
+  if (rejection) return NextResponse.json({ error: rejection }, { status: 403 });
+
   let body: ReplaceRequest;
   try {
     body = await req.json();

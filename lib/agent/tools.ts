@@ -6,6 +6,7 @@ import path from "path";
 import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
 import { runGit } from "./git";
+import { safeFetch } from "@/lib/ssrfGuard";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
@@ -751,11 +752,13 @@ export async function executeTool(
         if (!/^https?:\/\//i.test(url)) {
           return `Fetch failed: only http:// and https:// URLs are supported.`;
         }
-        // SSRF note: loopback/LAN addresses are reachable on a desktop app.
-        // Accepted risk — the AI is a trusted local agent with workspace access.
+        // SSRF guard: loopback (the user's own dev server) is intentionally
+        // allowed, but private LAN, link-local/cloud-metadata, and reserved
+        // ranges are blocked — including across redirects — so injected content
+        // can't turn this into an internal-network pivot. See lib/ssrfGuard.ts.
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await safeFetch(url, { signal: controller.signal });
         clearTimeout(timer);
         if (!res.ok) return `Error ${res.status}: ${res.statusText}`;
         const text = await res.text();
