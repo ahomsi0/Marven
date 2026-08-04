@@ -12,6 +12,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.11.0",
+    items: [
+      { tag: "fix", label: "Security hardening pass — closed a command-injection path in open-in-browser, agent shell commands (run_command) now require your approval, added a content-security-policy and renderer sandbox, SSRF protections on the fetch_url tool, and workspace symlink-escape guards" },
+      { tag: "fix", label: "Conversations are no longer silently lost when local storage fills up — image/document attachments are dropped first so your chat text is preserved, and deleting your last conversation now sticks across restarts" },
+      { tag: "imp", label: "Provider API keys are kept out of the terminal and language-server processes; file writes no longer mangle content that legitimately contains backslash-n / backslash-t sequences" },
+    ],
+  },
+  {
     version: "2.10.0",
     items: [
       { tag: "new", label: "Workflow Intelligence panel — one-click project scan (stack & entrypoints), change review with severity-ranked findings on your git diff, and a pre-release checklist; run any generated prompt straight through the agent" },
