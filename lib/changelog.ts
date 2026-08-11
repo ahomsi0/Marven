@@ -12,6 +12,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.12.3",
+    items: [
+      { tag: "fix", label: "Unsigned-release mode now lets macOS and Windows packaging proceed temporarily when signing certificates are unavailable" },
+      { tag: "imp", label: "Automatic downloads and install-on-quit remain enabled; release logs clearly warn when artifacts are unsigned" },
+    ],
+  },
+  {
     version: "2.12.2",
     items: [
       { tag: "fix", label: "Release verification now receives the same macOS and Windows signing configuration as the packaging step" },

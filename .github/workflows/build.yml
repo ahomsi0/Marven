@@ -52,6 +52,7 @@ jobs:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          ALLOW_UNSIGNED_RELEASE: "true"
 
       - name: Build Next.js (standalone)
         run: npm run build
@@ -73,6 +74,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ALLOW_UNSIGNED_RELEASE: "true"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

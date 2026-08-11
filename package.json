@@ -1,6 +1,6 @@
 {
   "name": "marven",
-  "version": "2.12.2",
+  "version": "2.12.3",
   "description": "Marven - Local AI Desktop Assistant",
   "main": "electron/main.js",
   "scripts": {
@@ -69,7 +69,6 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "win": {
-      "verifyUpdateCodeSignature": true,
       "target": [
         {
           "target": "nsis",

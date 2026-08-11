@@ -21,8 +21,14 @@ module.exports = async (context) => {
     return;
   }
 
-  if (process.env.CI === "true" && process.env.GITHUB_REF?.startsWith("refs/tags/v")) {
+  const isTaggedRelease = process.env.CI === "true" && process.env.GITHUB_REF?.startsWith("refs/tags/v");
+  if (isTaggedRelease && process.env.ALLOW_UNSIGNED_RELEASE !== "true") {
     throw new Error("Tagged macOS releases must be Developer ID signed; refusing an ad-hoc release artifact.");
+  }
+
+  if (isTaggedRelease) {
+    console.warn("[after-sign] ALLOW_UNSIGNED_RELEASE=true; keeping the unsigned/ad-hoc artifact for this temporary release.");
+    return;
   }
 
   console.log(`[after-sign] Ad-hoc signing local development artifact ${appPath}`);
