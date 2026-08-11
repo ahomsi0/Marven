@@ -12,6 +12,12 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.12.2",
+    items: [
+      { tag: "fix", label: "Release verification now receives the same macOS and Windows signing configuration as the packaging step" },
+    ],
+  },
+  {
     version: "2.12.1",
     items: [
       { tag: "fix", label: "Windows agent write approvals now normalize workspace paths correctly, restoring previews and rejection handling" },

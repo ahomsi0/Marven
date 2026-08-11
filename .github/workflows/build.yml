@@ -48,6 +48,10 @@ jobs:
 
       - name: Verify release configuration
         run: npm run release:check
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
 
       - name: Build Next.js (standalone)
         run: npm run build
