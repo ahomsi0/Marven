@@ -13,9 +13,9 @@ Marven is a desktop app that combines a multi-provider AI chat with a complete c
 
 Always local (regardless of which provider you pick):
 
-- **Your files** — only loaded when you open them, or when an agent reads/writes them as part of a task you initiated
+- **Your files** — loaded only for an action you initiate, or for the optional local semantic index (which honors `.gitignore` and excludes common secrets)
 - **Conversation history, settings, memory entries, recent workspaces** — stored in localStorage and a JSON settings file in your app data dir
-- **API keys** — kept in the settings JSON, never sent anywhere except as the `Authorization` header to the provider you chose
+- **API keys** — encrypted with OS-backed secure storage when available, never sent anywhere except as the `Authorization` header to the provider you chose
 
 What leaves your machine depends on which provider is selected:
 
@@ -243,7 +243,7 @@ Or skip the project — **+ New chat** for plain conversation, voice commands, i
 - **xterm.js + node-pty** — real interactive terminal
 - **TypeScript** end-to-end
 - **Tailwind CSS v4** with CSS-variable theme tokens
-- **Vitest** — 67+ tests covering the agent loop, tool parsers, helpers
+- **Vitest** — automated coverage for the agent loop, security guards, indexer, tool parsers, and helpers
 
 Project layout:
 

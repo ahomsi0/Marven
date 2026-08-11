@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { walkWorkspace } from "./walker";
+import { isSensitivePath, loadWorkspaceExclusions, shouldExclude } from "./exclusions";
 import { chunkFile } from "./chunker";
 import { Embedder } from "./embedder";
 import { IndexStore } from "./store";
@@ -13,6 +14,7 @@ export interface IndexerOptions {
   workspaceRoot: string;
   store: IndexStore;
   embedder: Embedder;
+  excludePatterns?: string[];
 }
 export interface RunFullOptions {
   onProgress?: (p: IndexProgress) => void;
@@ -33,7 +35,7 @@ export class Indexer {
       const start = Date.now();
       const root = this.opts.workspaceRoot;
       const candidates: string[] = [];
-      for await (const abs of walkWorkspace(root)) {
+      for await (const abs of walkWorkspace(root, { excludePatterns: this.opts.excludePatterns })) {
         candidates.push(abs);
         if (candidates.length >= MAX_FILES) break;
       }
@@ -98,6 +100,15 @@ export class Indexer {
   async updateFile(absPath: string): Promise<void> {
     const rel = path.relative(this.opts.workspaceRoot, absPath);
     try {
+      if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        this.opts.store.removeFile(rel);
+        return;
+      }
+      const exclusions = await loadWorkspaceExclusions(this.opts.workspaceRoot, this.opts.excludePatterns);
+      if (isSensitivePath(rel) || shouldExclude(rel, false, exclusions)) {
+        this.opts.store.removeFile(rel);
+        return;
+      }
       const stat = await fs.stat(absPath);
       if (stat.size > 256 * 1024) {
         this.opts.store.removeFile(rel);

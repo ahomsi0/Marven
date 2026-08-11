@@ -6,7 +6,11 @@ import type { NextRequest } from "next/server";
 import { POST } from "./route";
 
 function makeReq(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  return {
+    url: "http://localhost:47891/api/agent/verify",
+    headers: new Headers(),
+    json: async () => body,
+  } as unknown as NextRequest;
 }
 
 async function readSse(stream: ReadableStream<Uint8Array>) {
@@ -66,5 +70,16 @@ describe("POST /api/agent/verify", () => {
     const events = await readSse(res.body!);
     expect(events.some((e) => e.event === "tool_call")).toBe(false);
     expect(events.some((e) => e.event === "text_delta" && String(e.data.delta).includes("Auto-verify skipped"))).toBe(true);
+  });
+
+  it("rejects arbitrary shell composition", async () => {
+    const res = await POST(makeReq({
+      workspaceRoot: tmpRoot,
+      commands: ["node -e \"require('fs').writeFileSync('pwned', '1')\""],
+    }));
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toMatch(/verification commands/i);
+    await expect(fs.access(path.join(tmpRoot, "pwned"))).rejects.toThrow();
   });
 });

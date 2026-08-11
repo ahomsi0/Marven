@@ -322,6 +322,8 @@ interface AgentWorkspaceProps {
   onEditorScroll?: (scrollTop: number) => void;
   onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   onRunAgentPrompt?: (prompt: string) => void;
+  workspaceTrusted?: boolean;
+  onWorkspaceTrustChange?: (trusted: boolean) => void;
 }
 
 export function AgentWorkspace({
@@ -397,6 +399,8 @@ export function AgentWorkspace({
   onEditorScroll,
   onEditAgentUserMessage,
   onRunAgentPrompt,
+  workspaceTrusted = false,
+  onWorkspaceTrustChange,
 }: AgentWorkspaceProps) {
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -954,6 +958,21 @@ export function AgentWorkspace({
             title="Toggle diff panel"
           >
             Diff ({checkpoints.length})
+          </button>
+        )}
+
+        {workspaceRoot && (
+          <button
+            type="button"
+            onClick={() => onWorkspaceTrustChange?.(!workspaceTrusted)}
+            className={`rounded border px-2 py-1 text-[10px] transition-colors ${
+              workspaceTrusted
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+            }`}
+            title={workspaceTrusted ? "Workspace trusted — agent writes and approved commands are available" : "Workspace untrusted — agent is read-only until trusted"}
+          >
+            {workspaceTrusted ? "Trusted" : "Read only"}
           </button>
         )}
 

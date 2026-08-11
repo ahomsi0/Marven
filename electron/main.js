@@ -1,9 +1,11 @@
-const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, Tray, Menu, nativeImage, ipcMain, session, dialog, shell, safeStorage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile } = require('child_process');
 const net  = require('net');
+const http = require('http');
 const fs   = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { sanitizedEnv } = require('./envSanitize');
 
 const isDev = !app.isPackaged;
@@ -57,6 +59,40 @@ function waitForPort(port, timeoutMs = 30000) {
   });
 }
 
+function waitForHealth(port, healthToken, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    function attempt() {
+      const req = http.get({
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/health',
+        timeout: 1000,
+        headers: { 'x-marven-health-token': healthToken },
+      }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 200 && /"service"\s*:\s*"marven"/.test(body)) {
+            resolve(true);
+          } else if (Date.now() < deadline) {
+            setTimeout(attempt, 200);
+          } else {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => {
+        if (Date.now() < deadline) setTimeout(attempt, 200);
+        else resolve(false);
+      });
+      req.on('timeout', () => req.destroy());
+    }
+    attempt();
+  });
+}
+
 function startNextServer() {
   if (isDev) return Promise.resolve();
   const serverDir = path.join(process.resourcesPath, 'nextjs-server');
@@ -70,19 +106,33 @@ function startNextServer() {
   // Run the Next.js standalone server inside the Electron main process.
   // This avoids spawning an unsigned child binary (which macOS blocks on arm64).
   const PORT = 47891;
+  const healthToken = crypto.randomBytes(32).toString('hex');
   process.env.PORT = String(PORT);
   process.env.HOSTNAME = '127.0.0.1';
   process.env.NODE_ENV = 'production';
+  process.env.MARVEN_HEALTH_TOKEN = healthToken;
 
-  setImmediate(() => {
-    try {
-      require(serverScript);
-    } catch (err) {
-      console.error('[Marven] Server failed to start:', err.message);
-    }
+  const loadServer = new Promise((resolve, reject) => {
+    setImmediate(() => {
+      try {
+        require(serverScript);
+        resolve();
+      } catch (err) {
+        console.error('[Marven] Server failed to start:', err.message);
+        reject(err);
+      }
+    });
   });
 
-  return waitForPort(PORT);
+  return Promise.all([loadServer, waitForHealth(PORT, healthToken)])
+    .then(([, healthy]) => {
+      if (!healthy) throw new Error('Server health check failed');
+      return true;
+    })
+    .catch((err) => {
+      dialog.showErrorBox('Startup Error', `The local Marven server could not be verified.\n${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    });
 }
 
 // ── Load icons from buffer (more reliable than createFromPath with spaces in path) ──
@@ -106,6 +156,7 @@ app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http:/
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let updateReady = false;
 
 // ── Persistent settings (userData/settings.json) ─────────────────────────────
 function settingsPath() {
@@ -125,23 +176,114 @@ const SETTINGS_DEFAULTS = {
   voiceTtsProvider: 'system',
   elevenLabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
   elevenLabsModel: 'eleven_flash_v2_5',
+  agentSafetyProfile: 'ask-before-write',
+  workspaceTrustRequired: true,
+  indexExcludePatterns: '',
 };
 
-function loadSettings() {
-  let stored = {};
+const SECRET_SETTING_KEYS = [
+  'groqApiKey',
+  'nimApiKey',
+  'openrouterApiKey',
+  'openaiApiKey',
+  'anthropicApiKey',
+  'elevenLabsApiKey',
+];
+const MASKED_SECRET = '••••••••';
+
+function canEncryptSettings() {
   try {
-    const p = settingsPath();
-    if (fs.existsSync(p)) stored = JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch {}
-  return { ...SETTINGS_DEFAULTS, ...stored };
+    return !!safeStorage && safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
 }
 
-function persistSettings(settings) {
+function encryptSetting(value) {
+  if (!value) return '';
+  if (!canEncryptSettings()) return value;
   try {
-    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
+    return `enc:v1:${safeStorage.encryptString(value).toString('base64')}`;
+  } catch (err) {
+    console.warn('[Marven] Could not encrypt a secret setting; using protected file fallback:', err && err.message);
+    return value;
+  }
+}
+
+function decryptSetting(value) {
+  if (!value || typeof value !== 'string') return '';
+  if (!value.startsWith('enc:v1:')) return value;
+  if (!canEncryptSettings()) return '';
+  try {
+    return safeStorage.decryptString(Buffer.from(value.slice('enc:v1:'.length), 'base64'));
+  } catch (err) {
+    console.error('[Marven] Could not decrypt a stored secret setting:', err && err.message);
+    return '';
+  }
+}
+
+function readStoredSettings() {
+  try {
+    const p = settingsPath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8')) || {};
+  } catch (err) {
+    console.warn('[Marven] Could not read settings:', err && err.message);
+  }
+  return {};
+}
+
+function writeStoredSettings(settings) {
+  try {
+    const p = settingsPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(settings, null, 2), { mode: 0o600 });
+    try { fs.chmodSync(p, 0o600); } catch {}
   } catch (err) {
     console.error('[Marven] Could not write settings:', err.message);
   }
+}
+
+function loadSettings() {
+  const stored = readStoredSettings();
+  const settings = { ...SETTINGS_DEFAULTS, ...stored };
+  let migrated = false;
+  for (const key of SECRET_SETTING_KEYS) {
+    const raw = stored[key];
+    settings[key] = decryptSetting(raw);
+    // Migrate legacy plaintext settings as soon as Electron's secure storage
+    // becomes available. The renderer never needs the decrypted value.
+    if (raw && typeof raw === 'string' && !raw.startsWith('enc:v1:') && canEncryptSettings()) {
+      stored[key] = encryptSetting(raw);
+      migrated = true;
+    }
+  }
+  if (migrated) writeStoredSettings({ ...stored, ...Object.fromEntries(SECRET_SETTING_KEYS.map((key) => [key, stored[key]])) });
+  return settings;
+}
+
+function persistSettings(settings) {
+  const current = loadSettings();
+  const next = { ...current, ...(settings && typeof settings === 'object' ? settings : {}) };
+  const stored = { ...next };
+  for (const key of SECRET_SETTING_KEYS) {
+    const incoming = settings && typeof settings[key] === 'string' ? settings[key].trim() : undefined;
+    const value = incoming === undefined || incoming === MASKED_SECRET ? current[key] : incoming;
+    next[key] = value || '';
+    stored[key] = encryptSetting(next[key]);
+  }
+  writeStoredSettings(stored);
+  return next;
+}
+
+function publicSettings(settings) {
+  const result = { ...settings };
+  for (const key of SECRET_SETTING_KEYS) {
+    const configured = typeof settings[key] === 'string' && settings[key].length > 0;
+    result[key] = configured ? MASKED_SECRET : '';
+    result[`${key}Configured`] = configured;
+  }
+  result.settingsSecretsEncrypted = canEncryptSettings();
+  return result;
 }
 
 function applySettings(settings) {
@@ -164,11 +306,11 @@ function applySettings(settings) {
   setEnv('ELEVENLABS_MODEL', settings.elevenLabsModel);
 }
 
-ipcMain.handle('get-settings', () => loadSettings());
+ipcMain.handle('get-settings', () => publicSettings(loadSettings()));
 ipcMain.handle('save-settings', (_, settings) => {
-  persistSettings(settings);
-  applySettings(settings);
-  return true;
+  const next = persistSettings(settings);
+  applySettings(next);
+  return publicSettings(next);
 });
 ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('check-for-updates', () => {
@@ -177,7 +319,9 @@ ipcMain.handle('check-for-updates', () => {
   return { status: 'checking' };
 });
 ipcMain.handle('install-update', () => {
+  if (!updateReady) return { ok: false, error: 'No verified update is ready.' };
   autoUpdater.quitAndInstall();
+  return { ok: true };
 });
 
 // ── LSP (Language Server Protocol) ───────────────────────────────────────────
@@ -428,7 +572,7 @@ function isAllowedExternalUrl(urlString) {
   } catch {
     return false;
   }
-  const ok = ['http:', 'https:', 'mailto:', 'file:'].includes(u.protocol);
+  const ok = ['http:', 'https:', 'mailto:'].includes(u.protocol);
   if (!ok) return false;
   return true;
 }
@@ -682,7 +826,12 @@ app.whenReady().then(async () => {
   createTray();
 
   if (!isDev) {
+    // Keep automatic downloads enabled by design. electron-updater verifies
+    // provider metadata and artifact signatures when the release is signed;
+    // release CI now refuses tagged unsigned macOS/Windows artifacts.
     autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowDowngrade = false;
 
     autoUpdater.on('update-available', (info) => {
       if (mainWindow) mainWindow.webContents.send('update-status', { type: 'available', version: info.version });
@@ -699,6 +848,7 @@ app.whenReady().then(async () => {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
+      updateReady = true;
       if (mainWindow) mainWindow.webContents.send('update-status', { type: 'ready', version: info.version });
     });
 
@@ -760,7 +910,7 @@ app.whenReady().then(async () => {
   session.defaultSession.webRequest.onBeforeSendHeaders(
     { urls: ['https://www.google.com/*', 'wss://www.google.com/*'] },
     (details, callback) => {
-      details.requestHeaders['Origin'] = 'http://localhost:3000';
+      details.requestHeaders['Origin'] = APP_ORIGIN;
       callback({ requestHeaders: details.requestHeaders });
     }
   );
@@ -775,6 +925,9 @@ app.whenReady().then(async () => {
   } else {
     console.log('[Marven] Global shortcut registered: Cmd+Shift+M');
   }
+}).catch((err) => {
+  console.error('[Marven] Startup failed:', err && err.message ? err.message : err);
+  app.quit();
 });
 
 app.on('will-quit', () => {

@@ -123,6 +123,8 @@ interface ChatLayoutProps {
   agentPlanMode?: boolean;
   onAgentPlanModeChange?: (v: boolean) => void;
   liteAgentMode?: boolean;
+  workspaceTrusted?: boolean;
+  onWorkspaceTrustChange?: (trusted: boolean) => void;
   conversationId?: string | null;
   folders: ConversationFolder[];
   onCreateFolder: () => void;
@@ -246,6 +248,8 @@ export function ChatLayout({
   agentPlanMode,
   onAgentPlanModeChange,
   liteAgentMode,
+  workspaceTrusted,
+  onWorkspaceTrustChange,
   conversationId,
   folders,
   onCreateFolder,
@@ -487,6 +491,8 @@ export function ChatLayout({
               planMode={agentPlanMode}
               onPlanModeChange={onAgentPlanModeChange}
               liteAgentMode={liteAgentMode}
+              workspaceTrusted={workspaceTrusted}
+              onWorkspaceTrustChange={onWorkspaceTrustChange}
               conversationId={conversationId}
               onOpenPreviewTab={onOpenPreviewTab}
               onOpenRestTab={onOpenRestTab}

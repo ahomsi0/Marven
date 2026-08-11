@@ -35,16 +35,58 @@ function isBlockedIpv4(ip: string): boolean {
   return false;
 }
 
+function parseIpv6(raw: string): number[] | null {
+  let ip = raw.toLowerCase().split("%")[0]; // drop zone id
+  if (!ip) return null;
+
+  // Normalize dotted IPv4 tails before expanding the IPv6 groups. This also
+  // handles IPv4-mapped addresses written in hexadecimal form.
+  if (ip.includes(".")) {
+    const lastColon = ip.lastIndexOf(":");
+    if (lastColon < 0) return null;
+    const dotted = ip.slice(lastColon + 1).split(".").map(Number);
+    if (dotted.length !== 4 || dotted.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return null;
+    }
+    const hi = ((dotted[0] << 8) | dotted[1]).toString(16);
+    const lo = ((dotted[2] << 8) | dotted[3]).toString(16);
+    ip = `${ip.slice(0, lastColon + 1)}${hi}:${lo}`;
+  }
+
+  const halves = ip.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (left.some((part) => !/^[0-9a-f]{1,4}$/.test(part)) || right.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) {
+    return null;
+  }
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+  return [...left, ...Array.from({ length: missing }, () => "0"), ...right].map((part) => parseInt(part, 16));
+}
+
 function isBlockedIpv6(raw: string): boolean {
-  const ip = raw.toLowerCase().split("%")[0]; // drop zone id
-  if (ip === "::1") return false; // loopback — allowed
-  if (ip === "::" || ip === "") return true; // unspecified
-  // IPv4-mapped (::ffff:a.b.c.d) — validate the embedded IPv4.
-  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isBlockedIpv4(mapped[1]);
-  if (ip.startsWith("fc") || ip.startsWith("fd")) return true; // unique-local fc00::/7
-  if (/^fe[89ab]/.test(ip)) return true; // link-local fe80::/10
-  if (ip.startsWith("ff")) return true; // multicast
+  const groups = parseIpv6(raw);
+  if (!groups) return true;
+  if (groups.every((n) => n === 0)) return true; // unspecified
+  if (groups.every((n, i) => i === 7 ? n === 1 : n === 0)) return false; // loopback — allowed
+
+  // IPv4-mapped and IPv4-compatible forms must use the IPv4 policy too. The
+  // textual spelling is not reliable because IPv6 has many equivalent forms.
+  const mapped = groups.slice(0, 5).every((n) => n === 0) && groups[5] === 0xffff;
+  const compatible = groups.slice(0, 6).every((n) => n === 0);
+  if (mapped || compatible) {
+    const a = groups[6] >> 8;
+    const b = groups[6] & 0xff;
+    const c = groups[7] >> 8;
+    const d = groups[7] & 0xff;
+    if (isBlockedIpv4(`${a}.${b}.${c}.${d}`)) return true;
+  }
+
+  const first = groups[0];
+  if ((first & 0xfe00) === 0xfc00) return true; // unique-local fc00::/7
+  if ((first & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
+  if ((first & 0xff00) === 0xff00) return true; // multicast
   return false;
 }
 

@@ -168,7 +168,9 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
         ref={iframeRef}
         src={currentUrl}
         className="min-h-0 flex-1 border-0 bg-white"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+        // Keep preview scripts functional, but give the document an opaque
+        // origin so workspace HTML cannot read or mutate Marven's local APIs.
+        sandbox="allow-scripts"
         title="Preview"
       />
     </div>

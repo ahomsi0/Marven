@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
+import { crossOriginRejection } from "@/lib/apiGuards";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get("action");
@@ -26,6 +28,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rejection = crossOriginRejection(req);
+  if (rejection) return NextResponse.json({ ok: false, error: rejection }, { status: 403 });
+
   let body: { action: string; payload?: string };
   try {
     body = await req.json();
@@ -105,16 +110,20 @@ export async function POST(req: NextRequest) {
       }
 
       case "open-app": {
-        const appName = (payload ?? "").replace(/['"]/g, "");
-        // Cross-platform: `start ""` on Windows resolves Start-Menu and PATH
-        // entries; `open -a` is macOS; xdg-open is a best-effort on Linux.
-        const cmd =
-          process.platform === "win32"
-            ? `start "" "${appName}"`
-            : process.platform === "darwin"
-            ? `open -a "${appName}"`
-            : `xdg-open "${appName}"`;
-        await execAsync(cmd);
+        const appName = (payload ?? "").trim();
+        // App names come from a small UI picker, not a shell. Keep a strict
+        // character allowlist and pass the value as an argument to avoid shell
+        // expansion through $(), backticks, separators, or redirections.
+        if (!appName || appName.length > 200 || !/^[\p{L}\p{N} ._+\-()]+$/u.test(appName)) {
+          return NextResponse.json({ ok: false, error: "Invalid application name" }, { status: 400 });
+        }
+        if (process.platform === "win32") {
+          await execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "start", "", appName]);
+        } else if (process.platform === "darwin") {
+          await execFileAsync("open", ["-a", appName]);
+        } else {
+          await execFileAsync("xdg-open", [appName]);
+        }
         return NextResponse.json({ ok: true, message: `Opening ${appName}.` });
       }
 

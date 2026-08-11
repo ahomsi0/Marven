@@ -5,6 +5,7 @@
 import type { AgentMessage, EditorTab } from "@/types";
 
 const STORAGE_KEY = "marven_agent_sessions_v1";
+const CORRUPT_BACKUP_KEY = "marven_agent_sessions_corrupt_backup_v1";
 
 export interface SerializedBufferEntry {
   path: string;
@@ -34,6 +35,12 @@ export function loadAgentSessionsFile(): AgentSessionsFile {
     const parsed = JSON.parse(raw) as AgentSessionsFile;
     return parsed && typeof parsed === "object" ? parsed : emptySessions();
   } catch {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) localStorage.setItem(CORRUPT_BACKUP_KEY, JSON.stringify({ raw, savedAt: new Date().toISOString() }));
+    } catch {
+      // Best effort only — recovery should never block app startup.
+    }
     return emptySessions();
   }
 }

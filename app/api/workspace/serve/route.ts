@@ -43,7 +43,12 @@ export async function GET(req: NextRequest) {
     const ext = path.extname(abs).slice(1).toLowerCase();
     const contentType = MIME[ext] ?? "application/octet-stream";
     return new Response(buf, {
-      headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "no-cache",
+        "Content-Security-Policy": "sandbox allow-scripts; default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "File not found";

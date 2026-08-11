@@ -83,6 +83,15 @@ describe("scoped memory helpers", () => {
     );
   });
 
+  it("rejects conversation IDs that could escape the memory directory", () => {
+    expect(() => resolveMemoryPath("conversation", { conversationId: "../outside" })).toThrow(
+      "Invalid conversationId",
+    );
+    expect(() => resolveMemoryPath("conversation", { conversationId: "nested/child" })).toThrow(
+      "Invalid conversationId",
+    );
+  });
+
   it("builds a scoped memory block with labels", () => {
     const text = buildScopedMemoryBlock({
       global: ["prefers dark mode"],

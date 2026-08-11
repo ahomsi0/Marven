@@ -4,6 +4,7 @@ import { crossOriginRejection } from "./apiGuards";
 
 function reqWithOrigin(origin: string | null): NextRequest {
   return {
+    url: "http://localhost:47891/api/test",
     headers: { get: (k: string) => (k.toLowerCase() === "origin" ? origin : null) },
   } as unknown as NextRequest;
 }
@@ -13,10 +14,14 @@ describe("crossOriginRejection", () => {
     expect(crossOriginRejection(reqWithOrigin(null))).toBeNull();
   });
 
-  it("allows local origins", () => {
+  it("allows the app origin and its loopback alias", () => {
     expect(crossOriginRejection(reqWithOrigin("http://localhost:47891"))).toBeNull();
-    expect(crossOriginRejection(reqWithOrigin("http://localhost:3000"))).toBeNull();
-    expect(crossOriginRejection(reqWithOrigin("http://127.0.0.1:8080"))).toBeNull();
+    expect(crossOriginRejection(reqWithOrigin("http://127.0.0.1:47891"))).toBeNull();
+  });
+
+  it("rejects a local origin on a different port", () => {
+    expect(crossOriginRejection(reqWithOrigin("http://localhost:3000"))).toMatch(/cross-origin/i);
+    expect(crossOriginRejection(reqWithOrigin("http://127.0.0.1:8080"))).toMatch(/cross-origin/i);
   });
 
   it("rejects foreign origins", () => {

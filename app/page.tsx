@@ -24,6 +24,7 @@ import type {
   LspWorkspaceEdit,
   LspTextEdit,
   LspPosition,
+  AgentSafetyProfile,
 } from "@/types";
 import type { UserProfile } from "@/lib/userProfile";
 import { useVoice } from "@/hooks/useVoice";
@@ -73,6 +74,7 @@ import {
   entriesToBuffers,
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
+import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -411,6 +413,12 @@ export default function Home() {
 
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
   const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
+  const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
+  const [workspaceTrusted, setWorkspaceTrustedState] = useState(false);
+
+  useEffect(() => {
+    setWorkspaceTrustedState(isWorkspaceTrusted(workspaceRoot));
+  }, [workspaceRoot]);
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
   const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
   const [inlineCompletionSettings, setInlineCompletionSettings] = useState<
@@ -439,6 +447,7 @@ export default function Home() {
     requireWriteApproval: getRequireWriteApproval(),
     planMode,
     liteAgentMode,
+    safetyProfile: workspaceTrusted ? agentSafetyProfile : "read-only",
     autoVerifyEnabled: agentAutoVerifyEnabled,
     autoVerifyCommands: agentAutoVerifyCommands,
     onUsage: (usage) => addAgentTokens(activeConversationId, usage),
@@ -734,9 +743,12 @@ export default function Home() {
     if (!el?.getSettings) return;
     const refresh = () => {
       el.getSettings()
-        .then((s: { liteAgentMode?: boolean }) => {
+        .then((s: { liteAgentMode?: boolean; agentSafetyProfile?: AgentSafetyProfile }) => {
           if (typeof s.liteAgentMode === "boolean") {
             setLiteAgentModeLocal(s.liteAgentMode);
+          }
+          if (s.agentSafetyProfile === "read-only" || s.agentSafetyProfile === "ask-before-write" || s.agentSafetyProfile === "ask-before-command" || s.agentSafetyProfile === "trusted") {
+            setAgentSafetyProfile(s.agentSafetyProfile);
           }
         })
         .catch(() => {});
@@ -2287,6 +2299,12 @@ export default function Home() {
         agentPlanMode={planMode}
         onAgentPlanModeChange={handlePlanModeChange}
         liteAgentMode={liteAgentMode}
+        workspaceTrusted={workspaceTrusted}
+        onWorkspaceTrustChange={(trusted) => {
+          if (!workspaceRoot) return;
+          setWorkspaceTrusted(workspaceRoot, trusted);
+          setWorkspaceTrustedState(trusted);
+        }}
         onProviderChange={setProvider}
         onModelChange={handleModelChange}
         onToggleWakeWord={toggleWakeWord}

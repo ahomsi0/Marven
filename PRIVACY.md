@@ -32,13 +32,15 @@ Marven operates on three kinds of data:
   given task. If that's `ollama`, `lmstudio`, or `llamaserver`, the request
   goes to `localhost` — never leaves your machine.
 - **Stored by Marven:** Files you open are buffered in memory while editing.
-  No file content is written to disk except where you explicitly save it.
+  Dirty editor buffers and agent sessions are also persisted in browser
+  `localStorage` so a restart can restore unsaved work. They remain on your
+  machine unless included in a request to a provider you selected.
 
 ### 2. Conversation history
 
-- **Stored:** Locally in your Marven app data directory
-  (`~/Library/Application Support/Marven/` on macOS, equivalent on other OS).
-  This is a SQLite database on your machine.
+- **Stored:** Locally in browser `localStorage` for the renderer, including
+  chat history, folders, and agent transcripts. The semantic codebase index is
+  stored separately in SQLite under `~/.marven/index/`.
 - **Sent over the network:** Conversation history is included as context in
   AI provider requests when you continue a chat. Same rule as above — only
   goes to the provider you've chosen.
@@ -52,6 +54,11 @@ Marven operates on three kinds of data:
   `/api/embeddings` endpoint (defaults to `nomic-embed-text` model).
 - **Sent over the network:** Nothing. Embeddings are computed locally and
   stored locally.
+- **Indexed content:** Marven honors the workspace `.gitignore`, excludes
+  common secret files such as `.env*`, private keys, credentials, and
+  certificates, and supports additional user-defined exclusions. Search
+  results can still be included in a cloud-agent request when you choose a
+  cloud provider.
 
 ### 4. Voice input and speech output
 
@@ -110,8 +117,11 @@ they do with the data you send to them. Notably:
 ## API keys
 
 API keys you enter in Settings (for cloud AI providers and ElevenLabs) are stored
-locally on your machine in Marven's Electron settings file. They are never sent
-to any Marven-controlled service, because no such service exists.
+locally on your machine in Marven's Electron settings file. Electron encrypts
+them with the operating system secure-storage facility when available and
+restricts the fallback file to the current user. The renderer receives only a
+masked placeholder. Keys are never sent to any Marven-controlled service,
+because no such service exists.
 
 ---
 

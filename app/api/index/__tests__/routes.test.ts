@@ -144,7 +144,7 @@ describe("/api/index/* route handlers", () => {
   });
 
   it("cancel returns ok:false when no run is active", async () => {
-    const r = await cancelPost();
+    const r = await cancelPost(makeReq("http://x/api/index/cancel", {}));
     const json = await r.json();
     expect(json.ok).toBe(false);
   });

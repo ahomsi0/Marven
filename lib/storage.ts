@@ -5,6 +5,16 @@ import type { Conversation, ConversationFolder, Message, CustomShortcut, Convers
 const CONVERSATIONS_KEY = "marven_conversations";
 const SHORTCUTS_KEY = "marven_custom_shortcuts";
 const FOLDERS_KEY = "marven_conversation_folders";
+const CORRUPT_BACKUP_KEY = "marven_storage_corrupt_backup_v1";
+
+function preserveCorruptPayload(key: string, raw: string | null): void {
+  if (!raw || typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CORRUPT_BACKUP_KEY, JSON.stringify({ key, raw, savedAt: new Date().toISOString() }));
+  } catch {
+    // A full quota should not prevent the app from recovering into an empty list.
+  }
+}
 
 // ─── Serialization helpers ────────────────────────────────────────────────────
 // Messages have Date objects; localStorage stores JSON strings.
@@ -37,6 +47,9 @@ export function loadConversations(): Conversation[] {
     const parsed = JSON.parse(raw) as Record<string, unknown>[];
     return parsed.map(hydrateConversation);
   } catch {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(CONVERSATIONS_KEY); } catch { /* best effort */ }
+    preserveCorruptPayload(CONVERSATIONS_KEY, raw);
     return [];
   }
 }
@@ -97,6 +110,9 @@ export function loadConversationFolders(): ConversationFolder[] {
     if (!raw) return [];
     return JSON.parse(raw) as ConversationFolder[];
   } catch {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(FOLDERS_KEY); } catch { /* best effort */ }
+    preserveCorruptPayload(FOLDERS_KEY, raw);
     return [];
   }
 }

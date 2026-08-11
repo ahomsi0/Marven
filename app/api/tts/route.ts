@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 const DEFAULT_ELEVENLABS_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
 const DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5";
@@ -92,7 +92,10 @@ export async function POST(req: NextRequest) {
   }
 
   const defaultVoice = arabic ? "Maged" : "Daniel";
-  const voice = body.voice ?? defaultVoice;
+  const requestedVoice = typeof body.voice === "string" ? body.voice.trim() : "";
+  const voice = [...VOICE_FALLBACKS, ...ARABIC_VOICE_FALLBACKS].includes(requestedVoice)
+    ? requestedVoice
+    : defaultVoice;
   const tmpDir = os.tmpdir();
   const id = `marven_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const txtFile = path.join(tmpDir, `${id}.txt`);
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
     const voices = baseFallbacks.includes(voice) ? baseFallbacks : [voice, ...baseFallbacks];
     for (const v of voices) {
       try {
-        await execAsync(`say -v "${v}" -f "${txtFile}" -o "${aiffFile}"`);
+        await execFileAsync("say", ["-v", v, "-f", txtFile, "-o", aiffFile]);
         generated = true;
         break;
       } catch (e) {
@@ -127,13 +130,13 @@ export async function POST(req: NextRequest) {
     // Try MP3 first (broadly compatible). macOS 15+ removed MP3 encoding from
     // afconvert, so fall back to AAC/m4a — every browser <audio> supports it.
     try {
-      await execAsync(`afconvert "${aiffFile}" "${mp3File}" -d mp3 -f 'MPG3'`);
+      await execFileAsync("afconvert", [aiffFile, mp3File, "-d", "mp3", "-f", "MPG3"]);
       outPath = mp3File;
       outMime = "audio/mpeg";
     } catch (mp3Err) {
       console.warn("[tts] mp3 encode failed, falling back to AAC:", mp3Err instanceof Error ? mp3Err.message : mp3Err);
       // AAC in an MPEG-4 container — afconvert ships forever on macOS.
-      await execAsync(`afconvert "${aiffFile}" "${m4aFile}" -d aac -f m4af`);
+      await execFileAsync("afconvert", [aiffFile, m4aFile, "-d", "aac", "-f", "m4af"]);
       outPath = m4aFile;
       outMime = "audio/mp4";
     }

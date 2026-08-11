@@ -36,8 +36,8 @@ If something goes wrong on a fresh machine, the symptom is usually one of:
 ### Windows
 
 - Builds run on `windows-latest` (Server 2022).
-- No code signing wired up yet — installers ship unsigned. SmartScreen
-  warnings will surface for users until a code-signing cert is added.
+- Windows signing is wired through `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD`.
+  Tagged release builds fail their preflight if those credentials are absent.
 
 ### Linux
 
@@ -85,29 +85,18 @@ checklist or a future `release-prep.yml` workflow.
 
 ## Code signing & auto-update integrity ⚠️
 
-**Current state:** the macOS build ships **unsigned** (`build.mac.identity: null`
-in `package.json`) and the app **auto-downloads and installs** updates
-(`autoUpdater.autoDownload = true` in `electron/main.js`). With no code
-signature, `electron-updater` (Squirrel.Mac / NSIS) cannot verify that a
-downloaded update is authentic — the signature check it is designed around is
-absent. HTTPS from GitHub mitigates casual tampering in transit, but not a
-compromised or substituted release artifact.
-
-This is a **release-infrastructure task** that needs certificates only the
-maintainer holds, so it is intentionally left as config-you-must-complete
-rather than changed in a way that would break the current unsigned build.
+**Current state:** automatic update downloads remain enabled
+(`autoUpdater.autoDownload = true` in `electron/main.js`). Release builds now
+use hardened macOS entitlements, preserve real signatures, and refuse tagged
+macOS/Windows artifacts when signing credentials are absent. Configure the
+maintainer-held certificates in CI before publishing a release.
 
 ### macOS (Apple Developer ID — $99/yr)
 
 1. Obtain a **Developer ID Application** certificate; install it in your login keychain.
-2. In `package.json` → `build.mac`, replace `"identity": null` with your identity
-   (or remove the line to let electron-builder auto-discover it) and add:
-   ```json
-   "hardenedRuntime": true,
-   "gatekeeperAssess": false,
-   "entitlements": "build/entitlements.mac.plist",
-   "entitlementsInherit": "build/entitlements.mac.plist"
-   ```
+2. Configure `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, and the Apple notarization
+   secrets in the GitHub Actions environment. `package.json` already enables
+   hardened runtime and `build/entitlements.mac.plist`.
 3. Notarize: set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
    env vars (or configure `build.afterSign` with `@electron/notarize`).
 4. Verify: `spctl -a -vvv "dist/mac-arm64/Marven.app"` should report *accepted*.
@@ -115,13 +104,6 @@ rather than changed in a way that would break the current unsigned build.
 ### Windows (Authenticode)
 
 1. Obtain a code-signing certificate (OV or EV).
-2. Set `CSC_LINK` (path/base64 of the `.pfx`) and `CSC_KEY_PASSWORD` env vars.
-3. In `build.win`, set `"verifyUpdateCodeSignature": true` and `"publisherName"`
-   matching the certificate subject, so updates with a mismatched signer are rejected.
-
-### Interim hardening (optional, no certs required)
-
-Until signing is in place, you can keep the user in the loop for updates by
-setting `autoUpdater.autoDownload = false` and prompting before download/install,
-rather than silently auto-installing unverified updates. Say the word and this
-can be wired into `electron/main.js`.
+2. Store it as `WIN_CSC_LINK` with `WIN_CSC_KEY_PASSWORD` in CI.
+3. Set `publisherName` to the certificate subject before the first signed
+   Windows release so update signer verification is deterministic.

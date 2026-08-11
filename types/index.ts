@@ -1,6 +1,7 @@
 export type MessageRole = "user" | "assistant";
 export type AIProvider = "groq" | "ollama" | "nim" | "openrouter" | "openai" | "anthropic" | "lmstudio" | "llamaserver";
 export type ConversationMode = "chat" | "agent";
+export type AgentSafetyProfile = "read-only" | "ask-before-write" | "ask-before-command" | "trusted";
 
 export interface DocAttachment {
   name: string;
@@ -29,6 +30,8 @@ export interface MCPServer {
   name: string;       // user label e.g. "filesystem"
   command: string;    // full shell command e.g. "npx @modelcontextprotocol/server-filesystem ~/"
   enabled: boolean;
+  /** Explicit user trust acknowledgement for starting the local process. */
+  trusted?: boolean;
 }
 
 export interface PromptTemplate {

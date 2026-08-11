@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { CustomShortcut, MCPServer, PromptTemplate } from "@/types";
+import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon } from "./Icons";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
@@ -381,10 +381,12 @@ export function SettingsModal({
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
+  const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
   const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
   const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
+  const [indexExcludePatterns, setIndexExcludePatterns] = useState<string>("");
   const [inlineCompletionsEnabled, setInlineCompletionsEnabled] = useState<boolean>(false);
   const [inlineCompletionProvider, setInlineCompletionProvider] = useState<string>("ollama");
   const [inlineCompletionModel, setInlineCompletionModel] = useState<string>("");
@@ -484,6 +486,17 @@ export function SettingsModal({
       }
       if (typeof s.agentAutoVerifyCommands === "string") {
         setAgentAutoVerifyCommands(s.agentAutoVerifyCommands);
+      }
+      if (s.agentSafetyProfile === "read-only" || s.agentSafetyProfile === "ask-before-write" || s.agentSafetyProfile === "ask-before-command" || s.agentSafetyProfile === "trusted") {
+        setAgentSafetyProfile(s.agentSafetyProfile);
+      }
+      if (typeof s.indexExcludePatterns === "string") {
+        setIndexExcludePatterns(s.indexExcludePatterns);
+        fetch("/api/index/set-options", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excludePatterns: s.indexExcludePatterns.split(/\r?\n/).filter(Boolean) }),
+        }).catch(() => {});
       }
       if (typeof s.codebaseIndexEnabled === "boolean") {
         setCodebaseIndexEnabled(s.codebaseIndexEnabled);
@@ -796,6 +809,23 @@ export function SettingsModal({
     setUpdateStatus("checking");
     setUpdateInfo(null);
     await electron.checkForUpdates();
+  }
+
+  async function handleExportDiagnostics() {
+    try {
+      const qs = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "";
+      const res = await fetch(`/api/diagnostics${qs}`);
+      if (!res.ok) throw new Error(`Diagnostics request failed (${res.status})`);
+      const blob = new Blob([JSON.stringify(await res.json(), null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `marven-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn("[Marven] Could not export diagnostics:", err);
+    }
   }
 
   function saveItems(next: CustomShortcut[]) {
@@ -1352,6 +1382,31 @@ export function SettingsModal({
             </div>
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <label className="block text-[13px] font-medium text-[var(--m-text)]" htmlFor="agent-safety-profile">
+                Agent safety profile
+              </label>
+              <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                Controls whether this workspace may write files, run commands, or use MCP tools.
+              </p>
+              <select
+                id="agent-safety-profile"
+                value={agentSafetyProfile}
+                onChange={async (e) => {
+                  const next = e.target.value as AgentSafetyProfile;
+                  setAgentSafetyProfile(next);
+                  await saveBackendSettings({ agentSafetyProfile: next });
+                  window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                }}
+                className="mt-3 w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] outline-none focus:border-[var(--m-accent)]/60"
+              >
+                <option value="read-only">Read only — no writes, commands, Git, or MCP</option>
+                <option value="ask-before-write">Ask before writes — commands and Git remain approved</option>
+                <option value="ask-before-command">Ask before every write and command</option>
+                <option value="trusted">Trusted — no agent approval prompts</option>
+              </select>
+            </div>
+
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h3 className="text-[13px] font-medium text-[var(--m-text)]">Auto-verify agent changes</h3>
@@ -1506,6 +1561,29 @@ export function SettingsModal({
                     {(indexStatus.stats.dbSizeBytes / 1_000_000).toFixed(1)} MB
                   </>
                 )}
+              </div>
+              <div className="mt-3">
+                <label className="mb-1 block text-[11px] text-[var(--m-text-muted)]" htmlFor="index-exclude-patterns">
+                  Additional exclusions (one glob per line)
+                </label>
+                <textarea
+                  id="index-exclude-patterns"
+                  value={indexExcludePatterns}
+                  onChange={(e) => setIndexExcludePatterns(e.target.value)}
+                  onBlur={async () => {
+                    const patterns = indexExcludePatterns.split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+                    await saveBackendSettings({ indexExcludePatterns: patterns.join("\n") });
+                    await fetch("/api/index/set-options", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ excludePatterns: patterns }),
+                    }).catch(() => {});
+                  }}
+                  rows={3}
+                  placeholder={"coverage/\n*.generated.*\nlocal-notes/"}
+                  className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+                />
+                <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">Marven also honors .gitignore and always excludes common secret files.</p>
               </div>
               <div className="mt-2 flex gap-2">
                 <button
@@ -2135,6 +2213,7 @@ export function SettingsModal({
                         name: newMcpName.trim(),
                         command: newMcpCommand.trim(),
                         enabled: true,
+                        trusted: true,
                       };
                       setMcpLoading(newServer.id);
                       const res = await fetch("/api/mcp", {
@@ -2933,6 +3012,18 @@ export function SettingsModal({
                 hint="github.com/ahomsi0/Marven"
                 href="https://github.com/ahomsi0/Marven"
               />
+            </div>
+
+            <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-[var(--m-text)]">Privacy-safe diagnostics</p>
+                  <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">Exports versions, platform, provider availability, and index counts — never API keys or paths.</p>
+                </div>
+                <button type="button" onClick={handleExportDiagnostics} className="shrink-0 rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[10px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]">
+                  Export JSON
+                </button>
+              </div>
             </div>
 
             <p className="pt-1 text-center text-[10px] text-[var(--m-text-faint)]">

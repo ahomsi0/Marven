@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { runAgentLoop } from "./loop";
 import type { AgentEvent, ToolDefinition, InternalMessage } from "@/types";
 
@@ -22,6 +25,13 @@ const writeFileTool: ToolDefinition = {
 };
 
 describe("runAgentLoop", () => {
+  let tempWorkspace: string | undefined;
+
+  afterEach(() => {
+    if (tempWorkspace) rmSync(tempWorkspace, { recursive: true, force: true });
+    tempWorkspace = undefined;
+  });
+
   it("yields text event when provider returns text immediately", async () => {
     const mockStep = vi.fn().mockResolvedValue({ type: "text", content: "hello" });
     const events: AgentEvent[] = [];
@@ -110,6 +120,59 @@ describe("runAgentLoop", () => {
   });
 
   describe("requireWriteApproval", () => {
+    it("does not snapshot or expose a path outside the workspace", async () => {
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ tool: "write_file", callId: "escape", args: { path: "../outside.txt", content: "nope" }, type: "tool_call" })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("blocked");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "write outside" }],
+        tools: [writeFileTool],
+        workspaceRoot: "/tmp",
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: true,
+        _testApprovalResult: true,
+      })) {
+        events.push(event);
+      }
+
+      expect(events.filter((event) => event.type === "checkpoint")).toHaveLength(0);
+      expect(events.filter((event) => event.type === "pending_approval")).toHaveLength(0);
+      expect(mockExec).toHaveBeenCalledOnce();
+    });
+
+    it("still requires approval when an existing file is too large to snapshot", async () => {
+      tempWorkspace = mkdtempSync(join(tmpdir(), "marven-loop-"));
+      writeFileSync(join(tempWorkspace, "large.txt"), "x".repeat(1_000_001), "utf8");
+      const mockStep = vi.fn()
+        .mockResolvedValueOnce({ tool: "write_file", callId: "large", args: { path: "large.txt", content: "replacement" }, type: "tool_call" })
+        .mockResolvedValueOnce({ type: "text", content: "done" });
+      const mockExec = vi.fn().mockResolvedValue("written");
+      const events: AgentEvent[] = [];
+
+      for await (const event of runAgentLoop({
+        messages: [{ role: "user", content: "replace the large file" }],
+        tools: [writeFileTool],
+        workspaceRoot: tempWorkspace,
+        providerStep: mockStep,
+        executeToolFn: mockExec,
+        requireWriteApproval: true,
+        _testApprovalResult: false,
+      })) {
+        events.push(event);
+      }
+
+      const approval = events.find((event) => event.type === "pending_approval");
+      expect(approval?.type).toBe("pending_approval");
+      if (approval?.type === "pending_approval") {
+        expect(approval.preview?.diff).toContain("too large to preview safely");
+      }
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
     it("does NOT gate write_file when requireWriteApproval is false", async () => {
       const mockStep = vi.fn()
         .mockResolvedValueOnce({ type: "tool_call", callId: "w1", tool: "write_file", args: { path: "a.txt", content: "hello" } })

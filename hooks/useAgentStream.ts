@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage } from "@/types";
+import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage, AgentSafetyProfile } from "@/types";
 
 const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
 const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
@@ -16,6 +16,7 @@ interface UseAgentStreamOptions {
   liteAgentMode?: boolean;
   autoVerifyEnabled?: boolean;
   autoVerifyCommands?: string;
+  safetyProfile?: AgentSafetyProfile;
   onUsage?: (usage: TokenUsage) => void;
 }
 
@@ -31,6 +32,7 @@ export function useAgentStream({
   liteAgentMode,
   autoVerifyEnabled,
   autoVerifyCommands,
+  safetyProfile,
   onUsage,
 }: UseAgentStreamOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
@@ -219,7 +221,7 @@ export function useAgentStream({
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, conversationId, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, mentions: mentions ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, conversationId, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, safetyProfile, mentions: mentions ?? [] }),
         signal: abort.signal,
       });
       if (!res.ok) {
@@ -444,7 +446,7 @@ export function useAgentStream({
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
+  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();

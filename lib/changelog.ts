@@ -12,6 +12,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.12.0",
+    items: [
+      { tag: "fix", label: "External websites and local text-to-speech now launch through argument-safe processes, closing shell-injection paths" },
+      { tag: "fix", label: "Conversation memory IDs, agent checkpoints, and checkpoint revert actions are restricted to their intended directories" },
+      { tag: "fix", label: "Large existing files remain behind the write-approval gate, and read-only agents can no longer save memory" },
+      { tag: "fix", label: "Production startup authenticates its local health check with a per-launch token before opening the app window" },
+      { tag: "new", label: "Workspace safety profiles, encrypted settings, safer indexing, diagnostics, and release verification are now covered by focused regression checks" },
+    ],
+  },
+  {
     version: "2.11.0",
     items: [
       { tag: "fix", label: "Security hardening pass — closed a command-injection path in open-in-browser, agent shell commands (run_command) now require your approval, added a content-security-policy and renderer sandbox, SSRF protections on the fetch_url tool, and workspace symlink-escape guards" },

@@ -14,6 +14,7 @@ import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPr
 import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
+import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "@/lib/agent/safety";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -32,6 +33,7 @@ interface StreamRequestBody {
   attachments?: ImageAttachment[];
   liteAgentMode?: boolean; // true = force lite, false = force standard, undefined = auto
   mentions?: Mention[];
+  safetyProfile?: AgentSafetyProfile;
 }
 
 export async function POST(req: NextRequest) {
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   const provider = (body.provider ?? "groq") as AIProvider;
+  const safetyProfile = normalizeAgentSafetyProfile(body.safetyProfile);
 
   const model =
     (typeof body.model === "string" && body.model.trim().length > 0
@@ -147,6 +150,7 @@ export async function POST(req: NextRequest) {
 
   // Merge MCP tools from enabled servers
   const enabledMcpServers = (body.mcpServers ?? []).filter((s) => s.enabled);
+  const safeMcpServers = safetyProfile === "read-only" ? [] : enabledMcpServers;
   const baseToolDefs =
     tier === "simple"
       ? TOOL_DEFINITIONS.filter((t) => (SIMPLE_TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
@@ -154,7 +158,7 @@ export async function POST(req: NextRequest) {
   const allTools = [...baseToolDefs];
   const mcpToolOwners = new Map<string, string>(); // namespaced tool name → server id
 
-  for (const server of enabledMcpServers) {
+  for (const server of safeMcpServers) {
     try {
       const mcpTools = await mcpClient.listTools(server.id);
       for (const tool of mcpTools) {
@@ -192,6 +196,7 @@ export async function POST(req: NextRequest) {
           onProgress,
           requireWriteApproval: body.requireWriteApproval ?? false,
           planMode: body.planMode ?? false,
+          safetyProfile,
           executeToolFn: async (name, args, root, onProgressCb, recentReads) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);

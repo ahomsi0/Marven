@@ -1,28 +1,55 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import type { ParsedCommand } from "@/types";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const IS_WIN = process.platform === "win32";
 
-// Cross-platform "open something" — uses `start` on Windows, `open` on macOS,
-// `xdg-open` on Linux. The empty "" first arg to `start` is required because
-// start treats the first quoted argument as a window title.
-function openCmd(target: string): string {
-  if (IS_WIN) return `start "" "${target}"`;
-  if (process.platform === "darwin") return `open "${target}"`;
-  return `xdg-open "${target}"`;
+function parseExternalUrl(raw: string): URL {
+  const url = new URL(raw);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Only HTTP and HTTPS URLs can be opened.");
+  }
+  return url;
 }
 
-function openAppCmd(appName: string): string {
-  // On Windows, `start` against an app name resolves Start-Menu entries and
-  // PATH executables (e.g. `start "" "Spotify"` or `start "" "chrome"`).
-  if (IS_WIN) return `start "" "${appName}"`;
-  if (process.platform === "darwin") return `open -a "${appName}"`;
-  // Linux: assume the app is on PATH; spawn it detached. xdg-open won't help
-  // for arbitrary app names.
-  return `${appName} &`;
+async function openExternal(raw: string): Promise<URL> {
+  const url = parseExternalUrl(raw);
+  const target = url.toString();
+
+  // Pass the URL as an argument, never through a shell. This matters because
+  // the chat parser accepts arbitrary HTTP(S) URLs from user input.
+  if (IS_WIN) await execFileAsync("explorer.exe", [target]);
+  else if (process.platform === "darwin") await execFileAsync("open", [target]);
+  else await execFileAsync("xdg-open", [target]);
+
+  return url;
+}
+
+function validateAppName(appName: string): string {
+  const trimmed = appName.trim();
+  // App names originate from a fixed parser map in normal use. Keep the
+  // library safe for direct callers too: no shell metacharacters or newlines.
+  if (!trimmed || !/^[\p{L}\p{N} ._+()\-]+$/u.test(trimmed)) {
+    throw new Error("Invalid application name.");
+  }
+  return trimmed;
+}
+
+async function openApp(appName: string): Promise<void> {
+  const safeName = validateAppName(appName);
+  if (IS_WIN) {
+    // `start` resolves Start-Menu entries and PATH executables. The app name
+    // has already been restricted to inert characters above.
+    await execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "start", "", safeName]);
+  } else if (process.platform === "darwin") {
+    await execFileAsync("open", ["-a", safeName]);
+  } else {
+    // Linux app names are commonly executable names. No shell is involved.
+    await execFileAsync(safeName, []);
+  }
 }
 
 /**
@@ -37,14 +64,14 @@ export async function executeCommand(
   switch (command.type) {
     case "open-website": {
       const url = command.payload;
-      await execAsync(openCmd(url));
-      const name = new URL(url).hostname.replace(/^www\./, "");
+      const parsed = await openExternal(url);
+      const name = parsed.hostname.replace(/^www\./, "");
       return `Opening ${name}.`;
     }
 
     case "open-app": {
       const appName = command.payload;
-      await execAsync(openAppCmd(appName));
+      await openApp(appName);
       return `Launching ${appName}.`;
     }
 
@@ -52,7 +79,7 @@ export async function executeCommand(
       const query = command.payload;
       const encoded = encodeURIComponent(query);
       const searchUrl = `https://www.google.com/search?q=${encoded}`;
-      await execAsync(openCmd(searchUrl));
+      await openExternal(searchUrl);
       return `Searching Google for "${query}".`;
     }
 

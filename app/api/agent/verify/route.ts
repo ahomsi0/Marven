@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { executeTool } from "@/lib/agent/tools";
+import { crossOriginRejection } from "@/lib/apiGuards";
 
 interface VerifyRequestBody {
   workspaceRoot?: string;
@@ -75,7 +76,17 @@ function commandFailed(output: string): boolean {
   );
 }
 
+// Verification is intentionally non-interactive, so it must not become a
+// second arbitrary shell-command API. Permit only the package-manager script
+// invocations Marven generates for lint/test/build (plus a harmless echo used
+// by lightweight integrations). Package scripts themselves remain the user's
+// explicit project configuration; shell composition is not accepted here.
+const SAFE_VERIFY_COMMAND = /^(?:(?:npm\s+(?:test|run\s+(?:lint|test|build))|pnpm\s+(?:lint|test|build)|yarn\s+(?:lint|test|build)|bun\s+run\s+(?:lint|test|build))|echo\s+[A-Za-z0-9 .,_:/-]+)$/;
+
 export async function POST(req: NextRequest) {
+  const rejection = crossOriginRejection(req);
+  if (rejection) return new Response(rejection, { status: 403 });
+
   let body: VerifyRequestBody;
   try {
     body = await req.json();
@@ -88,9 +99,16 @@ export async function POST(req: NextRequest) {
     return new Response("workspaceRoot is required", { status: 400 });
   }
 
-  const requestedCommands = (body.commands ?? [])
+  const requestedCommands = (Array.isArray(body.commands) ? body.commands : [])
+    .filter((c): c is string => typeof c === "string")
     .map((c) => c.trim())
     .filter(Boolean);
+  if (requestedCommands.some((command) => !SAFE_VERIFY_COMMAND.test(command))) {
+    return new Response(
+      "Verification commands must be npm/pnpm/yarn/bun lint, test, or build scripts.",
+      { status: 400 },
+    );
+  }
   const commands = requestedCommands.length > 0
     ? requestedCommands
     : await detectCommands(workspaceRoot);

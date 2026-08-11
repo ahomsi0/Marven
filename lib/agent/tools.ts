@@ -8,6 +8,7 @@ import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/
 import { runGit } from "./git";
 import { safeFetch } from "@/lib/ssrfGuard";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
+import { sanitizedChildEnv } from "./sanitizedEnv";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
@@ -415,7 +416,7 @@ async function streamShellCommand(
     let acc = "";
     let killed = false;
     const { shell, args } = shellInvocation(command);
-    const child = spawn(shell, args, { cwd, windowsHide: true });
+    const child = spawn(shell, args, { cwd, windowsHide: true, env: sanitizedChildEnv() });
     const timer = setTimeout(() => {
       killed = true;
       child.kill("SIGKILL");
@@ -651,11 +652,12 @@ export async function executeTool(
         // ran and the user got an empty localhost page.
         const { shell, args: shellArgs } = shellInvocation(cmd);
         const child = spawn(shell, shellArgs, {
-          cwd,
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"],
-          windowsHide: true,
-        });
+        cwd,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: sanitizedChildEnv(),
+      });
         child.unref();
 
         const urlFromOutput = new Promise<string | null>((resolve) => {
@@ -725,6 +727,7 @@ export async function executeTool(
         // search string, not a grep flag (e.g. -f<file> reading arbitrary files).
         const { stdout } = await execFileAsync("grep", ["-r", "-n", ...includeArgs, "--", query, "."], {
           cwd: searchPath,
+          env: sanitizedChildEnv(),
         });
         return stdout.trim() || "No matches found";
       } catch (err) {

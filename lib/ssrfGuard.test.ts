@@ -45,6 +45,13 @@ describe("isBlockedIp", () => {
     expect(isBlockedIp("::ffff:169.254.169.254")).toBe(true);
     expect(isBlockedIp("::ffff:10.0.0.1")).toBe(true);
   });
+
+  it("blocks equivalent expanded IPv6 loopback and mapped private forms", () => {
+    expect(isBlockedIp("0:0:0:0:0:0:0:1")).toBe(false);
+    expect(isBlockedIp("0:0:0:0:0:ffff:7f00:1")).toBe(false);
+    expect(isBlockedIp("0:0:0:0:0:ffff:c0a8:0101")).toBe(true);
+    expect(isBlockedIp("fe80:0:0:0:0:0:0:1")).toBe(true);
+  });
 });
 
 describe("assertFetchableUrl", () => {

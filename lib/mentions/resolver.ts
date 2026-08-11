@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { Mention, ResolvedMention } from "./types";
 import { searchCodebase } from "@/lib/index/search";
+import { safeFetch } from "@/lib/ssrfGuard";
 
 export interface ResolveOptions {
   workspaceRoot: string;
@@ -187,7 +188,7 @@ async function resolveWeb(
   const timer = setTimeout(() => controller.abort(), 10_000);
   let res: Response;
   try {
-    res = await fetch(url, { signal: controller.signal });
+    res = await safeFetch(url, { signal: controller.signal });
   } catch (err) {
     clearTimeout(timer);
     return { body: "", truncated: false, ok: false, error: err instanceof Error ? err.message : String(err) };

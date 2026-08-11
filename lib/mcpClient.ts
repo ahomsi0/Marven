@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import type { MCPServer, ToolDefinition } from "@/types";
+import { sanitizedChildEnv } from "./agent/sanitizedEnv";
 
 interface MCPTool {
   name: string;
@@ -48,8 +49,11 @@ class MCPClient {
         this.servers.delete(server.id);
       }
 
-      const proc = spawn("sh", ["-c", server.command], {
+      const shell = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : "sh";
+      const shellArgs = process.platform === "win32" ? ["/d", "/s", "/c", server.command] : ["-c", server.command];
+      const proc = spawn(shell, shellArgs, {
         stdio: ["pipe", "pipe", "pipe"],
+        env: sanitizedChildEnv(),
       });
 
       const entry: ServerEntry = {
@@ -87,6 +91,7 @@ class MCPClient {
           clientInfo: { name: "marven", version: "1.0.0" },
         });
       } catch (err) {
+        try { this.servers.get(server.id)?.process.kill(); } catch {}
         this.servers.delete(server.id);
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`MCP initialize failed: ${msg}${stderrOutput ? `\nServer stderr: ${stderrOutput.slice(0, 500)}` : ""}`);

@@ -40,7 +40,7 @@ export type IndexEventListener = (e: IndexEvent) => void;
 interface IndexState {
   // The currently active run (if any). Only one full reindex at a time per
   // workspace; a new run for the same root supersedes a stale handle.
-  currentRun: IndexRunHandle | null;
+  currentRuns: Map<string, IndexRunHandle>;
   // Persistent store handle, keyed by workspaceRoot. Reused across requests so
   // we don't pay sqlite open cost on every search / update.
   stores: Map<string, IndexStore>;
@@ -53,17 +53,22 @@ interface IndexState {
   // For now we trust the renderer not to call the routes when disabled, but
   // the search route also returns [] when disabled.
   enabled: boolean;
+  excludePatterns: string[];
 }
 
 const g = globalThis as typeof globalThis & { __marvenIndexState?: IndexState };
 if (!g.__marvenIndexState) {
   g.__marvenIndexState = {
-    currentRun: null,
+    currentRuns: new Map(),
     stores: new Map(),
     indexers: new Map(),
     embedders: new Map(),
     enabled: true,
+    excludePatterns: [],
   };
+} else if (!g.__marvenIndexState.currentRuns) {
+  // HMR migration from the pre-2.12 single-workspace run state.
+  g.__marvenIndexState.currentRuns = new Map();
 }
 const state = g.__marvenIndexState;
 
@@ -72,6 +77,18 @@ export function isEnabled(): boolean {
 }
 export function setEnabled(v: boolean): void {
   state.enabled = !!v;
+}
+
+export function getExcludePatterns(): string[] {
+  return [...state.excludePatterns];
+}
+
+export function setExcludePatterns(patterns: string[]): void {
+  state.excludePatterns = [...new Set(patterns.map((p) => p.trim()).filter(Boolean))];
+  // Recreate indexers so future runs use the new policy while retaining the
+  // existing SQLite stores for fast incremental updates.
+  state.indexers.clear();
+  state.embedders.clear();
 }
 
 export function getStore(workspaceRoot: string): IndexStore {
@@ -89,7 +106,7 @@ export function getIndexer(workspaceRoot: string): Indexer {
     const store = getStore(workspaceRoot);
     const embedder = new Embedder();
     state.embedders.set(workspaceRoot, embedder);
-    idx = new Indexer({ workspaceRoot, store, embedder });
+    idx = new Indexer({ workspaceRoot, store, embedder, excludePatterns: state.excludePatterns });
     state.indexers.set(workspaceRoot, idx);
   }
   return idx;
@@ -110,8 +127,9 @@ export function getStats(workspaceRoot: string | null): IndexStats | null {
   }
 }
 
-export function getCurrentRun(): IndexRunHandle | null {
-  return state.currentRun;
+export function getCurrentRun(workspaceRoot?: string | null): IndexRunHandle | null {
+  if (workspaceRoot) return state.currentRuns.get(workspaceRoot) ?? null;
+  return state.currentRuns.values().next().value ?? null;
 }
 
 function emit(handle: IndexRunHandle, e: IndexEvent) {
@@ -132,12 +150,9 @@ export interface StartRunResult {
 }
 
 export function startRun(workspaceRoot: string): StartRunResult {
-  if (state.currentRun && state.currentRun.workspaceRoot === workspaceRoot) {
-    return { handle: state.currentRun, started: false };
-  }
-  // Abort any prior run for a different workspace.
-  if (state.currentRun) {
-    state.currentRun.abort.abort();
+  const existing = state.currentRuns.get(workspaceRoot);
+  if (existing) {
+    return { handle: existing, started: false };
   }
   const indexer = getIndexer(workspaceRoot);
   const embedder = getEmbedder(workspaceRoot);
@@ -151,7 +166,7 @@ export function startRun(workspaceRoot: string): StartRunResult {
     startedAt: Date.now(),
     lastError: null,
   };
-  state.currentRun = handle;
+  state.currentRuns.set(workspaceRoot, handle);
 
   handle.donePromise = (async () => {
     // First-time setup: pull the embedding model via Ollama if it's missing.
@@ -215,17 +230,18 @@ export function startRun(workspaceRoot: string): StartRunResult {
       },
     )
     .finally(() => {
-      if (state.currentRun === handle) {
-        state.currentRun = null;
+      if (state.currentRuns.get(workspaceRoot) === handle) {
+        state.currentRuns.delete(workspaceRoot);
       }
     });
 
   return { handle, started: true };
 }
 
-export function cancelRun(): boolean {
-  if (!state.currentRun) return false;
-  state.currentRun.abort.abort();
+export function cancelRun(workspaceRoot?: string | null): boolean {
+  const handle = getCurrentRun(workspaceRoot);
+  if (!handle) return false;
+  handle.abort.abort();
   return true;
 }
 
@@ -235,6 +251,11 @@ export function subscribe(handle: IndexRunHandle, l: IndexEventListener): () => 
 }
 
 export async function clearWorkspace(workspaceRoot: string): Promise<void> {
+  const run = state.currentRuns.get(workspaceRoot);
+  if (run) {
+    run.abort.abort();
+    state.currentRuns.delete(workspaceRoot);
+  }
   const store = getStore(workspaceRoot);
   for (const p of store.allPaths()) store.removeFile(p);
 }
@@ -242,8 +263,8 @@ export async function clearWorkspace(workspaceRoot: string): Promise<void> {
 // Test-only: tear down all cached state. The route handler unit tests use
 // this to avoid leaking sqlite handles between cases.
 export function __resetForTests(): void {
-  if (state.currentRun) state.currentRun.abort.abort();
-  state.currentRun = null;
+  for (const run of state.currentRuns.values()) run.abort.abort();
+  state.currentRuns.clear();
   for (const s of state.stores.values()) {
     try {
       s.close();
@@ -255,6 +276,7 @@ export function __resetForTests(): void {
   state.indexers.clear();
   state.embedders.clear();
   state.enabled = true;
+  state.excludePatterns = [];
 }
 
 // Test-only: inject custom store/indexer factories so unit tests can use the

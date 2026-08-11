@@ -1,4 +1,5 @@
 const checkpoints = new Map<string, string | null>();
+export const CHECKPOINT_TOO_LARGE = "<too large to snapshot>";
 
 export function recordCheckpoint(path: string, before: string | null): void {
   if (!checkpoints.has(path)) checkpoints.set(path, before);

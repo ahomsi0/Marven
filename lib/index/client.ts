@@ -14,6 +14,7 @@ export interface IndexStatus {
   progress: IndexProgress | null;
   stats: IndexStats | null;
   lastError: string | null;
+  excludePatterns?: string[];
 }
 
 export async function status(workspaceRoot?: string | null): Promise<IndexStatus> {
@@ -128,6 +129,14 @@ export async function setEnabled(enabled: boolean): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setOptions(excludePatterns: string[]): Promise<void> {
+  await fetch(`/api/index/set-options`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ excludePatterns }),
   });
 }
 

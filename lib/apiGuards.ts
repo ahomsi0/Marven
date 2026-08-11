@@ -18,13 +18,28 @@ import { NextRequest } from "next/server";
 export function crossOriginRejection(req: NextRequest): string | null {
   const origin = req.headers.get("origin");
   if (!origin) return null; // no Origin → same-origin GET or non-browser caller
-  let host: string;
+  let originUrl: URL;
+  let requestUrl: URL;
   try {
-    host = new URL(origin).hostname;
+    originUrl = new URL(origin);
+    requestUrl = new URL(req.url);
   } catch {
     return "Invalid Origin";
   }
-  const isLocal =
-    host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-  return isLocal ? null : "Cross-origin request rejected";
+
+  // Host-only checks are insufficient here: a malicious local web server on a
+  // different port can otherwise send simple POST requests with an accepted
+  // localhost Origin. Require the request's exact protocol and port. Allow
+  // loopback aliases because Electron may load localhost while a dev tool uses
+  // 127.0.0.1 for the same bound server.
+  const loopback = (host: string) =>
+    host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const sameHost =
+    originUrl.hostname === requestUrl.hostname ||
+    (loopback(originUrl.hostname) && loopback(requestUrl.hostname));
+  const sameOrigin =
+    originUrl.protocol === requestUrl.protocol &&
+    originUrl.port === requestUrl.port &&
+    sameHost;
+  return sameOrigin ? null : "Cross-origin request rejected";
 }

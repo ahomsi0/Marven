@@ -13,6 +13,7 @@ export interface MemoryContext {
 
 const MEMORY_ROOT = join(homedir(), ".marven", "memory");
 export const DEFAULT_MEMORY_PATH = join(MEMORY_ROOT, "global.md");
+const CONVERSATION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 function projectMemoryPath(workspaceRoot: string): string {
   const hash = crypto.createHash("sha1").update(workspaceRoot).digest("hex").slice(0, 16);
@@ -20,6 +21,9 @@ function projectMemoryPath(workspaceRoot: string): string {
 }
 
 function conversationMemoryPath(conversationId: string): string {
+  if (!CONVERSATION_ID_RE.test(conversationId)) {
+    throw new Error("Invalid conversationId");
+  }
   return join(MEMORY_ROOT, "conversations", `${conversationId}.md`);
 }
 

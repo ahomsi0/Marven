@@ -1,8 +1,9 @@
 import { execFile } from "child_process";
+import { sanitizedChildEnv } from "./sanitizedEnv";
 
 export function runGit(args: string[], cwd: string): Promise<string> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, timeout: 15_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile("git", args, { cwd, timeout: 15_000, maxBuffer: 4 * 1024 * 1024, env: sanitizedChildEnv() }, (err, stdout, stderr) => {
       if (err) {
         const anyErr = err as NodeJS.ErrnoException;
         if (anyErr.code === "ENOENT") {

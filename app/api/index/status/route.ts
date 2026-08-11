@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentRun, getStats, isEnabled } from "../_state";
+import { getCurrentRun, getStats, isEnabled, getExcludePatterns } from "../_state";
 
 export async function GET(req: NextRequest) {
   const ws = req.nextUrl.searchParams.get("workspaceRoot");
-  const run = getCurrentRun();
+  const run = getCurrentRun(ws);
   return NextResponse.json({
     enabled: isEnabled(),
     running: !!run,
@@ -11,5 +11,6 @@ export async function GET(req: NextRequest) {
     progress: run?.progress ?? null,
     stats: getStats(ws),
     lastError: run?.lastError ?? null,
+    excludePatterns: getExcludePatterns(),
   });
 }

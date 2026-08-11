@@ -2,8 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('marvenElectron', {
   onTriggerVoice: (cb) => {
-    ipcRenderer.on('trigger-voice', (_event) => cb());
-    return () => ipcRenderer.removeAllListeners('trigger-voice');
+    const handler = () => cb();
+    ipcRenderer.on('trigger-voice', handler);
+    return () => ipcRenderer.removeListener('trigger-voice', handler);
   },
   platform: process.platform,
   minimize: () => ipcRenderer.send('window-minimize'),
@@ -25,8 +26,9 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     return () => ipcRenderer.removeListener('marven-workspace-file-event', handler);
   },
   onUpdateStatus: (cb) => {
-    ipcRenderer.on('update-status', (_event, data) => cb(data));
-    return () => ipcRenderer.removeAllListeners('update-status');
+    const handler = (_event, data) => cb(data);
+    ipcRenderer.on('update-status', handler);
+    return () => ipcRenderer.removeListener('update-status', handler);
   },
 
   // ── Interactive terminal (node-pty) ────────────────────────────────────────

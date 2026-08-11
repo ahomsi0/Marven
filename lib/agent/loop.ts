@@ -1,15 +1,15 @@
 import type { AgentEvent, InternalMessage, ToolDefinition } from "@/types";
-import { executeTool } from "./tools";
+import { executeTool, assertSafePath } from "./tools";
 import type { ProviderStepResult } from "./groq";
 import { readFile } from "fs/promises";
-import path from "path";
 import { registerApproval } from "./approvals";
 import { isGitMutation, unescapeModelString } from "./tools";
-import { recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
+import { CHECKPOINT_TOO_LARGE, recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
 import { createPatch } from "diff";
 import { simulateApplyPatch } from "./applyPatch";
 import type { WritePreview } from "@/types";
 import { makeFullSystemPrompt } from "./systemPrompts";
+import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "./safety";
 
 const MAX_ITERATIONS = 20;
 const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"] as const;
@@ -39,6 +39,7 @@ interface LoopOptions {
   onProgress?: (callId: string, chunk: string) => void;
   requireWriteApproval?: boolean;
   planMode?: boolean;
+  safetyProfile?: AgentSafetyProfile;
   /** Internal test-only: when set, resolves every registerApproval with this value instead of blocking. */
   _testApprovalResult?: boolean;
 }
@@ -48,6 +49,9 @@ export async function* runAgentLoop(
 ): AsyncGenerator<AgentEvent> {
   const { tools, workspaceRoot, providerStep } = options;
   const exec = options.executeToolFn ?? executeTool;
+  // Direct library callers retain the historical opt-in behavior. The API
+  // route always supplies the persisted profile, whose default is safe.
+  const safetyProfile = options.safetyProfile ? normalizeAgentSafetyProfile(options.safetyProfile) : undefined;
 
   // Tracks absolute paths the agent has read via read_file this run.
   // Consumed by write_file's read-before-write + size-shrink guards in tools.ts
@@ -79,7 +83,7 @@ export async function* runAgentLoop(
     if (getCheckpoint(absPath) !== undefined) return;
     try {
       const content = await readFile(absPath, "utf8");
-      recordCheckpoint(absPath, content.length <= 1_000_000 ? content : "<too large to snapshot>");
+      recordCheckpoint(absPath, content.length <= 1_000_000 ? content : CHECKPOINT_TOO_LARGE);
     } catch {
       recordCheckpoint(absPath, null);
     }
@@ -175,33 +179,82 @@ export async function* runAgentLoop(
       args: result.args,
     });
 
+    if (safetyProfile === "read-only" &&
+        (result.tool === "write_file" || result.tool === "apply_patch" || result.tool === "run_command" || result.tool === "remember" || isGitMutation(result.tool))) {
+      const rejection = "Blocked by the workspace safety profile: this agent is in read-only mode.";
+      yield { type: "tool_result", callId: result.callId, output: rejection, truncated: false };
+      history.push({ role: "tool_result", callId: result.callId, content: rejection });
+      continue;
+    }
+
     // 1. Checkpoint files that are about to be modified
     if (result.tool === "write_file" || result.tool === "apply_patch") {
       const rel = result.args.path as string | undefined;
       if (rel) {
-        const abs = path.isAbsolute(rel) ? rel : path.join(workspaceRoot, rel);
-        await ensureCheckpoint(abs);
-        yield { type: "checkpoint", path: abs };
+        try {
+          const abs = assertSafePath(workspaceRoot, rel);
+          await ensureCheckpoint(abs);
+          yield { type: "checkpoint", path: abs };
+        } catch {
+          // executeTool will return the user-facing boundary error. Do not
+          // inspect or expose a path that failed the workspace check.
+        }
       }
     } else if (result.tool === "git_checkout") {
       const target = result.args.target as string | undefined;
       if (target) {
-        const abs = path.isAbsolute(target) ? target : path.join(workspaceRoot, target);
-        await ensureCheckpoint(abs);
-        if (getCheckpoint(abs) !== null) {
-          yield { type: "checkpoint", path: abs };
+        try {
+          const abs = assertSafePath(workspaceRoot, target);
+          await ensureCheckpoint(abs);
+          if (getCheckpoint(abs) !== null) {
+            yield { type: "checkpoint", path: abs };
+          }
+        } catch {
+          // Branch names and unsafe paths are handled by the git tool itself;
+          // neither should cause a preflight read outside the workspace.
         }
       }
     }
 
     // 2a. Write-approval gate (opt-in, controlled by requireWriteApproval setting)
-    if (options.requireWriteApproval && (result.tool === "write_file" || result.tool === "apply_patch")) {
+    if ((options.requireWriteApproval || safetyProfile === "ask-before-write" || safetyProfile === "ask-before-command") && (result.tool === "write_file" || result.tool === "apply_patch")) {
       const rel = result.args.path as string | undefined;
       if (rel) {
-        const abs = path.isAbsolute(rel) ? rel : path.join(workspaceRoot, rel);
-        const rawBefore = getCheckpoint(abs);
+        let abs: string;
+        try {
+          abs = assertSafePath(workspaceRoot, rel);
+        } catch {
+          // Let executeTool produce the boundary error without previewing the
+          // requested path or reading anything outside the workspace.
+          abs = "";
+        }
+        const rawBefore = abs ? getCheckpoint(abs) : undefined;
 
-        if (rawBefore !== "<too large to snapshot>") {
+        if (rawBefore === CHECKPOINT_TOO_LARGE) {
+          const preview: WritePreview = {
+            path: rel,
+            before: "[file too large to snapshot]",
+            after: "[full preview unavailable]",
+            diff: `*** File too large to preview safely: ${rel}\n`,
+          };
+          yield {
+            type: "pending_approval",
+            callId: result.callId,
+            tool: result.tool,
+            args: result.args,
+            preview,
+          };
+          const approved =
+            options._testApprovalResult !== undefined
+              ? options._testApprovalResult
+              : await registerApproval(result.callId, 60_000);
+          if (!approved) {
+            const rejection = "Rejected by user.";
+            yield { type: "tool_result", callId: result.callId, output: rejection, truncated: false };
+            history.push({ role: "tool_result", callId: result.callId, content: rejection });
+            continue;
+          }
+        } else if (rawBefore !== undefined) {
           const before = rawBefore ?? "";
           let after: string | null = null;
 
@@ -246,7 +299,7 @@ export async function* runAgentLoop(
     }
 
     // 2. Approval gating for git mutation tools
-    if (isGitMutation(result.tool)) {
+    if (isGitMutation(result.tool) && safetyProfile !== "trusted") {
       yield {
         type: "pending_approval",
         callId: result.callId,
@@ -270,7 +323,7 @@ export async function* runAgentLoop(
     // 2c. Approval gating for shell command execution. run_command spawns an
     // arbitrary shell; the blocklist in tools.ts is only defense-in-depth, so
     // the human approval is the real safety boundary — always gate it.
-    if (result.tool === "run_command") {
+    if (result.tool === "run_command" && safetyProfile !== "trusted") {
       yield {
         type: "pending_approval",
         callId: result.callId,

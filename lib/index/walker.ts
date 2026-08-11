@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { loadWorkspaceExclusions, shouldExclude } from "./exclusions";
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -50,6 +51,7 @@ const MAX_SIZE = 256 * 1024;
 
 export interface WalkOptions {
   includeBinaryChecks?: boolean;
+  excludePatterns?: string[];
 }
 
 async function hasNullByte(filePath: string): Promise<boolean> {
@@ -66,8 +68,9 @@ async function hasNullByte(filePath: string): Promise<boolean> {
 
 export async function* walkWorkspace(
   root: string,
-  _opts: WalkOptions = {},
+  opts: WalkOptions = {},
 ): AsyncGenerator<string> {
+  const exclusions = await loadWorkspaceExclusions(root, opts.excludePatterns);
   async function* visit(dir: string): AsyncGenerator<string> {
     let entries: { name: string; isDirectory(): boolean; isFile(): boolean }[];
     try {
@@ -77,6 +80,8 @@ export async function* walkWorkspace(
     }
     for (const ent of entries) {
       const abs = path.join(dir, ent.name);
+      const relative = path.relative(root, abs);
+      if (shouldExclude(relative, ent.isDirectory(), exclusions)) continue;
       if (ent.isDirectory()) {
         if (SKIP_DIRS.has(ent.name)) continue;
         yield* visit(abs);
