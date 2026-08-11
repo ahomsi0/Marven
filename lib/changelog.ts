@@ -12,6 +12,12 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.12.4",
+    items: [
+      { tag: "fix", label: "Unsigned desktop builds no longer export empty certificate variables, allowing electron-builder to skip signing cleanly" },
+    ],
+  },
+  {
     version: "2.12.3",
     items: [
       { tag: "fix", label: "Unsigned-release mode now lets macOS and Windows packaging proceed temporarily when signing certificates are unavailable" },
