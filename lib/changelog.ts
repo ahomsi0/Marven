@@ -12,6 +12,13 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.12.1",
+    items: [
+      { tag: "fix", label: "Windows agent write approvals now normalize workspace paths correctly, restoring previews and rejection handling" },
+      { tag: "fix", label: "CI uses Node 22 and Node 24-compatible GitHub Actions runtimes, removing the Node 20 deprecation warnings" },
+    ],
+  },
+  {
     version: "2.12.0",
     items: [
       { tag: "fix", label: "External websites and local text-to-speech now launch through argument-safe processes, closing shell-injection paths" },

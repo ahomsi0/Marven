@@ -266,13 +266,17 @@ export function formatWebSearchResult(data: {
 }
 
 export function assertSafePath(workspaceRoot: string, relPath: string): string {
-  const resolved = path.resolve(workspaceRoot, relPath);
-  if (!resolved.startsWith(workspaceRoot + path.sep) && resolved !== workspaceRoot) {
+  // Normalize the root before comparing. On Windows, path.resolve("/tmp", ...)
+  // yields a drive-qualified path while the raw test/config value may remain
+  // slash-prefixed; comparing those two forms incorrectly rejects safe paths.
+  const normalizedRoot = path.resolve(workspaceRoot);
+  const resolved = path.resolve(normalizedRoot, relPath);
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
     throw new Error(`Path "${relPath}" escapes the workspace`);
   }
   // Re-check after resolving symlinks so a symlink inside the workspace can't
   // redirect a lexically-safe path outside it.
-  assertRealpathInsideWorkspace(workspaceRoot, resolved);
+  assertRealpathInsideWorkspace(normalizedRoot, resolved);
   return resolved;
 }
 

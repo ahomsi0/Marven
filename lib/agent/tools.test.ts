@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
+import { assertSafePath, executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
 import * as memoryClient from "@/lib/memoryClient";
 import fs from "fs/promises";
 import os from "os";
@@ -35,6 +35,12 @@ describe("TOOL_DEFINITIONS", () => {
     expect(names).toContain("git_branch");
     expect(names).toContain("git_checkout");
     expect(names).toContain("search_codebase");
+  });
+});
+
+describe("assertSafePath", () => {
+  it("normalizes slash-prefixed workspace roots on every platform", () => {
+    expect(assertSafePath("/tmp", "nested/file.txt")).toContain("nested");
   });
 });
 
