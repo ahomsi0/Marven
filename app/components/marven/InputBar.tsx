@@ -228,6 +228,7 @@ export function InputBar({
                 />
                 <button
                   type="button"
+                  aria-label={`Remove ${att.name}`}
                   onClick={() =>
                     onAttachmentsChange?.(attachments.filter((_, j) => j !== i))
                   }
@@ -254,6 +255,7 @@ export function InputBar({
                 <span className="truncate text-[11px] text-[var(--m-text-muted)]">{doc.name}</span>
                 <button
                   type="button"
+                  aria-label={`Remove ${doc.name}`}
                   onClick={() => onDocsChange?.(docs.filter((_, j) => j !== i))}
                   className="ml-auto shrink-0 text-[var(--m-text-faint)] hover:text-red-400/80"
                 >
@@ -338,6 +340,7 @@ export function InputBar({
 
           <button
             type="button"
+            aria-label={isLoading ? "Sending message" : "Send message"}
             onClick={onSend}
             disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
             className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
