@@ -521,12 +521,17 @@ export default function Home() {
       sessionStorage.setItem('marven_greeted', '1');
       hasGreetedRef.current = true;
       const tod = getGreeting();
+      const greetingText = `${tod}, ${profile.name}. How can I assist you today?`;
       setTimeout(() => {
         setConversations((prev) => {
           const convs2 = prev.length > 0 ? prev : [createConversation("greeting")];
           const targetId = prev.length > 0 ? prev[prev.length - 1].id : convs2[0].id;
           if (prev.length === 0) setActiveConversationId(convs2[0].id);
-          const greeting = createMessage("assistant", `${tod}, ${profile.name}. How can I assist you today?`);
+          const target = convs2.find((c) => c.id === targetId);
+          if (target?.messages.some((message) => message.role === "assistant" && message.content === greetingText)) {
+            return prev;
+          }
+          const greeting = createMessage("assistant", greetingText);
           return convs2.map((c) =>
             c.id === targetId ? { ...c, messages: [...c.messages, greeting], updatedAt: new Date().toISOString() } : c
           );
@@ -1492,6 +1497,7 @@ export default function Home() {
     const profile: UserProfile = { name };
     saveProfile(profile);
     setUserProfile(profile);
+    try { sessionStorage.setItem("marven_greeted", "1"); } catch { /* best effort */ }
     hasGreetedRef.current = true;
     const tod = getGreeting();
     const convId = ensureActiveConversation("greeting");
