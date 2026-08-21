@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runGit } from "@/lib/agent/git";
 import { parsePorcelain } from "@/lib/gitUtils";
 import { crossOriginRejection } from "@/lib/apiGuards";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 export async function POST(req: NextRequest) {
   const rejection = crossOriginRejection(req);
@@ -14,9 +15,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { workspaceRoot, action } = body;
+  const { action } = body;
+  // Only operate inside approved workspaces — a client-supplied arbitrary
+  // directory would otherwise become a git-command execution primitive.
+  const workspaceRoot = resolveRequestRoot(body.workspaceRoot);
   if (!workspaceRoot) {
-    return NextResponse.json({ error: "workspaceRoot required" }, { status: 400 });
+    return NextResponse.json(
+      { error: body.workspaceRoot ? "Workspace not approved" : "workspaceRoot required" },
+      { status: body.workspaceRoot ? 403 : 400 },
+    );
   }
 
   try {

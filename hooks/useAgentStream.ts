@@ -41,6 +41,13 @@ export function useAgentStream({
   const [liveTerminalOutput, setLiveTerminalOutput] = useState<string>("");
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  // Synchronous double-send guard — state updates don't re-render before a
+  // second invoke of send() would read stale `isRunning`.
+  const isRunningRef = useRef(false);
+  // Bumped whenever a stream starts or the message thread is replaced, so
+  // event handlers belonging to a superseded stream become no-ops instead of
+  // writing into whatever conversation is now loaded.
+  const streamGenRef = useRef(0);
   const planPendingCallIdRef = useRef<string | null>(null);
   const planModeOverrideRef = useRef<boolean | null>(null);
 
@@ -113,7 +120,9 @@ export function useAgentStream({
   ) => {
     const attachments = opts?.attachments;
     const mentions = opts?.mentions;
-    if (!prompt.trim() || isRunning) return;
+    if (!prompt.trim() || isRunningRef.current) return;
+    isRunningRef.current = true;
+    const gen = ++streamGenRef.current;
     setError(null);
     setIsRunning(true);
 
@@ -133,12 +142,15 @@ export function useAgentStream({
     };
     addMessage(assistantMsg);
 
-    // Auto-summarize if thread is too long
-    let activeMessages = messages; // the messages list at the time of send
+    // Thread including the two messages queued above — `messages` is still the
+    // pre-send render's array because addMessage uses functional updates, so
+    // building the summary window from it directly would drop the new turn.
+    const threadWithTurn: AgentMessage[] = [...messages, userMsg, assistantMsg];
+    let activeMessages = threadWithTurn;
 
-    if (messages.length > SUMMARIZE_THRESHOLD && workspaceRoot && provider && model) {
-      const oldMessages = messages.slice(0, messages.length - KEEP_RECENT);
-      const recentMessages = messages.slice(messages.length - KEEP_RECENT);
+    if (threadWithTurn.length > SUMMARIZE_THRESHOLD && workspaceRoot && provider && model) {
+      const oldMessages = threadWithTurn.slice(0, threadWithTurn.length - KEEP_RECENT);
+      const recentMessages = threadWithTurn.slice(threadWithTurn.length - KEEP_RECENT);
 
       try {
         const summarizeRes = await fetch("/api/agent/summarize", {
@@ -161,23 +173,33 @@ export function useAgentStream({
 
         if (summarizeRes.ok) {
           const { summary } = await summarizeRes.json();
-          const summaryMsg: AgentMessage = {
-            id: `summary-${Date.now()}`,
-            role: "assistant",
-            content: summary,
-            isSummary: true,
-          };
-          // Replace old messages with summary in state
-          const condensed = [summaryMsg, ...recentMessages];
-          setMessages(condensed);
-          activeMessages = condensed;
+          const trimmedSummary = typeof summary === "string" ? summary.trim() : "";
+          // An empty summary (e.g. the provider rate-limited us and the route
+          // returned "") would silently truncate the thread to the recent
+          // window — skip condensation instead of persisting that loss.
+          if (trimmedSummary) {
+            const summaryMsg: AgentMessage = {
+              id: `summary-${Date.now()}`,
+              role: "assistant",
+              content: trimmedSummary,
+              isSummary: true,
+            };
+            // Replace old messages with summary in state
+            const condensed = [summaryMsg, ...recentMessages];
+            setMessages(condensed);
+            activeMessages = condensed;
+          }
         }
       } catch {
         // On failure, continue without summarizing
       }
     }
 
+    // History for the wire excludes the current turn — the stream route
+    // appends `prompt` itself, so including userMsg here would duplicate it.
+    // (assistantMsg is empty and filtered below regardless.)
     const history = activeMessages
+      .slice(0, Math.max(0, activeMessages.length - 2))
       .map((m) => {
         const content =
           m.role === "assistant"
@@ -203,6 +225,9 @@ export function useAgentStream({
 
     const abort = new AbortController();
     abortRef.current = abort;
+    // True once this stream has been superseded (conversation switched,
+    // stopped) or aborted — late events must not touch the now-active thread.
+    const staleStream = () => gen !== streamGenRef.current || abort.signal.aborted;
 
     // Consume a one-shot planMode override (used when re-triggering after plan approval)
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
@@ -228,6 +253,7 @@ export function useAgentStream({
         throw new Error(await res.text().catch(() => `Agent request failed (${res.status})`));
       }
       await consumeSse(res, async (event) => {
+        if (staleStream()) return;
         if (event.type === "tool_call") {
           callIdToTool.set(event.callId, event.tool);
           updateLastAssistant((msg) => ({
@@ -336,7 +362,7 @@ export function useAgentStream({
 
       const verifyCommands = parseCommandList(autoVerifyCommands);
       if (
-        !abort.signal.aborted &&
+        !staleStream() &&
         !streamHadError &&
         wroteFiles &&
         autoVerifyEnabled &&
@@ -363,6 +389,7 @@ export function useAgentStream({
         }
 
         await consumeSse(verifyRes, async (event) => {
+          if (staleStream()) return;
           if (event.type === "tool_call") {
             updateLastAssistant((msg) => ({
               ...msg,
@@ -444,11 +471,13 @@ export function useAgentStream({
         setError(err.message);
       }
     } finally {
+      isRunningRef.current = false;
       setIsRunning(false);
     }
-  }, [isRunning, messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
+  }, [messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
+    streamGenRef.current++;
     abortRef.current?.abort();
     setIsRunning(false);
   }, []);
@@ -462,9 +491,14 @@ export function useAgentStream({
     setError(null);
   }, []);
 
-  // Used when switching between agent conversations — restores the full
-  // message thread of the conversation we're switching to.
+  // Used when switching between agent conversations — aborts any in-flight
+  // stream first (bumping the generation so its queued handlers no-op) and
+  // restores the full message thread of the conversation we're switching to.
   const loadMessages = useCallback((next: AgentMessage[]) => {
+    streamGenRef.current++;
+    abortRef.current?.abort();
+    isRunningRef.current = false;
+    setIsRunning(false);
     setMessages(next);
     setError(null);
     setLiveTerminalOutput("");

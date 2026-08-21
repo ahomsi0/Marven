@@ -15,6 +15,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ text: "" }, { status: 400 });
     }
 
+    // Groq's Whisper limit is 25MB (free tier); reject early instead of
+    // buffering an arbitrarily large upload into memory.
+    if (audio.size > 25 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: "Audio too large (limit 25MB)." },
+        { status: 413 },
+      );
+    }
+
     const key = process.env.GROQ_API_KEY;
     if (!key) {
       return NextResponse.json(

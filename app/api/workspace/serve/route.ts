@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 const MIME: Record<string, string> = {
@@ -32,9 +32,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "path is required" }, { status: 400 });
   }
 
-  const root = req.nextUrl.searchParams.get("root") || getActiveWorkspaceRoot();
+  const rootParam = req.nextUrl.searchParams.get("root");
+  const root = resolveRequestRoot(rootParam);
   if (!root) {
-    return NextResponse.json({ error: "No workspace open" }, { status: 400 });
+    return NextResponse.json(
+      { error: rootParam ? "Workspace not approved" : "No workspace open" },
+      { status: rootParam ? 403 : 400 },
+    );
   }
 
   try {

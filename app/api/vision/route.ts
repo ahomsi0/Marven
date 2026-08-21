@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
+import os from "os";
+import path from "path";
+import crypto from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 export async function POST(req: NextRequest) {
-  const screenshotPath = "/tmp/marven_vision.png";
+  // Unpredictable per-request filename — a fixed /tmp path let any local user
+  // pre-create/symlink the file or read screen contents between capture and
+  // cleanup.
+  const screenshotPath = path.join(
+    os.tmpdir(),
+    `marven_vision_${crypto.randomBytes(8).toString("hex")}.png`,
+  );
   try {
     let body: { question?: string } = {};
     try {

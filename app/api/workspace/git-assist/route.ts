@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AIProvider, HistoryMessage } from "@/types";
 import { runGit } from "@/lib/agent/git";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 import { askGroq } from "@/lib/groq";
 import { askOllama } from "@/lib/ollama";
 import { streamOpenAI } from "@/lib/openai";
@@ -96,12 +97,16 @@ export async function POST(req: NextRequest) {
   if (!workspaceRoot || !provider || !model || !mode) {
     return NextResponse.json({ error: "workspaceRoot, provider, model, and mode are required" }, { status: 400 });
   }
+  const approvedRoot = resolveRequestRoot(workspaceRoot);
+  if (!approvedRoot) {
+    return NextResponse.json({ error: "Workspace not approved" }, { status: 403 });
+  }
 
   try {
     const [status, diff, stagedDiff] = await Promise.all([
-      runGit(["status", "--short"], workspaceRoot),
-      runGit(["diff", "HEAD"], workspaceRoot),
-      runGit(["diff", "--cached"], workspaceRoot),
+      runGit(["status", "--short"], approvedRoot),
+      runGit(["diff", "HEAD"], approvedRoot),
+      runGit(["diff", "--cached"], approvedRoot),
     ]);
 
     const prompt = makePrompt(mode, limit(diff), limit(stagedDiff), limit(status, 4000));

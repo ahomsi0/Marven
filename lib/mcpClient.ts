@@ -65,6 +65,28 @@ class MCPClient {
       };
       this.servers.set(server.id, entry);
 
+      // Without an 'error' listener, a spawn failure (command not found) or an
+      // EPIPE on the pipes surfaces as an uncaught exception and takes down
+      // the whole Next.js server. Surface it as a normal failure instead.
+      let spawnError: Error | null = null;
+      const fail = (err: Error) => {
+        spawnError = err;
+        const e = this.servers.get(server.id);
+        if (!e) return;
+        for (const [, req] of e.pending) {
+          clearTimeout(req.timer);
+          req.reject(new Error(`MCP server error: ${err.message}`));
+        }
+        e.pending.clear();
+        this.servers.delete(server.id);
+      };
+      proc.on("error", fail);
+      proc.stdin?.on("error", () => {
+        // EPIPE writing to a dead server — the exit handler cleans up state.
+      });
+      proc.stdout?.on("error", () => {});
+      proc.stderr?.on("error", () => {});
+
       proc.stdout!.on("data", (chunk: Buffer) =>
         this.handleData(server.id, chunk.toString())
       );
@@ -78,9 +100,10 @@ class MCPClient {
         e.pending.clear();
         this.servers.delete(server.id);
       });
+      // Capped so a chatty long-lived server can't grow memory without bound.
       let stderrOutput = "";
       proc.stderr!.on("data", (chunk: Buffer) => {
-        stderrOutput += chunk.toString();
+        if (stderrOutput.length < 8_000) stderrOutput += chunk.toString();
       });
 
       // MCP handshake
@@ -95,6 +118,12 @@ class MCPClient {
         this.servers.delete(server.id);
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`MCP initialize failed: ${msg}${stderrOutput ? `\nServer stderr: ${stderrOutput.slice(0, 500)}` : ""}`);
+      }
+      const failure = spawnError as unknown as Error | null;
+      if (failure) {
+        // Async spawn failure raced the handshake — report it cleanly.
+        this.stop(server.id);
+        throw new Error(`MCP server failed to start: ${failure.message}`);
       }
       this.notify(server.id, "notifications/initialized", {});
       entry.status = "connected";
@@ -185,7 +214,14 @@ class MCPClient {
       entry.pending.set(reqId, { resolve, reject, timer });
       const msg =
         JSON.stringify({ jsonrpc: "2.0", id: reqId, method, params }) + "\n";
-      entry.process.stdin!.write(msg); // stdin is pipe — guaranteed non-null by spawn options
+      try {
+        entry.process.stdin!.write(msg); // stdin is pipe — guaranteed non-null by spawn options
+      } catch (err) {
+        // Server died between the lookup above and this write.
+        entry.pending.delete(reqId);
+        clearTimeout(timer);
+        reject(new Error(`MCP write failed: ${err instanceof Error ? err.message : String(err)}`));
+      }
     });
   }
 
@@ -193,7 +229,11 @@ class MCPClient {
     const entry = this.servers.get(id);
     if (!entry) return;
     const msg = JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n";
-    entry.process.stdin!.write(msg);
+    try {
+      entry.process.stdin!.write(msg);
+    } catch {
+      // Dead server — state cleanup happens via exit/error handlers.
+    }
   }
 }
 
@@ -215,5 +255,9 @@ export function mcpToolToDefinition(serverName: string, tool: MCPTool): ToolDefi
   };
 }
 
-// Module-level singleton — persists for the lifetime of the Next.js server process
-export const mcpClient = new MCPClient();
+// Module-level singleton — persists for the lifetime of the Next.js server
+// process. globalThis-backed so HMR / route-bundle splitting can't produce a
+// second instance (which would spawn duplicate MCP child processes).
+const g = globalThis as typeof globalThis & { __marvenMcpClient?: MCPClient };
+export const mcpClient = g.__marvenMcpClient ?? new MCPClient();
+g.__marvenMcpClient = mcpClient;

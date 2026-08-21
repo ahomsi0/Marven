@@ -71,7 +71,14 @@ export function extractJsonToolCall(text: string): JsonToolCall | null {
         try {
           const obj = JSON.parse(text.slice(start, i + 1));
           const name = typeof obj.name === "string" ? obj.name : null;
-          if (!name) { start = -1; continue; }
+          // Whitelist like the function-call-syntax pass above: without it,
+          // ANY {"name","arguments"} JSON in prose (e.g. the model explaining
+          // the tool format) triggers real execution. Namespaced MCP tool
+          // names ("server__tool") are accepted too.
+          if (!name || !(KNOWN_TOOLS.has(name) || /^[a-z0-9_-]+__[a-z0-9_-]+$/i.test(name))) {
+            start = -1;
+            continue;
+          }
           const args = (obj.arguments ?? obj.args ?? {}) as Record<string, unknown>;
           if (typeof args !== "object" || Array.isArray(args)) { start = -1; continue; }
           return { name, args };
@@ -178,10 +185,36 @@ export async function ollamaAgentStep(
   const msg = data.message;
 
   if (msg?.tool_calls?.length) {
-    const tc = msg.tool_calls[0];
-    const args = tc.function?.arguments ?? {};
-    const callId = `ollama-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    return { type: "tool_call", callId, tool: tc.function.name, args };
+    // Map ALL native tool calls (Ollama models can emit parallel calls), and
+    // handle both argument shapes — some checkpoints return `arguments` as a
+    // JSON string instead of an object.
+    const calls = msg.tool_calls.map((tc: { function?: { name?: string; arguments?: unknown } }) => {
+      const raw = tc.function?.arguments;
+      let args: Record<string, unknown> = {};
+      let malformedError: string | undefined;
+      if (raw && typeof raw === "object") {
+        args = raw as Record<string, unknown>;
+      } else if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") args = parsed as Record<string, unknown>;
+          else malformedError = "arguments decoded to a non-object";
+        } catch (err) {
+          malformedError = err instanceof Error ? err.message : "arguments were not valid JSON";
+        }
+      }
+      return {
+        callId: `ollama-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        tool: tc.function?.name ?? "",
+        args,
+        ...(malformedError ? { malformedError } : {}),
+      };
+    });
+    if (calls.length === 1) {
+      const { callId, tool, args } = calls[0];
+      return { type: "tool_call", callId, tool, args };
+    }
+    return { type: "tool_calls", calls };
   }
 
   // If no tool_calls but model returned empty content, likely doesn't support tools

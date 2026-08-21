@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Buffering the whole upload unbounded would let one huge POST exhaust the
+// server's memory. 25MB is far above any real document.
+const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
+  if (file.size > MAX_DOCUMENT_BYTES) {
+    return NextResponse.json(
+      { error: `File too large (${Math.round(file.size / 1024 / 1024)}MB). Limit is 25MB.` },
+      { status: 413 },
+    );
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const mimeType = file.type;

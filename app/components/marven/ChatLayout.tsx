@@ -313,7 +313,24 @@ export function ChatLayout({
     URL.revokeObjectURL(url);
   }
 
+  // Auto-scroll only when the user is already near the bottom — otherwise
+  // streaming deltas yank the viewport down while they're scrolling up to
+  // re-read earlier messages.
+  const nearBottomRef = useRef(true);
   useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    const update = () => {
+      nearBottomRef.current =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 120;
+    };
+    update();
+    viewport.addEventListener("scroll", update, { passive: true });
+    return () => viewport.removeEventListener("scroll", update);
+  }, []);
+
+  useEffect(() => {
+    if (!nearBottomRef.current) return;
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
     viewport.scrollTo({

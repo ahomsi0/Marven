@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseOpenAiStyleToolCall } from "./groq";
 import { buildOpenAIContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
@@ -70,16 +71,14 @@ export async function openaiAgentStep(
   const choice = response.choices[0];
 
   if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
-    const tc = choice.message.tool_calls[0];
-    if (tc.type === "function") {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(tc.function.arguments);
-      } catch {
-        /* ignore */
-      }
-      return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
+    const calls = choice.message.tool_calls
+      .filter((tc) => tc.type === "function")
+      .map((tc) => parseOpenAiStyleToolCall(tc, "openai-call"));
+    if (calls.length === 1) {
+      const { callId, tool, args } = calls[0];
+      return { type: "tool_call", callId, tool, args };
     }
+    if (calls.length > 1) return { type: "tool_calls", calls };
   }
 
   const content = (choice.message.content ?? "").trim();

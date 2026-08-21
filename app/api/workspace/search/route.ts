@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import { resolveRequestRoot, workspaceErrorStatus } from "@/lib/workspaceState";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,13 +69,18 @@ export async function POST(req: NextRequest) {
   const query = typeof parsed.query === "string" ? parsed.query : "";
   const caseSensitive = parsed.caseSensitive === true;
   const regex = parsed.regex === true;
-  const root =
-    typeof parsed.workspaceRoot === "string" && parsed.workspaceRoot.trim()
-      ? parsed.workspaceRoot.trim()
-      : getActiveWorkspaceRoot();
+  const root = resolveRequestRoot(
+    typeof parsed.workspaceRoot === "string" ? parsed.workspaceRoot : undefined,
+  );
 
   if (!root) {
-    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
+    const message = parsed.workspaceRoot
+      ? "Workspace not approved — open the folder via Open Folder first."
+      : "No workspace folder open.";
+    return NextResponse.json(
+      { error: message },
+      { status: workspaceErrorStatus(message) },
+    );
   }
 
   if (!query.trim()) {

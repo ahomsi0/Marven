@@ -306,12 +306,24 @@ export function FileExplorer({
     setOpenFolders(new Set());
   }
 
-  // When files change (e.g. new folder created), auto-open new folders
+  // When files change (e.g. new folder created), auto-open only the folders
+  // that are genuinely NEW — re-adding every path would override folders the
+  // user just collapsed, visibly popping the tree open on every agent write.
+  const knownFolderPathsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     const newPaths = allFolderPaths(tree);
     setOpenFolders((prev) => {
+      const known = knownFolderPathsRef.current;
+      if (!known) {
+        // First tree after mount: open everything (previous behavior).
+        knownFolderPathsRef.current = new Set(newPaths);
+        return new Set(newPaths);
+      }
+      const added = newPaths.filter((p) => !known.has(p));
+      for (const p of newPaths) known.add(p);
+      if (added.length === 0) return prev;
       const next = new Set(prev);
-      newPaths.forEach((p) => next.add(p));
+      added.forEach((p) => next.add(p));
       return next;
     });
   }, [tree]);

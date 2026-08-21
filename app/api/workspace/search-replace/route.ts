@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
-import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import {
+  resolveRequestRoot,
+  WorkspaceNotApprovedError,
+  workspaceErrorStatus,
+} from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
 import { crossOriginRejection } from "@/lib/apiGuards";
 
@@ -24,9 +28,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const root = body.workspaceRoot?.trim() || getActiveWorkspaceRoot();
+  const root = resolveRequestRoot(body.workspaceRoot);
   if (!root) {
-    return NextResponse.json({ error: "No workspace folder open." }, { status: 500 });
+    const message = body.workspaceRoot?.trim()
+      ? new WorkspaceNotApprovedError().message
+      : "No workspace folder open.";
+    return NextResponse.json({ error: message }, { status: workspaceErrorStatus(message) });
   }
 
   const { query, replacement, caseSensitive = false, regex = false, files } = body;
@@ -78,8 +85,31 @@ export async function POST(req: NextRequest) {
   const filesModified: string[] = [];
   let replacedCount = 0;
 
+  // ReDoS mitigation: a pathological client-supplied regex can backtrack
+  // catastrophically. Bound total synchronous work with a deadline and skip
+  // huge files in regex mode — a single replace() can't be interrupted, but
+  // this keeps the blast radius of each individual call small.
+  const deadline = Date.now() + 10_000;
+  const MAX_REGEX_FILE_BYTES = 1_000_000;
+
   for (const relPath of targetFiles) {
+    if (Date.now() > deadline) {
+      return NextResponse.json(
+        {
+          error: "Replace timed out — narrow the query or file list and retry.",
+          replacedCount,
+          filesModified,
+        },
+        { status: 408 },
+      );
+    }
     try {
+      if (regex) {
+        const stat = await (await import("fs/promises")).stat(
+          resolveWorkspacePath(root, relPath),
+        );
+        if (stat.size > MAX_REGEX_FILE_BYTES) continue;
+      }
       const absPath = resolveWorkspacePath(root, relPath);
       const content = await readFile(absPath, "utf8");
       let count = 0;

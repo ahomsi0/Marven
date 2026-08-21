@@ -24,6 +24,9 @@ export interface RunFullResult {
   filesIndexed: number;
   chunksIndexed: number;
   durationMs: number;
+  /** First error encountered while indexing, if any (embedder down, sqlite failure…). */
+  lastError?: string;
+  filesFailed: number;
 }
 
 export class Indexer {
@@ -40,7 +43,9 @@ export class Indexer {
         if (candidates.length >= MAX_FILES) break;
       }
       let filesIndexed = 0,
-        chunksIndexed = 0;
+        chunksIndexed = 0,
+        filesFailed = 0;
+      let lastError: string | undefined;
       for (let i = 0; i < candidates.length; i++) {
         if (opts.signal?.aborted) break;
         const abs = candidates[i];
@@ -77,8 +82,14 @@ export class Indexer {
           });
           filesIndexed++;
           chunksIndexed += chunks.length;
-        } catch {
-          /* skip unreadable */
+        } catch (err) {
+          // Track failures instead of silently reporting success — an embedder
+          // outage or sqlite dimension mismatch otherwise surfaces as
+          // "indexing complete" with 0 files and semantic search dead forever.
+          filesFailed++;
+          if (!lastError) {
+            lastError = err instanceof Error ? err.message : String(err);
+          }
         }
         opts.onProgress?.({
           filesDone: i + 1,
@@ -90,7 +101,13 @@ export class Indexer {
       for (const known of this.opts.store.allPaths()) {
         if (!presentRel.has(known)) this.opts.store.removeFile(known);
       }
-      return { filesIndexed, chunksIndexed, durationMs: Date.now() - start };
+      return {
+        filesIndexed,
+        chunksIndexed,
+        durationMs: Date.now() - start,
+        ...(lastError ? { lastError } : {}),
+        filesFailed,
+      };
     };
     const next = this.fullLock.then(run, run);
     this.fullLock = next.catch(() => undefined);

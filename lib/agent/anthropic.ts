@@ -84,14 +84,28 @@ export async function anthropicAgentStep(
     })),
   });
 
-  // Check for tool use block first
-  const toolUseBlock = response.content.find((b) => b.type === "tool_use");
-  if (toolUseBlock && toolUseBlock.type === "tool_use") {
+  // Collect ALL tool_use blocks — Claude routinely emits parallel calls, and
+  // dropping the rest silently discarded requested work. Text blocks emitted
+  // alongside tool_use are preserved as commentary on the multi-call path.
+  const toolUseBlocks = response.content.filter(
+    (b): b is Extract<typeof b, { type: "tool_use" }> => b.type === "tool_use",
+  );
+  if (toolUseBlocks.length > 0) {
+    if (toolUseBlocks.length === 1) {
+      return {
+        type: "tool_call",
+        callId: toolUseBlocks[0].id,
+        tool: toolUseBlocks[0].name,
+        args: (toolUseBlocks[0].input ?? {}) as Record<string, unknown>,
+      };
+    }
     return {
-      type: "tool_call",
-      callId: toolUseBlock.id,
-      tool: toolUseBlock.name,
-      args: toolUseBlock.input as Record<string, unknown>,
+      type: "tool_calls",
+      calls: toolUseBlocks.map((b) => ({
+        callId: b.id,
+        tool: b.name,
+        args: (b.input ?? {}) as Record<string, unknown>,
+      })),
     };
   }
 

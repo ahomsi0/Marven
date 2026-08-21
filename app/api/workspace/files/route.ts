@@ -1,13 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { getActiveWorkspaceRoot, setActiveWorkspaceRoot } from "@/lib/workspaceState";
+import {
+  getActiveWorkspaceRoot,
+  setActiveWorkspaceRoot,
+  resolveRequestRoot,
+  WorkspaceNotApprovedError,
+  workspaceErrorStatus,
+} from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 function getRoot(bodyRoot?: string): string {
-  const root = bodyRoot?.trim() || getActiveWorkspaceRoot();
-  if (!root) throw new Error("No workspace folder open.");
+  const root = resolveRequestRoot(bodyRoot);
+  if (!root) {
+    throw bodyRoot?.trim()
+      ? new WorkspaceNotApprovedError()
+      : new Error("No workspace folder open.");
+  }
   return root;
+}
+
+function errorStatus(message: string): number {
+  if (message === "Path outside workspace") return 400;
+  if (message === "No workspace folder open.") return 400;
+  if (message.startsWith("Workspace not approved")) return 403;
+  return 500;
 }
 
 type FileEntry = { path: string; name: string; type: "file" | "folder" };
@@ -20,17 +37,31 @@ const SHALLOW_DIRS = new Set([
   ".cache", "target", "vendor", ".venv", "__pycache__",
 ]);
 
-async function listRecursive(dir: string, base: string, shallow = false): Promise<FileEntry[]> {
+// Hard caps so a pathological workspace can't hang the route or exhaust
+// memory serializing one giant JSON response.
+const MAX_LIST_DEPTH = 16;
+const MAX_LIST_ENTRIES = 20_000;
+
+async function listRecursive(
+  dir: string,
+  base: string,
+  shallow = false,
+  depth = 0,
+  budget = { remaining: MAX_LIST_ENTRIES },
+): Promise<FileEntry[]> {
+  if (depth > MAX_LIST_DEPTH || budget.remaining <= 0) return [];
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const results: FileEntry[] = [];
   for (const entry of entries) {
+    if (budget.remaining <= 0) break;
+    budget.remaining--;
     const rel = path.relative(base, path.join(dir, entry.name));
     if (entry.isDirectory()) {
       results.push({ path: rel, name: entry.name, type: "folder" });
       if (shallow) continue;
       try {
         const childShallow = SHALLOW_DIRS.has(entry.name);
-        const nested = await listRecursive(path.join(dir, entry.name), base, childShallow);
+        const nested = await listRecursive(path.join(dir, entry.name), base, childShallow, depth + 1, budget);
         results.push(...nested);
       } catch {
         // Unreadable subdirectory (permissions, stale symlink, etc.) — show the
@@ -88,8 +119,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ path: targetPath, content });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not read file.";
-    const status = message === "Path outside workspace" ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
 }
 
@@ -109,7 +139,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not write file.";
-    const status = message === "Path outside workspace" ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
 }

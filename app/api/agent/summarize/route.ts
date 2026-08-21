@@ -82,6 +82,13 @@ export async function POST(req: NextRequest) {
           ],
         }),
       });
+      // Without this check a 429/5xx body parses to no choices and the route
+      // returns 200 with an empty summary — which the client would then
+      // persist, permanently truncating the thread's memory.
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Summarize request failed (${res.status}): ${text.slice(0, 200)}`);
+      }
       const data = await res.json();
       summary = data.choices?.[0]?.message?.content ?? "";
     }

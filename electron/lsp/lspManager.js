@@ -38,6 +38,7 @@ class LspManager extends EventEmitter {
     this._servers = new Map();   // languageId -> { child, buf, pending, nextId, sessions }
     this._sessions = new Map();  // sessionId -> { languageId, filePath, version }
     this._installing = new Map(); // languageId -> Promise<EnsureResult>
+    this._ensuring = new Map();   // languageId -> Promise<EnsureResult> (spawn mutex)
   }
 
   _binPath(languageId) {
@@ -59,13 +60,27 @@ class LspManager extends EventEmitter {
     if (!spec) return { status: "failed", error: `unknown languageId: ${languageId}` };
     if (this._servers.has(languageId)) return { status: "ready" };
 
-    if (!this._isInstalled(languageId)) {
-      const installRes = await this._install(languageId);
-      if (installRes.status !== "ready") return installRes;
-    }
+    // Mutex: two concurrent opens for the same language must not both pass the
+    // has() check above and spawn duplicate servers (the first child would
+    // leak forever, its stdout frames dispatched into the wrong state).
+    const inFlight = this._ensuring.get(languageId);
+    if (inFlight) return inFlight;
 
-    this._spawn(languageId);
-    return { status: "ready" };
+    const p = (async () => {
+      if (!this._isInstalled(languageId)) {
+        const installRes = await this._install(languageId);
+        if (installRes.status !== "ready") return installRes;
+      }
+      this._spawn(languageId);
+      return { status: "ready" };
+    })();
+
+    this._ensuring.set(languageId, p);
+    try {
+      return await p;
+    } finally {
+      this._ensuring.delete(languageId);
+    }
   }
 
   _spawn(languageId) {
@@ -81,8 +96,17 @@ class LspManager extends EventEmitter {
       nextId: 1,
       sessions: new Set(),
       initialized: false,
+      initPromise: null,
     };
     this._servers.set(languageId, state);
+
+    // Stream 'error' events (EPIPE after the server dies mid-write, etc.) have
+    // no default handler — without listeners they crash the whole app.
+    const swallow = () => {};
+    child.on("error", (err) => this.emit("server-error", { languageId, error: err }));
+    child.stdin?.on?.("error", swallow);
+    child.stdout?.on?.("error", swallow);
+    child.stderr?.on?.("error", swallow);
 
     child.stdout.on("data", (chunk) => this._onData(languageId, chunk));
     child.stderr.on("data", (chunk) => this.emit("stderr", { languageId, text: chunk.toString("utf8") }));
@@ -146,7 +170,14 @@ class LspManager extends EventEmitter {
     if (!state) throw new Error(`no server for ${languageId}`);
     const body = Buffer.from(JSON.stringify(obj), "utf8");
     const header = Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "utf8");
-    state.child.stdin.write(Buffer.concat([header, body]));
+    try {
+      state.child.stdin.write(Buffer.concat([header, body]));
+    } catch (err) {
+      // Server died between the lookup and this write — tear it down so the
+      // next ensure() respawns instead of every request failing with EPIPE.
+      try { state.child.kill(); } catch {}
+      throw new Error(`LSP write failed: ${(err && err.message) || err}`);
+    }
   }
 
   _sendRequest(languageId, method, params) {
@@ -183,9 +214,13 @@ class LspManager extends EventEmitter {
     }
     const state = this._servers.get(languageId);
 
-    let initPromise = null;
-    if (!state.initialized) {
+    let initPromise = state.initPromise ?? null;
+    if (!state.initialized && !initPromise) {
       const rootUri = this._filePathToUri(workspaceRoot);
+      // Shared across concurrent openSession calls so a second file opened
+      // while initialize is still in flight awaits the same handshake instead
+      // of sending didOpen before the server finished initializing (spec
+      // violation that makes some servers drop or error on early messages).
       initPromise = this._sendRequest(languageId, "initialize", {
         processId: process.pid,
         rootUri,
@@ -203,11 +238,15 @@ class LspManager extends EventEmitter {
         initializationOptions: LSP_SERVERS[languageId].initializationOptions || {},
         workspaceFolders: [{ uri: rootUri, name: path.basename(workspaceRoot) }],
       });
-      state.initialized = true;
+      state.initPromise = initPromise;
     }
     if (initPromise) {
       await initPromise;
-      this._sendNotification(languageId, "initialized", {});
+      if (!state.initialized) {
+        this._sendNotification(languageId, "initialized", {});
+        state.initialized = true;
+        state.initPromise = null;
+      }
     }
 
     const sessionId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -267,8 +306,13 @@ class LspManager extends EventEmitter {
   async restart(languageId) {
     const state = this._servers.get(languageId);
     if (state) {
-      try { state.child.kill(); } catch {}
-      // _onExit removes the state.
+      // Wait for the exit to actually land before re-ensuring — otherwise
+      // ensure() sees the stale entry and reports "ready" for a dead server.
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 2000);
+        state.child.once("exit", () => { clearTimeout(timer); resolve(); });
+        try { state.child.kill(); } catch { clearTimeout(timer); resolve(); }
+      });
     }
     return this.ensure(languageId);
   }

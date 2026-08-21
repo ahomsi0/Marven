@@ -12,6 +12,8 @@ const SECRET_ENV_KEYS = [
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
   'ELEVENLABS_API_KEY',
+  // App-internal secrets that shouldn't leak into user-visible shells either.
+  'MARVEN_HEALTH_TOKEN',
 ];
 
 /** Returns a copy of process.env with provider secrets removed, plus any extras. */

@@ -1,5 +1,6 @@
 import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
+import { parseOpenAiStyleToolCall } from "./groq";
 import { stripAttachments } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
@@ -69,10 +70,14 @@ export async function openrouterAgentStep(
   const choice = data.choices?.[0];
 
   if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls?.length) {
-    const tc = choice.message.tool_calls[0];
-    let args: Record<string, unknown> = {};
-    try { args = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
-    return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
+    const calls = choice.message.tool_calls.map((tc: Parameters<typeof parseOpenAiStyleToolCall>[0]) =>
+      parseOpenAiStyleToolCall(tc, "openrouter-call"),
+    );
+    if (calls.length === 1) {
+      const { callId, tool, args } = calls[0];
+      return { type: "tool_call", callId, tool, args };
+    }
+    return { type: "tool_calls", calls };
   }
 
   const content = (choice?.message?.content as string ?? "").trim();

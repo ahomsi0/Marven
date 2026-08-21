@@ -392,6 +392,7 @@ export default function Home() {
   // The conversation whose state is currently loaded — used to detect when we
   // need to save/restore.
   const lastAgentConvIdRef = useRef<string | null>(null);
+  const memoriesFetchSeqRef = useRef(0);
 
   const persistAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -542,6 +543,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Sequence guard: if the deps change again before the fetch resolves, the
+    // stale response must not overwrite the newer conversation's memories.
+    const requestId = ++memoriesFetchSeqRef.current;
     const params = new URLSearchParams();
     if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
     if (activeConversationId) params.set("conversationId", activeConversationId);
@@ -549,6 +553,7 @@ export default function Home() {
     fetch(`/api/memory${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
+        if (requestId !== memoriesFetchSeqRef.current) return;
         const scopes = data?.scopes ?? {};
         setMemories((prev) => ({
           ...prev,
@@ -1225,6 +1230,7 @@ export default function Home() {
   }
 
   function closeTab(index: number) {
+    const closedTab = openTabs[index];
     setOpenTabs((prev) => prev.filter((_, i) => i !== index));
     const newLength = openTabs.length - 1;
     setActiveTabIndex((curIdx) => {
@@ -1233,6 +1239,23 @@ export default function Home() {
       if (index === curIdx) return Math.min(curIdx, newLength - 1);
       return curIdx;
     });
+    // Free the in-memory buffer (all key aliases written by refreshFileBuffer)
+    // unless it holds unsaved edits — otherwise long editing sessions
+    // accumulate every opened file's full text.
+    if (closedTab?.kind === "file") {
+      const rel = toRelativePath(closedTab.path, workspaceRoot);
+      const basename = closedTab.path.split("/").filter(Boolean).pop() ?? closedTab.path;
+      setFileBuffers((prev) => {
+        const buf =
+          prev.get(rel) ?? prev.get(closedTab.path) ?? prev.get(basename) ?? null;
+        if (!buf || buf.dirty) return prev;
+        const next = new Map(prev);
+        next.delete(rel);
+        next.delete(closedTab.path);
+        next.delete(basename);
+        return next;
+      });
+    }
   }
 
   function reorderTabs(fromIndex: number, toIndex: number) {
@@ -1506,7 +1529,7 @@ export default function Home() {
   }
 
   // ─── Core send logic ───────────────────────────────────────────────────────
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, opts?: { messagesOverride?: Message[] }) {
     if (!text || isLoading) return;
     setInput("");
     setIsLoading(true);
@@ -1520,6 +1543,11 @@ export default function Home() {
     // language/persona preference.
     const customSystemPrompt = (activeConversation?.systemPrompt ?? "").trim();
     const useShortcuts = !customSystemPrompt;
+
+    // History source for API calls. Callers that truncate the thread first
+    // (edit / retry) pass the already-truncated messages explicitly — the
+    // upsertConversation state update hasn't re-rendered into `messages` yet.
+    const threadSource = opts?.messagesOverride ?? messages;
 
     if (activeMode === "agent") {
       setIsLoading(false);
@@ -1747,7 +1775,7 @@ export default function Home() {
 
       // ── Server-side commands (macOS system calls) ────────────────────────
       try {
-        const historyMsgs = [...messages, { ...userMsg, content: promptWithDocs }];
+        const historyMsgs = [...threadSource, { ...userMsg, content: promptWithDocs }];
         const history = buildHistory(historyMsgs);
         const body: ChatRequest = {
           messages: history,
@@ -1784,7 +1812,7 @@ export default function Home() {
 
     // 4. AI response (streaming for Groq, non-streaming for Ollama)
     try {
-      const history = buildHistory([...messages, { ...userMsg, content: promptWithDocs }]);
+      const history = buildHistory([...threadSource, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
         messages: history,
         model: selectedModel,
@@ -2031,20 +2059,25 @@ export default function Home() {
   }
 
   async function handleEditMessage(messageId: string, newContent: string) {
-    if (!activeConversationId || isLoading) return;
+    if (!activeConversationId || isLoading || !activeConversation) return;
+    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    // Snapshot the truncated thread BEFORE the upsert — sendMessage below
+    // would otherwise still see the pre-truncation render's `messages`.
+    const truncated = activeConversation.messages.slice(0, idx);
     upsertConversation(activeConversationId, (c) => {
-      const idx = c.messages.findIndex((m) => m.id === messageId);
-      if (idx === -1) return c;
+      const curIdx = c.messages.findIndex((m) => m.id === messageId);
+      if (curIdx === -1) return c;
       // Truncate: remove the edited message and everything after it
       return {
         ...c,
-        messages: c.messages.slice(0, idx),
+        messages: c.messages.slice(0, curIdx),
         tokenUsage: zeroUsage("actual"),
         updatedAt: new Date().toISOString(),
       };
     });
     // sendMessage will add the user message fresh and get the AI reply
-    await sendMessage(newContent);
+    await sendMessage(newContent, { messagesOverride: truncated });
   }
 
   async function handleEditAgentUserMessage(messageId: string, newContent: string) {
@@ -2065,16 +2098,30 @@ export default function Home() {
   }
 
   async function handleRetryMessage(messageId: string) {
-    if (!activeConversationId || isLoading) return;
+    if (!activeConversationId || isLoading || !activeConversation) return;
     let userContent = "";
+    let truncated: Message[] | null = null;
+    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
+    if (idx !== -1) {
+      // Find the user message immediately before this assistant message
+      for (let i = idx - 1; i >= 0; i--) {
+        if (activeConversation.messages[i].role === "user") {
+          userContent = activeConversation.messages[i].content;
+          // Snapshot the truncated thread BEFORE the upsert — sendMessage
+          // below would otherwise see pre-truncation history.
+          truncated = activeConversation.messages.slice(0, i);
+          break;
+        }
+      }
+    }
+    if (!userContent || !truncated) return;
     upsertConversation(activeConversationId, (c) => {
-      const idx = c.messages.findIndex((m) => m.id === messageId);
-      if (idx === -1) return c;
+      const curIdx = c.messages.findIndex((m) => m.id === messageId);
+      if (curIdx === -1) return c;
       // Find the user message immediately before this assistant message
       let userIdx = -1;
-      for (let i = idx - 1; i >= 0; i--) {
+      for (let i = curIdx - 1; i >= 0; i--) {
         if (c.messages[i].role === "user") {
-          userContent = c.messages[i].content;
           userIdx = i;
           break;
         }
@@ -2088,7 +2135,7 @@ export default function Home() {
         updatedAt: new Date().toISOString(),
       };
     });
-    if (userContent) await sendMessage(userContent);
+    await sendMessage(userContent, { messagesOverride: truncated });
   }
 
   async function handleSlashCommand(cmd: string) {

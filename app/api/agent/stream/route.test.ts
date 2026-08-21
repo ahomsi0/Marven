@@ -23,20 +23,27 @@ vi.mock("@/lib/agent/openai", () => ({ openaiAgentStep: vi.fn() }));
 vi.mock("@/lib/agent/anthropic", () => ({ anthropicAgentStep: vi.fn() }));
 
 import { POST } from "./route";
+import { setActiveWorkspaceRoot } from "@/lib/workspaceState";
 
 let tmpRoot: string;
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stream-route-"));
   captured.opts = null;
+  // The route only honors registered workspace roots.
+  setActiveWorkspaceRoot(tmpRoot);
 });
 
 afterEach(async () => {
+  setActiveWorkspaceRoot(null);
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
 function makeReq(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  return {
+    json: async () => body,
+    signal: new AbortController().signal,
+  } as unknown as NextRequest;
 }
 
 async function drain(stream: ReadableStream): Promise<void> {

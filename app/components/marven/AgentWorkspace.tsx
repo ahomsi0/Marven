@@ -568,17 +568,24 @@ export function AgentWorkspace({
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [tasksOpen]);
 
+  // Sequence guard so a stale response can't overwrite the newer
+  // conversation's scopes after rapid switches.
+  const memoryFetchSeqRef = useRef(0);
   function refreshMemory() {
+    const requestId = ++memoryFetchSeqRef.current;
     const params = new URLSearchParams();
     if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
     if (conversationId) params.set("conversationId", conversationId);
     fetch(`/api/memory${params.toString() ? `?${params.toString()}` : ""}`)
       .then((r) => r.json())
-      .then((d) => setMemoryScopes({
-        global: Array.isArray(d?.scopes?.global) ? d.scopes.global : [],
-        project: Array.isArray(d?.scopes?.project) ? d.scopes.project : [],
-        conversation: Array.isArray(d?.scopes?.conversation) ? d.scopes.conversation : [],
-      }))
+      .then((d) => {
+        if (requestId !== memoryFetchSeqRef.current) return;
+        setMemoryScopes({
+          global: Array.isArray(d?.scopes?.global) ? d.scopes.global : [],
+          project: Array.isArray(d?.scopes?.project) ? d.scopes.project : [],
+          conversation: Array.isArray(d?.scopes?.conversation) ? d.scopes.conversation : [],
+        });
+      })
       .catch(() => {});
   }
 

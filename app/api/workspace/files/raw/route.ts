@@ -6,7 +6,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
-import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import {
+  resolveRequestRoot,
+  workspaceErrorStatus,
+} from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
 
 const CONTENT_TYPE: Record<string, string> = {
@@ -24,12 +27,16 @@ const CONTENT_TYPE: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const target = url.searchParams.get("path");
-  const root = url.searchParams.get("root") || getActiveWorkspaceRoot();
+  const rootParam = url.searchParams.get("root");
+  const root = resolveRequestRoot(rootParam);
   if (!target) {
     return NextResponse.json({ error: "path query parameter is required" }, { status: 400 });
   }
   if (!root) {
-    return NextResponse.json({ error: "No workspace folder open" }, { status: 400 });
+    return NextResponse.json(
+      { error: rootParam ? "Workspace not approved" : "No workspace folder open" },
+      { status: rootParam ? 403 : 400 },
+    );
   }
   try {
     const abs = resolveWorkspacePath(root, target);
@@ -41,11 +48,17 @@ export async function GET(req: NextRequest) {
       headers: {
         "Content-Type": mime,
         "Cache-Control": "no-store",
+        // This endpoint is embedded in preview iframes. Without a sandboxing
+        // CSP, fetched HTML/SVG would execute as a same-origin document with
+        // full access to every local API route (same gap the serve/preview
+        // routes already close).
+        "Content-Security-Policy":
+          "sandbox; default-src 'none'; img-src data: blob:; media-src data: blob:; object-src 'none'; script-src 'none'; style-src 'none'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not read file";
-    const status = message === "Path outside workspace" ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: workspaceErrorStatus(message) });
   }
 }

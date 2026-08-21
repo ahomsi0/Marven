@@ -3,11 +3,20 @@ import { writeFile, unlink } from "fs/promises";
 import path from "path";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
-import { CHECKPOINT_TOO_LARGE, getCheckpoint, listCheckpoints } from "@/lib/agent/checkpointStore";
+import {
+  CHECKPOINT_TOO_LARGE,
+  getCheckpoint,
+  getCheckpointWorkspaceRoot,
+  listCheckpoints,
+} from "@/lib/agent/checkpointStore";
 
 function ownedCheckpointPath(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
-  const root = getActiveWorkspaceRoot();
+  // Validate against the checkpoint's OWN recorded workspace rather than
+  // whichever conversation is currently active — with multiple agent
+  // conversations pinned to different folders, the global active root would
+  // make reverts 403 depending on which conversation was opened last.
+  const root = getCheckpointWorkspaceRoot(value) || getActiveWorkspaceRoot();
   if (!root) return null;
 
   const resolvedRoot = path.resolve(root);

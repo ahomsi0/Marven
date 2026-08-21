@@ -111,6 +111,9 @@ function startNextServer() {
   process.env.HOSTNAME = '127.0.0.1';
   process.env.NODE_ENV = 'production';
   process.env.MARVEN_HEALTH_TOKEN = healthToken;
+  // Lets the embedded API server read persisted settings (e.g. the agent
+  // safety profile) from the same file the main process manages.
+  process.env.MARVEN_USER_DATA = app.getPath('userData');
 
   const loadServer = new Promise((resolve, reject) => {
     setImmediate(() => {
@@ -415,9 +418,24 @@ function createWindow() {
   const appPort = isDev ? 3000 : 47891;
   mainWindow.loadURL(`http://localhost:${appPort}`);
 
-  // Retry if server wasn't ready yet
-  mainWindow.webContents.on('did-fail-load', () => {
-    setTimeout(() => mainWindow.loadURL(`http://localhost:${appPort}`), 1500);
+  // Retry if server wasn't ready yet — capped, and never overlapping: an
+  // uncapped loop would retry forever (and double-fire) if the embedded
+  // server is permanently broken.
+  let loadRetries = 0;
+  let loadRetryTimer = null;
+  const MAX_LOAD_RETRIES = 20;
+  mainWindow.webContents.on('did-fail-load', (_event, code, desc, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (loadRetries >= MAX_LOAD_RETRIES) {
+      console.error('[Marven] Giving up loading the app UI after', loadRetries, 'attempts (last error', code, desc, ')');
+      return;
+    }
+    loadRetries++;
+    if (loadRetryTimer) clearTimeout(loadRetryTimer);
+    loadRetryTimer = setTimeout(() => {
+      loadRetryTimer = null;
+      mainWindow.loadURL(`http://localhost:${appPort}`);
+    }, 1500);
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -699,7 +717,29 @@ function getPty() {
   return _pty;
 }
 
-const ptys = new Map(); // id → IPty
+const ptys = new Map(); // id → { pty, buffer, lastActive }
+
+// Keep at most this many background shells alive. Remounting the terminal UI
+// (panel toggle, workspace switch) no longer kills the session, so without a
+// cap, PTYs would accumulate across workspaces for the lifetime of the app.
+const MAX_LIVE_PTYS = 6;
+const PTY_BUFFER_LIMIT = 64 * 1024;
+
+function evictOldestPty() {
+  if (ptys.size <= MAX_LIVE_PTYS) return;
+  let oldestId = null;
+  let oldestTs = Infinity;
+  for (const [id, entry] of ptys) {
+    if (entry.lastActive < oldestTs) {
+      oldestTs = entry.lastActive;
+      oldestId = id;
+    }
+  }
+  if (oldestId) {
+    try { ptys.get(oldestId).pty.kill(); } catch {}
+    ptys.delete(oldestId);
+  }
+}
 
 ipcMain.handle('pty-start', (event, args) => {
   const { id, cwd, cols, rows } = args || {};
@@ -707,11 +747,19 @@ ipcMain.handle('pty-start', (event, args) => {
   const pty = getPty();
   if (!pty) return { ok: false, error: 'node-pty-unavailable' };
 
-  // If an old PTY exists for this id (e.g. component remount), kill it first.
-  if (ptys.has(id)) {
-    try { ptys.get(id).kill(); } catch {}
-    ptys.delete(id);
+  // Reuse a live shell for the same id instead of killing it: remounting the
+  // terminal UI (collapsing the panel, switching to Problems and back) must
+  // not terminate running processes or reset the session.
+  const existing = ptys.get(id);
+  if (existing) {
+    existing.lastActive = Date.now();
+    // Replay recent output so the fresh xterm instance has context.
+    if (!event.sender.isDestroyed() && existing.buffer) {
+      event.sender.send('pty-data', { id, data: existing.buffer });
+    }
+    return { ok: true, reused: true };
   }
+  evictOldestPty();
 
   // Pick a shell that actually exists on disk. $SHELL can point at a binary
   // that's been uninstalled or moved (e.g. fish removed via brew, bash path
@@ -755,8 +803,15 @@ ipcMain.handle('pty-start', (event, args) => {
       cwd: resolvedCwd,
       env: sanitizedEnv({ TERM: 'xterm-256color' }),
     });
-    ptys.set(id, p);
+    const entry = { pty: p, buffer: '', lastActive: Date.now() };
+    ptys.set(id, entry);
     p.onData((data) => {
+      entry.lastActive = Date.now();
+      // Ring buffer so a remounted terminal can replay what it missed.
+      entry.buffer += data;
+      if (entry.buffer.length > PTY_BUFFER_LIMIT) {
+        entry.buffer = entry.buffer.slice(-PTY_BUFFER_LIMIT);
+      }
       // Renderer may have been destroyed (window close, navigation). Guard.
       if (event.sender.isDestroyed()) return;
       event.sender.send('pty-data', { id, data });
@@ -765,7 +820,13 @@ ipcMain.handle('pty-start', (event, args) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('pty-exit', { id, exitCode });
       }
-      ptys.delete(id);
+      // Identity check: kill() delivers SIGHUP asynchronously, so the
+      // OLD pty's exit can fire after a replacement was registered under the
+      // same id. Only remove the registry entry that belongs to this process,
+      // otherwise the new shell becomes unreachable and leaks.
+      if (ptys.get(id)?.pty === p) {
+        ptys.delete(id);
+      }
     });
     return { ok: true };
   } catch (err) {
@@ -776,28 +837,29 @@ ipcMain.handle('pty-start', (event, args) => {
 
 ipcMain.on('pty-write', (_e, args) => {
   const { id, data } = args || {};
-  const p = ptys.get(id);
-  if (!p) {
+  const entry = ptys.get(id);
+  if (!entry) {
     console.warn('[Marven] pty-write: no PTY for id', id, '(known ids:', [...ptys.keys()], ')');
     return;
   }
-  try { p.write(data); } catch (err) { console.error('[Marven] pty.write failed:', err && err.message); }
+  entry.lastActive = Date.now();
+  try { entry.pty.write(data); } catch (err) { console.error('[Marven] pty.write failed:', err && err.message); }
 });
 
 ipcMain.on('pty-resize', (_e, args) => {
   const { id, cols, rows } = args || {};
-  const p = ptys.get(id);
-  if (!p) return;
+  const entry = ptys.get(id);
+  if (!entry) return;
   try {
-    p.resize(Math.max(20, Math.floor(cols || 80)), Math.max(5, Math.floor(rows || 24)));
+    entry.pty.resize(Math.max(20, Math.floor(cols || 80)), Math.max(5, Math.floor(rows || 24)));
   } catch {}
 });
 
 ipcMain.on('pty-kill', (_e, args) => {
   const { id } = args || {};
-  const p = ptys.get(id);
-  if (!p) return;
-  try { p.kill(); } catch {}
+  const entry = ptys.get(id);
+  if (!entry) return;
+  try { entry.pty.kill(); } catch {}
   ptys.delete(id);
 });
 
@@ -808,8 +870,8 @@ app.on('before-quit', () => {
     workspaceFileWatcher = null;
     workspaceWatcherRoot = null;
   }
-  for (const p of ptys.values()) {
-    try { p.kill(); } catch {}
+  for (const entry of ptys.values()) {
+    try { entry.pty.kill(); } catch {}
   }
   ptys.clear();
 });

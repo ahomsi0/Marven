@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 interface ScanBody {
   workspaceRoot?: string;
@@ -110,21 +111,25 @@ export async function POST(req: NextRequest) {
   if (!workspaceRoot) {
     return NextResponse.json({ error: "workspaceRoot is required" }, { status: 400 });
   }
+  const root = resolveRequestRoot(workspaceRoot);
+  if (!root) {
+    return NextResponse.json({ error: "Workspace not approved" }, { status: 403 });
+  }
 
-  const pkg = await readPackageJson(workspaceRoot);
+  const pkg = await readPackageJson(root);
   const deps = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) };
-  const packageManager = await detectPackageManager(workspaceRoot);
+  const packageManager = await detectPackageManager(root);
   const scripts = pkg?.scripts ?? {};
   const stack = STACK_MARKERS.filter(([dep]) => dep in deps).map(([, label]) => label);
 
   const [entrypoints, importantFiles, envFiles] = await Promise.all([
     Promise.all(
-      ENTRYPOINT_CANDIDATES.map(async (file) => ((await exists(path.join(workspaceRoot, file))) ? file : null)),
+      ENTRYPOINT_CANDIDATES.map(async (file) => ((await exists(path.join(root, file))) ? file : null)),
     ).then((items) => items.filter((item): item is string => Boolean(item))),
     Promise.all(
-      IMPORTANT_FILES.map(async (file) => ((await exists(path.join(workspaceRoot, file))) ? file : null)),
+      IMPORTANT_FILES.map(async (file) => ((await exists(path.join(root, file))) ? file : null)),
     ).then((items) => items.filter((item): item is string => Boolean(item))),
-    fs.readdir(workspaceRoot)
+    fs.readdir(root)
       .then((items) => items.filter((file) => file.startsWith(".env")).sort())
       .catch(() => []),
   ]);
@@ -145,7 +150,7 @@ export async function POST(req: NextRequest) {
   ].filter((item): item is string => Boolean(item));
 
   return NextResponse.json({
-    name: pkg?.name ?? path.basename(workspaceRoot),
+    name: pkg?.name ?? path.basename(root),
     version: pkg?.version ?? null,
     packageManager,
     stack,

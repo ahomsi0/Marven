@@ -95,7 +95,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
     // Focus afterwards so keystrokes reach the PTY without an extra click;
     // without this xterm's hidden textarea may not be the active element when
     // the panel opens, so typing goes wherever the editor focus was.
-    requestAnimationFrame(() => {
+    const rafId = requestAnimationFrame(() => {
       try { fit.fit(); } catch {}
       try { term.focus(); } catch {}
     });
@@ -174,13 +174,18 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(rafId);
       ro.disconnect();
       containerRef.current?.removeEventListener("keydown", onContainerKeyDown);
       try { keyDisposable.dispose(); } catch {}
       try { resizeDisposable.dispose(); } catch {}
       unsubData?.();
       unsubExit?.();
-      try { bridge.ptyKill({ id: ptyId }); } catch {}
+      // Deliberately do NOT kill the PTY here. Unmounting happens on panel
+      // collapse / tab switches too — killing would terminate running
+      // processes (dev servers, watches). The shell stays alive in the main
+      // process keyed by ptyId; a remount reuses it and replays buffered
+      // output. Shells are reaped on app quit or via the main-process LRU cap.
       try { term.dispose(); } catch {}
       termRef.current = null;
       fitRef.current = null;

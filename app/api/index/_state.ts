@@ -221,6 +221,13 @@ export function startRun(workspaceRoot: string): StartRunResult {
   })()
     .then(
       (result) => {
+        // Surface per-file failures (embedder outage, sqlite errors) that the
+        // indexer used to swallow — "done" with 0 files and no error left the
+        // user believing semantic search worked when it never indexed.
+        if (result.lastError) {
+          handle.lastError = result.lastError;
+          emit(handle, { type: "error", data: { message: result.lastError } });
+        }
         emit(handle, { type: "done", data: result });
       },
       (err: unknown) => {

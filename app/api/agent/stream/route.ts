@@ -14,7 +14,9 @@ import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPr
 import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
-import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "@/lib/agent/safety";
+import type { AgentSafetyProfile } from "@/lib/agent/safety";
+import { effectiveAgentSafetyProfile } from "@/lib/agent/serverSafetyProfile";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -45,17 +47,23 @@ export async function POST(req: NextRequest) {
   }
 
   let prompt = body.prompt?.trim() ?? "";
-  const workspaceRoot = body.workspaceRoot?.trim() ?? "";
+  const requestedRoot = body.workspaceRoot?.trim() ?? "";
 
   if (!prompt) {
     return new Response("prompt is required", { status: 400 });
   }
+  // The loop treats this root as its sandbox — only honor roots the user
+  // actually opened (registered via PATCH /api/workspace/files).
+  const workspaceRoot = resolveRequestRoot(requestedRoot) ?? "";
   if (!workspaceRoot) {
     const encoder = new TextEncoder();
+    const message = requestedRoot
+      ? "Workspace not approved — open the folder via Open Folder first."
+      : "No workspace folder open. Click 'Open Folder' to get started.";
     const stream = new ReadableStream({
       start(controller) {
         controller.enqueue(encoder.encode(
-          `event: error\ndata: ${JSON.stringify({ code: "workspace_not_set", message: "No workspace folder open. Click 'Open Folder' to get started." })}\n\n`
+          `event: error\ndata: ${JSON.stringify({ code: "workspace_not_set", message })}\n\n`
         ));
         controller.close();
       },
@@ -64,7 +72,10 @@ export async function POST(req: NextRequest) {
   }
 
   const provider = (body.provider ?? "groq") as AIProvider;
-  const safetyProfile = normalizeAgentSafetyProfile(body.safetyProfile);
+  // The approval ladder is enforced from persisted settings, never from a
+  // wire-claimed value — otherwise any local caller could send
+  // {"safetyProfile":"trusted"} and skip every confirmation prompt.
+  const safetyProfile: AgentSafetyProfile = effectiveAgentSafetyProfile(body.safetyProfile);
 
   const model =
     (typeof body.model === "string" && body.model.trim().length > 0
@@ -173,17 +184,31 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
+  // Set once the consumer goes away (client abort / navigation). Every emit
+  // afterwards becomes a no-op and the agent loop stops early instead of
+  // continuing to make paid provider calls nobody will read.
+  let consumerGone = false;
+
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(
-          `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-        ));
+        if (consumerGone) return;
+        try {
+          controller.enqueue(encoder.encode(
+            `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+          ));
+        } catch {
+          // Enqueue after cancel throws — treat as disconnect.
+          consumerGone = true;
+        }
       };
 
       const onProgress = (callId: string, chunk: string) => {
         emit("tool_progress", { type: "tool_progress", callId, chunk });
       };
+
+      const onDisconnect = () => { consumerGone = true; };
+      req.signal.addEventListener("abort", onDisconnect, { once: true });
 
       try {
         for await (const event of runAgentLoop({
@@ -215,6 +240,7 @@ export async function POST(req: NextRequest) {
             });
           },
         })) {
+          if (consumerGone || req.signal.aborted) break;
           emit(event.type, event);
         }
       } catch (err) {
@@ -223,8 +249,12 @@ export async function POST(req: NextRequest) {
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
-        controller.close();
+        req.signal.removeEventListener("abort", onDisconnect);
+        try { controller.close(); } catch { /* already closed/cancelled */ }
       }
+    },
+    cancel() {
+      consumerGone = true;
     },
   });
 

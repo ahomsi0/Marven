@@ -4,9 +4,58 @@ import { parseNarratedToolCall } from "./parseNarratedToolCall";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+export interface ProviderToolCall {
+  callId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  /** Set when `arguments` wasn't valid JSON — the loop reports it back to the model instead of executing with empty args. */
+  malformedError?: string;
+}
+
 export type ProviderStepResult =
   | { type: "tool_call"; callId: string; tool: string; args: Record<string, unknown> }
+  | { type: "tool_calls"; calls: ProviderToolCall[] }
   | { type: "text"; content: string };
+
+/**
+ * Parse one OpenAI-style tool call. Handles providers that deliver
+ * `arguments` as a JSON string or as an already-parsed object, and flags
+ * unparseable arguments instead of silently executing with `{}`.
+ */
+export function parseOpenAiStyleToolCall(
+  tc: { id?: string; function?: { name?: string; arguments?: unknown } },
+  fallbackCallId: string,
+): ProviderToolCall {
+  const callId = tc.id || `${fallbackCallId}-${Date.now()}`;
+  const tool = tc.function?.name ?? "";
+  const rawArgs = tc.function?.arguments;
+  if (rawArgs && typeof rawArgs === "object") {
+    return { callId, tool, args: rawArgs as Record<string, unknown> };
+  }
+  if (typeof rawArgs === "string") {
+    try {
+      const parsed = JSON.parse(rawArgs);
+      if (parsed && typeof parsed === "object") {
+        return { callId, tool, args: parsed as Record<string, unknown> };
+      }
+      return {
+        callId,
+        tool,
+        args: {},
+        malformedError: "arguments decoded to a non-object",
+      };
+    } catch (err) {
+      return {
+        callId,
+        tool,
+        args: {},
+        malformedError:
+          err instanceof Error ? err.message : "arguments were not valid JSON",
+      };
+    }
+  }
+  return { callId, tool, args: {} };
+}
 
 /** Convert internal loop messages to the Groq (OpenAI-compatible) format. */
 function toGroqMessages(
@@ -108,10 +157,14 @@ export async function groqAgentStep(
   const choice = data.choices?.[0];
 
   if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls?.length) {
-    const tc = choice.message.tool_calls[0];
-    let args: Record<string, unknown> = {};
-    try { args = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
-    return { type: "tool_call", callId: tc.id, tool: tc.function.name, args };
+    const calls = choice.message.tool_calls.map((tc: Parameters<typeof parseOpenAiStyleToolCall>[0]) =>
+      parseOpenAiStyleToolCall(tc, "groq-call"),
+    );
+    if (calls.length === 1) {
+      const { callId, tool, args } = calls[0];
+      return { type: "tool_call", callId, tool, args };
+    }
+    return { type: "tool_calls", calls };
   }
 
   const content = (choice?.message?.content as string ?? "").trim();

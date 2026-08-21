@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { getActiveWorkspaceRoot } from "@/lib/workspaceState";
+import {
+  resolveRequestRoot,
+  WorkspaceNotApprovedError,
+  workspaceErrorStatus,
+} from "@/lib/workspaceState";
 import { crossOriginRejection } from "@/lib/apiGuards";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 
 function getRoot(bodyRoot?: string): string {
-  const root = bodyRoot?.trim() || getActiveWorkspaceRoot();
-  if (!root) throw new Error("No workspace folder open.");
+  const root = resolveRequestRoot(bodyRoot);
+  if (!root) {
+    throw bodyRoot?.trim()
+      ? new WorkspaceNotApprovedError()
+      : new Error("No workspace folder open.");
+  }
   return root;
 }
 
@@ -82,7 +90,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not delete.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: workspaceErrorStatus(message) });
   }
 }
 
@@ -121,6 +129,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, path: destRel });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not copy.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: workspaceErrorStatus(message) });
   }
 }

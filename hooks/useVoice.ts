@@ -282,9 +282,17 @@ export function useVoice(
             wakeRecRef.current   = null;
 
             mr.onstop = () => {
+              // stop() flushes one final dataavailable BEFORE firing stop —
+              // that tail chunk lands in the fresh wakeChunks array we just
+              // swapped in. Include it, otherwise the last ~100ms of speech
+              // is discarded from every utterance (and startRec() below
+              // would reset the array, losing it for good).
+              const tail = wakeChunks.current;
+              wakeChunks.current = [];
+              const allChunks = tail.length > 0 ? [...capturedChunks, ...tail] : capturedChunks;
               // Build the blob from a completed recording — guaranteed valid WebM
-              const blob = new Blob(capturedChunks, { type: capturedMime });
-              console.log("[wake] blob", blob.size, "bytes,", capturedChunks.length, "chunks");
+              const blob = new Blob(allChunks, { type: capturedMime });
+              console.log("[wake] blob", blob.size, "bytes,", allChunks.length, "chunks");
 
               // Start the next recorder immediately so we never miss audio
               startRec();

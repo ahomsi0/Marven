@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { executeTool } from "@/lib/agent/tools";
 import { crossOriginRejection } from "@/lib/apiGuards";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 interface VerifyRequestBody {
   workspaceRoot?: string;
@@ -94,9 +95,13 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const workspaceRoot = body.workspaceRoot?.trim() ?? "";
+  const requestedRoot = body.workspaceRoot?.trim() ?? "";
+  const workspaceRoot = resolveRequestRoot(requestedRoot) ?? "";
   if (!workspaceRoot) {
-    return new Response("workspaceRoot is required", { status: 400 });
+    return new Response(
+      requestedRoot ? "Workspace not approved" : "workspaceRoot is required",
+      { status: requestedRoot ? 403 : 400 },
+    );
   }
 
   const requestedCommands = (Array.isArray(body.commands) ? body.commands : [])
@@ -115,11 +120,23 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
+  // Stop emitting (and stop scheduling further commands) once the client
+  // disconnects — otherwise enqueue-after-cancel throws out of the catch.
+  let consumerGone = false;
+
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        if (consumerGone) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          consumerGone = true;
+        }
       };
+
+      const onDisconnect = () => { consumerGone = true; };
+      req.signal.addEventListener("abort", onDisconnect, { once: true });
 
       if (commands.length === 0) {
         emit("text_delta", {
@@ -127,7 +144,7 @@ export async function POST(req: NextRequest) {
           delta: "Auto-verify skipped. No lint, test, or build scripts were detected in this workspace.",
         });
         emit("done", { type: "done", toolCallCount: 0 });
-        controller.close();
+        try { controller.close(); } catch { /* already closed */ }
         return;
       }
 
@@ -135,6 +152,7 @@ export async function POST(req: NextRequest) {
 
       try {
         for (let i = 0; i < commands.length; i++) {
+          if (consumerGone || req.signal.aborted) break;
           const command = commands[i];
           const callId = `verify-${Date.now()}-${i}`;
           emit("tool_call", {
@@ -161,12 +179,14 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        const summary =
-          failures === 0
-            ? `Auto-verify passed. Ran ${commands.length} command${commands.length !== 1 ? "s" : ""}.`
-            : `Auto-verify found issues. ${failures} of ${commands.length} command${commands.length !== 1 ? "s" : ""} failed.`;
-        emit("text_delta", { type: "text_delta", delta: summary });
-        emit("done", { type: "done", toolCallCount: commands.length });
+        if (!consumerGone) {
+          const summary =
+            failures === 0
+              ? `Auto-verify passed. Ran ${commands.length} command${commands.length !== 1 ? "s" : ""}.`
+              : `Auto-verify found issues. ${failures} of ${commands.length} command${commands.length !== 1 ? "s" : ""} failed.`;
+          emit("text_delta", { type: "text_delta", delta: summary });
+          emit("done", { type: "done", toolCallCount: commands.length });
+        }
       } catch (error) {
         emit("error", {
           type: "error",
@@ -174,8 +194,12 @@ export async function POST(req: NextRequest) {
           message: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        controller.close();
+        req.signal.removeEventListener("abort", onDisconnect);
+        try { controller.close(); } catch { /* already closed/cancelled */ }
       }
+    },
+    cancel() {
+      consumerGone = true;
     },
   });
 

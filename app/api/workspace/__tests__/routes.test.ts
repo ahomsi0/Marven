@@ -38,7 +38,9 @@ describe("/api/workspace/* route handlers", () => {
     await fs.writeFile(path.join(workspaceRoot, "index.html"), "<h1>ok</h1>\n", "utf8");
     await fs.writeFile(path.join(siblingRoot, "outside.txt"), "needle outside\n", "utf8");
 
-    setActiveWorkspaceRoot(null);
+    // Registering via setActiveWorkspaceRoot both activates and approves the
+    // root — routes reject client-supplied roots that were never registered.
+    setActiveWorkspaceRoot(workspaceRoot);
   });
 
   afterEach(async () => {
@@ -47,6 +49,8 @@ describe("/api/workspace/* route handlers", () => {
   });
 
   it("files read uses the explicit root instead of the global active workspace", async () => {
+    // Both roots are approved (workspaceRoot in beforeEach, sibling now);
+    // the explicit root must win over the global active one.
     setActiveWorkspaceRoot(siblingRoot);
 
     const res = await filesReadPost(
@@ -59,6 +63,19 @@ describe("/api/workspace/* route handlers", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.content).toContain("needle inside");
+  });
+
+  it("files read rejects a client-supplied root that was never approved", async () => {
+    const res = await filesReadPost(
+      makeReq("http://x/api/workspace/files", {
+        root: "/",
+        path: "etc/hosts",
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toContain("Workspace not approved");
   });
 
   it("files read rejects sibling-directory escapes", async () => {

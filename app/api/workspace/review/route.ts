@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGit } from "@/lib/agent/git";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 interface ReviewBody {
   workspaceRoot?: string;
@@ -91,13 +92,17 @@ export async function POST(req: NextRequest) {
   if (!workspaceRoot) {
     return NextResponse.json({ error: "workspaceRoot is required" }, { status: 400 });
   }
+  const root = resolveRequestRoot(workspaceRoot);
+  if (!root) {
+    return NextResponse.json({ error: "Workspace not approved" }, { status: 403 });
+  }
 
   const [status, nameStatus, untracked, diffStat, diff] = await Promise.all([
-    runGit(["status", "--short", "--branch"], workspaceRoot),
-    runGit(["diff", "--name-status", "HEAD"], workspaceRoot),
-    runGit(["ls-files", "--others", "--exclude-standard"], workspaceRoot),
-    runGit(["diff", "--stat", "HEAD"], workspaceRoot),
-    runGit(["diff", "HEAD"], workspaceRoot),
+    runGit(["status", "--short", "--branch"], root),
+    runGit(["diff", "--name-status", "HEAD"], root),
+    runGit(["ls-files", "--others", "--exclude-standard"], root),
+    runGit(["diff", "--stat", "HEAD"], root),
+    runGit(["diff", "HEAD"], root),
   ]);
 
   if (/Not a git repository|Git error/i.test(status)) {

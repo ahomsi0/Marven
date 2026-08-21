@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { runGit } from "@/lib/agent/git";
+import { resolveRequestRoot } from "@/lib/workspaceState";
 
 interface ReleaseBody {
   workspaceRoot?: string;
@@ -47,21 +48,25 @@ export async function POST(req: NextRequest) {
   if (!workspaceRoot) {
     return NextResponse.json({ error: "workspaceRoot is required" }, { status: 400 });
   }
+  const root = resolveRequestRoot(workspaceRoot);
+  if (!root) {
+    return NextResponse.json({ error: "Workspace not approved" }, { status: 403 });
+  }
 
-  const pkg = await readPackage(workspaceRoot);
+  const pkg = await readPackage(root);
   const version = pkg?.version ?? null;
   const scripts = pkg?.scripts ?? {};
   const [branch, status, latestTag, releaseTagRemote] = await Promise.all([
-    runGit(["branch", "--show-current"], workspaceRoot),
-    runGit(["status", "--short"], workspaceRoot),
-    runGit(["tag", "--sort=-v:refname"], workspaceRoot).then((out) => out.split(/\r?\n/)[0]?.trim() ?? ""),
-    version ? runGit(["ls-remote", "--tags", "origin", `v${version}`], workspaceRoot) : Promise.resolve(""),
+    runGit(["branch", "--show-current"], root),
+    runGit(["status", "--short"], root),
+    runGit(["tag", "--sort=-v:refname"], root).then((out) => out.split(/\r?\n/)[0]?.trim() ?? ""),
+    version ? runGit(["ls-remote", "--tags", "origin", `v${version}`], root) : Promise.resolve(""),
   ]);
 
   const suggestedCommands = ["typecheck", "lint", "test", "build", "electron:build"]
     .filter((script) => Boolean(scripts[script]?.trim()))
     .map(scriptCommand);
-  const artifacts = await listDist(workspaceRoot, version);
+  const artifacts = await listDist(root, version);
   const tag = version ? `v${version}` : null;
   const checklist = [
     { label: "Working tree reviewed", done: status.trim().length === 0, detail: status.trim() || "Clean" },

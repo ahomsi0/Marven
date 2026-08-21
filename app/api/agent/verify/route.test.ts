@@ -4,12 +4,14 @@ import os from "os";
 import path from "path";
 import type { NextRequest } from "next/server";
 import { POST } from "./route";
+import { setActiveWorkspaceRoot } from "@/lib/workspaceState";
 
 function makeReq(body: unknown): NextRequest {
   return {
     url: "http://localhost:47891/api/agent/verify",
     headers: new Headers(),
     json: async () => body,
+    signal: new AbortController().signal,
   } as unknown as NextRequest;
 }
 
@@ -41,9 +43,12 @@ describe("POST /api/agent/verify", () => {
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "marven-verify-"));
+    // The route only operates inside registered workspace roots.
+    setActiveWorkspaceRoot(tmpRoot);
   });
 
   afterEach(async () => {
+    setActiveWorkspaceRoot(null);
     await fs.rm(tmpRoot, { recursive: true, force: true });
   });
 

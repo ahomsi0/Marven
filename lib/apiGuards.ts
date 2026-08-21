@@ -33,7 +33,7 @@ export function crossOriginRejection(req: NextRequest): string | null {
   // loopback aliases because Electron may load localhost while a dev tool uses
   // 127.0.0.1 for the same bound server.
   const loopback = (host: string) =>
-    host === "localhost" || host === "127.0.0.1" || host === "::1";
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
   const sameHost =
     originUrl.hostname === requestUrl.hostname ||
     (loopback(originUrl.hostname) && loopback(requestUrl.hostname));
@@ -42,4 +42,31 @@ export function crossOriginRejection(req: NextRequest): string | null {
     originUrl.port === requestUrl.port &&
     sameHost;
   return sameOrigin ? null : "Cross-origin request rejected";
+}
+
+/**
+ * Rejects requests whose `Host` header isn't loopback.
+ *
+ * The Origin check above compares against the request's own URL — which is
+ * derived from the Host header — so a DNS-rebinding page (attacker domain
+ * resolving to 127.0.0.1) produces an Origin and Host that match exactly and
+ * slips through. Validating that the Host header itself names this server's
+ * loopback interface closes rebinding completely: the attacker's fetches carry
+ * their own domain as Host.
+ *
+ * Returns an error string to respond with, or null when the request is allowed.
+ */
+export function hostHeaderRejection(req: NextRequest): string | null {
+  const host = req.headers.get("host");
+  if (!host) return "Missing Host header";
+  // Strip an IPv6 zone suffix if present; compare case-insensitively.
+  const hostname = host.split("%")[0].toLowerCase();
+  const isLoopbackHost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1";
+  // The embedded server binds only to 127.0.0.1; a non-loopback Host means the
+  // request was addressed to some other name (e.g. a rebinding domain).
+  return isLoopbackHost ? null : "Non-loopback Host rejected";
 }

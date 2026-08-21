@@ -138,7 +138,23 @@ export function AgentPanel({
 
   useEffect(() => { setMenuActiveIdx(0); }, [query]);
 
+  // Auto-scroll only when the user is already near the bottom — otherwise
+  // streaming deltas yank the viewport down while they're scrolling up to
+  // re-read earlier messages.
+  const nearBottomRef = useRef(true);
   useEffect(() => {
+    const el = bottomRef.current?.parentElement;
+    if (!el) return;
+    const update = () => {
+      nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    return () => el.removeEventListener("scroll", update);
+  }, []);
+
+  useEffect(() => {
+    if (!nearBottomRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isRunning]);
 

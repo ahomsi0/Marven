@@ -549,12 +549,16 @@ export async function executeTool(
         // Size-shrink sanity guard — even after a read, if the model is
         // dumping back <30% of what it read, that's almost certainly an
         // accidental wipe. Refuse and ask for the full content.
+        // Compare byte-to-byte: content.length counts UTF-16 code units, so
+        // multibyte files (CJK, Arabic, emoji) would otherwise trip a false
+        // positive on identical-content rewrites.
         const SHRINK_THRESHOLD = 0.3;
+        const newContentBytes = Buffer.byteLength(content, "utf8");
         if (
           existingSize >= 500 &&
-          content.length < existingSize * SHRINK_THRESHOLD
+          newContentBytes < existingSize * SHRINK_THRESHOLD
         ) {
-          return `write_file refused: new content is ${content.length} bytes but the existing "${args.path}" is ${existingSize} bytes — that's a ${Math.round((1 - content.length / existingSize) * 100)}% reduction. This usually means you forgot to include the existing content. Re-call write_file with the FULL file (existing content + your additions/changes). If you genuinely intend to shrink the file, delete it first or rewrite it explicitly.`;
+          return `write_file refused: new content is ${newContentBytes} bytes but the existing "${args.path}" is ${existingSize} bytes — that's a ${Math.round((1 - newContentBytes / existingSize) * 100)}% reduction. This usually means you forgot to include the existing content. Re-call write_file with the FULL file (existing content + your additions/changes). If you genuinely intend to shrink the file, delete it first or rewrite it explicitly.`;
         }
       }
 
@@ -666,15 +670,29 @@ export async function executeTool(
 
         const urlFromOutput = new Promise<string | null>((resolve) => {
           const matcher = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::(\d+))?(?:\/\S*)?/i;
+          // After detection ends we must KEEP draining the pipes (a stalled
+          // dev server blocks once its stdout buffer fills) — but detach the
+          // matching handler and unref the streams so a long-lived server
+          // doesn't hold the event loop open forever.
+          let settled = false;
           const handle = (buf: Buffer) => {
             const m = buf.toString().match(matcher);
-            if (m) resolve(m[0].replace("0.0.0.0", "localhost").replace(/\/$/, ""));
+            if (m) finish(m[0].replace("0.0.0.0", "localhost").replace(/\/$/, ""));
+          };
+          const finish = (value: string | null) => {
+            if (settled) return;
+            settled = true;
+            for (const stream of [child.stdout, child.stderr]) {
+              if (!stream) continue;
+              stream.off("data", handle);
+              stream.on("data", () => {});
+              (stream as unknown as { unref?: () => void }).unref?.();
+            }
+            resolve(value);
           };
           child.stdout?.on("data", handle);
           child.stderr?.on("data", handle);
-          // Drain streams so the child doesn't stall on full pipe buffers, even
-          // after we've found a URL (we keep listening so they get consumed).
-          setTimeout(() => resolve(null), 20_000);
+          setTimeout(() => finish(null), 20_000);
         });
 
         const newPort = (async () => {
@@ -735,10 +753,13 @@ export async function executeTool(
         });
         return stdout.trim() || "No matches found";
       } catch (err) {
-        // grep exits 1 when no matches found — that's not an error
-        const execErr = err as { code?: number; stdout?: string };
+        // grep exits 1 when no matches found — that's not an error. Any other
+        // exit code (2+: unreadable dirs, missing binary) must NOT be masked
+        // as an empty search or the model will wrongly conclude the code
+        // doesn't exist.
+        const execErr = err as { code?: number; message?: string };
         if (execErr.code === 1) return "No matches found";
-        return "No matches found";
+        return `Search failed (grep exit ${execErr.code ?? "?"}): ${execErr.message ?? "unknown error"}. Results may be incomplete.`;
       }
     }
 
@@ -834,6 +855,12 @@ export async function executeTool(
     case "git_branch": {
       const branchName = (args.name as string | undefined)?.trim();
       if (!branchName) return "git_branch failed: name is required.";
+      // Model-controlled refs are passed as argv values — reject anything
+      // git could misparse as an option (--pathspec-from-file=...) or an
+      // invalid ref, rather than letting it through.
+      if (branchName.startsWith("-") || /\s/.test(branchName) || branchName.includes("..")) {
+        return `git_branch failed: invalid branch name "${branchName}".`;
+      }
       const create = args.create === true;
       return runGit(create ? ["checkout", "-b", branchName] : ["checkout", branchName], workspaceRoot);
     }
@@ -841,6 +868,9 @@ export async function executeTool(
     case "git_checkout": {
       const target = (args.target as string | undefined)?.trim();
       if (!target) return "git_checkout failed: target is required.";
+      if (target.startsWith("-") || /\s/.test(target)) {
+        return `git_checkout failed: invalid target "${target}".`;
+      }
       return runGit(["checkout", target], workspaceRoot);
     }
 
