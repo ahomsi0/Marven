@@ -12,6 +12,23 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.13.0",
+    items: [
+      { tag: "new", label: "Project rules file — drop a MARVEN.md (or .marven/rules.md) in your workspace and its conventions are injected into every agent run" },
+      { tag: "new", label: "Conversations now persist to a local SQLite database, removing the localStorage size limit — image attachments and long histories survive restarts reliably" },
+      { tag: "new", label: "Model failover — configure a fallback chain (e.g. Groq → OpenAI) and the agent automatically continues on rate limits or outages instead of failing mid-task" },
+      { tag: "fix", label: "Switching agent conversations mid-run no longer streams the old reply into the wrong thread" },
+      { tag: "fix", label: "A transient rate limit during auto-summarize no longer permanently truncates a conversation's memory" },
+      { tag: "fix", label: "Agent approval gates and workspace containment are enforced from persisted settings server-side — crafted requests can no longer skip confirmations or read outside approved folders" },
+      { tag: "fix", label: "Terminal sessions now survive collapsing the panel or switching workspaces — running dev servers keep going, and output is replayed when you return" },
+      { tag: "fix", label: "Parallel tool calls from Claude/OpenAI-style models all execute; malformed tool-call arguments are reported back to the model instead of silently misfiring" },
+      { tag: "fix", label: "Language-server and MCP child-process failures no longer take down the whole app" },
+      { tag: "fix", label: "Checkpoint undo history is scoped per workspace and reverts keep working across agent conversations" },
+      { tag: "imp", label: "File explorer preserves your collapsed folders during agent runs; chat auto-scroll no longer fights you while reading; wake-word keeps the last syllable of each command" },
+      { tag: "imp", label: "Codebase indexing now reports failures (Ollama down, model mismatch) instead of quietly finishing with zero files indexed" },
+    ],
+  },
+  {
     version: "2.12.4",
     items: [
       { tag: "fix", label: "Unsigned desktop builds no longer export empty certificate variables, allowing electron-builder to skip signing cleanly" },
