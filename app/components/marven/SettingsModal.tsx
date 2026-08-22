@@ -384,6 +384,7 @@ export function SettingsModal({
   const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
   const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
+  const [agentModelFallbacks, setAgentModelFallbacks] = useState<string>("");
   const [liteAgentMode, setLiteAgentModeState] = useState<boolean>(false);
   const [codebaseIndexEnabled, setCodebaseIndexEnabled] = useState<boolean>(true);
   const [indexExcludePatterns, setIndexExcludePatterns] = useState<string>("");
@@ -486,6 +487,11 @@ export function SettingsModal({
       }
       if (typeof s.agentAutoVerifyCommands === "string") {
         setAgentAutoVerifyCommands(s.agentAutoVerifyCommands);
+      }
+      if (Array.isArray(s.agentModelFallbacks)) {
+        setAgentModelFallbacks(
+          (s.agentModelFallbacks as unknown[]).filter((x): x is string => typeof x === "string").join("\n"),
+        );
       }
       if (s.agentSafetyProfile === "read-only" || s.agentSafetyProfile === "ask-before-write" || s.agentSafetyProfile === "ask-before-command" || s.agentSafetyProfile === "trusted") {
         setAgentSafetyProfile(s.agentSafetyProfile);
@@ -1458,6 +1464,34 @@ export function SettingsModal({
 
             {/* Agent section */}
             <h3 className="text-[13px] font-medium text-[var(--m-text)]">Agent</h3>
+
+            {/* Model fallback chain */}
+            <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+              <h3 className="text-[13px] font-medium text-[var(--m-text)]">Model failover</h3>
+              <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                When the selected model is rate-limited or unavailable, the agent automatically continues with the next model in this list instead of failing. Nothing happens if the list is empty.
+              </p>
+              <div className="mt-3">
+                <textarea
+                  value={agentModelFallbacks}
+                  onChange={(e) => setAgentModelFallbacks(e.target.value)}
+                  onBlur={async () => {
+                    const lines = agentModelFallbacks
+                      .split(/\r?\n/)
+                      .map((l) => l.trim())
+                      .filter(Boolean);
+                    await saveBackendSettings({ agentModelFallbacks: lines });
+                    window.dispatchEvent(new CustomEvent("marven:settings-changed"));
+                  }}
+                  rows={3}
+                  placeholder={"One per line as provider:model — tried top to bottom, for example:\ngroq:llama-3.1-8b-instant\nopenai:gpt-4o-mini"}
+                  className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+                />
+                <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
+                  Providers: groq, openai, anthropic, openrouter, nim, ollama. Each target needs its API key set. Switching is announced inline in the conversation.
+                </p>
+              </div>
+            </div>
 
             {/* Lite agent mode toggle */}
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">

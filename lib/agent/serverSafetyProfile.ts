@@ -51,7 +51,6 @@ export function readPersistedAgentSafetyProfile(): AgentSafetyProfile | null {
   }
   return null;
 }
-
 /**
  * Effective profile for a request: never more permissive than what's persisted
  * server-side. Without server persistence (dev mode), the requested profile

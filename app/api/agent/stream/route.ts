@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/agent/loop";
-import { groqAgentStep } from "@/lib/agent/groq";
+import { groqAgentStep, type ProviderStepResult } from "@/lib/agent/groq";
 import { ollamaAgentStep } from "@/lib/agent/ollama";
 import { nimAgentStep } from "@/lib/agent/nim";
 import { openrouterAgentStep } from "@/lib/agent/openrouter";
@@ -17,6 +17,7 @@ import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
 import type { AgentSafetyProfile } from "@/lib/agent/safety";
 import { effectiveAgentSafetyProfile } from "@/lib/agent/serverSafetyProfile";
+import { readPersistedFallbackChain } from "@/lib/serverSettings";
 import { resolveRequestRoot } from "@/lib/workspaceState";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
@@ -156,13 +157,31 @@ export async function POST(req: NextRequest) {
   }));
   history.push({ role: "user", content: prompt, ...(body.attachments?.length ? { attachments: body.attachments } : {}) });
 
-  const providerStep =
-    provider === "groq"       ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => groqAgentStep(msgs, tools, model) :
-    provider === "nim"        ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => nimAgentStep(msgs, tools, model) :
-    provider === "openrouter" ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => openrouterAgentStep(msgs, tools, model) :
-    provider === "openai"     ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => openaiAgentStep(msgs, tools, model) :
-    provider === "anthropic"  ? (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => anthropicAgentStep(msgs, tools, model) :
-    (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) => ollamaAgentStep(msgs, tools, model);
+  const makeProviderStep =
+    (p: AIProvider, m: string) =>
+    (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS): Promise<ProviderStepResult> =>
+      p === "groq"       ? groqAgentStep(msgs, tools, m) :
+      p === "nim"        ? nimAgentStep(msgs, tools, m) :
+      p === "openrouter" ? openrouterAgentStep(msgs, tools, m) :
+      p === "openai"     ? openaiAgentStep(msgs, tools, m) :
+      p === "anthropic"  ? anthropicAgentStep(msgs, tools, m) :
+      ollamaAgentStep(msgs, tools, m);
+
+  const providerStep = makeProviderStep(provider, model);
+
+  // Failover plan from persisted settings (`agentModelFallbacks`, entries like
+  // "groq:llama-3.3-70b-versatile"). The current provider:model is excluded,
+  // and duplicates collapse. Empty by default — failover only happens when the
+  // user explicitly configured targets (important for Ollama privacy).
+  const primaryLabelStr = `${provider}/${model}`;
+  const failoverPlan = readPersistedFallbackChain()
+    .filter((t) => !(t.provider === provider && t.model === model))
+    .filter((t, idx, arr) => arr.findIndex((o) => o.provider === t.provider && o.model === t.model) === idx)
+    .map((t) => ({
+      label: `${t.provider}/${t.model}`,
+      providerStep: (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS) =>
+        makeProviderStep(t.provider, t.model)(msgs, tools),
+    }));
 
   // Merge MCP tools from enabled servers
   const enabledMcpServers = (body.mcpServers ?? []).filter((s) => s.enabled);
@@ -227,6 +246,8 @@ export async function POST(req: NextRequest) {
           requireWriteApproval: body.requireWriteApproval ?? false,
           planMode: body.planMode ?? false,
           safetyProfile,
+          failoverPlan,
+          primaryLabel: primaryLabelStr,
           executeToolFn: async (name, args, root, onProgressCb, recentReads) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);

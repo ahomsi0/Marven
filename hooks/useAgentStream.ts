@@ -348,6 +348,16 @@ export function useAgentStream({
           return;
         }
 
+        if (event.type === "model_fallback") {
+          const note = `\n\n> ⚡ ${event.from} was unavailable (${event.reason}) — continuing with **${event.to}**.\n`;
+          completionChars += note.length;
+          updateLastAssistant((msg) => ({
+            ...msg,
+            content: msg.content + note,
+          }));
+          return;
+        }
+
         if (event.type === "error") {
           streamHadError = true;
           setError(event.message);

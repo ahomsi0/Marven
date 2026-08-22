@@ -187,6 +187,7 @@ export type AgentEventType =
   | "pending_approval"
   | "checkpoint"
   | "text_delta"
+  | "model_fallback"
   | "done"
   | "error";
 
@@ -197,6 +198,7 @@ export type AgentEvent =
   | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown>; preview?: WritePreview }
   | { type: "checkpoint"; path: string }
   | { type: "text_delta"; delta: string }
+  | { type: "model_fallback"; from: string; to: string; reason: string }
   | { type: "done"; toolCallCount: number }
   | { type: "error"; code: string; message: string; suggestions?: string[] };
 

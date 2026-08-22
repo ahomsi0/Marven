@@ -180,6 +180,7 @@ const SETTINGS_DEFAULTS = {
   elevenLabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
   elevenLabsModel: 'eleven_flash_v2_5',
   agentSafetyProfile: 'ask-before-write',
+  agentModelFallbacks: [],
   workspaceTrustRequired: true,
   indexExcludePatterns: '',
 };

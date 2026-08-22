@@ -56,6 +56,21 @@ interface LoopOptions {
     messages: InternalMessage[],
     tools: ToolDefinition[],
   ) => Promise<ProviderStepResult>;
+  /**
+   * Ordered fallback targets used when the primary step fails with a
+   * recoverable provider error (rate limit, model gone, server overload).
+   * Each entry is a ready-to-call step function for a different provider/model.
+   * Empty/undefined disables failover entirely (the default).
+   */
+  failoverPlan?: Array<{
+    label: string;
+    providerStep: (
+      messages: InternalMessage[],
+      tools: ToolDefinition[],
+    ) => Promise<ProviderStepResult>;
+  }>;
+  /** Human label of the primary target, e.g. "groq/llama-3.3-70b-versatile". */
+  primaryLabel?: string;
   executeToolFn?: typeof executeTool;
   onProgress?: (callId: string, chunk: string) => void;
   requireWriteApproval?: boolean;
@@ -65,10 +80,18 @@ interface LoopOptions {
   _testApprovalResult?: boolean;
 }
 
+/** Errors worth failing over for — transient capacity issues or a dead model. */
+const FAILOVER_ERROR_RE =
+  /rate limit|429|too many requests|overloaded|capacity|529|\b50[23]\b|model_not_found|does not exist|decommissioned|no longer available|not found|toolss?_not_supported/i;
+
+function isFailoverEligible(err: Error): boolean {
+  return FAILOVER_ERROR_RE.test(err.message);
+}
+
 export async function* runAgentLoop(
   options: LoopOptions
 ): AsyncGenerator<AgentEvent> {
-  const { tools, workspaceRoot, providerStep } = options;
+  const { tools, workspaceRoot } = options;
   const exec = options.executeToolFn ?? executeTool;
   // Direct library callers retain the historical opt-in behavior. The API
   // route always supplies the persisted profile, whose default is safe.
@@ -358,30 +381,71 @@ export async function* runAgentLoop(
   }
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    // Provider step with failover: on a recoverable provider error, walk the
+    // failover plan (each switch is surfaced as a model_fallback event) before
+    // giving up. A switch does not consume an iteration.
     let result: ProviderStepResult;
-    try {
-      result = await providerStep(history, tools);
-    } catch (err) {
-      if (!(err instanceof Error)) {
-        yield { type: "error", code: "provider_error", message: String(err) };
+    let activeStep = options.providerStep;
+    let currentFrom = options.primaryLabel ?? "the selected model";
+    let failoverIdx = 0;
+    for (;;) {
+      let rawResult: unknown;
+      try {
+        rawResult = await activeStep(history, tools);
+      } catch (err) {
+        const failoverErr = err instanceof Error ? err : new Error(String(err));
+        const plan = options.failoverPlan;
+        if (
+          plan &&
+          failoverIdx < plan.length &&
+          isFailoverEligible(failoverErr)
+        ) {
+          const target = plan[failoverIdx++];
+          yield {
+            type: "model_fallback",
+            from: currentFrom,
+            to: target.label,
+            reason: failoverErr.message.slice(0, 300),
+          };
+          currentFrom = target.label;
+          activeStep = target.providerStep;
+          continue;
+        }
+        if (!(err instanceof Error)) {
+          yield { type: "error", code: "provider_error", message: String(err) };
+          return;
+        }
+        if (err.name === "OllamaToolsNotSupportedError") {
+          const msg = err.message;
+          const suggestionsMatch = msg.match(/Compatible Ollama models: (.+)$/);
+          const suggestions = suggestionsMatch
+            ? suggestionsMatch[1].split(", ")
+            : ["qwen2.5-coder", "llama3.1", "mistral-nemo"];
+          yield {
+            type: "error",
+            code: "tools_not_supported",
+            message: msg,
+            suggestions,
+          };
+          return;
+        }
+        yield { type: "error", code: "provider_error", message: err.message };
         return;
       }
-      if (err.name === "OllamaToolsNotSupportedError") {
-        const msg = err.message;
-        const suggestionsMatch = msg.match(/Compatible Ollama models: (.+)$/);
-        const suggestions = suggestionsMatch
-          ? suggestionsMatch[1].split(", ")
-          : ["qwen2.5-coder", "llama3.1", "mistral-nemo"];
+      // A misbehaving adapter must not crash the stream downstream.
+      if (
+        !rawResult ||
+        typeof (rawResult as { type?: unknown }).type !== "string"
+      ) {
         yield {
           type: "error",
-          code: "tools_not_supported",
-          message: msg,
-          suggestions,
+          code: "provider_error",
+          message: "Provider returned an invalid response",
         };
         return;
       }
-      yield { type: "error", code: "provider_error", message: err.message };
-      return;
+      result = rawResult as ProviderStepResult;
+      break;
     }
 
     if (options.planMode && !planApprovalDone && result.type === "text") {
