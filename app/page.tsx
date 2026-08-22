@@ -48,6 +48,10 @@ import {
   createConversationFolder,
 } from "@/lib/storage";
 import {
+  hydrateConversationsFromServer,
+  scheduleServerPush,
+} from "@/lib/conversationSync";
+import {
   loadProfile,
   saveProfile,
   loadMemories,
@@ -494,6 +498,19 @@ export default function Home() {
     if (convs.length > 0) {
       setActiveConversationId(convs[convs.length - 1].id);
     }
+    // SQLite hydration: merge the durable server copy with the local snapshot.
+    // Per-conversation updatedAt comparison means newer edits on either side
+    // win, so this is safe even if the user starts typing before it resolves.
+    hydrateConversationsFromServer(convs)
+      .then((merged) => {
+        if (merged && merged.length > 0) {
+          setConversations(merged);
+          setActiveConversationId((cur) =>
+            merged.some((c) => c.id === cur) ? cur : merged[merged.length - 1].id,
+          );
+        }
+      })
+      .catch(() => {});
     setFolders(loadConversationFolders());
     setCustomShortcuts(loadCustomShortcuts());
 
@@ -582,6 +599,9 @@ export default function Home() {
         "Storage is nearly full — image and document attachments won't be saved across restarts. Older conversations still persist as text.",
       );
     }
+    // Durable copy → SQLite (debounced). localStorage stays as the fast local
+    // snapshot; the server database removes the ~5MB quota ceiling.
+    scheduleServerPush(conversations);
   }, [conversations]);
 
   useEffect(() => {

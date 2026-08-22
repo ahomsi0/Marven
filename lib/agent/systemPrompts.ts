@@ -4,11 +4,14 @@
  *
  * @param fileTree Optional listing (from listWorkspaceTree) — embed it so the
  *   model doesn't hallucinate directories like `public/` when discovering files.
+ * @param rulesBlock Optional pre-rendered project-rules section (from
+ *   formatRulesBlock) injected near the top of the prompt.
  */
 export function makeLiteSystemPrompt(
   workspaceRoot: string,
   memory?: string,
   fileTree?: string,
+  rulesBlock?: string,
 ): string {
   let base = `You are Marven Agent. The workspace is at: ${workspaceRoot}
 
@@ -28,6 +31,10 @@ RULES:
     base += `\n\nWorkspace files:\n${fileTree.trim()}`;
   }
 
+  if (rulesBlock && rulesBlock.trim()) {
+    base = `${rulesBlock.trim()}\n\n---\n\n` + base;
+  }
+
   if (memory && memory.trim()) {
     base = `### Memory\n${memory.trim()}\n\n---\n\n` + base;
   }
@@ -37,8 +44,15 @@ RULES:
 /**
  * Full prompt for standard tasks. This is the current makeSystemPrompt content
  * from loop.ts, moved here verbatim so the loop can receive it externally.
+ *
+ * @param rulesBlock Optional pre-rendered project-rules section (from
+ *   formatRulesBlock) injected near the top of the prompt.
  */
-export function makeFullSystemPrompt(workspaceRoot: string, memory?: string): string {
+export function makeFullSystemPrompt(
+  workspaceRoot: string,
+  memory?: string,
+  rulesBlock?: string,
+): string {
   let base = `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
 
 CRITICAL — TOOL CALLING:
@@ -66,6 +80,10 @@ IMPORTANT RULES:
 - Use fetch_url to read a specific webpage, README, or raw file from the internet.
 - Use remember to save important facts for future sessions. Prefer scope="project" for repo context, scope="conversation" for task-local notes, and scope="global" for durable user preferences.
 - After your tools complete, be precise and concise in your final reply. Do not repeat what the tools already wrote.`;
+
+  if (rulesBlock && rulesBlock.trim()) {
+    base = `${rulesBlock.trim()}\n\n---\n\n` + base;
+  }
 
   if (memory && memory.trim()) {
     base = `### Memory\n${memory.trim()}\n\n---\n\n` + base;

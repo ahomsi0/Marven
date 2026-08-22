@@ -11,6 +11,7 @@ import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
 import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment, Mention } from "@/types";
 import { classifyTask, type AgentTier } from "@/lib/agent/taskClassifier";
 import { makeLiteSystemPrompt, makeFullSystemPrompt } from "@/lib/agent/systemPrompts";
+import { loadWorkspaceRules, formatRulesBlock } from "@/lib/agent/rulesFile";
 import { listWorkspaceTree } from "@/lib/agent/workspaceTree";
 import { resolveMentions } from "@/lib/mentions/resolver";
 import { formatContextBlock } from "@/lib/mentions/formatter";
@@ -120,10 +121,14 @@ export async function POST(req: NextRequest) {
   const fileTree =
     tier === "simple" ? await listWorkspaceTree(workspaceRoot) : undefined;
 
+  // Project rules file (MARVEN.md / .marven/rules.md) — repo-specific
+  // conventions injected into the system prompt for both tiers.
+  const rulesBlock = formatRulesBlock(await loadWorkspaceRules(workspaceRoot));
+
   let systemPrompt =
     tier === "simple"
-      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree)
-      : makeFullSystemPrompt(workspaceRoot, body.memory);
+      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree, rulesBlock)
+      : makeFullSystemPrompt(workspaceRoot, body.memory, rulesBlock);
 
   if (hasImageTurn) {
     systemPrompt +=
