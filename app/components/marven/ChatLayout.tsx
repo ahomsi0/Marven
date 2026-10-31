@@ -381,7 +381,7 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="flex items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 sm:px-5">
             {/* The toggle lives in the sidebar; this copy only appears while
                 the sidebar is hidden, so it can be reopened. */}
             {!sidebarOpen && (
@@ -395,7 +395,7 @@ export function ChatLayout({
                 <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
               </button>
             )}
-            <div className={`mx-auto min-w-0 flex-1 ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
+            <div className={`mx-auto min-w-0 flex-1 ${mode === "agent" ? "max-w-none" : "max-w-[760px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0">
@@ -406,7 +406,7 @@ export function ChatLayout({
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
                     {mode === "agent" && (
-                      <span className="text-[11px] text-[var(--m-text-faint)]">{t("header.fileAwareWorkspace")}</span>
+                      <span className="block text-[11px] leading-tight text-[var(--m-text-faint)]">{t("header.fileAwareWorkspace")}</span>
                     )}
                   </div>
                 </div>
@@ -533,7 +533,7 @@ export function ChatLayout({
                 ref={messagesViewportRef}
                 className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
               >
-                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
+                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
                   {messages.length === 0 && !isLoading && (
                     <div className="message-in py-12 text-center">
                       <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>

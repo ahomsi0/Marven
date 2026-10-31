@@ -196,7 +196,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                 {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
               </div>
               {/* Timestamp shown on hover */}
-              <span className="mt-1 block text-end text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <span className="pointer-events-none absolute end-1 top-full mt-0.5 whitespace-nowrap text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {timeLabel}
               </span>
             </>
@@ -256,7 +256,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           </div>
 
           {/* Timestamp shown on hover */}
-          <span className="mt-1 block text-start text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <span className="pointer-events-none absolute start-1 top-full mt-0.5 whitespace-nowrap text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {timeLabel}
           </span>
         </div>
