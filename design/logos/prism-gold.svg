@@ -1,0 +1,39 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="pbg" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#1d1508"/>
+      <stop offset="1" stop-color="#100b04"/>
+    </radialGradient>
+    <filter id="pglow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="34"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#pbg)"/>
+
+  <!-- ambient glow -->
+  <ellipse cx="512" cy="540" rx="290" ry="360" fill="#f59e0b" opacity="0.18" filter="url(#pglow)"/>
+
+  <!-- Amethyst crystal: apex A(512,140); girdle G1(272,430) G2(442,485) G3(582,485) G4(752,430);
+       bases Q1..Q4 below; three top facets + three side facets + base -->
+  <!-- side facets -->
+  <polygon points="272,430 442,485 442,884 272,812" fill="#92400E"/>
+  <polygon points="442,485 582,485 582,904 442,884" fill="#B45309"/>
+  <polygon points="582,485 752,430 752,812 582,884" fill="#78350F"/>
+
+  <!-- top facets -->
+  <polygon points="512,140 272,430 442,485" fill="#FDE68A"/>
+  <polygon points="512,140 442,485 582,485" fill="#FBBF24"/>
+  <polygon points="512,140 582,485 752,430" fill="#F59E0B"/>
+
+  <!-- base -->
+  <polygon points="272,812 442,884 582,884 752,812 752,816 582,892 442,892 272,820" fill="#451a03"/>
+
+  <!-- facet edge highlights -->
+  <g stroke="#FFFBEB" stroke-opacity="0.35" stroke-width="6">
+    <line x1="512" y1="140" x2="442" y2="485"/>
+    <line x1="512" y1="140" x2="582" y2="485"/>
+    <line x1="272" y1="430" x2="442" y2="485"/>
+    <line x1="582" y1="485" x2="752" y2="430"/>
+  </g>
+</svg>

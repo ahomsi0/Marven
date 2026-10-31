@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="220" fill="#071009"/>
+
+  <!-- Chunky pixel M (8-bit terminal heritage) — one accent cell = the model -->
+  <g>
+    <!-- column strokes -->
+    <rect x="296" y="296" width="80" height="80" fill="#34d399"/>
+    <rect x="296" y="384" width="80" height="80" fill="#34d399"/>
+    <rect x="296" y="472" width="80" height="80" fill="#34d399"/>
+    <rect x="296" y="560" width="80" height="80" fill="#34d399"/>
+    <rect x="296" y="648" width="80" height="80" fill="#34d399"/>
+
+    <rect x="648" y="296" width="80" height="80" fill="#34d399"/>
+    <rect x="648" y="384" width="80" height="80" fill="#34d399"/>
+    <rect x="648" y="472" width="80" height="80" fill="#34d399"/>
+    <rect x="648" y="560" width="80" height="80" fill="#34d399"/>
+    <rect x="648" y="648" width="80" height="80" fill="#34d399"/>
+
+    <!-- diagonals -->
+    <rect x="384" y="384" width="80" height="80" fill="#34d399"/>
+    <rect x="472" y="472" width="80" height="80" fill="#22d3ee"/>
+    <rect x="560" y="384" width="80" height="80" fill="#34d399"/>
+  </g>
+
+  <!-- baseline -->
+  <rect x="296" y="736" width="432" height="24" rx="12" fill="#134e39"/>
+</svg>

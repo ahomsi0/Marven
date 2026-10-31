@@ -1,0 +1,8 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Folded-ribbon M — VS Code-style facet shading, single hue -->
+  <path d="M210 780 V290 L512 560 L814 290 V780"
+        stroke="#4C8DFF" stroke-width="110" stroke-linejoin="miter"
+        stroke-linecap="butt" fill="none"/>
+  <polygon points="173.4,331 246.6,249 548.6,519 475.4,601" fill="#1E4FD6"/>
+  <polygon points="475.4,519 548.6,601 850.6,331 777.4,249" fill="#1E4FD6"/>
+</svg>

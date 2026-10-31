@@ -1,0 +1,25 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgw" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0c1411"/>
+      <stop offset="1" stop-color="#070d0b"/>
+    </linearGradient>
+    <linearGradient id="wg" x1="210" y1="0" x2="814" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bgw)"/>
+
+  <!-- Voice waveform -->
+  <g fill="url(#wg)">
+    <rect x="209" y="402" width="54" height="220" rx="27"/>
+    <rect x="301" y="332" width="54" height="360" rx="27"/>
+    <rect x="393" y="272" width="54" height="480" rx="27"/>
+    <rect x="485" y="352" width="54" height="320" rx="27"/>
+    <rect x="577" y="232" width="54" height="560" rx="27"/>
+    <rect x="669" y="392" width="54" height="240" rx="27"/>
+    <rect x="761" y="452" width="54" height="120" rx="27"/>
+  </g>
+</svg>

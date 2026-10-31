@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10141c"/>
+      <stop offset="1" stop-color="#0a0d13"/>
+    </linearGradient>
+    <linearGradient id="mg" x1="200" y1="280" x2="830" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="1" stop-color="#3b6dff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#9fd6ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#9fd6ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+
+  <!-- Bold geometric M with a spark in the valley -->
+  <path d="M212 788 V300 L512 566 L812 300 V788"
+        stroke="url(#mg)" stroke-width="96" stroke-linecap="round"
+        stroke-linejoin="round" fill="none"/>
+
+  <!-- Spark at the M's centre vertex -->
+  <circle cx="512" cy="566" r="150" fill="url(#glow)"/>
+  <g transform="translate(512 566)">
+    <path d="M0 -74 C10 -22 22 -10 74 0 C22 10 10 22 0 74 C-10 22 -22 10 -74 0 C-22 -10 -10 -22 0 -74 Z"
+          fill="#eaf5ff"/>
+  </g>
+</svg>

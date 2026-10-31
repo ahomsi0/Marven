@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Isometric hexagonal tile — extruded prism, monochrome platinum -->
+  <!-- side walls -->
+  <polygon points="212,442 512,612 512,742 222,572" fill="#5B6675"/>
+  <polygon points="812,442 812,582 512,742 512,612" fill="#3E4756"/>
+  <polygon points="232,582 512,752 792,588 802,578 512,742 222,572" fill="#333B47"/>
+  <!-- top face -->
+  <polygon points="512,272 802,442 512,612 222,442" fill="#E2E8F0"/>
+  <!-- engraved inner rhombus -->
+  <polygon points="512,348 671,442 512,536 353,442"
+           stroke="#94A3B8" stroke-width="9" fill="none"/>
+  <!-- centre node -->
+  <circle cx="512" cy="442" r="30" fill="#475569"/>
+</svg>

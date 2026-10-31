@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg6" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f131b"/>
+      <stop offset="1" stop-color="#090c11"/>
+    </linearGradient>
+    <linearGradient id="brace" x1="200" y1="240" x2="824" y2="784" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#3b6dff"/>
+    </linearGradient>
+    <radialGradient id="orb6" cx="0.5" cy="0.42" r="0.65">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#a8d8ff"/>
+      <stop offset="1" stop-color="#3b6dff"/>
+    </radialGradient>
+    <filter id="soft6" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg6)"/>
+
+  <!-- Braces -->
+  <path d="M330 236 C270 236 250 268 250 336 C250 404 232 452 168 486 L168 538 C232 572 250 620 250 688 C250 756 270 788 330 788"
+        stroke="url(#brace)" stroke-width="64" stroke-linecap="round" fill="none"/>
+  <path d="M694 236 C754 236 774 268 774 336 C774 404 792 452 856 486 L856 538 C792 572 774 620 774 688 C774 756 754 788 694 788"
+        stroke="url(#brace)" stroke-width="64" stroke-linecap="round" fill="none"/>
+
+  <!-- AI core between the braces -->
+  <circle cx="512" cy="512" r="120" fill="#3b6dff" filter="url(#soft6)" opacity="0.85"/>
+  <circle cx="512" cy="512" r="104" fill="url(#orb6)"/>
+</svg>

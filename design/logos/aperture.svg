@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bga2" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#120c1f"/>
+      <stop offset="1" stop-color="#0a0713"/>
+    </linearGradient>
+    <radialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </radialGradient>
+    <radialGradient id="indigo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </radialGradient>
+    <radialGradient id="fuchsia" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e879f9"/>
+      <stop offset="1" stop-color="#c026d3"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bga2)"/>
+
+  <!-- Aperture iris: three overlapping discs -->
+  <circle cx="512" cy="368" r="205" fill="url(#violet)" opacity="0.82"/>
+  <circle cx="386" cy="600" r="205" fill="url(#indigo)" opacity="0.78"/>
+  <circle cx="638" cy="600" r="205" fill="url(#fuchsia)" opacity="0.72"/>
+
+  <!-- Containment ring -->
+  <circle cx="512" cy="512" r="344" stroke="#c4b5fd" stroke-opacity="0.22"
+          stroke-width="10"/>
+</svg>
