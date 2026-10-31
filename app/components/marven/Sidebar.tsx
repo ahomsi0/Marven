@@ -36,6 +36,9 @@ const NAV_ROW =
 const NAV_ICON = "h-[18px] w-[18px] shrink-0 text-[var(--m-text-muted)]";
 const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text-muted)]";
 
+// Open/close slide: an ease-out curve that starts quick and settles softly.
+const SLIDE = "duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+
 function relativeDate(isoString: string, t: TFunction, locale: string): string {
   const date = new Date(isoString);
   const now = new Date();
@@ -258,6 +261,16 @@ export function Sidebar({
   // Which list the sidebar shows: plain chats or agent sessions.
   const [view, setView] = useState<"chat" | "agent">("chat");
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Clip the content only while closed or sliding — once fully open the
+  // account menu's flyouts need to extend past the sidebar's edge. `settledOpen`
+  // is the state whose slide has finished, so a toggle clips in the same render
+  // that starts the slide, and unclips when the width transition ends.
+  const [settledOpen, setSettledOpen] = useState(isOpen);
+  useEffect(() => {
+    // No transition runs under reduced motion, so no transitionend will fire.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setSettledOpen(isOpen);
+  }, [isOpen]);
   const { t, i18n } = useT();
 
   // Drag state: id of the conv being dragged, and which target is hovered.
@@ -361,12 +374,22 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-[var(--m-surface)] border-e border-[var(--m-border-subtle)] transition-all duration-200 ${
-        isOpen ? "w-[260px] min-w-[260px]" : "w-0 min-w-0 overflow-hidden"
-      }`}
+      aria-hidden={!isOpen}
+      inert={!isOpen}
+      className={`h-full shrink-0 border-e bg-[var(--m-surface)] ${SLIDE} transition-[width,border-color] ${
+        isOpen ? "w-[260px] border-[var(--m-border-subtle)]" : "w-0 border-transparent"
+      } ${isOpen && settledOpen ? "overflow-visible" : "overflow-hidden"}`}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === "width") setSettledOpen(isOpen);
+      }}
     >
-      {isOpen && (
-        <>
+      {/* Fixed-width content: the panel's width animates over it, so nothing
+          reflows mid-slide; it also fades and drifts toward the edge. */}
+      <div
+        className={`flex h-full w-[260px] flex-col ${SLIDE} transition-[opacity,translate] ${
+          isOpen ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0 rtl:translate-x-3"
+        }`}
+      >
           {/* Brand */}
           <div className="flex h-12 shrink-0 items-center gap-2 px-3.5">
             <button
@@ -679,8 +702,7 @@ export function Sidebar({
             appVersion={appVersion}
             onOpenSettings={onOpenSettings}
           />
-        </>
-      )}
+      </div>
     </aside>
   );
 }
