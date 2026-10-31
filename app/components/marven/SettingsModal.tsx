@@ -2546,7 +2546,7 @@ export function SettingsModal({
                       key={i}
                       className="flex items-center gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] px-4 py-3"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#383838] bg-[#d19a66]/10 font-mono text-[12px] font-medium text-[#d19a66]">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--m-border)] bg-[#d19a66]/10 font-mono text-[12px] font-medium text-[#d19a66]">
                         {avatarChar}
                       </div>
                       <div className="min-w-0 flex-1">

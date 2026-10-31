@@ -225,7 +225,7 @@ export function ModelSelector({
                     className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
                       hoveredProvider === p
                         ? "border-[rgba(209,154,102,0.4)] bg-[rgba(209,154,102,0.12)] text-[#d19a66]"
-                        : "border-[#2d2d2d] bg-[#222] text-[#888] hover:text-[#ccc]"
+                        : "border-[var(--m-border-subtle)] bg-[#222] text-[#888] hover:text-[#ccc]"
                     }`}
                   >
                     {PROVIDER_LABELS[p]}

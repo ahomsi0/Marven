@@ -51,7 +51,7 @@ export function SlashMenu({
   if (totalMatches === 0) return null;
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-2 z-50 rounded-2xl border border-[#333] bg-[#1e1e1e] shadow-2xl overflow-hidden">
+    <div className="absolute bottom-full left-0 right-0 mb-2 z-50 rounded-2xl border border-[var(--m-border)] bg-[#1e1e1e] shadow-2xl overflow-hidden">
       <ul>
         {matchedBuiltins.map((item, i) => (
           <li
@@ -70,7 +70,7 @@ export function SlashMenu({
         ))}
 
         {matchedBuiltins.length > 0 && matchedTemplates.length > 0 && (
-          <li className="px-4 py-1 border-t border-[#2a2a2a]">
+          <li className="px-4 py-1 border-t border-[var(--m-border-subtle)]">
             <span className="text-[9px] uppercase tracking-widest text-[#444]">Templates</span>
           </li>
         )}
@@ -96,7 +96,7 @@ export function SlashMenu({
           );
         })}
       </ul>
-      <div className="border-t border-[#2a2a2a] px-4 py-1.5 text-[10px] text-[#555] tracking-wide">
+      <div className="border-t border-[var(--m-border-subtle)] px-4 py-1.5 text-[10px] text-[#555] tracking-wide">
         ↑↓ navigate · Enter select · Esc cancel
       </div>
     </div>
