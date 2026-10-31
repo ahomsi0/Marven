@@ -80,6 +80,10 @@ const en = {
     systemPromptPlaceholder:
       "Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). ⌘↵ or click Save to apply.",
     unsaved: "Unsaved",
+    errorUnreachable:
+      "Couldn't reach Marven's local server, so this message wasn't sent. If you're running Marven from source, make sure the dev server is running, then try again.",
+    errorServer: "Marven's server couldn't handle that request (error {{status}}). Try again in a moment.",
+    errorServerDetail: "Marven's server couldn't handle that request (error {{status}}: {{detail}}).",
   },
   input: {
     placeholder: "Message Marven... or type / for commands",

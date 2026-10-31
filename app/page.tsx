@@ -7,7 +7,6 @@ import type {
   DocAttachment,
   Message,
   ChatRequest,
-  ChatResponse,
   OllamaModel,
   TokenUsage,
   Conversation,
@@ -56,6 +55,7 @@ import {
   saveProfile,
   loadMemories,
 } from "@/lib/userProfile";
+import { chatErrorMessage, readChatReply } from "@/lib/chatErrors";
 import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
 import {
   loadChatProvider,
@@ -1812,7 +1812,7 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        const data: ChatResponse = await res.json();
+        const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(data.reply);
@@ -1821,8 +1821,9 @@ export default function Home() {
         if (clipAction === "fix-grammar") {
           await navigator.clipboard.writeText(data.reply).catch(() => {});
         }
-      } catch {
-        const err = createMessage("assistant", "Connection error. Please check that the app is running.");
+      } catch (error) {
+        console.error("[Marven] chat request failed:", error);
+        const err = createMessage("assistant", chatErrorMessage(error));
         addMessageToConversation(convId, err);
       } finally {
         setIsLoading(false);
@@ -1923,7 +1924,7 @@ export default function Home() {
         speakReply(fullText);
       } else {
         // ── JSON response (Ollama / commands) ──
-        const data: ChatResponse = await res.json();
+        const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);
         addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
@@ -1933,8 +1934,9 @@ export default function Home() {
         }
         speakReply(data.reply);
       }
-    } catch {
-      const errMsg = "Connection error. Please check that the app is running.";
+    } catch (error) {
+      console.error("[Marven] chat request failed:", error);
+      const errMsg = chatErrorMessage(error);
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
       speakReply(errMsg);
