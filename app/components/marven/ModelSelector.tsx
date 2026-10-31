@@ -25,6 +25,14 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
 const CLOUD_PROVIDERS: AIProvider[] = ["groq", "openai", "anthropic", "nim", "openrouter"];
 const LOCAL_PROVIDERS: AIProvider[] = ["ollama", "lmstudio", "llamaserver"];
 
+// Cloud vs local get their own colours everywhere they appear.
+const KIND_TEXT = { cloud: "text-[var(--m-cloud)]", local: "text-[var(--m-local)]" } as const;
+const KIND_TAG = {
+  cloud: "bg-[var(--m-cloud-soft)] text-[var(--m-cloud)]",
+  local: "bg-[var(--m-local-soft)] text-[var(--m-local)]",
+} as const;
+const providerKind = (p: AIProvider) => (LOCAL_PROVIDERS.includes(p) ? "local" : "cloud");
+
 const DEFAULT_ENABLED: Record<AIProvider, boolean> = {
   groq: true, openai: true, ollama: true,
   anthropic: false, nim: false, openrouter: false,
@@ -145,8 +153,8 @@ export function ModelSelector({
   }, [open, close]);
 
   const groups = [
-    { id: "cloud", label: t("input.cloud"), Icon: CloudIcon, providers: CLOUD_PROVIDERS.filter((p) => enabledProviders[p]) },
-    { id: "local", label: t("input.local"), Icon: HexagonIcon, providers: LOCAL_PROVIDERS.filter((p) => enabledProviders[p]) },
+    { id: "cloud" as const, label: t("input.cloud"), Icon: CloudIcon, providers: CLOUD_PROVIDERS.filter((p) => enabledProviders[p]) },
+    { id: "local" as const, label: t("input.local"), Icon: HexagonIcon, providers: LOCAL_PROVIDERS.filter((p) => enabledProviders[p]) },
   ].filter((g) => g.providers.length > 0);
 
   const popoverPos =
@@ -165,7 +173,7 @@ export function ModelSelector({
         title={t("input.modelPicker")}
         className="flex w-[172px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[var(--m-surface-2)]"
       >
-        <span className="w-[52px] shrink-0 truncate text-start text-[var(--m-accent)]">{PROVIDER_LABELS[provider]}</span>
+        <span className={`w-[52px] shrink-0 truncate text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
         <span className="shrink-0 text-[var(--m-text-faint)]">·</span>
         <span className="min-w-0 flex-1 truncate text-start text-[var(--m-text-muted)]">
           {selectedModel ? shortModelName(selectedModel) : "—"}
@@ -191,7 +199,7 @@ export function ModelSelector({
               <div className="w-[140px] shrink-0 overflow-y-auto border-e border-[var(--m-border-subtle)] p-1.5">
                 {groups.map(({ id, label, Icon, providers }) => (
                   <div key={id} className="mb-1.5 last:mb-0">
-                    <p className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--m-text-faint)]">
+                    <p className={`mx-1 mb-1 mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${KIND_TAG[id]}`}>
                       <Icon className="h-3 w-3" />
                       {label}
                     </p>
@@ -219,7 +227,7 @@ export function ModelSelector({
 
               {/* Models of the selected provider */}
               <div className="flex min-w-0 flex-1 flex-col">
-                <p className="shrink-0 px-3 pb-1 pt-2.5 text-[11px] font-medium text-[var(--m-text-muted)]">
+                <p className={`shrink-0 px-3 pb-1 pt-2.5 text-[11px] font-semibold ${KIND_TEXT[providerKind(viewedProvider)]}`}>
                   {PROVIDER_LABELS[viewedProvider]}
                 </p>
                 <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">

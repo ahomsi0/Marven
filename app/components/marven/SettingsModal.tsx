@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
-import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon } from "./Icons";
+import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
@@ -1847,8 +1847,11 @@ export function SettingsModal({
         {activePage === "ai-backends" && (
           <div className="flex flex-col gap-0">
             {/* Cloud providers */}
-            <div className="mb-1 px-1 pt-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
-              Cloud
+            <div className="mb-2 px-1 pt-1">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--m-cloud-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--m-cloud)]">
+                <CloudIcon className="h-3 w-3" />
+                Cloud
+              </span>
             </div>
             {([
               { id: "groq",       label: "Groq",       icon: <BoltIcon className="h-4 w-4" />,    meta: "5 models", badge: "cloud" },
@@ -1867,7 +1870,7 @@ export function SettingsModal({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
-                    <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(97,175,239,0.1)] text-[#61afef]">
+                    <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[var(--m-cloud-soft)] text-[var(--m-cloud)]">
                       {badge}
                     </span>
                   </div>
@@ -1895,8 +1898,11 @@ export function SettingsModal({
             ))}
 
             {/* Local backends */}
-            <div className="mb-1 mt-4 px-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
-              Local
+            <div className="mb-2 mt-5 px-1">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--m-local-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--m-local)]">
+                <HexagonIcon className="h-3 w-3" />
+                Local
+              </span>
             </div>
             {([
               { id: "ollama",      label: "Ollama",       icon: <CubeIcon className="h-4 w-4" />,    badge: "local", hasUrl: false },
@@ -1914,7 +1920,7 @@ export function SettingsModal({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
-                      <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(152,195,121,0.1)] text-[#98c379]">
+                      <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[var(--m-local-soft)] text-[var(--m-local)]">
                         {badge}
                       </span>
                     </div>
