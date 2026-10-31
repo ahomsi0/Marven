@@ -56,6 +56,7 @@ import {
   loadMemories,
 } from "@/lib/userProfile";
 import { chatErrorMessage, readChatReply } from "@/lib/chatErrors";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
 import {
   loadChatProvider,
@@ -277,7 +278,6 @@ export default function Home() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
-  const conversationSystemPrompt = activeConversation?.systemPrompt ?? "";
   const provider = activeMode === "agent" ? agentProvider : chatProvider;
   const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
   const selectedModel =
@@ -1523,9 +1523,9 @@ export default function Home() {
     // We resume in the onEnd callback below.
     pauseVoiceCapture();
     setIsSpeakingNow(true);
-    // If the conversation's system prompt is in Arabic OR mentions "arabic",
-    // force Arabic voice even when the response text itself looks English.
-    const sp = (activeConversation?.systemPrompt ?? "").trim();
+    // If the system prompt is in Arabic OR mentions "arabic", force Arabic
+    // voice even when the response text itself looks English.
+    const sp = getSystemPrompt().trim();
     const forceLang: "ar" | undefined =
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     void speak(text, () => {
@@ -1561,7 +1561,7 @@ export default function Home() {
     // Arabic" silently break for voice queries like "what time is it".
     // Routing through the LLM is slightly slower but preserves the user's
     // language/persona preference.
-    const customSystemPrompt = (activeConversation?.systemPrompt ?? "").trim();
+    const customSystemPrompt = getSystemPrompt().trim();
     const useShortcuts = !customSystemPrompt;
 
     // History source for API calls. Callers that truncate the thread first
@@ -1803,7 +1803,7 @@ export default function Home() {
           provider,
           systemPrompt: (() => {
             const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-            const extra = activeConversation?.systemPrompt?.trim();
+            const extra = getSystemPrompt().trim();
             return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
           })(),
         };
@@ -1840,7 +1840,7 @@ export default function Home() {
         provider,
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-          const extra = activeConversation?.systemPrompt?.trim();
+          const extra = getSystemPrompt().trim();
           // User-supplied instructions go FIRST and are repeated at the END for
           // weaker models — small LLMs anchor on the start and end of context.
           return extra
@@ -2045,14 +2045,6 @@ export default function Home() {
     setPlanMode(v);
     setPlanModeState(v);
   }, []);
-
-  function handleSystemPromptChange(value: string) {
-    if (!activeConversationId) return;
-    upsertConversation(activeConversationId, (conv) => ({
-      ...conv,
-      systemPrompt: value,
-    }));
-  }
 
   function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
     setCustomShortcuts(shortcuts);
@@ -2390,8 +2382,6 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onPinConversation={handlePinConversation}
-        conversationSystemPrompt={conversationSystemPrompt}
-        onSystemPromptChange={handleSystemPromptChange}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}

@@ -78,19 +78,12 @@ const ar: Shape<typeof en> = {
   header: {
     marvenAgent: "وكيل Marven",
     fileAwareWorkspace: "مساحة عمل مرتبطة بالملفات",
-    system: "النظام",
-    systemPrompt: "تعليمات النظام للمحادثة",
     exportMarkdown: "تصدير بصيغة Markdown",
     exportConversation: "تصدير المحادثة بصيغة Markdown",
   },
   chat: {
     emptyTitle: "على ماذا نعمل اليوم؟",
     emptyHint: "اسأل، أو الصق، أو أرفق ملفًا، أو استخدم تعليمة محفوظة.",
-    systemPromptLabel: "تعليمات النظام",
-    systemPromptNotSet: "غير محددة — انقر لإضافة شخصية أو تعليمات لهذه المحادثة",
-    systemPromptPlaceholder:
-      "أعطِ هذه المحادثة شخصية أو مجموعة تعليمات… (مثل: «أجب بالفرنسية فقط» أو «أنت خبير في Python»). اضغط ⌘↵ أو «حفظ» للتطبيق.",
-    unsaved: "غير محفوظ",
     errorUnreachable:
       "تعذّر الوصول إلى خادم Marven المحلي، لذلك لم تُرسل هذه الرسالة. إذا كنت تشغّل Marven من الشيفرة المصدرية، فتأكد من أن خادم التطوير يعمل، ثم حاول مرة أخرى.",
     errorServer: "تعذّر على خادم Marven معالجة هذا الطلب (الخطأ {{status}}). حاول مرة أخرى بعد قليل.",

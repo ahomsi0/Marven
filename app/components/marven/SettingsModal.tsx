@@ -7,6 +7,7 @@ import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
+import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
 import {
@@ -380,6 +381,14 @@ export function SettingsModal({
   const { theme, setTheme } = useTheme();
   const [activePage, setActivePage] = useState<SettingsPage>("general");
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
+  // System prompt: edited as a draft, saved explicitly (button or ⌘↵).
+  const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const [savedSystemPrompt, setSavedSystemPrompt] = useState("");
+  const systemPromptDirty = systemPromptDraft !== savedSystemPrompt;
+  function saveSystemPrompt() {
+    setSystemPrompt(systemPromptDraft);
+    setSavedSystemPrompt(systemPromptDraft);
+  }
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
@@ -400,6 +409,9 @@ export function SettingsModal({
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
+    const prompt = getSystemPrompt();
+    setSystemPromptDraft(prompt);
+    setSavedSystemPrompt(prompt);
   }, []);
   const [items, setItems] = useState<CustomShortcut[]>(
     shortcuts.map((s) => ({ ...s }))
@@ -965,6 +977,42 @@ export function SettingsModal({
                     fully local with Ollama).
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* System prompt — added to every chat */}
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">System prompt</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
+                Instructions added to every chat, e.g. a persona, a reply language, or how long answers should be.
+              </p>
+              <textarea
+                rows={4}
+                value={systemPromptDraft}
+                onChange={(e) => setSystemPromptDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    saveSystemPrompt();
+                  }
+                }}
+                placeholder="e.g. 'Answer only in French' or 'You are a Python expert. Keep answers short.'"
+                className="w-full resize-y rounded-lg border border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-2 text-[12px] leading-5 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+              />
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <span className="text-[10px] text-[var(--m-text-faint)]">⌘↵ to save</span>
+                <button
+                  type="button"
+                  onClick={saveSystemPrompt}
+                  disabled={!systemPromptDirty}
+                  className={`rounded-md px-3 py-1 text-[11px] transition-colors ${
+                    systemPromptDirty
+                      ? "bg-[var(--m-accent)] text-[var(--m-bg)] hover:opacity-90"
+                      : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
+                  }`}
+                >
+                  {systemPromptDirty ? "Save" : "Saved"}
+                </button>
               </div>
             </div>
 

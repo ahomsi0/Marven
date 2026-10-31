@@ -67,19 +67,12 @@ const en = {
   header: {
     marvenAgent: "Marven Agent",
     fileAwareWorkspace: "File-aware workspace",
-    system: "System",
-    systemPrompt: "Conversation system prompt",
     exportMarkdown: "Export as Markdown",
     exportConversation: "Export conversation as Markdown",
   },
   chat: {
     emptyTitle: "What are we working through?",
     emptyHint: "Ask, paste, attach, or use a saved prompt.",
-    systemPromptLabel: "System prompt",
-    systemPromptNotSet: "Not set — click to add a persona or instructions for this conversation",
-    systemPromptPlaceholder:
-      "Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). ⌘↵ or click Save to apply.",
-    unsaved: "Unsaved",
     errorUnreachable:
       "Couldn't reach Marven's local server, so this message wasn't sent. If you're running Marven from source, make sure the dev server is running, then try again.",
     errorServer: "Marven's server couldn't handle that request (error {{status}}). Try again in a moment.",
