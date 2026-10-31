@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  CheckIcon,
   GearIcon,
   GlitchIcon,
   GlobeIcon,
@@ -12,7 +11,8 @@ import {
   InfoIcon,
 } from "./Icons";
 import { REPO_URL, glitchBody, glitchIssueUrl } from "@/lib/glitchReport";
-import { APP_LANGUAGES, setAppLanguage, useT, type AppLanguage } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
+import { LanguageModal } from "./LanguageModal";
 
 interface AccountBarProps {
   userName?: string;
@@ -22,7 +22,7 @@ interface AccountBarProps {
 }
 
 type Panel = "menu" | "report" | null;
-type Submenu = "language" | "learn" | null;
+type Submenu = "learn" | null;
 
 const LEARN_MORE_LINKS = [
   { key: "releaseNotes", url: `${REPO_URL}/releases` },
@@ -60,8 +60,9 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
   const [includeDiagnostics, setIncludeDiagnostics] = useState(true);
   const [copied, setCopied] = useState(false);
   const [submenu, setSubmenu] = useState<Submenu>(null);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const { t, i18n } = useT();
+  const { t } = useT();
   useEffect(() => {
     if (panel !== "menu") setSubmenu(null);
   }, [panel]);
@@ -91,11 +92,6 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
     ? { version: appVersion ?? "unknown", platform: platformName(), provider: providerLabel ?? "unknown" }
     : null;
 
-  function chooseLanguage(code: AppLanguage) {
-    setAppLanguage(code);
-    setPanel(null);
-  }
-
   function openLink(url: string) {
     openExternal(url);
     setPanel(null);
@@ -123,6 +119,7 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
 
   return (
     <div ref={rootRef} className="relative border-t border-[var(--m-border-subtle)] px-2 py-2">
+      {languageOpen && <LanguageModal onClose={() => setLanguageOpen(false)} />}
       {panel === "menu" && (
         <div
           role="menu"
@@ -142,39 +139,17 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
             {t("common.settings")}
           </button>
 
-          <div className="relative" onMouseEnter={() => setSubmenu("language")}>
-            <button
-              type="button"
-              role="menuitem"
-              aria-haspopup="menu"
-              aria-expanded={submenu === "language"}
-              onClick={() => setSubmenu(submenu === "language" ? null : "language")}
-              className={`${MENU_ITEM} ${submenu === "language" ? "bg-[var(--m-surface-3)]" : ""}`}
-            >
-              <GlobeIcon className={MENU_ICON} />
-              {t("account.language")}
-              <ChevronRightIcon className="ms-auto h-3.5 w-3.5 text-[var(--m-text-muted)] rtl:rotate-180" />
-            </button>
-            {submenu === "language" && (
-              <div role="menu" aria-label={t("account.appLanguage")} className={FLYOUT}>
-                <p className="px-2.5 pb-1 pt-1 text-[12px] text-[var(--m-text-muted)]">{t("account.appLanguage")}</p>
-                {APP_LANGUAGES.map((l) => (
-                  <button
-                    key={l.code}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={i18n.language === l.code}
-                    onClick={() => chooseLanguage(l.code)}
-                    className={MENU_ITEM}
-                    lang={l.code}
-                  >
-                    <span className="flex-1">{l.label}</span>
-                    {i18n.language === l.code && <CheckIcon className="h-3.5 w-3.5 text-[var(--m-accent)]" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            role="menuitem"
+            aria-haspopup="dialog"
+            onMouseEnter={() => setSubmenu(null)}
+            onClick={() => { setPanel(null); setLanguageOpen(true); }}
+            className={MENU_ITEM}
+          >
+            <GlobeIcon className={MENU_ICON} />
+            {t("account.language")}
+          </button>
 
           <button
             type="button"

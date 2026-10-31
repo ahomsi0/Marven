@@ -387,7 +387,9 @@ export function Sidebar({
           reflows mid-slide; it also fades and drifts toward the edge. */}
       <div
         className={`flex h-full w-[260px] flex-col ${SLIDE} transition-[opacity,translate] ${
-          isOpen ? "translate-x-0 opacity-100" : "-translate-x-3 opacity-0 rtl:translate-x-3"
+          // "translate-none" (not translate-x-0) when open: any translate makes this
+          // a containing block, which would offset the fixed-position context menu.
+          isOpen ? "translate-none opacity-100" : "-translate-x-3 opacity-0 rtl:translate-x-3"
         }`}
       >
           {/* Brand */}
