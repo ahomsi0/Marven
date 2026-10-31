@@ -168,26 +168,26 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
         </div>
       )}
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         <button
           type="button"
           onClick={() => setPanel(panel === "menu" ? null : "menu")}
           aria-haspopup="menu"
           aria-expanded={panel === "menu"}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[11px] font-semibold text-[var(--m-text-muted)]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[10px] font-semibold text-[var(--m-text-muted)]">
             {initial}
           </span>
-          {/* Two lines: the sidebar is too narrow for "name · provider" on one. */}
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-[13px] font-medium text-[var(--m-text)]">{name}</span>
+          {/* "Name · provider" — the name keeps its width; the provider truncates. */}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="max-w-[10rem] shrink-0 truncate text-[14px] text-[var(--m-text)]">{name}</span>
             {providerLabel && (
-              <span className="truncate text-[11px] text-[var(--m-text-faint)]">{providerLabel}</span>
+              <span className="min-w-0 truncate text-[13px] text-[var(--m-text-muted)]">· {providerLabel}</span>
             )}
           </span>
           <ChevronDownIcon
-            className={`ml-auto h-3.5 w-3.5 text-[var(--m-text-faint)] transition-transform ${panel === "menu" ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 text-[var(--m-text-muted)] transition-transform ${panel === "menu" ? "rotate-180" : ""}`}
           />
         </button>
         <button
@@ -196,11 +196,11 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
           title="Report a glitch"
           aria-label="Report a glitch"
           aria-expanded={panel === "report"}
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-accent)] ${
-            panel === "report" ? "text-[var(--m-accent)]" : "text-[var(--m-text-muted)]"
+          className={`ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-accent)] ${
+            panel === "report" ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"
           }`}
         >
-          <GlitchIcon className="h-[18px] w-[18px]" />
+          <GlitchIcon className="h-5 w-5" />
         </button>
       </div>
     </div>

@@ -26,6 +26,12 @@ interface SidebarProps {
   onMoveConversation: (convId: string, folderId: string | null) => void;
 }
 
+// Shared row styles — icon rows up top, plain-case section labels below.
+const NAV_ROW =
+  "flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-left text-[14px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]";
+const NAV_ICON = "h-[18px] w-[18px] shrink-0 text-[var(--m-text-muted)]";
+const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text-muted)]";
+
 function relativeDate(isoString: string): string {
   const date = new Date(isoString);
   const now = new Date();
@@ -79,12 +85,12 @@ function ConvRow({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`group relative flex w-full select-none items-center rounded-md px-2 py-1.5 text-left transition-colors ${
+      className={`group relative flex w-full select-none items-center rounded-lg px-3 py-[7px] text-left text-[var(--m-text)] transition-colors ${
         isDragging
           ? "opacity-40"
           : isActive
-          ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
-          : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
+          ? "bg-[var(--m-surface-3)]"
+          : "hover:bg-[var(--m-surface-2)]"
       }`}
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -103,12 +109,18 @@ function ConvRow({
           </svg>
         </span>
       )}
-      <span className="flex-1 truncate pr-9 text-[13px]">
+      <span className="flex-1 truncate pr-9 text-[14px]">
         {conv.name || "Untitled"}
       </span>
       {conv.mode === "agent" && (
-        <span className="mr-1 rounded-full border border-[#d19a66]/20 bg-[#d19a66]/08 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#d19a66] transition-transform duration-150 group-hover:-translate-x-9">
-          Agent
+        <span
+          title="Agent conversation"
+          className="mr-1 text-[var(--m-accent)] opacity-80 transition-transform duration-150 group-hover:-translate-x-9"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-label="Agent">
+            <polyline points="8 6 2 12 8 18" />
+            <polyline points="16 6 22 12 16 18" />
+          </svg>
         </span>
       )}
 
@@ -172,12 +184,12 @@ function FolderRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-1">
+    <div className="mb-2">
       <div
-        className={`group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 transition-colors ${
+        className={`group flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-3 py-[7px] text-[var(--m-text)] transition-colors ${
           isDragOver
-            ? "border border-[#d19a66]/50 bg-[#d19a66]/08 text-[var(--m-text)]"
-            : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            ? "outline outline-1 outline-[var(--m-accent)]/50 bg-[var(--m-accent-soft)]"
+            : "hover:bg-[var(--m-surface-2)]"
         }`}
         onClick={onToggle}
         onContextMenu={onContextMenu}
@@ -185,22 +197,10 @@ function FolderRow({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        <svg
-          className={`h-3 w-3 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-        </svg>
-        <svg className="h-3 w-3 shrink-0 text-[#d19a66]/60" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V10.5a2.25 2.25 0 0 0-2.25-2.25H17.69Z" />
-        </svg>
         {isRenaming ? (
           <input
             autoFocus
-            className="flex-1 bg-transparent text-[12px] text-[var(--m-text)] outline-none"
+            className="flex-1 bg-transparent text-[14px] font-medium text-[var(--m-text)] outline-none"
             value={renameValue}
             onChange={onRenameChange}
             onBlur={onRenameCommit}
@@ -212,10 +212,20 @@ function FolderRow({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="flex-1 truncate text-[12px]">{folder.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[14px] font-medium">{folder.name}</span>
+            <svg
+              className={`h-2.5 w-2.5 shrink-0 text-[var(--m-text-muted)] transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </span>
         )}
       </div>
-      {!isCollapsed && <div className="pl-3">{children}</div>}
+      {!isCollapsed && <div>{children}</div>}
     </div>
   );
 }
@@ -344,75 +354,65 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-[var(--m-bg)] border-r border-[var(--m-border)] transition-all duration-200 ${
-        isOpen ? "w-[220px] min-w-[220px]" : "w-0 min-w-0 overflow-hidden"
+      className={`flex h-full flex-col bg-[var(--m-surface)] border-r border-[var(--m-border-subtle)] transition-all duration-200 ${
+        isOpen ? "w-[260px] min-w-[260px]" : "w-0 min-w-0 overflow-hidden"
       }`}
     >
       {isOpen && (
         <>
           {/* Brand */}
-          <div className="flex flex-col px-4 pb-3 pt-5">
-            <div className="flex items-center gap-2">
-              <MarvenLogo size={28} />
-              <span className="text-[15px] font-semibold text-[var(--m-text)]">
-                Marven
-              </span>
-            </div>
-            <span className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-              assistant + agent
-            </span>
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--m-border-subtle)] px-4">
+            <MarvenLogo size={22} />
+            <span className="text-[15px] font-semibold text-[var(--m-text)]">Marven</span>
           </div>
 
-          <div className="mx-3 mb-3 h-px bg-[var(--m-border-subtle)]" />
-
-          {/* New chat */}
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="mx-3 mb-2 border border-[var(--m-border)] text-[var(--m-text-muted)] rounded-lg px-3 py-1.5 text-[12px] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] transition-all"
-          >
-            + New chat
-          </button>
-          <button
-            type="button"
-            onClick={onNewAgent}
-            className="mx-3 mb-3 border border-[#d19a66]/25 bg-[#d19a66]/08 text-[#d19a66] rounded-lg px-3 py-1.5 text-[12px] hover:border-[#d19a66]/40 hover:bg-[#d19a66]/12 transition-all"
-          >
-            + New agent
-          </button>
-
-          {/* Search */}
-          <div className="mx-3 mb-2">
-            <div className="relative">
-              <svg className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--m-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z" />
+          {/* Primary actions — icon rows, no borders */}
+          <nav className="flex flex-col px-2 pb-2 pt-2">
+            <button type="button" onClick={onNewChat} className={NAV_ROW}>
+              <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M21 12a8.5 8.5 0 0 1-12.3 7.6L3 21l1.4-5.2A8.5 8.5 0 1 1 21 12z" />
+                <path d="M12 8.5v7M8.5 12h7" />
+              </svg>
+              New chat
+            </button>
+            <button type="button" onClick={onNewAgent} className={NAV_ROW}>
+              <svg className={`${NAV_ICON} text-[var(--m-accent)]`} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5z" />
+                <path d="M12 8v8M8 12h8" />
+              </svg>
+              New agent
+            </button>
+            <label className={`${NAV_ROW} cursor-text focus-within:bg-[var(--m-surface-2)]`}>
+              <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
               </svg>
               <input
                 type="text"
-                placeholder="Search…"
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-bg)] py-1.5 pl-7 pr-3 text-[11px] text-[var(--m-text-muted)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)] focus:text-[var(--m-text)]"
+                className="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--m-text)] placeholder-[var(--m-text)] outline-none focus:placeholder-[var(--m-text-faint)]"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--m-border)] hover:text-[var(--m-text-muted)]"
+                  className="text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
                 >
                   ×
                 </button>
               )}
-            </div>
-          </div>
+            </label>
+          </nav>
 
           {/* Conversation list */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1">
             {isSearching ? (
               /* ── Search results (flat) ── */
               searchResults!.length === 0 ? (
-                <p className="px-2 py-2 text-[11px] text-[var(--m-text-faint)]">No results</p>
+                <p className="px-3 py-2 text-[13px] text-[var(--m-text-faint)]">No results</p>
               ) : (
                 searchResults!.map((conv) => (
                   <ConvRow
@@ -435,9 +435,7 @@ export function Sidebar({
                 {/* Pinned section */}
                 {pinnedConvs.length > 0 && (
                   <div className="mb-3">
-                    <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">
-                      Pinned
-                    </p>
+                    <p className={SECTION_LABEL}>Pinned</p>
                     {pinnedConvs.map((conv) => (
                       <ConvRow
                         key={conv.id}
@@ -497,7 +495,7 @@ export function Sidebar({
                         />
                       ))}
                       {folderConvs.length === 0 && !draggingConvId && (
-                        <p className="px-2 py-1 text-[11px] text-[var(--m-text-faint)]">Empty</p>
+                        <p className="px-3 py-1 text-[13px] text-[var(--m-text-faint)]">Empty</p>
                       )}
                     </FolderRow>
                   );
@@ -507,9 +505,9 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={onCreateFolder}
-                  className="mb-2 mt-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)]"
+                  className="mb-3 flex w-full items-center gap-1.5 rounded-lg px-3 py-[7px] text-[13px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
                 >
-                  <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
                   New folder
@@ -538,11 +536,11 @@ export function Sidebar({
                   return (
                     <>
                       {unfiledGrouped.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
-                        <p className="px-2 text-[12px] text-[var(--m-text-faint)]">No conversations yet</p>
+                        <p className="px-3 text-[13px] text-[var(--m-text-faint)]">No conversations yet</p>
                       )}
                       {unfiledGrouped.map(({ label, items }) => (
                         <div key={label} className="mb-3">
-                          <p className="mb-1 px-2 text-[10px] uppercase tracking-wider font-medium text-[var(--m-text-faint)]">{label}</p>
+                          <p className={SECTION_LABEL}>{label}</p>
                           {items.map((conv) => (
                             <ConvRow
                               key={conv.id}
