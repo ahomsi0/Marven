@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg5" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f131b"/>
+      <stop offset="1" stop-color="#090c11"/>
+    </linearGradient>
+    <linearGradient id="bird" x1="240" y1="280" x2="840" y2="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9fd6ff"/>
+      <stop offset="0.5" stop-color="#3b6dff"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg5)"/>
+
+  <!-- Origami raven, flying up-right -->
+  <!-- Upper wing -->
+  <polygon points="212,668 700,268 556,600" fill="url(#bird)"/>
+  <!-- Head + beak -->
+  <polygon points="700,268 836,392 700,470 606,404" fill="#7cc4ff"/>
+  <!-- Lower body / tail -->
+  <polygon points="556,600 700,470 668,756 486,700" fill="#3b6dff"/>
+
+  <!-- Eye -->
+  <circle cx="712" cy="376" r="24" fill="#0a0d13"/>
+  <circle cx="720" cy="370" r="9" fill="#67e8f9"/>
+
+  <!-- Motion accent -->
+  <path d="M180 760 L420 760" stroke="#5b9cf6" stroke-opacity="0.45"
+        stroke-width="30" stroke-linecap="round"/>
+</svg>

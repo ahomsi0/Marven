@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgc2" cx="0.35" cy="0.3" r="1.1">
+      <stop offset="0" stop-color="#0d1424"/>
+      <stop offset="1" stop-color="#05070d"/>
+    </radialGradient>
+    <linearGradient id="head" x1="620" y1="220" x2="820" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fdba74"/>
+    </linearGradient>
+    <filter id="glowc2" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bgc2)"/>
+
+  <!-- Faint orbit ring for depth -->
+  <circle cx="512" cy="512" r="330" stroke="#233043" stroke-width="10"/>
+
+  <!-- Comet tail -->
+  <g stroke-linecap="round">
+    <path d="M668 356 L300 724" stroke="#fdba74" stroke-opacity="0.22" stroke-width="92"/>
+    <path d="M648 376 L362 662" stroke="#fdba74" stroke-opacity="0.45" stroke-width="58"/>
+    <path d="M656 368 L430 594" stroke="#ffedd5" stroke-opacity="0.9" stroke-width="30"/>
+  </g>
+
+  <!-- Head -->
+  <circle cx="720" cy="304" r="112" fill="#fdba74" filter="url(#glowc2)" opacity="0.85"/>
+  <circle cx="720" cy="304" r="96" fill="url(#head)"/>
+</svg>

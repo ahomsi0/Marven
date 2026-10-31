@@ -1,0 +1,34 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10141c"/>
+      <stop offset="1" stop-color="#0a0d13"/>
+    </linearGradient>
+    <linearGradient id="gem" x1="240" y1="180" x2="800" y2="880" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="0.55" stop-color="#3b6dff"/>
+      <stop offset="1" stop-color="#67e8f9"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg4)"/>
+
+  <!-- Faceted gem hexagon (pointy-top) -->
+  <polygon points="512,132 850,322 850,702 512,892 174,702 174,322"
+           fill="url(#gem)"/>
+
+  <!-- Facet shading: alternate slices from centre -->
+  <g opacity="0.28">
+    <polygon points="512,512 850,322 850,702" fill="#ffffff" opacity="0.5"/>
+    <polygon points="512,512 512,892 174,702" fill="#000000"/>
+    <polygon points="512,512 174,322 174,702" fill="#ffffff" opacity="0.22"/>
+    <polygon points="512,512 512,132 850,322" fill="#000000" opacity="0.6"/>
+  </g>
+
+  <!-- Inner table highlight -->
+  <polygon points="512,268 730,394 730,630 512,756 294,630 294,394"
+           fill="none" stroke="#eaf5ff" stroke-opacity="0.35" stroke-width="10"/>
+
+  <!-- Centre spark node (heritage from the old mark) -->
+  <circle cx="512" cy="512" r="34" fill="#eaf5ff"/>
+</svg>

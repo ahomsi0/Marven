@@ -22,6 +22,8 @@ import type { VoiceState } from "@/hooks/useVoice";
 import { Message } from "@/app/components/marven/Message";
 import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
+import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
+import { SidebarIcon } from "@/app/components/marven/Icons";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
@@ -70,6 +72,7 @@ interface ChatLayoutProps {
   recentWorkspaces?: string[];
   onSelectRecent?: (path: string) => void;
   appVersion?: string;
+  userName?: string;
   onAgentInputChange: (v: string) => void;
   onAgentSend: (opts?: { mentions?: import("@/types").Mention[] }) => void;
   onAgentRunPrompt?: (prompt: string) => void;
@@ -196,6 +199,7 @@ export function ChatLayout({
   recentWorkspaces,
   onSelectRecent,
   appVersion,
+  userName,
   onAgentInputChange,
   onAgentSend,
   onAgentRunPrompt,
@@ -361,6 +365,9 @@ export function ChatLayout({
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
           onOpenSettings={() => setSettingsOpen(true)}
+          userName={userName}
+          providerLabel={PROVIDER_LABELS[provider]}
+          appVersion={appVersion}
           folders={folders}
           onCreateFolder={onCreateFolder}
           onRenameFolder={onRenameFolder}
@@ -383,9 +390,7 @@ export function ChatLayout({
                     aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                     title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-                    </svg>
+                    <SidebarIcon className="h-[18px] w-[18px]" />
                   </button>
 
                   <div className="min-w-0">

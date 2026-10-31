@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgd2" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0e1118"/>
+      <stop offset="1" stop-color="#080a10"/>
+    </linearGradient>
+    <radialGradient id="human" cx="0.5" cy="0.42" r="0.65">
+      <stop offset="0" stop-color="#fcd34d"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </radialGradient>
+    <radialGradient id="ai" cx="0.5" cy="0.42" r="0.65">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bgd2)"/>
+
+  <!-- Human: warm circle -->
+  <circle cx="420" cy="512" r="176" fill="url(#human)"/>
+
+  <!-- AI: cool rounded diamond, overlapping -->
+  <g opacity="0.94">
+    <rect x="500" y="392" width="240" height="240" rx="56"
+          transform="rotate(45 620 512)" fill="url(#ai)"/>
+  </g>
+
+  <!-- Connection node at the overlap -->
+  <circle cx="512" cy="512" r="26" fill="#ffffff"/>
+</svg>

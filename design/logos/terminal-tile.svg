@@ -1,0 +1,9 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="180" fill="#0C1512"/>
+
+  <!-- Flat terminal tile — no gradients, dev-tool honest -->
+  <path d="M300 340 L470 512 L300 684"
+        stroke="#34D399" stroke-width="84"
+        stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <rect x="540" y="600" width="220" height="72" fill="#34D399"/>
+</svg>

@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f131b"/>
+      <stop offset="1" stop-color="#090c11"/>
+    </linearGradient>
+    <linearGradient id="tg" x1="240" y1="320" x2="820" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg3)"/>
+
+  <!-- Prompt chevron -->
+  <path d="M250 330 L470 512 L250 694"
+        stroke="url(#tg)" stroke-width="88" stroke-linecap="round"
+        stroke-linejoin="round" fill="none"/>
+
+  <!-- Underscore cursor -->
+  <rect x="560" y="648" width="150" height="52" rx="26" fill="#7cc4ff" opacity="0.9"/>
+
+  <!-- Blinking spark cursor -->
+  <g transform="translate(800 674)">
+    <path d="M0 -96 C13 -28 28 -13 96 0 C28 13 13 28 0 96 C-13 28 -28 13 -96 0 C-28 -13 -13 -28 0 -96 Z"
+          fill="#4ade80"/>
+  </g>
+</svg>

@@ -51,6 +51,22 @@ describe("hydrateConversationsFromServer", () => {
     expect(JSON.parse(putCall![1]!.body as string).conversations[0].id).toBe("a");
   });
 
+  it("revives server message timestamps into Date objects", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      conversations: [{
+        id: "s1",
+        name: "server one",
+        updatedAt: "2026-03-01T00:00:00Z",
+        messages: [{ id: "m1", role: "user", content: "hi", timestamp: "2026-03-01T10:30:00.000Z" }],
+      }],
+    })));
+
+    const result = await hydrateConversationsFromServer([]);
+    const ts = result![0].messages[0].timestamp;
+    expect(ts).toBeInstanceOf(Date);
+    expect(ts.toISOString()).toBe("2026-03-01T10:30:00.000Z");
+  });
+
   it("adopts server-only conversations and keeps stored order", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
       conversations: [

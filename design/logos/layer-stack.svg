@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Layered workspace planes — VS Code-alternate, three tones of one hue -->
+  <polygon points="512,672 802,842 512,1012 222,842" fill="#2F5FE0"/>
+  <polygon points="512,492 802,662 512,832 222,662" fill="#5F8DFB"/>
+  <polygon points="512,312 802,482 512,652 222,482" fill="#93B4FD"/>
+</svg>

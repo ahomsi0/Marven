@@ -1,0 +1,13 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Irregular starburst — Claude-style organic minimalism, single warm hue -->
+  <g stroke="#F59E0B" stroke-width="76" stroke-linecap="round">
+    <line x1="512" y1="368" x2="512" y2="150" transform="rotate(8 512 512)"/>
+    <line x1="512" y1="376" x2="512" y2="196" transform="rotate(53 512 512)"/>
+    <line x1="512" y1="370" x2="512" y2="170" transform="rotate(101 512 512)"/>
+    <line x1="512" y1="380" x2="512" y2="158" transform="rotate(149 512 512)"/>
+    <line x1="512" y1="372" x2="512" y2="186" transform="rotate(196 512 512)"/>
+    <line x1="512" y1="378" x2="512" y2="152" transform="rotate(244 512 512)"/>
+    <line x1="512" y1="366" x2="512" y2="178" transform="rotate(292 512 512)"/>
+    <line x1="512" y1="374" x2="512" y2="162" transform="rotate(340 512 512)"/>
+  </g>
+</svg>

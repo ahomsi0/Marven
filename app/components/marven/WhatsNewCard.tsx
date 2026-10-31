@@ -43,13 +43,13 @@ export function WhatsNewCard() {
 
   return (
     <div
-      className={`fixed bottom-5 right-5 z-50 w-64 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] shadow-2xl transition-all duration-150 ${
+      className={`fixed bottom-5 right-5 z-50 flex w-64 max-h-[calc(100vh-2.5rem)] flex-col rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] shadow-2xl transition-all duration-150 ${
         dismissing ? "opacity-0 translate-y-1" : "opacity-100 translate-y-0"
       }`}
       style={{ animation: dismissing ? undefined : "whatsNewIn 0.2s ease-out" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[var(--m-border-subtle)] px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--m-border-subtle)] px-3 py-2">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[var(--m-text)]">
           <SparkleIcon className="h-3 w-3 text-[var(--m-accent)]" />
           What&apos;s new in v{version}
@@ -64,8 +64,8 @@ export function WhatsNewCard() {
         </button>
       </div>
 
-      {/* Items */}
-      <div className="flex flex-col gap-2 px-3 py-2.5">
+      {/* Items — scroll when the release is taller than the window */}
+      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto px-3 py-2.5">
         {release.items.map((item, i) => {
           const s = TAG_STYLE[item.tag];
           return (
