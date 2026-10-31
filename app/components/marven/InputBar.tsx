@@ -7,6 +7,7 @@ import { SlashMenu, SLASH_COMMANDS } from "@/app/components/marven/SlashMenu";
 import { ModelSelector } from "@/app/components/marven/ModelSelector";
 import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
 import type { TokenUsage } from "@/types";
+import { useT } from "@/lib/i18n";
 
 const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -46,7 +47,7 @@ export function InputBar({
   isLoading,
   isVoiceSupported,
   voiceState,
-  placeholder = "Message Marven... or type / for commands",
+  placeholder,
   provider,
   selectedModel,
   speechEnabled,
@@ -70,6 +71,7 @@ export function InputBar({
   onDocsChange,
   promptTemplates,
 }: InputBarProps) {
+  const { t } = useT();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docFileInputRef = useRef<HTMLInputElement>(null);
@@ -232,7 +234,7 @@ export function InputBar({
                   onClick={() =>
                     onAttachmentsChange?.(attachments.filter((_, j) => j !== i))
                   }
-                  className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#555] text-[#eee] text-[9px] hover:bg-[#888]"
+                  className="absolute -top-1.5 -end-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#555] text-[#eee] text-[9px] hover:bg-[#888]"
                 >
                   ×
                 </button>
@@ -257,7 +259,7 @@ export function InputBar({
                   type="button"
                   aria-label={`Remove ${doc.name}`}
                   onClick={() => onDocsChange?.(docs.filter((_, j) => j !== i))}
-                  className="ml-auto shrink-0 text-[var(--m-text-faint)] hover:text-red-400/80"
+                  className="ms-auto shrink-0 text-[var(--m-text-faint)] hover:text-red-400/80"
                 >
                   ×
                 </button>
@@ -266,7 +268,7 @@ export function InputBar({
           </div>
         )}
         {docUploading && (
-          <div className="px-3 pt-2 text-[11px] text-[var(--m-text-faint)]">Extracting text…</div>
+          <div className="px-3 pt-2 text-[11px] text-[var(--m-text-faint)]">{t("input.extracting")}</div>
         )}
 
         {/* Input row */}
@@ -287,7 +289,7 @@ export function InputBar({
                 .filter(Boolean) as File[];
               await addFiles(files);
             }}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t("input.placeholder")}
             disabled={isLoading}
             className="max-h-32 min-h-[34px] flex-1 resize-none rounded-md bg-transparent px-2.5 py-1.5 text-[13px] leading-6 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] disabled:opacity-60"
             style={{ height: "auto" }}
@@ -297,7 +299,7 @@ export function InputBar({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
-            title="Attach image"
+            title={t("input.attachImage")}
             className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] disabled:opacity-30"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -308,7 +310,7 @@ export function InputBar({
           <button
             type="button"
             onClick={() => docFileInputRef.current?.click()}
-            title="Attach PDF or DOCX"
+            title={t("input.attachDocument")}
             disabled={isLoading || docUploading}
             className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-[var(--m-text-muted)] transition-all hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)] disabled:opacity-30"
           >
@@ -326,7 +328,7 @@ export function InputBar({
                   ? "bg-red-950/20 border border-red-700/40 text-red-400"
                   : "text-[var(--m-text-muted)] hover:text-[var(--m-text)] hover:bg-[var(--m-surface-2)]"
               }`}
-              title={isListening ? "Stop listening" : "Start voice input"}
+              title={isListening ? t("input.stopListening") : t("input.startVoice")}
             >
               {isListening ? (
                 <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
@@ -340,12 +342,12 @@ export function InputBar({
 
           <button
             type="button"
-            aria-label={isLoading ? "Sending message" : "Send message"}
+            aria-label={isLoading ? t("input.sending") : t("input.send")}
             onClick={onSend}
             disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
             className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
+            <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
             </svg>
           </button>
@@ -361,20 +363,20 @@ export function InputBar({
           />
           <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} align="left" />
 
-          <div className="ml-auto flex items-center">
+          <div className="ms-auto flex items-center">
             {isVoiceSupported && sttProvider && (
               <span
-                title={sttProvider === "local" ? "Speech-to-text runs on this machine" : "Speech-to-text runs on Groq Cloud"}
-                className="mr-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
+                title={sttProvider === "local" ? t("input.sttLocalHint") : t("input.sttGroqHint")}
+                className="me-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
               >
-                {sttProvider === "local" ? "Local" : "Groq"}
+                {sttProvider === "local" ? t("input.sttLocal") : "Groq"}
               </span>
             )}
             <span
-              title={ttsProvider === "elevenlabs" ? "Speech output uses ElevenLabs" : "Speech output uses the system voice"}
-              className="mr-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
+              title={ttsProvider === "elevenlabs" ? t("input.ttsElevenHint") : t("input.ttsSystemHint")}
+              className="me-1 rounded border border-[var(--m-border-subtle)] px-1 py-px text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
             >
-              {ttsProvider === "elevenlabs" ? "11Labs" : "Sys"}
+              {ttsProvider === "elevenlabs" ? "11Labs" : t("input.ttsSystem")}
             </span>
             <button
               type="button"
@@ -383,7 +385,7 @@ export function InputBar({
                 speechEnabled ? "text-[var(--m-accent)]" : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
-              {speechEnabled ? "TTS on" : "TTS off"}
+              {speechEnabled ? t("input.ttsOn") : t("input.ttsOff")}
             </button>
             <span className="text-[var(--m-border-subtle)] text-[10px]">/</span>
             <button
@@ -397,14 +399,14 @@ export function InputBar({
                   : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               }`}
             >
-              {isVoiceSupported ? (wakeEnabled ? "Wake on" : "Wake off") : "Mic n/a"}
+              {isVoiceSupported ? (wakeEnabled ? t("input.wakeOn") : t("input.wakeOff")) : t("input.micUnavailable")}
             </button>
           </div>
         </div>
         {/* Last-heard indicator — visible only while wake is on and there's something to show */}
         {wakeEnabled && lastHeard && (
           <div className="flex items-center gap-1 px-3 pb-1">
-            <span className="text-[9px] uppercase tracking-[0.1em] text-[var(--m-text-faint)]">heard:</span>
+            <span className="text-[9px] uppercase tracking-[0.1em] text-[var(--m-text-faint)]">{t("input.heard")}</span>
             <span className="max-w-[260px] truncate text-[10px] italic text-[var(--m-text-faint)]">{lastHeard}</span>
           </div>
         )}

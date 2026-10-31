@@ -24,6 +24,7 @@ import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
 import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
 import { SidebarIcon } from "@/app/components/marven/Icons";
+import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
@@ -144,7 +145,7 @@ interface ChatLayoutProps {
 function TypingRow() {
   return (
     <div className="message-in flex justify-start">
-      <div className="border-l border-[var(--m-border)] pl-3 py-2">
+      <div className="border-s border-[var(--m-border)] ps-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--m-text-muted)]">
             Thinking
@@ -265,6 +266,7 @@ export function ChatLayout({
   onAgentEditorScroll,
   onEditAgentUserMessage,
 }: ChatLayoutProps) {
+  const { t } = useT();
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -344,7 +346,7 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
-  const chatTitle = activeConversation?.name?.trim() || "New chat";
+  const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
   const hasSystemPrompt = conversationSystemPrompt.trim().length > 0;
 
   return (
@@ -373,35 +375,38 @@ export function ChatLayout({
           onRenameFolder={onRenameFolder}
           onDeleteFolder={onDeleteFolder}
           onMoveConversation={onMoveConversation}
+          onCloseSidebar={() => setSidebarOpen(false)}
         />
 
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
-            <div className={`mx-auto w-full ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
+          <header className="flex items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
+            {/* The toggle lives in the sidebar; this copy only appears while
+                the sidebar is hidden, so it can be reopened. */}
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                aria-label={t("sidebar.openSidebar")}
+                title={t("sidebar.openSidebar")}
+              >
+                <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+              </button>
+            )}
+            <div className={`mx-auto min-w-0 flex-1 ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  {/* Toggle sidebar */}
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                    aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                    title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                  >
-                    <SidebarIcon className="h-[18px] w-[18px]" />
-                  </button>
-
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h1 className="truncate text-[14px] font-medium text-[var(--m-text)]">
-                        {mode === "agent" ? "Marven Agent" : chatTitle}
+                        {mode === "agent" ? t("header.marvenAgent") : chatTitle}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
                     {mode === "agent" && (
-                      <span className="text-[11px] text-[var(--m-text-faint)]">File-aware workspace</span>
+                      <span className="text-[11px] text-[var(--m-text-faint)]">{t("header.fileAwareWorkspace")}</span>
                     )}
                   </div>
                 </div>
@@ -411,15 +416,15 @@ export function ChatLayout({
                     <button
                       type="button"
                       onClick={() => setSystemPromptOpen((v) => !v)}
-                      title="Conversation system prompt"
-                      aria-label="Conversation system prompt"
+                      title={t("header.systemPrompt")}
+                      aria-label={t("header.systemPrompt")}
                       className={`rounded-md border px-2 py-1 text-[10px] transition-colors ${
                         systemPromptOpen || hasSystemPrompt
                           ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
                           : "border-[var(--m-border-subtle)] text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                       }`}
                     >
-                      System
+                      {t("header.system")}
                     </button>
                   )}
                   {/* Export button — only in chat mode, only when there are messages */}
@@ -427,8 +432,8 @@ export function ChatLayout({
                     <button
                       type="button"
                       onClick={handleExport}
-                      title="Export as Markdown"
-                      aria-label="Export conversation as Markdown"
+                      title={t("header.exportMarkdown")}
+                      aria-label={t("header.exportConversation")}
                       className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -531,8 +536,8 @@ export function ChatLayout({
                 <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
                   {messages.length === 0 && !isLoading && (
                     <div className="message-in py-12 text-center">
-                      <div className="text-[13px] text-[var(--m-text-muted)]">What are we working through?</div>
-                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">Ask, paste, attach, or use a saved prompt.</div>
+                      <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>
+                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
                     </div>
                   )}
                   {messages.map((message) => (
@@ -551,7 +556,7 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="mt-auto border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
+              <footer className="mt-auto bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
                 <div className="mx-auto w-full max-w-[760px]">
                   {/* Per-conversation system prompt — collapsible strip
                       sitting directly above the input bar so the user is
@@ -662,6 +667,7 @@ function SystemPromptStrip({
   value: string;
   onCommit: (next: string) => void;
 }) {
+  const { t } = useT();
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -687,7 +693,7 @@ function SystemPromptStrip({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-start transition-colors hover:bg-[var(--m-surface-2)]"
       >
         <svg
           className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]"
@@ -697,14 +703,14 @@ function SystemPromptStrip({
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
         <span className="shrink-0 text-[10px] uppercase tracking-[0.15em] text-[var(--m-text-faint)]">
-          System prompt
+          {t("chat.systemPromptLabel")}
         </span>
         <span className={`flex-1 truncate text-[11px] ${value ? "text-[var(--m-text-muted)]" : "text-[var(--m-text-faint)] italic"}`}>
-          {value ? value.replace(/\s+/g, " ") : "Not set — click to add a persona or instructions for this conversation"}
+          {value ? value.replace(/\s+/g, " ") : t("chat.systemPromptNotSet")}
         </span>
         {dirty && (
           <span className="shrink-0 text-[9px] uppercase tracking-[0.15em] text-[#f59e0b]">
-            Unsaved
+            {t("chat.unsaved")}
           </span>
         )}
       </button>
@@ -715,7 +721,7 @@ function SystemPromptStrip({
           <textarea
             ref={textareaRef}
             rows={3}
-            placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). ⌘↵ or click Save to apply."
+            placeholder={t("chat.systemPromptPlaceholder")}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={save}
@@ -752,7 +758,7 @@ function SystemPromptStrip({
                   : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
               }`}
             >
-              {dirty ? "Save" : "Saved"}
+              {dirty ? t("common.save") : t("common.saved")}
             </button>
           </div>
         </div>

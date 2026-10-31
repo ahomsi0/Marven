@@ -5,6 +5,7 @@ import packageJson from "@/package.json";
 import { getRelease } from "@/lib/changelog";
 import type { ChangeTag } from "@/lib/changelog";
 import { SparkleIcon } from "./Icons";
+import { useT } from "@/lib/i18n";
 
 const STORAGE_KEY = "marven_last_seen_version";
 
@@ -16,6 +17,7 @@ const TAG_STYLE: Record<ChangeTag, { bg: string; text: string; label: string }> 
 };
 
 export function WhatsNewCard() {
+  const { t } = useT();
   const [visible, setVisible] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,7 +45,7 @@ export function WhatsNewCard() {
 
   return (
     <div
-      className={`fixed bottom-5 right-5 z-50 flex w-64 max-h-[calc(100vh-2.5rem)] flex-col rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] shadow-2xl transition-all duration-150 ${
+      className={`fixed bottom-5 end-5 z-50 flex w-64 max-h-[calc(100vh-2.5rem)] flex-col rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] shadow-2xl transition-all duration-150 ${
         dismissing ? "opacity-0 translate-y-1" : "opacity-100 translate-y-0"
       }`}
       style={{ animation: dismissing ? undefined : "whatsNewIn 0.2s ease-out" }}
@@ -52,20 +54,20 @@ export function WhatsNewCard() {
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--m-border-subtle)] px-3 py-2">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-[var(--m-text)]">
           <SparkleIcon className="h-3 w-3 text-[var(--m-accent)]" />
-          What&apos;s new in v{version}
+          {t("whatsNew.title", { version })}
         </span>
         <button
           type="button"
           onClick={dismiss}
           className="text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] text-base leading-none"
-          aria-label="Dismiss"
+          aria-label={t("common.dismiss")}
         >
           ×
         </button>
       </div>
 
       {/* Items — scroll when the release is taller than the window */}
-      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto px-3 py-2.5">
+      <div dir="ltr" lang="en" className="flex min-h-0 flex-col gap-2 overflow-y-auto px-3 py-2.5">
         {release.items.map((item, i) => {
           const s = TAG_STYLE[item.tag];
           return (

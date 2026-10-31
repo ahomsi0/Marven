@@ -179,24 +179,24 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                       ))}
                     </div>
                     {message.content && (
-                      <p className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
+                      <p dir="auto" className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
+                  <p dir="auto" className="text-[13px] text-[var(--m-text)] leading-6 whitespace-pre-wrap break-words">
                     {message.content}
                   </p>
                 )}
               </div>
               {/* Action bar — left of bubble, visible on hover */}
-              <div className="absolute right-full top-1 mr-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <div className="absolute end-full top-1 me-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {actionBtn("Edit message", () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
                 {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
               </div>
               {/* Timestamp shown on hover */}
-              <span className="mt-1 block text-right text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <span className="mt-1 block text-end text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {timeLabel}
               </span>
             </>
@@ -205,13 +205,13 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
       ) : (
         <div className="relative max-w-[100%]">
           {/* Action bar — right of bubble, visible on hover */}
-          <div className="absolute left-full top-1 ml-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="absolute start-full top-1 ms-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
           </div>
 
           <div className="rounded-xl px-1 py-1">
-            <div className="text-[13px] text-[var(--m-text)] leading-6">
+            <div dir="auto" className="text-[13px] text-[var(--m-text)] leading-6">
               {message.isStreaming && !message.content ? (
                 <span className="streaming-cursor" />
               ) : (
@@ -256,7 +256,7 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
           </div>
 
           {/* Timestamp shown on hover */}
-          <span className="mt-1 block text-left text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <span className="mt-1 block text-start text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             {timeLabel}
           </span>
         </div>

@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { AccountBar } from "./AccountBar";
+import { ChatBubbleIcon, CodeIcon, SidebarIcon } from "./Icons";
 import { filterConversations } from "@/lib/chatHelpers";
+import { useT } from "@/lib/i18n";
+import type { TFunction } from "i18next";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -24,33 +27,36 @@ interface SidebarProps {
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveConversation: (convId: string, folderId: string | null) => void;
+  onCloseSidebar: () => void;
 }
 
 // Shared row styles — icon rows up top, plain-case section labels below.
 const NAV_ROW =
-  "flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-left text-[14px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]";
+  "flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-start text-[14px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]";
 const NAV_ICON = "h-[18px] w-[18px] shrink-0 text-[var(--m-text-muted)]";
 const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text-muted)]";
 
-function relativeDate(isoString: string): string {
+function relativeDate(isoString: string, t: TFunction, locale: string): string {
   const date = new Date(isoString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  if (diffDays === 0) return t("sidebar.today");
+  if (diffDays === 1) return t("sidebar.yesterday");
+  if (diffDays < 7) return t("sidebar.daysAgo", { count: diffDays });
+  if (diffDays < 30) return t("sidebar.weeksAgo", { count: Math.floor(diffDays / 7) });
+  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 function groupConversations(
-  conversations: Conversation[]
+  conversations: Conversation[],
+  t: TFunction,
+  locale: string,
 ): { label: string; items: Conversation[] }[] {
   const groups: Record<string, Conversation[]> = {};
   for (const conv of [...conversations].reverse()) {
-    const label = relativeDate(conv.updatedAt);
+    const label = relativeDate(conv.updatedAt, t, locale);
     if (!groups[label]) groups[label] = [];
     groups[label].push(conv);
   }
@@ -78,6 +84,7 @@ function ConvRow({
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: (e: React.DragEvent) => void;
 }) {
+  const { t } = useT();
   return (
     <div
       role="button"
@@ -85,7 +92,7 @@ function ConvRow({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`group relative flex w-full select-none items-center rounded-lg px-3 py-[7px] text-left text-[var(--m-text)] transition-colors ${
+      className={`group relative flex w-full select-none items-center rounded-lg px-3 py-[7px] text-start text-[var(--m-text)] transition-colors ${
         isDragging
           ? "opacity-40"
           : isActive
@@ -102,35 +109,23 @@ function ConvRow({
       }}
     >
       {conv.pinned && (
-        <span className="mr-1.5 text-[#d19a66]/60">
+        <span className="me-1.5 text-[#d19a66]/60">
           <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24">
             <path d="M16 2v11l2 2v2H6v-2l2-2V2h8zm-2 0H10v10.586L8 14.586V15h8v-.414L14 12.586V2z" />
             <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z" />
           </svg>
         </span>
       )}
-      <span className="flex-1 truncate pr-9 text-[14px]">
-        {conv.name || "Untitled"}
+      <span className="flex-1 truncate pe-9 text-[14px]">
+        {conv.name || t("sidebar.untitled")}
       </span>
-      {conv.mode === "agent" && (
-        <span
-          title="Agent conversation"
-          className="mr-1 text-[var(--m-accent)] opacity-80 transition-transform duration-150 group-hover:-translate-x-9"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-label="Agent">
-            <polyline points="8 6 2 12 8 18" />
-            <polyline points="16 6 22 12 16 18" />
-          </svg>
-        </span>
-      )}
-
       {/* Pin button */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onPin(); }}
-        aria-label={conv.pinned ? "Unpin conversation" : "Pin conversation"}
-        title={conv.pinned ? "Unpin" : "Pin"}
-        className={`absolute right-6 top-1/2 -translate-y-1/2 rounded px-0.5 py-0.5 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 ${
+        aria-label={conv.pinned ? t("sidebar.unpinConversation") : t("sidebar.pinConversation")}
+        title={conv.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
+        className={`absolute end-6 top-1/2 -translate-y-1/2 rounded px-0.5 py-0.5 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 ${
           conv.pinned ? "text-[#d19a66]/70 hover:text-[#d19a66]" : "text-[#555] hover:text-[#888]"
         }`}
       >
@@ -143,8 +138,8 @@ function ConvRow({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        aria-label="Delete conversation"
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-[11px] text-[var(--m-text-faint)] opacity-0 transition-opacity hover:text-red-500/80 group-hover:opacity-100"
+        aria-label={t("sidebar.deleteConversation")}
+        className="absolute end-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-[11px] text-[var(--m-text-faint)] opacity-0 transition-opacity hover:text-red-500/80 group-hover:opacity-100"
       >
         ×
       </button>
@@ -215,7 +210,7 @@ function FolderRow({
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-[14px] font-medium">{folder.name}</span>
             <svg
-              className={`h-2.5 w-2.5 shrink-0 text-[var(--m-text-muted)] transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+              className={`h-2.5 w-2.5 shrink-0 text-[var(--m-text-muted)] transition-transform ${isCollapsed ? "rtl:-scale-x-100" : "rotate-90"}`}
               fill="currentColor"
               viewBox="0 0 24 24"
               aria-hidden
@@ -253,13 +248,17 @@ export function Sidebar({
   onRenameFolder,
   onDeleteFolder,
   onMoveConversation,
+  onCloseSidebar,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  // Which list the sidebar shows: plain chats or agent sessions.
+  const [view, setView] = useState<"chat" | "agent">("chat");
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const { t, i18n } = useT();
 
   // Drag state: id of the conv being dragged, and which target is hovered.
   // "__unfiled__" means the unfiled drop zone.
@@ -281,11 +280,19 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [contextMenu]);
 
-  const pinnedConvs = conversations.filter((c) => c.pinned);
-  const unpinnedConvs = conversations.filter((c) => !c.pinned);
+  // Follow the open conversation, so starting a new agent (or opening a chat)
+  // switches the list to where that conversation lives.
+  const activeMode = conversations.find((c) => c.id === activeConversationId)?.mode;
+  useEffect(() => {
+    if (activeMode) setView(activeMode === "agent" ? "agent" : "chat");
+  }, [activeConversationId, activeMode]);
+
+  const visibleConvs = conversations.filter((c) => (c.mode === "agent") === (view === "agent"));
+  const pinnedConvs = visibleConvs.filter((c) => c.pinned);
+  const unpinnedConvs = visibleConvs.filter((c) => !c.pinned);
 
   const isSearching = searchQuery.trim().length > 0;
-  const searchResults = isSearching ? filterConversations(conversations, searchQuery) : null;
+  const searchResults = isSearching ? filterConversations(visibleConvs, searchQuery) : null;
 
   // The dragged conv — used to decide whether to show the unfiled drop zone.
   const draggingConv = draggingConvId ? conversations.find((c) => c.id === draggingConvId) : null;
@@ -354,16 +361,53 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-[var(--m-surface)] border-r border-[var(--m-border-subtle)] transition-all duration-200 ${
+      className={`flex h-full flex-col bg-[var(--m-surface)] border-e border-[var(--m-border-subtle)] transition-all duration-200 ${
         isOpen ? "w-[260px] min-w-[260px]" : "w-0 min-w-0 overflow-hidden"
       }`}
     >
       {isOpen && (
         <>
           {/* Brand */}
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--m-border-subtle)] px-4">
+          <div className="flex h-12 shrink-0 items-center gap-2 px-2.5">
+            <button
+              type="button"
+              onClick={onCloseSidebar}
+              className="me-1 shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+              aria-label={t("sidebar.closeSidebar")}
+              title={t("sidebar.closeSidebar")}
+            >
+              <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+            </button>
             <MarvenLogo size={22} />
             <span className="text-[15px] font-semibold text-[var(--m-text)]">Marven</span>
+
+            {/* Chats / agent sessions switcher */}
+            <div
+              role="group"
+              aria-label={t("sidebar.showConversations")}
+              className="ms-auto flex items-center gap-0.5 rounded-lg bg-[var(--m-surface-2)] p-0.5"
+            >
+              {([
+                { id: "chat", label: t("sidebar.chats"), Icon: ChatBubbleIcon },
+                { id: "agent", label: t("sidebar.agentSessions"), Icon: CodeIcon },
+              ] as const).map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  aria-pressed={view === id}
+                  aria-label={label}
+                  title={label}
+                  className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${
+                    view === id
+                      ? "bg-[var(--m-surface-3)] text-[var(--m-text)] shadow-sm ring-1 ring-[var(--m-border)]"
+                      : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Primary actions — icon rows, no borders */}
@@ -373,14 +417,14 @@ export function Sidebar({
                 <path d="M21 12a8.5 8.5 0 0 1-12.3 7.6L3 21l1.4-5.2A8.5 8.5 0 1 1 21 12z" />
                 <path d="M12 8.5v7M8.5 12h7" />
               </svg>
-              New chat
+              {t("sidebar.newChat")}
             </button>
             <button type="button" onClick={onNewAgent} className={NAV_ROW}>
               <svg className={`${NAV_ICON} text-[var(--m-accent)]`} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                 <path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5z" />
                 <path d="M12 8v8M8 12h8" />
               </svg>
-              New agent
+              {t("sidebar.newAgent")}
             </button>
             <label className={`${NAV_ROW} cursor-text focus-within:bg-[var(--m-surface-2)]`}>
               <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -389,7 +433,7 @@ export function Sidebar({
               </svg>
               <input
                 type="text"
-                placeholder="Search"
+                placeholder={t("sidebar.search")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--m-text)] placeholder-[var(--m-text)] outline-none focus:placeholder-[var(--m-text-faint)]"
@@ -398,7 +442,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  aria-label="Clear search"
+                  aria-label={t("sidebar.clearSearch")}
                   className="text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
                 >
                   ×
@@ -412,7 +456,7 @@ export function Sidebar({
             {isSearching ? (
               /* ── Search results (flat) ── */
               searchResults!.length === 0 ? (
-                <p className="px-3 py-2 text-[13px] text-[var(--m-text-faint)]">No results</p>
+                <p className="px-3 py-2 text-[13px] text-[var(--m-text-faint)]">{t("sidebar.noResults")}</p>
               ) : (
                 searchResults!.map((conv) => (
                   <ConvRow
@@ -435,7 +479,7 @@ export function Sidebar({
                 {/* Pinned section */}
                 {pinnedConvs.length > 0 && (
                   <div className="mb-3">
-                    <p className={SECTION_LABEL}>Pinned</p>
+                    <p className={SECTION_LABEL}>{t("sidebar.pinned")}</p>
                     {pinnedConvs.map((conv) => (
                       <ConvRow
                         key={conv.id}
@@ -495,7 +539,7 @@ export function Sidebar({
                         />
                       ))}
                       {folderConvs.length === 0 && !draggingConvId && (
-                        <p className="px-3 py-1 text-[13px] text-[var(--m-text-faint)]">Empty</p>
+                        <p className="px-3 py-1 text-[13px] text-[var(--m-text-faint)]">{t("sidebar.empty")}</p>
                       )}
                     </FolderRow>
                   );
@@ -510,7 +554,7 @@ export function Sidebar({
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  New folder
+                  {t("sidebar.newFolder")}
                 </button>
 
                 {/* Unfiled drop zone — visible only while dragging a foldered conv */}
@@ -525,18 +569,20 @@ export function Sidebar({
                         : "border-[var(--m-border)] text-[var(--m-text-faint)]"
                     }`}
                   >
-                    Drop here to remove from folder
+                    {t("sidebar.dropToUnfile")}
                   </div>
                 )}
 
                 {/* Unfiled date-grouped */}
                 {(() => {
                   const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId);
-                  const unfiledGrouped = groupConversations(unfiledConvs);
+                  const unfiledGrouped = groupConversations(unfiledConvs, t, i18n.language);
                   return (
                     <>
                       {unfiledGrouped.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
-                        <p className="px-3 text-[13px] text-[var(--m-text-faint)]">No conversations yet</p>
+                        <p className="px-3 text-[13px] text-[var(--m-text-faint)]">
+                          {view === "agent" ? t("sidebar.noAgentSessionsYet") : t("sidebar.noChatsYet")}
+                        </p>
                       )}
                       {unfiledGrouped.map(({ label, items }) => (
                         <div key={label} className="mb-3">
@@ -573,12 +619,12 @@ export function Sidebar({
             >
               {contextMenu.kind === "conversation" && (
                 <>
-                  <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">Move to</p>
+                  <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">{t("sidebar.moveTo")}</p>
                   {folders.map((folder) => (
                     <button
                       key={folder.id}
                       type="button"
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
                       onClick={() => { onMoveConversation(contextMenu.convId, folder.id); setContextMenu(null); }}
                     >
                       {folder.name}
@@ -589,15 +635,15 @@ export function Sidebar({
                     return conv?.folderId ? (
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
                         onClick={() => { onMoveConversation(contextMenu.convId, null); setContextMenu(null); }}
                       >
-                        Remove from folder
+                        {t("sidebar.removeFromFolder")}
                       </button>
                     ) : null;
                   })()}
                   {folders.length === 0 && (
-                    <p className="px-3 py-1.5 text-[11px] text-[var(--m-text-faint)]">No folders yet</p>
+                    <p className="px-3 py-1.5 text-[11px] text-[var(--m-text-faint)]">{t("sidebar.noFoldersYet")}</p>
                   )}
                 </>
               )}
@@ -605,21 +651,21 @@ export function Sidebar({
                 <>
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
                     onClick={() => {
                       const folder = folders.find((f) => f.id === contextMenu.folderId);
                       if (folder) { setRenamingFolderId(folder.id); setRenameValue(folder.name); }
                       setContextMenu(null);
                     }}
                   >
-                    Rename
+                    {t("sidebar.rename")}
                   </button>
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400/80 hover:bg-[var(--m-surface-2)] hover:text-red-400"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12px] text-red-400/80 hover:bg-[var(--m-surface-2)] hover:text-red-400"
                     onClick={() => { onDeleteFolder(contextMenu.folderId); setContextMenu(null); }}
                   >
-                    Delete folder
+                    {t("sidebar.deleteFolder")}
                   </button>
                 </>
               )}
