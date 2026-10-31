@@ -9,6 +9,7 @@
 // Pushes are debounced — the persist effect fires on every streamed delta.
 
 import type { Conversation } from "@/types";
+import { hydrateMessage } from "@/lib/storage";
 
 const PUSH_DEBOUNCE_MS = 800;
 
@@ -64,7 +65,10 @@ export async function hydrateConversationsFromServer(
     if (typeof r.id !== "string" || !r.id) return null;
     return {
       ...(r as unknown as Conversation),
-      messages: Array.isArray(r.messages) ? (r.messages as Conversation["messages"]) : [],
+      // JSON carries timestamps as ISO strings; the UI expects Date objects.
+      messages: Array.isArray(r.messages)
+        ? (r.messages as Record<string, unknown>[]).map(hydrateMessage)
+        : [],
     };
   };
 

@@ -19,7 +19,7 @@ function preserveCorruptPayload(key: string, raw: string | null): void {
 // ─── Serialization helpers ────────────────────────────────────────────────────
 // Messages have Date objects; localStorage stores JSON strings.
 
-function hydrateMessage(raw: Record<string, unknown>): Message {
+export function hydrateMessage(raw: Record<string, unknown>): Message {
   return {
     ...(raw as Omit<Message, "timestamp">),
     timestamp: new Date(raw.timestamp as string),

@@ -59,8 +59,14 @@ export function crossOriginRejection(req: NextRequest): string | null {
 export function hostHeaderRejection(req: NextRequest): string | null {
   const host = req.headers.get("host");
   if (!host) return "Missing Host header";
-  // Strip an IPv6 zone suffix if present; compare case-insensitively.
-  const hostname = host.split("%")[0].toLowerCase();
+  // The header carries the port (`localhost:47891`) and may be a bracketed IPv6
+  // literal, so let URL split out the hostname (it also lowercases it).
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname;
+  } catch {
+    return "Non-loopback Host rejected";
+  }
   const isLoopbackHost =
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
