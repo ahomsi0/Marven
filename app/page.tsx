@@ -2335,6 +2335,7 @@ export default function Home() {
         recentWorkspaces={recentWorkspaces}
         onSelectRecent={openWorkspaceFolder}
         appVersion={packageJson.version}
+        userName={userProfile?.name}
         onAgentInputChange={setAgentInput}
         onAgentSend={(opts) => { agentStreamSend(agentInput, { attachments: agentAttachments, mentions: opts?.mentions }); setAgentInput(""); setAgentAttachments([]); }}
         onAgentRunPrompt={(prompt) => {

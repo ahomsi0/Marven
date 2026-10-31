@@ -78,6 +78,30 @@ export const HexagonIcon = (p: IconProps) =>
     p,
   );
 
+/** Marven's hexagon split by a jagged crack — the "Report a glitch" button. */
+export const GlitchIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M11 2.6 3 7v10l8 4.4" />
+      <path d="M13.5 2.8 21 7v10l-7.5 4.2" />
+      <path d="M12.4 2.2 10 8.5l3.5 2.6-3 4.4 2.2 6.3" />
+    </>,
+    p,
+  );
+
+/** Rounded window frame with a left pane — the show/hide sidebar toggle. */
+export const SidebarIcon = (p: IconProps) =>
+  svg(
+    <>
+      <rect x="2.5" y="4" width="19" height="16" rx="4.5" />
+      <rect x="6" y="7.5" width="4.5" height="9" rx="2" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const ChevronDownIcon = (p: IconProps) =>
+  svg(<polyline points="6 9 12 15 18 9" />, p);
+
 export const CheckIcon = (p: IconProps) =>
   svg(<polyline points="5 13 10 18 19 7" />, p);
 
