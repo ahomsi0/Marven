@@ -33,6 +33,13 @@ if (!i18n.isInitialized) {
     interpolation: { escapeValue: false }, // React already escapes
     returnNull: false,
   });
+} else {
+  // Hot reload re-runs this module but i18next is a singleton that's already
+  // initialised — push the edited dictionaries into it and re-render, or new
+  // keys show up raw ("account.languageHint") until a full page reload.
+  i18n.addResourceBundle("en", "translation", en, true, true);
+  i18n.addResourceBundle("ar", "translation", ar, true, true);
+  void i18n.changeLanguage(i18n.language);
 }
 
 export function isAppLanguage(v: unknown): v is AppLanguage {
