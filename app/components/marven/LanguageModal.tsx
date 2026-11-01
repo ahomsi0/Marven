@@ -32,9 +32,9 @@ export function LanguageModal({ onClose }: LanguageModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="language-modal-title"
-        className="relative z-10 m-auto flex w-[min(520px,94vw)] flex-col overflow-hidden rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-bg)] shadow-[0_0_60px_rgba(0,0,0,0.9)]"
+        className="relative z-10 m-auto flex w-[min(440px,94vw)] flex-col overflow-hidden rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-bg)] shadow-[0_0_60px_rgba(0,0,0,0.9)]"
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] px-6 py-4">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] px-5 py-3.5">
           <button
             type="button"
             onClick={onClose}
@@ -50,9 +50,9 @@ export function LanguageModal({ onClose }: LanguageModalProps) {
           </h1>
         </div>
 
-        <div className="px-6 py-5">
-          <p className="mb-4 text-[12px] leading-relaxed text-[var(--m-text-muted)]">{t("account.languageHint")}</p>
-          <div role="radiogroup" aria-label={t("account.appLanguage")} className="grid grid-cols-2 gap-3">
+        <div className="px-5 py-4">
+          <p className="mb-3 text-[12px] leading-relaxed text-[var(--m-text-muted)]">{t("account.languageHint")}</p>
+          <div role="radiogroup" aria-label={t("account.appLanguage")} className="grid grid-cols-2 gap-2">
             {APP_LANGUAGES.map((l) => {
               const selected = i18n.language === l.code;
               return (
@@ -62,24 +62,24 @@ export function LanguageModal({ onClose }: LanguageModalProps) {
                   role="radio"
                   aria-checked={selected}
                   onClick={() => setAppLanguage(l.code)}
-                  className={`relative flex flex-col items-start gap-1 rounded-xl border px-4 py-3.5 text-start transition-colors ${
+                  className={`relative flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-start transition-colors ${
                     selected
                       ? "border-[var(--m-accent)] bg-[var(--m-accent-soft)]"
                       : "border-[var(--m-border)] hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)]"
                   }`}
                 >
-                  <span lang={l.code} dir={l.dir} className="text-[22px] font-semibold leading-tight text-[var(--m-text)]">
+                  <span lang={l.code} dir={l.dir} className="text-[16px] font-semibold leading-tight text-[var(--m-text)]">
                     {t(`account.languageSample_${l.code}`)}
                   </span>
-                  <span lang={l.code} className="text-[14px] font-medium text-[var(--m-text)]">
+                  <span lang={l.code} className="text-[12px] font-medium text-[var(--m-text)]">
                     {l.label}
                   </span>
-                  <span className="text-[11px] text-[var(--m-text-muted)]">
+                  <span className="text-[10px] text-[var(--m-text-muted)]">
                     {l.dir === "rtl" ? t("account.dirRtl") : t("account.dirLtr")}
                   </span>
                   {selected && (
-                    <span className="absolute end-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--m-accent)] text-[var(--m-bg)]">
-                      <CheckIcon className="h-3 w-3" />
+                    <span className="absolute end-2.5 top-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--m-accent)] text-[var(--m-bg)]">
+                      <CheckIcon className="h-2.5 w-2.5" />
                     </span>
                   )}
                 </button>
