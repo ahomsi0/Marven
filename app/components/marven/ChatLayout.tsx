@@ -339,6 +339,8 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const agentHasOwnHeader =
+    mode === "agent" && (!!workspaceRoot || openTabs.some((tab) => tab.kind === "settings"));
   const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
 
   return (
@@ -374,6 +376,9 @@ export function ChatLayout({
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
+          {/* In agent mode the workspace draws its own header (except on its
+              start screen), so the page has a single top bar. */}
+          {!agentHasOwnHeader && (
           <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 sm:px-5">
             {/* The toggle lives in the sidebar; this copy only appears while
                 the sidebar is hidden, so it can be reopened. */}
@@ -425,9 +430,12 @@ export function ChatLayout({
 
             </div>
           </header>
+          )}
 
           {mode === "agent" ? (
             <AgentWorkspace
+              sidebarOpen={sidebarOpen}
+              onOpenSidebar={() => setSidebarOpen(true)}
               messages={agentMessages}
               input={agentInput}
               isRunning={isAgentRunning}

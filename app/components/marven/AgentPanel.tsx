@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { ToolCallCard } from "./ToolCallCard";
 import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import { ModelSelector } from "./ModelSelector";
+import { useT } from "@/lib/i18n";
 import { UsageIndicator } from "./UsageIndicator";
 import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment, Mention, WorkspaceFile } from "@/types";
 import { getActiveTrigger } from "@/lib/mentions/parser";
@@ -81,6 +82,7 @@ export function AgentPanel({
   workspaceFiles,
   liteAgentMode,
 }: AgentPanelProps) {
+  const { t } = useT();
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,13 +207,30 @@ export function AgentPanel({
     }
   }
 
+  const suggestions = [t("agent.suggestionFix"), t("agent.suggestionExplain"), t("agent.suggestionTests")];
+
   return (
     <div className="flex h-full flex-col bg-[var(--m-bg)]">
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        {/* Centred column, like the chat view: the conversation is the page. */}
+        <div className="mx-auto w-full max-w-[760px]">
         {messages.length === 0 && !isRunning && (
-          <p className="text-[12px] text-[var(--m-text-faint)]">
-            Open a folder and describe what you want to build or change.
-          </p>
+          <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
+            <h2 className="text-[20px] font-semibold text-[var(--m-text)]">{t("agent.emptyTitle")}</h2>
+            <p className="mt-2 max-w-[460px] text-[13px] leading-relaxed text-[var(--m-text-muted)]">{t("agent.emptyHint")}</p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onInputChange(s)}
+                  className="rounded-full border border-[var(--m-border)] px-3.5 py-1.5 text-[12px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         <div className="flex flex-col gap-4">
@@ -256,7 +275,7 @@ export function AgentPanel({
                               }}
                               rows={4}
                               disabled={isRunning}
-                              className="w-full resize-none rounded-md border border-[var(--m-accent)]/40 bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] leading-relaxed outline-none focus:border-[var(--m-accent)]/60 disabled:opacity-50"
+                              className="w-full resize-none rounded-md border border-[var(--m-accent)]/40 bg-[var(--m-surface-2)] px-3 py-2 text-[13px] text-[var(--m-text)] leading-relaxed outline-none focus:border-[var(--m-accent)]/60 disabled:opacity-50"
                             />
                             <div className="flex justify-end gap-2">
                               <button
@@ -285,7 +304,7 @@ export function AgentPanel({
                           </div>
                         ) : (
                           <>
-                            <div className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)]">
+                            <div className="rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3.5 py-2 text-[13px] text-[var(--m-text)]">
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <div className="mb-2 flex flex-wrap gap-1.5">
                                   {msg.attachments.map((att, i) => (
@@ -325,7 +344,7 @@ export function AgentPanel({
                       ))}
                       {msg.content && (
                         <div className="min-w-0">
-                          <div className="prose prose-sm min-w-0 max-w-none text-[12px] text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
+                          <div dir="auto" className="prose prose-sm min-w-0 max-w-none text-[13px] leading-relaxed text-[var(--m-text)] [&_code]:bg-[var(--m-surface-2)] [&_code]:text-[var(--m-accent)] [&_pre]:bg-[var(--m-surface)] [&_pre]:border [&_pre]:border-[var(--m-border)]">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
@@ -384,11 +403,13 @@ export function AgentPanel({
         </div>
 
         <div ref={bottomRef} />
+        </div>
       </div>
 
-      <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 pt-3 pb-2">
+      <div className="bg-[var(--m-bg)] px-6 pt-2 pb-4">
+        <div className="mx-auto w-full max-w-[760px]">
         <div
-          className="relative flex flex-col overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)]"
+          className="relative flex flex-col overflow-hidden rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)]"
           onDrop={async (e) => {
             e.preventDefault();
             const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
@@ -461,8 +482,8 @@ export function AgentPanel({
               }}
               disabled={isRunning}
               rows={1}
-              placeholder="Describe task..."
-              className="min-h-[34px] flex-1 resize-none border-0 bg-transparent px-2.5 py-1.5 text-[12px] leading-5 text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
+              placeholder={t("agent.placeholder")}
+              className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-[13px] leading-5 text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
               style={{ maxHeight: 104, overflowY: "auto" }}
             />
             <div className="ml-0.5 flex shrink-0 items-center gap-0.5 pr-0">
@@ -561,6 +582,7 @@ export function AgentPanel({
             </span>
           )}
           <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
+        </div>
         </div>
       </div>
     </div>
