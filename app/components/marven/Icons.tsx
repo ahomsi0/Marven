@@ -145,6 +145,47 @@ export const InfoIcon = (p: IconProps) =>
     { strokeWidth: 1.6, ...p },
   );
 
+/** Horizontal ellipsis — "more options" buttons. */
+export const DotsIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </>,
+    p,
+    "fill",
+  );
+
+export const PencilIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      <path d="m14.5 5.5 3 3" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const PinIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3Z" />
+      <path d="M12 14v7" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const TrashIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M4 7h16" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+      <path d="M9 7V4h6v3" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
 export const ChevronRightIcon = (p: IconProps) =>
   svg(<polyline points="9 6 15 12 9 18" />, p);
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { AccountBar } from "./AccountBar";
-import { ChatBubbleIcon, CodeIcon, SidebarIcon } from "./Icons";
+import { ChatBubbleIcon, CodeIcon, DotsIcon, PencilIcon, PinIcon, SidebarIcon, TrashIcon } from "./Icons";
 import { filterConversations } from "@/lib/chatHelpers";
 import { useT } from "@/lib/i18n";
 import type { TFunction } from "i18next";
@@ -18,6 +18,7 @@ interface SidebarProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
+  onRenameConversation: (id: string, name: string) => void;
   onOpenSettings: () => void;
   userName?: string;
   providerLabel?: string;
@@ -70,9 +71,14 @@ function ConvRow({
   conv,
   isActive,
   isDragging,
+  menuOpen,
+  isRenaming,
+  renameValue,
   onSelect,
-  onDelete,
-  onPin,
+  onOpenMenu,
+  onRenameChange,
+  onRenameCommit,
+  onRenameCancel,
   onContextMenu,
   onDragStart,
   onDragEnd,
@@ -80,9 +86,14 @@ function ConvRow({
   conv: Conversation;
   isActive: boolean;
   isDragging?: boolean;
+  menuOpen: boolean;
+  isRenaming: boolean;
+  renameValue: string;
   onSelect: () => void;
-  onDelete: () => void;
-  onPin: () => void;
+  onOpenMenu: (anchor: DOMRect) => void;
+  onRenameChange: (value: string) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: (e: React.DragEvent) => void;
@@ -92,19 +103,20 @@ function ConvRow({
     <div
       role="button"
       tabIndex={0}
-      draggable
+      draggable={!isRenaming}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={`group relative flex w-full select-none items-center rounded-lg px-3 py-[7px] text-start text-[var(--m-text)] transition-colors ${
         isDragging
           ? "opacity-40"
-          : isActive
+          : isActive || menuOpen
           ? "bg-[var(--m-surface-3)]"
           : "hover:bg-[var(--m-surface-2)]"
       }`}
-      onClick={onSelect}
+      onClick={() => { if (!isRenaming) onSelect(); }}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => {
+        if (isRenaming) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
@@ -112,40 +124,48 @@ function ConvRow({
       }}
     >
       {conv.pinned && (
-        <span className="me-1.5 text-[#d19a66]/60">
-          <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M16 2v11l2 2v2H6v-2l2-2V2h8zm-2 0H10v10.586L8 14.586V15h8v-.414L14 12.586V2z" />
-            <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z" />
-          </svg>
+        <span className="me-1.5 text-[var(--m-accent)]/70" title={t("sidebar.pinned")}>
+          <PinIcon className="h-3 w-3" />
         </span>
       )}
-      <span className="flex-1 truncate pe-9 text-[14px]">
-        {conv.name || t("sidebar.untitled")}
-      </span>
-      {/* Pin button */}
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onPin(); }}
-        aria-label={conv.pinned ? t("sidebar.unpinConversation") : t("sidebar.pinConversation")}
-        title={conv.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
-        className={`absolute end-6 top-1/2 -translate-y-1/2 rounded px-0.5 py-0.5 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 ${
-          conv.pinned ? "text-[#d19a66]/70 hover:text-[#d19a66]" : "text-[#555] hover:text-[#888]"
-        }`}
-      >
-        <svg className="h-3 w-3" fill={conv.pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" />
-        </svg>
-      </button>
+      {isRenaming ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => onRenameChange(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") onRenameCommit();
+            if (e.key === "Escape") onRenameCancel();
+          }}
+          onBlur={onRenameCommit}
+          aria-label={t("sidebar.rename")}
+          className="min-w-0 flex-1 rounded border border-[var(--m-accent)]/50 bg-[var(--m-bg)] px-1.5 py-0.5 text-[14px] text-[var(--m-text)] outline-none"
+        />
+      ) : (
+        <span className="flex-1 truncate pe-7 text-[14px]">
+          {conv.name || t("sidebar.untitled")}
+        </span>
+      )}
 
-      {/* Delete button */}
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        aria-label={t("sidebar.deleteConversation")}
-        className="absolute end-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-[11px] text-[var(--m-text-faint)] opacity-0 transition-opacity hover:text-red-500/80 group-hover:opacity-100"
-      >
-        ×
-      </button>
+      {!isRenaming && (
+        <button
+          type="button"
+          data-conv-menu-trigger
+          onClick={(e) => { e.stopPropagation(); onOpenMenu(e.currentTarget.getBoundingClientRect()); }}
+          aria-label={t("sidebar.moreOptions")}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title={t("sidebar.moreOptions")}
+          className={`absolute end-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-opacity hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text)] focus-visible:opacity-100 ${
+            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          <DotsIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -242,6 +262,7 @@ export function Sidebar({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
+  onRenameConversation,
   onOpenSettings,
   userName,
   providerLabel,
@@ -272,6 +293,47 @@ export function Sidebar({
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setSettledOpen(isOpen);
   }, [isOpen]);
   const { t, i18n } = useT();
+
+  // Per-conversation "⋯" menu (Rename / Pin / Delete) and inline rename.
+  const [actionsMenu, setActionsMenu] = useState<{ convId: string; x: number; y: number } | null>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
+  const [convRenameValue, setConvRenameValue] = useState("");
+
+  function openActionsMenu(convId: string, anchor: DOMRect) {
+    const width = 184, height = 132;
+    const rtl = document.documentElement.dir === "rtl";
+    // Align to the button's end edge; open upward if it would run off the bottom.
+    const x = Math.max(8, rtl ? anchor.left : anchor.right - width);
+    const below = anchor.bottom + 4;
+    const y = below + height > window.innerHeight - 8 ? anchor.top - height - 4 : below;
+    setContextMenu(null);
+    setActionsMenu((prev) => (prev?.convId === convId ? null : { convId, x, y }));
+  }
+
+  function commitConvRename() {
+    if (renamingConvId) onRenameConversation(renamingConvId, convRenameValue);
+    setRenamingConvId(null);
+  }
+
+  useEffect(() => {
+    if (!actionsMenu) return;
+    function handleOutside(e: MouseEvent) {
+      const target = e.target as Element;
+      // Clicks on a "⋯" trigger are handled by its own toggle.
+      if (target.closest?.("[data-conv-menu-trigger]")) return;
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(target)) setActionsMenu(null);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setActionsMenu(null);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [actionsMenu]);
 
   // Drag state: id of the conv being dragged, and which target is hovered.
   // "__unfiled__" means the unfiled drop zone.
@@ -490,8 +552,13 @@ export function Sidebar({
                     isActive={conv.id === activeConversationId}
                     isDragging={draggingConvId === conv.id}
                     onSelect={() => onSelectConversation(conv.id)}
-                    onDelete={() => onDeleteConversation(conv.id)}
-                    onPin={() => onPinConversation(conv.id, !conv.pinned)}
+                    menuOpen={actionsMenu?.convId === conv.id}
+                    onOpenMenu={(rect) => openActionsMenu(conv.id, rect)}
+                    isRenaming={renamingConvId === conv.id}
+                    renameValue={convRenameValue}
+                    onRenameChange={setConvRenameValue}
+                    onRenameCommit={commitConvRename}
+                    onRenameCancel={() => setRenamingConvId(null)}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                     onDragStart={(e) => handleDragStart(e, conv.id)}
                     onDragEnd={handleDragEnd}
@@ -512,8 +579,13 @@ export function Sidebar({
                         isActive={conv.id === activeConversationId}
                         isDragging={draggingConvId === conv.id}
                         onSelect={() => onSelectConversation(conv.id)}
-                        onDelete={() => onDeleteConversation(conv.id)}
-                        onPin={() => onPinConversation(conv.id, false)}
+                        menuOpen={actionsMenu?.convId === conv.id}
+                        onOpenMenu={(rect) => openActionsMenu(conv.id, rect)}
+                        isRenaming={renamingConvId === conv.id}
+                        renameValue={convRenameValue}
+                        onRenameChange={setConvRenameValue}
+                        onRenameCommit={commitConvRename}
+                        onRenameCancel={() => setRenamingConvId(null)}
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                         onDragStart={(e) => handleDragStart(e, conv.id)}
                         onDragEnd={handleDragEnd}
@@ -556,8 +628,13 @@ export function Sidebar({
                           isActive={conv.id === activeConversationId}
                           isDragging={draggingConvId === conv.id}
                           onSelect={() => onSelectConversation(conv.id)}
-                          onDelete={() => onDeleteConversation(conv.id)}
-                          onPin={() => onPinConversation(conv.id, !conv.pinned)}
+                          menuOpen={actionsMenu?.convId === conv.id}
+                          onOpenMenu={(rect) => openActionsMenu(conv.id, rect)}
+                          isRenaming={renamingConvId === conv.id}
+                          renameValue={convRenameValue}
+                          onRenameChange={setConvRenameValue}
+                          onRenameCommit={commitConvRename}
+                          onRenameCancel={() => setRenamingConvId(null)}
                           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                           onDragStart={(e) => handleDragStart(e, conv.id)}
                           onDragEnd={handleDragEnd}
@@ -619,8 +696,13 @@ export function Sidebar({
                               isActive={conv.id === activeConversationId}
                               isDragging={draggingConvId === conv.id}
                               onSelect={() => onSelectConversation(conv.id)}
-                              onDelete={() => onDeleteConversation(conv.id)}
-                              onPin={() => onPinConversation(conv.id, true)}
+                              menuOpen={actionsMenu?.convId === conv.id}
+                              onOpenMenu={(rect) => openActionsMenu(conv.id, rect)}
+                              isRenaming={renamingConvId === conv.id}
+                              renameValue={convRenameValue}
+                              onRenameChange={setConvRenameValue}
+                              onRenameCommit={commitConvRename}
+                              onRenameCancel={() => setRenamingConvId(null)}
                               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ kind: "conversation", convId: conv.id, x: e.clientX, y: e.clientY }); }}
                               onDragStart={(e) => handleDragStart(e, conv.id)}
                               onDragEnd={handleDragEnd}
@@ -634,6 +716,56 @@ export function Sidebar({
               </>
             )}
           </div>
+
+          {/* "⋯" conversation menu */}
+          {actionsMenu && (() => {
+            const conv = conversations.find((c) => c.id === actionsMenu.convId);
+            if (!conv) return null;
+            const item =
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-start text-[13px] text-[var(--m-text)] hover:bg-[var(--m-surface-3)]";
+            return (
+              <div
+                ref={actionsMenuRef}
+                role="menu"
+                aria-label={t("sidebar.moreOptions")}
+                className="fixed z-50 w-[184px] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl"
+                style={{ left: actionsMenu.x, top: actionsMenu.y }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={item}
+                  onClick={() => {
+                    setActionsMenu(null);
+                    setRenamingConvId(conv.id);
+                    setConvRenameValue(conv.name || "");
+                  }}
+                >
+                  <PencilIcon className="h-4 w-4 text-[var(--m-text-muted)]" />
+                  {t("sidebar.rename")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={item}
+                  onClick={() => { setActionsMenu(null); onPinConversation(conv.id, !conv.pinned); }}
+                >
+                  <PinIcon className="h-4 w-4 text-[var(--m-text-muted)]" />
+                  {conv.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
+                </button>
+                <div className="mx-2.5 my-1 h-px bg-[var(--m-border)]" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`${item} text-red-400 hover:bg-red-500/10`}
+                  onClick={() => { setActionsMenu(null); onDeleteConversation(conv.id); }}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  {t("sidebar.delete")}
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Context menu */}
           {contextMenu && (

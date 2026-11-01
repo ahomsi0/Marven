@@ -92,6 +92,7 @@ interface ChatLayoutProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
+  onRenameConversation: (id: string, name: string) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   promptTemplates: PromptTemplate[];
   mcpServers: MCPServer[];
@@ -217,6 +218,7 @@ export function ChatLayout({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
+  onRenameConversation,
   onSaveShortcuts,
   promptTemplates,
   mcpServers,
@@ -356,6 +358,7 @@ export function ChatLayout({
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
+          onRenameConversation={onRenameConversation}
           onOpenSettings={() => setSettingsOpen(true)}
           userName={userName}
           providerLabel={PROVIDER_LABELS[provider]}

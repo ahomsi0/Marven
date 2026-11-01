@@ -2002,6 +2002,12 @@ export default function Home() {
     upsertConversation(id, (conv) => ({ ...conv, pinned }));
   }
 
+  function handleRenameConversation(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return; // an empty name keeps the old one
+    upsertConversation(id, (conv) => ({ ...conv, name: trimmed }));
+  }
+
   const handleCreateFolder = useCallback(() => {
     const folder = createConversationFolder("New folder");
     setFolders((prev) => {
@@ -2382,6 +2388,7 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onPinConversation={handlePinConversation}
+        onRenameConversation={handleRenameConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}
