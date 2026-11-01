@@ -1,3 +1,5 @@
+import settingsEn from "./settings.en";
+
 // English UI strings — the source of truth for keys. ar.ts must provide every
 // key here (TypeScript enforces it); it may add extra plural forms.
 
@@ -156,6 +158,7 @@ const en = {
     viewAll: "View all ({{count}})",
     noRecent: "No recent projects yet — open one to get started.",
   },
+  settings: settingsEn,
   whatsNew: {
     title: "What's new in v{{version}}",
   },

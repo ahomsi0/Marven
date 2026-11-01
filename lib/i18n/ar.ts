@@ -1,4 +1,5 @@
 import type en from "./en";
+import settingsAr from "./settings.ar";
 
 // Every key in en.ts, with the same nesting. Extra keys are allowed so Arabic
 // can carry its additional plural forms (_zero, _two, _few, _many).
@@ -167,6 +168,7 @@ const ar: Shape<typeof en> = {
     viewAll: "عرض الكل ({{count}})",
     noRecent: "لا توجد مشاريع حديثة بعد — افتح مشروعًا للبدء.",
   },
+  settings: settingsAr,
   whatsNew: {
     title: "الجديد في الإصدار {{version}}",
   },
