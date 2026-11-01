@@ -12,6 +12,8 @@ import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
 import { FolderIcon, SidebarIcon } from "./Icons";
+import { TerminalView } from "./TerminalView";
+import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
@@ -410,6 +412,7 @@ export function AgentWorkspace({
   onWorkspaceTrustChange,
 }: AgentWorkspaceProps) {
   const { t } = useT();
+  const { theme } = useTheme();
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-show-explorer") !== "false";
@@ -418,16 +421,22 @@ export function AgentWorkspace({
   const [showTerminal, setShowTerminal] = useState(true);
   const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems">("terminal");
   // Agent-first layout: the conversation is the page; files/editor/terminal and
-  // the diff live in a slide-in panel. `drawerOpen` is that panel, `showDiff`
-  // picks its tab (Changes vs Code).
+  // the diff live in a slide-in panel. `drawerOpen` is that panel, `drawerView`
+  // picks what it shows: Code (files + editor), Changes (diff) or Terminal.
   const [drawerOpen, setDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-agent-drawer") === "true";
   });
-  const [showDiff, setShowDiff] = useState(false);
-  function openDrawer(view: "code" | "diff") {
+  const [drawerView, setDrawerView] = useState<"code" | "diff" | "terminal">("code");
+  const showDiff = drawerView === "diff";
+  function openDrawer(view: "code" | "diff" | "terminal") {
     setDrawerOpen(true);
-    setShowDiff(view === "diff");
+    setDrawerView(view);
+  }
+  // Terminal on its own — the same shell session as the editor's terminal.
+  function toggleTerminalView() {
+    if (drawerOpen && drawerView === "terminal") setDrawerOpen(false);
+    else openDrawer("terminal");
   }
   const [quickOpen, setQuickOpen] = useState(false);
   const [commandPalette, setCommandPalette] = useState(false);
@@ -739,11 +748,7 @@ export function AgentWorkspace({
     onSave: onSaveFile,
     onCloseTab: () => onCloseTab(activeTabIndex),
     onToggleExplorer: () => { setShowExplorer((v) => !v); openDrawer("code"); },
-    onToggleTerminal: () => {
-      setEditorBottomTab("terminal");
-      setShowTerminal((v) => !v);
-      openDrawer("code");
-    },
+    onToggleTerminal: toggleTerminalView,
     // The chat is always visible now; this shortcut toggles the workspace panel.
     onToggleChat: () => setDrawerOpen((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
@@ -841,10 +846,7 @@ export function AgentWorkspace({
     { label: "Save File", keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
     { label: "Close Tab", keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
     { label: "Toggle Sidebar", keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
-    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: () => {
-      setEditorBottomTab("terminal");
-      setShowTerminal((v) => !v);
-    } },
+    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalView },
     { label: "Problems panel", action: () => {
       setEditorBottomTab("problems");
       setShowTerminal(true);
@@ -910,12 +912,12 @@ export function AgentWorkspace({
         {/* Workspace panel — files, changes, terminal */}
         <button
           type="button"
-          aria-pressed={drawerOpen && !showDiff && showExplorer}
+          aria-pressed={drawerOpen && drawerView === "code" && showExplorer}
           onClick={() => {
-            if (drawerOpen && !showDiff && showExplorer) setDrawerOpen(false);
+            if (drawerOpen && drawerView === "code" && showExplorer) setDrawerOpen(false);
             else { setShowExplorer(true); openDrawer("code"); }
           }}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && !showDiff && showExplorer ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "code" && showExplorer ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
           <FolderIcon className="h-3.5 w-3.5" />
           {t("agent.files")}
@@ -936,12 +938,9 @@ export function AgentWorkspace({
         </button>
         <button
           type="button"
-          aria-pressed={drawerOpen && !showDiff && showTerminal}
-          onClick={() => {
-            if (drawerOpen && !showDiff && showTerminal) setShowTerminal(false);
-            else { setEditorBottomTab("terminal"); setShowTerminal(true); openDrawer("code"); }
-          }}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && !showDiff && showTerminal ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          aria-pressed={drawerOpen && drawerView === "terminal"}
+          onClick={toggleTerminalView}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
             <path d="m5 8 4 4-4 4M12 16h7" />
@@ -1162,7 +1161,7 @@ export function AgentWorkspace({
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l4 4-4 4M11 16h7" />
                     </svg>
                   ),
-                  onClick: () => setShowTerminal((v) => !v),
+                  onClick: toggleTerminalView,
                 },
                 {
                   key: "files",
@@ -1325,8 +1324,8 @@ export function AgentWorkspace({
                 <button
                   type="button"
                   onClick={() => openDrawer("code")}
-                  aria-pressed={!showDiff}
-                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${!showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                  aria-pressed={drawerView === "code"}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "code" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
                 >
                   {t("agent.code")}
                 </button>
@@ -1341,6 +1340,14 @@ export function AgentWorkspace({
                 </button>
                 <button
                   type="button"
+                  onClick={() => openDrawer("terminal")}
+                  aria-pressed={drawerView === "terminal"}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.terminal")}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setDrawerOpen(false)}
                   aria-label={t("agent.closePanel")}
                   title={t("agent.closePanel")}
@@ -1351,9 +1358,17 @@ export function AgentWorkspace({
                   </svg>
                 </button>
               </div>
-              {showDiff ? (
+              {drawerView === "diff" ? (
                 <div className="min-h-0 flex-1 overflow-hidden">
-                  <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
+                  <DiffPanel checkpoints={checkpoints} onClose={() => setDrawerView("code")} />
+                </div>
+              ) : drawerView === "terminal" ? (
+                <div className="min-h-0 flex-1 overflow-hidden px-2 py-1.5">
+                  {workspaceRoot ? (
+                    <TerminalView ptyId={`pty:${workspaceRoot}`} cwd={workspaceRoot} theme={theme} />
+                  ) : (
+                    <p className="px-2 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">{t("agent.noFolder")}</p>
+                  )}
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 overflow-hidden">
