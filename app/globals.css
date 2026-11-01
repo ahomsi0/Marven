@@ -90,7 +90,7 @@
     overflow: hidden;
     background-color: var(--m-bg);
     color: var(--m-text);
-    font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-sans), "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
