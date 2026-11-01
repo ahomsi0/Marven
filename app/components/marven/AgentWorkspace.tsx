@@ -11,6 +11,8 @@ import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
+import { FolderIcon, SidebarIcon } from "./Icons";
+import { useT } from "@/lib/i18n";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
 import { CommandPalette } from "./CommandPalette";
@@ -248,6 +250,9 @@ function formatRelativeTime(iso: string): string {
 }
 
 interface AgentWorkspaceProps {
+  /** When the app sidebar is hidden, this header shows the button that reopens it. */
+  sidebarOpen?: boolean;
+  onOpenSidebar?: () => void;
   messages: AgentMessage[];
   input: string;
   isRunning: boolean;
@@ -327,6 +332,8 @@ interface AgentWorkspaceProps {
 }
 
 export function AgentWorkspace({
+  sidebarOpen = true,
+  onOpenSidebar,
   messages,
   input,
   isRunning,
@@ -402,6 +409,7 @@ export function AgentWorkspace({
   workspaceTrusted = false,
   onWorkspaceTrustChange,
 }: AgentWorkspaceProps) {
+  const { t } = useT();
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-show-explorer") !== "false";
@@ -409,11 +417,18 @@ export function AgentWorkspace({
   const [showOutline, setShowOutline] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems">("terminal");
-  const [showRightPanel, setShowRightPanel] = useState(() => {
+  // Agent-first layout: the conversation is the page; files/editor/terminal and
+  // the diff live in a slide-in panel. `drawerOpen` is that panel, `showDiff`
+  // picks its tab (Changes vs Code).
+  const [drawerOpen, setDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
-    return localStorage.getItem("marven-show-right") !== "false";
+    return localStorage.getItem("marven-agent-drawer") === "true";
   });
   const [showDiff, setShowDiff] = useState(false);
+  function openDrawer(view: "code" | "diff") {
+    setDrawerOpen(true);
+    setShowDiff(view === "diff");
+  }
   const [quickOpen, setQuickOpen] = useState(false);
   const [commandPalette, setCommandPalette] = useState(false);
   // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
@@ -504,9 +519,9 @@ export function AgentWorkspace({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("marven-show-right", String(showRightPanel));
+      localStorage.setItem("marven-agent-drawer", String(drawerOpen));
     }
-  }, [showRightPanel]);
+  }, [drawerOpen]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -662,8 +677,8 @@ export function AgentWorkspace({
 
   // ── Right panel drag ──────────────────────────────────────────────────────
   const [rightWidth, setRightWidth] = useState(() => {
-    if (typeof window === "undefined") return 380;
-    return Math.min(700, Math.max(380, Number(localStorage.getItem("marven-right-width") ?? 380) || 380));
+    if (typeof window === "undefined") return 720;
+    return Math.min(1100, Math.max(480, Number(localStorage.getItem("marven-drawer-width") ?? 720) || 720));
   });
   const isRightDragging = useRef(false);
   const rightDragStartX = useRef(0);
@@ -672,8 +687,9 @@ export function AgentWorkspace({
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!isRightDragging.current) return;
-      const delta = rightDragStartX.current - e.clientX;
-      const next = Math.min(700, Math.max(380, rightDragStartWidth.current + delta));
+      const rtl = document.documentElement.dir === "rtl";
+      const delta = rtl ? e.clientX - rightDragStartX.current : rightDragStartX.current - e.clientX;
+      const next = Math.min(1100, Math.max(480, rightDragStartWidth.current + delta));
       setRightWidth(next);
     }
     function onMouseUp() {
@@ -681,7 +697,7 @@ export function AgentWorkspace({
       isRightDragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      localStorage.setItem("marven-right-width", String(rightWidth));
+      localStorage.setItem("marven-drawer-width", String(rightWidth));
     }
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -700,16 +716,36 @@ export function AgentWorkspace({
     document.body.style.userSelect = "none";
   }
 
+  // The panel never takes more than half of the space beside the app sidebar,
+  // so the conversation keeps at least an equal share.
+  const drawerWidth =
+    typeof window === "undefined"
+      ? rightWidth
+      : Math.min(rightWidth, Math.round((window.innerWidth - (sidebarOpen ? 260 : 0)) / 2));
+
+  // Open the workspace panel when a file gets opened — by you or by the agent —
+  // but not for the file restored on first render.
+  const lastSelectedRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastSelectedRef.current !== undefined && selectedFilePath && selectedFilePath !== lastSelectedRef.current) {
+      openDrawer("code");
+    }
+    lastSelectedRef.current = selectedFilePath ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFilePath]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEditorShortcuts({
     onSave: onSaveFile,
     onCloseTab: () => onCloseTab(activeTabIndex),
-    onToggleExplorer: () => setShowExplorer((v) => !v),
+    onToggleExplorer: () => { setShowExplorer((v) => !v); openDrawer("code"); },
     onToggleTerminal: () => {
       setEditorBottomTab("terminal");
       setShowTerminal((v) => !v);
+      openDrawer("code");
     },
-    onToggleChat: () => setShowRightPanel((v) => !v),
+    // The chat is always visible now; this shortcut toggles the workspace panel.
+    onToggleChat: () => setDrawerOpen((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
     onCommandPalette: () => setCommandPalette(true),
     onOpenSettings: () => onOpenSettings?.(),
@@ -733,14 +769,14 @@ export function AgentWorkspace({
       // so the panel has somewhere to render.
       setGlobalSearchOpen((v) => {
         const next = !v;
-        if (next) setShowExplorer(true);
+        if (next) { setShowExplorer(true); openDrawer("code"); }
         return next;
       });
     },
     onGitPanel: () => {
       setShowGitPanel((v) => {
         const next = !v;
-        if (next) setShowExplorer(true);
+        if (next) { setShowExplorer(true); openDrawer("code"); }
         return next;
       });
     },
@@ -814,17 +850,17 @@ export function AgentWorkspace({
       setShowTerminal(true);
     } },
     { label: "Rename symbol (LSP)", keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
-    { label: "Toggle Chat", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
+    { label: "Toggle Workspace Panel", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setDrawerOpen((v) => !v) },
     { label: "Open Quick File", keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
     { label: "Find", keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Find and Replace", keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
     { label: "Search files", keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
     { label: "Inline AI Edit (selection)", keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
-    { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
-    { label: "Workflow intelligence", action: () => { setShowWorkflowPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
+    { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) { setShowExplorer(true); openDrawer("code"); } return next; }); } },
+    { label: "Workflow intelligence", action: () => { setShowWorkflowPanel((v) => { const next = !v; if (next) { setShowExplorer(true); openDrawer("code"); } return next; }); } },
     { label: "Open Settings", action: () => onOpenSettings?.() },
     { label: "Open Folder", action: onOpenFolder },
-    { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
+    { label: "Toggle Diff Panel", action: () => openDrawer(drawerOpen && showDiff ? "code" : "diff") },
     { label: "New REST request", action: () => onOpenRestTab?.() },
   ];
 
@@ -844,53 +880,76 @@ export function AgentWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--m-bg)]">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-1">
-        {/* Panel toggles — VS Code style */}
+      {/* Header — the single top bar for the agent workspace */}
+      <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3">
+        {!sidebarOpen && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            aria-label={t("sidebar.openSidebar")}
+            title={t("sidebar.openSidebar")}
+            className="shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+          >
+            <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+          </button>
+        )}
+
+        {/* Workspace — click to change folder */}
         <button
           type="button"
-          onClick={() => setShowExplorer((v) => !v)}
-          className={`rounded p-1 transition-colors ${
-            showExplorer ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showExplorer ? "Hide file explorer" : "Show file explorer"}
+          onClick={onOpenFolder}
+          title={workspaceRoot ? `${t("agent.changeFolder")} · ${workspaceRoot}` : t("agent.changeFolder")}
+          className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-[14px] font-medium text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]"
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1.5" y="2.5" width="4" height="11" fill="currentColor" />
-          </svg>
+          <FolderIcon className="h-4 w-4 text-[var(--m-accent)]" />
+          <span className="truncate">{workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? t("agent.noFolder")}</span>
         </button>
 
+        <div className="flex-1" />
+
+        {/* Workspace panel — files, changes, terminal */}
         <button
           type="button"
+          aria-pressed={drawerOpen && !showDiff && showExplorer}
           onClick={() => {
-            setEditorBottomTab("terminal");
-            setShowTerminal((v) => !v);
+            if (drawerOpen && !showDiff && showExplorer) setDrawerOpen(false);
+            else { setShowExplorer(true); openDrawer("code"); }
           }}
-          className={`rounded p-1 transition-colors ${
-            showTerminal ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showTerminal ? "Hide terminal" : "Show terminal"}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && !showDiff && showExplorer ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" />
-          </svg>
+          <FolderIcon className="h-3.5 w-3.5" />
+          {t("agent.files")}
         </button>
-
         <button
           type="button"
-          onClick={() => setShowRightPanel((v) => !v)}
-          className={`rounded p-1 transition-colors ${
-            showRightPanel ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showRightPanel ? "Hide chat panel" : "Show chat panel"}
+          aria-pressed={drawerOpen && showDiff}
+          onClick={() => (drawerOpen && showDiff ? setDrawerOpen(false) : openDrawer("diff"))}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" />
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="M12 3v12M6 9h12M6 21h12" />
           </svg>
+          {t("agent.changes")}
+          {checkpoints.length > 0 && (
+            <span className="rounded-full bg-[var(--m-accent-soft)] px-1.5 text-[10px] font-medium text-[var(--m-accent)]">{checkpoints.length}</span>
+          )}
         </button>
+        <button
+          type="button"
+          aria-pressed={drawerOpen && !showDiff && showTerminal}
+          onClick={() => {
+            if (drawerOpen && !showDiff && showTerminal) setShowTerminal(false);
+            else { setEditorBottomTab("terminal"); setShowTerminal(true); openDrawer("code"); }
+          }}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && !showDiff && showTerminal ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="m5 8 4 4-4 4M12 16h7" />
+          </svg>
+          {t("agent.terminal")}
+        </button>
+
+        <div className="mx-1 h-5 w-px bg-[var(--m-border)]" />
 
         {/* Git panel toggle */}
         {workspaceRoot && (
@@ -899,7 +958,7 @@ export function AgentWorkspace({
             onClick={() => {
               setShowGitPanel((v) => {
                 const next = !v;
-                if (next) setShowExplorer(true);
+                if (next) { setShowExplorer(true); openDrawer("code"); }
                 return next;
               });
             }}
@@ -924,7 +983,7 @@ export function AgentWorkspace({
             onClick={() => {
               setShowWorkflowPanel((v) => {
                 const next = !v;
-                if (next) setShowExplorer(true);
+                if (next) { setShowExplorer(true); openDrawer("code"); }
                 return next;
               });
             }}
@@ -954,19 +1013,6 @@ export function AgentWorkspace({
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </button>
-
-        {checkpoints.length > 0 && showRightPanel && (
-          <button
-            type="button"
-            onClick={() => setShowDiff((v) => !v)}
-            className={`ml-1 rounded px-2 py-0.5 text-[10px] transition-colors ${
-              showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
-            }`}
-            title="Toggle diff panel"
-          >
-            Diff ({checkpoints.length})
-          </button>
-        )}
 
         {workspaceRoot && (
           <button
@@ -1031,7 +1077,7 @@ export function AgentWorkspace({
         )}
 
         {/* View menu — top-right kebab */}
-        <div ref={viewMenuRef} className="ml-auto">
+        <div ref={viewMenuRef}>
           <div ref={tasksRef}>
           <button
             type="button"
@@ -1105,8 +1151,7 @@ export function AgentWorkspace({
                       <rect x="14" y="4" width="7" height="16" rx="1" />
                     </svg>
                   ),
-                  disabled: !showRightPanel,
-                  onClick: () => { setShowDiff((v) => !v); if (!showRightPanel) setShowRightPanel(true); },
+                  onClick: () => openDrawer(drawerOpen && showDiff ? "code" : "diff"),
                 },
                 {
                   key: "terminal",
@@ -1162,7 +1207,7 @@ export function AgentWorkspace({
                   onClick: () => {
                     setShowGitPanel((v) => {
                       const next = !v;
-                      if (next) setShowExplorer(true);
+                      if (next) { setShowExplorer(true); openDrawer("code"); }
                       return next;
                     });
                   },
@@ -1179,7 +1224,7 @@ export function AgentWorkspace({
                   onClick: () => {
                     setShowWorkflowPanel((v) => {
                       const next = !v;
-                      if (next) setShowExplorer(true);
+                      if (next) { setShowExplorer(true); openDrawer("code"); }
                       return next;
                     });
                   },
@@ -1234,6 +1279,84 @@ export function AgentWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Conversation — the page */}
+        <div className="min-h-0 min-w-0 flex-1">
+          <AgentPanel
+          messages={messages}
+          input={input}
+          isRunning={isRunning}
+          error={error}
+          provider={provider as import("@/types").AIProvider}
+          selectedModel={model}
+          tokenUsage={tokenUsage}
+          onProviderChange={onProviderChange}
+          onModelChange={onModelChange}
+          onInputChange={onInputChange}
+          onSend={onSend}
+          onStop={onStop}
+          onSlashCommand={onSlashCommand}
+          onApproveToolCall={onApproveToolCall}
+          attachments={attachments}
+          onAttachmentsChange={onAttachmentsChange}
+          isVoiceSupported={isVoiceSupported}
+          voiceState={voiceState}
+          onVoiceClick={onAgentVoiceClick}
+          planMode={planMode}
+          onPlanModeChange={onPlanModeChange}
+          liteAgentMode={liteAgentMode}
+          workspaceFiles={files}
+          onEditUserMessage={onEditAgentUserMessage}
+                />
+                  </div>
+
+        {/* Workspace panel — slides in from the end side */}
+        {drawerOpen && (
+          <>
+            <div
+              onMouseDown={startRightDrag}
+              className="group relative z-10 -ms-px w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--m-accent)]/40 active:bg-[var(--m-accent)]/60"
+              title={t("agent.resizePanel")}
+            />
+            <aside
+              className="flex min-h-0 flex-col border-s border-[var(--m-border)] bg-[var(--m-bg)]"
+              style={{ width: drawerWidth, minWidth: drawerWidth, flexShrink: 0 }}
+            >
+              <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
+                <button
+                  type="button"
+                  onClick={() => openDrawer("code")}
+                  aria-pressed={!showDiff}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${!showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.code")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDrawer("diff")}
+                  aria-pressed={showDiff}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.changes")}
+                  {checkpoints.length > 0 && <span className="text-[10px] text-[var(--m-accent)]">{checkpoints.length}</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label={t("agent.closePanel")}
+                  title={t("agent.closePanel")}
+                  className="ms-auto flex h-7 w-7 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+              {showDiff ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left — File Explorer OR Global Search (mutually exclusive in
             the explorer column). Search panel takes over when ⌘⇧F is
             active; closing it (Esc / ✕) restores the explorer. */}
@@ -1375,7 +1498,7 @@ export function AgentWorkspace({
               voiceError,
               lastHeard,
             }}
-            onToggleChat={() => setShowRightPanel((v) => !v)}
+            onToggleChat={() => setDrawerOpen(false)}
             onCommandPalette={() => setCommandPalette(true)}
             findOpen={findOpen}
             replaceVisible={replaceVisible}
@@ -1389,70 +1512,9 @@ export function AgentWorkspace({
           />
         </div>
 
-        {/* Right — Chat or Diff */}
-        {showRightPanel && (
-          <>
-            {/* Drag handle 2 — between Editor and Right panel */}
-            <div
-              onMouseDown={startRightDrag}
-              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-              title="Drag to resize"
-            >
-              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-              </div>
-            </div>
-            <div
-              className="flex flex-col border-l border-[var(--m-border)]"
-              style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
-            >
-          {showDiff ? (
-            <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
-          ) : (
-            <>
-              <div className="flex items-center gap-2 border-b border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-3">
-                <span className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[9px] uppercase tracking-wider text-[var(--m-text-muted)]">
-                  {provider}
-                </span>
-                <span className="truncate text-[10px] text-[var(--m-text-muted)]">{model}</span>
-                <span
-                  title={ttsProvider === "elevenlabs" ? "Speech output uses ElevenLabs" : "Speech output uses the system voice"}
-                  className="ml-auto rounded border border-[var(--m-border-subtle)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
-                >
-                  TTS {ttsProvider === "elevenlabs" ? "11" : "SYS"}
-                </span>
-              </div>
-              <div className="min-h-0 flex-1">
-                <AgentPanel
-                  messages={messages}
-                  input={input}
-                  isRunning={isRunning}
-                  error={error}
-                  provider={provider as import("@/types").AIProvider}
-                  selectedModel={model}
-                  tokenUsage={tokenUsage}
-                  onProviderChange={onProviderChange}
-                  onModelChange={onModelChange}
-                  onInputChange={onInputChange}
-                  onSend={onSend}
-                  onStop={onStop}
-                  onSlashCommand={onSlashCommand}
-                  onApproveToolCall={onApproveToolCall}
-                  attachments={attachments}
-                  onAttachmentsChange={onAttachmentsChange}
-                  isVoiceSupported={isVoiceSupported}
-                  voiceState={voiceState}
-                  onVoiceClick={onAgentVoiceClick}
-                  planMode={planMode}
-                  onPlanModeChange={onPlanModeChange}
-                  liteAgentMode={liteAgentMode}
-                  workspaceFiles={files}
-                  onEditUserMessage={onEditAgentUserMessage}
-                />
-              </div>
-            </>
-          )}
-            </div>
+                </div>
+              )}
+            </aside>
           </>
         )}
       </div>
