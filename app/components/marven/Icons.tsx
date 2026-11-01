@@ -99,6 +99,96 @@ export const SidebarIcon = (p: IconProps) =>
     { strokeWidth: 1.6, ...p },
   );
 
+/** Speech bubble — the "Chats" view in the sidebar switcher. */
+export const ChatBubbleIcon = (p: IconProps) =>
+  svg(
+    <path d="M21 12a8.5 8.5 0 0 1-12.3 7.6L3 21l1.4-5.2A8.5 8.5 0 1 1 21 12z" />,
+    { strokeWidth: 1.8, ...p },
+  );
+
+/** </> — agent (coding) sessions. */
+export const CodeIcon = (p: IconProps) =>
+  svg(
+    <>
+      <polyline points="8 6 2 12 8 18" />
+      <polyline points="16 6 22 12 16 18" />
+    </>,
+    { strokeWidth: 1.8, ...p },
+  );
+
+export const GearIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const HelpCircleIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.2-2.4 3.8" />
+      <circle cx="12" cy="17" r=".6" fill="currentColor" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const InfoIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <circle cx="12" cy="7.8" r=".6" fill="currentColor" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+/** Horizontal ellipsis — "more options" buttons. */
+export const DotsIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </>,
+    p,
+    "fill",
+  );
+
+export const PencilIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      <path d="m14.5 5.5 3 3" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const PinIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3Z" />
+      <path d="M12 14v7" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const TrashIcon = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M4 7h16" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+      <path d="M9 7V4h6v3" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
+export const ChevronRightIcon = (p: IconProps) =>
+  svg(<polyline points="9 6 15 12 9 18" />, p);
+
 export const ChevronDownIcon = (p: IconProps) =>
   svg(<polyline points="6 9 12 15 18 9" />, p);
 

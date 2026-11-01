@@ -7,7 +7,6 @@ import type {
   DocAttachment,
   Message,
   ChatRequest,
-  ChatResponse,
   OllamaModel,
   TokenUsage,
   Conversation,
@@ -56,6 +55,8 @@ import {
   saveProfile,
   loadMemories,
 } from "@/lib/userProfile";
+import { chatErrorMessage, readChatReply } from "@/lib/chatErrors";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
 import {
   loadChatProvider,
@@ -277,7 +278,6 @@ export default function Home() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
-  const conversationSystemPrompt = activeConversation?.systemPrompt ?? "";
   const provider = activeMode === "agent" ? agentProvider : chatProvider;
   const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
   const selectedModel =
@@ -1523,9 +1523,9 @@ export default function Home() {
     // We resume in the onEnd callback below.
     pauseVoiceCapture();
     setIsSpeakingNow(true);
-    // If the conversation's system prompt is in Arabic OR mentions "arabic",
-    // force Arabic voice even when the response text itself looks English.
-    const sp = (activeConversation?.systemPrompt ?? "").trim();
+    // If the system prompt is in Arabic OR mentions "arabic", force Arabic
+    // voice even when the response text itself looks English.
+    const sp = getSystemPrompt().trim();
     const forceLang: "ar" | undefined =
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     void speak(text, () => {
@@ -1561,7 +1561,7 @@ export default function Home() {
     // Arabic" silently break for voice queries like "what time is it".
     // Routing through the LLM is slightly slower but preserves the user's
     // language/persona preference.
-    const customSystemPrompt = (activeConversation?.systemPrompt ?? "").trim();
+    const customSystemPrompt = getSystemPrompt().trim();
     const useShortcuts = !customSystemPrompt;
 
     // History source for API calls. Callers that truncate the thread first
@@ -1803,7 +1803,7 @@ export default function Home() {
           provider,
           systemPrompt: (() => {
             const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-            const extra = activeConversation?.systemPrompt?.trim();
+            const extra = getSystemPrompt().trim();
             return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
           })(),
         };
@@ -1812,7 +1812,7 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        const data: ChatResponse = await res.json();
+        const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(data.reply);
@@ -1821,8 +1821,9 @@ export default function Home() {
         if (clipAction === "fix-grammar") {
           await navigator.clipboard.writeText(data.reply).catch(() => {});
         }
-      } catch {
-        const err = createMessage("assistant", "Connection error. Please check that the app is running.");
+      } catch (error) {
+        console.error("[Marven] chat request failed:", error);
+        const err = createMessage("assistant", chatErrorMessage(error));
         addMessageToConversation(convId, err);
       } finally {
         setIsLoading(false);
@@ -1839,7 +1840,7 @@ export default function Home() {
         provider,
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-          const extra = activeConversation?.systemPrompt?.trim();
+          const extra = getSystemPrompt().trim();
           // User-supplied instructions go FIRST and are repeated at the END for
           // weaker models — small LLMs anchor on the start and end of context.
           return extra
@@ -1923,7 +1924,7 @@ export default function Home() {
         speakReply(fullText);
       } else {
         // ── JSON response (Ollama / commands) ──
-        const data: ChatResponse = await res.json();
+        const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);
         addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
@@ -1933,8 +1934,9 @@ export default function Home() {
         }
         speakReply(data.reply);
       }
-    } catch {
-      const errMsg = "Connection error. Please check that the app is running.";
+    } catch (error) {
+      console.error("[Marven] chat request failed:", error);
+      const errMsg = chatErrorMessage(error);
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
       speakReply(errMsg);
@@ -2000,6 +2002,12 @@ export default function Home() {
     upsertConversation(id, (conv) => ({ ...conv, pinned }));
   }
 
+  function handleRenameConversation(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return; // an empty name keeps the old one
+    upsertConversation(id, (conv) => ({ ...conv, name: trimmed }));
+  }
+
   const handleCreateFolder = useCallback(() => {
     const folder = createConversationFolder("New folder");
     setFolders((prev) => {
@@ -2043,14 +2051,6 @@ export default function Home() {
     setPlanMode(v);
     setPlanModeState(v);
   }, []);
-
-  function handleSystemPromptChange(value: string) {
-    if (!activeConversationId) return;
-    upsertConversation(activeConversationId, (conv) => ({
-      ...conv,
-      systemPrompt: value,
-    }));
-  }
 
   function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
     setCustomShortcuts(shortcuts);
@@ -2388,8 +2388,7 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onPinConversation={handlePinConversation}
-        conversationSystemPrompt={conversationSystemPrompt}
-        onSystemPromptChange={handleSystemPromptChange}
+        onRenameConversation={handleRenameConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onSaveShortcuts={handleSaveShortcuts}

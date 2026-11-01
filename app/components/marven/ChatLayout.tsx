@@ -24,6 +24,7 @@ import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
 import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
 import { SidebarIcon } from "@/app/components/marven/Icons";
+import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
@@ -91,8 +92,7 @@ interface ChatLayoutProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
-  conversationSystemPrompt: string;
-  onSystemPromptChange: (value: string) => void;
+  onRenameConversation: (id: string, name: string) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   promptTemplates: PromptTemplate[];
   mcpServers: MCPServer[];
@@ -144,7 +144,7 @@ interface ChatLayoutProps {
 function TypingRow() {
   return (
     <div className="message-in flex justify-start">
-      <div className="border-l border-[var(--m-border)] pl-3 py-2">
+      <div className="border-s border-[var(--m-border)] ps-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--m-text-muted)]">
             Thinking
@@ -218,8 +218,7 @@ export function ChatLayout({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
-  conversationSystemPrompt,
-  onSystemPromptChange,
+  onRenameConversation,
   onSaveShortcuts,
   promptTemplates,
   mcpServers,
@@ -265,10 +264,10 @@ export function ChatLayout({
   onAgentEditorScroll,
   onEditAgentUserMessage,
 }: ChatLayoutProps) {
+  const { t } = useT();
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
   const [convSearchOpen, setConvSearchOpen] = useState(false);
 
   // ⌘⇧K — open cross-conversation search palette.
@@ -284,10 +283,6 @@ export function ChatLayout({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  useEffect(() => {
-    setSystemPromptOpen(false);
-  }, [activeConversationId]);
 
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
@@ -344,8 +339,7 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
-  const chatTitle = activeConversation?.name?.trim() || "New chat";
-  const hasSystemPrompt = conversationSystemPrompt.trim().length > 0;
+  const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--m-bg)] text-[var(--m-text)]">
@@ -364,6 +358,7 @@ export function ChatLayout({
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
+          onRenameConversation={onRenameConversation}
           onOpenSettings={() => setSettingsOpen(true)}
           userName={userName}
           providerLabel={PROVIDER_LABELS[provider]}
@@ -373,62 +368,50 @@ export function ChatLayout({
           onRenameFolder={onRenameFolder}
           onDeleteFolder={onDeleteFolder}
           onMoveConversation={onMoveConversation}
+          onCloseSidebar={() => setSidebarOpen(false)}
         />
 
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
-            <div className={`mx-auto w-full ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 sm:px-5">
+            {/* The toggle lives in the sidebar; this copy only appears while
+                the sidebar is hidden, so it can be reopened. */}
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                aria-label={t("sidebar.openSidebar")}
+                title={t("sidebar.openSidebar")}
+              >
+                <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+              </button>
+            )}
+            <div className={`mx-auto min-w-0 flex-1 ${mode === "agent" ? "max-w-none" : "max-w-[760px]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  {/* Toggle sidebar */}
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                    aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                    title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                  >
-                    <SidebarIcon className="h-[18px] w-[18px]" />
-                  </button>
-
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h1 className="truncate text-[14px] font-medium text-[var(--m-text)]">
-                        {mode === "agent" ? "Marven Agent" : chatTitle}
+                        {mode === "agent" ? t("header.marvenAgent") : chatTitle}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
                     {mode === "agent" && (
-                      <span className="text-[11px] text-[var(--m-text-faint)]">File-aware workspace</span>
+                      <span className="block text-[11px] leading-tight text-[var(--m-text-faint)]">{t("header.fileAwareWorkspace")}</span>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {mode === "chat" && (
-                    <button
-                      type="button"
-                      onClick={() => setSystemPromptOpen((v) => !v)}
-                      title="Conversation system prompt"
-                      aria-label="Conversation system prompt"
-                      className={`rounded-md border px-2 py-1 text-[10px] transition-colors ${
-                        systemPromptOpen || hasSystemPrompt
-                          ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
-                          : "border-[var(--m-border-subtle)] text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                      }`}
-                    >
-                      System
-                    </button>
-                  )}
                   {/* Export button — only in chat mode, only when there are messages */}
                   {mode === "chat" && messages.length > 0 && (
                     <button
                       type="button"
                       onClick={handleExport}
-                      title="Export as Markdown"
-                      aria-label="Export conversation as Markdown"
+                      title={t("header.exportMarkdown")}
+                      aria-label={t("header.exportConversation")}
                       className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -528,11 +511,11 @@ export function ChatLayout({
                 ref={messagesViewportRef}
                 className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
               >
-                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
+                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
                   {messages.length === 0 && !isLoading && (
                     <div className="message-in py-12 text-center">
-                      <div className="text-[13px] text-[var(--m-text-muted)]">What are we working through?</div>
-                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">Ask, paste, attach, or use a saved prompt.</div>
+                      <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>
+                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
                     </div>
                   )}
                   {messages.map((message) => (
@@ -551,20 +534,8 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="mt-auto border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
+              <footer className="mt-auto bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
                 <div className="mx-auto w-full max-w-[760px]">
-                  {/* Per-conversation system prompt — collapsible strip
-                      sitting directly above the input bar so the user is
-                      aware of (and can edit) what's currently active while
-                      typing. Toggle button on the right shows/hides. */}
-                  {(systemPromptOpen || hasSystemPrompt) && (
-                    <SystemPromptStrip
-                      open={systemPromptOpen}
-                      onToggle={() => setSystemPromptOpen((v) => !v)}
-                      value={conversationSystemPrompt}
-                      onCommit={onSystemPromptChange}
-                    />
-                  )}
                   <InputBar
                     value={input}
                     isLoading={isLoading}
@@ -639,124 +610,3 @@ export function ChatLayout({
   );
 }
 
-// Collapsible per-conversation system prompt strip — lives just above the
-// chat input bar so the user is aware of (and can edit) what's currently
-// active while messaging.
-//
-// Collapsed:  one row showing "System prompt" + a snippet of the saved value
-//             (or "Not set"), plus a chevron / "Edit" affordance.
-// Expanded:   the full textarea editor with explicit Save / Discard.
-//
-// The editor uses local-state draft + explicit commit (button, ⌘↵, or blur)
-// so the user can see WHEN their changes have actually been persisted —
-// previously each keystroke fired into the conversation state, which made
-// "did my prompt apply yet?" anxiety real.
-function SystemPromptStrip({
-  open,
-  onToggle,
-  value,
-  onCommit,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  value: string;
-  onCommit: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Pull in external changes (e.g. switching conversations) without nuking
-  // an unsaved local edit the user is mid-way through.
-  useEffect(() => { setDraft(value); }, [value]);
-
-  // Auto-focus the textarea when the strip opens.
-  useEffect(() => {
-    if (open) requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [open]);
-
-  const dirty = draft !== value;
-
-  function save() {
-    if (!dirty) return;
-    onCommit(draft);
-  }
-
-  return (
-    <div className="mb-1.5 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-bg)]">
-      {/* Header row — always visible. Click to expand/collapse. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
-      >
-        <svg
-          className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="shrink-0 text-[10px] uppercase tracking-[0.15em] text-[var(--m-text-faint)]">
-          System prompt
-        </span>
-        <span className={`flex-1 truncate text-[11px] ${value ? "text-[var(--m-text-muted)]" : "text-[var(--m-text-faint)] italic"}`}>
-          {value ? value.replace(/\s+/g, " ") : "Not set — click to add a persona or instructions for this conversation"}
-        </span>
-        {dirty && (
-          <span className="shrink-0 text-[9px] uppercase tracking-[0.15em] text-[#f59e0b]">
-            Unsaved
-          </span>
-        )}
-      </button>
-
-      {/* Editor body — only rendered when open. */}
-      {open && (
-        <div className="border-t border-[var(--m-border-subtle)] px-3 pb-2 pt-2">
-          <textarea
-            ref={textareaRef}
-            rows={3}
-            placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). ⌘↵ or click Save to apply."
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                save();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                if (dirty) setDraft(value);
-                else onToggle();
-              }
-            }}
-            className="w-full resize-none rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-2.5 py-1.5 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)]"
-          />
-          <div className="mt-1.5 flex items-center justify-end gap-2">
-            {dirty && (
-              <button
-                type="button"
-                onClick={() => setDraft(value)}
-                className="rounded px-2 py-0.5 text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-text)]"
-              >
-                Discard
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={save}
-              disabled={!dirty}
-              className={`rounded px-2.5 py-0.5 text-[10px] transition-colors ${
-                dirty
-                  ? "bg-[var(--m-accent)] text-[var(--m-bg)] hover:opacity-90"
-                  : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
-              }`}
-            >
-              {dirty ? "Save" : "Saved"}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

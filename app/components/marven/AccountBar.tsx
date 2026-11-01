@@ -1,8 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon, GlitchIcon } from "./Icons";
-import { glitchBody, glitchIssueUrl } from "@/lib/glitchReport";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  GearIcon,
+  GlitchIcon,
+  GlobeIcon,
+  HelpCircleIcon,
+  InfoIcon,
+} from "./Icons";
+import { REPO_URL, glitchBody, glitchIssueUrl } from "@/lib/glitchReport";
+import { useT } from "@/lib/i18n";
+import { LanguageModal } from "./LanguageModal";
 
 interface AccountBarProps {
   userName?: string;
@@ -12,6 +22,19 @@ interface AccountBarProps {
 }
 
 type Panel = "menu" | "report" | null;
+type Submenu = "learn" | null;
+
+const LEARN_MORE_LINKS = [
+  { key: "releaseNotes", url: `${REPO_URL}/releases` },
+  { key: "privacyPolicy", url: `${REPO_URL}/blob/master/PRIVACY.md` },
+  { key: "sourceCode", url: REPO_URL },
+] as const;
+
+const MENU_ITEM =
+  "flex w-full items-center gap-3 rounded-md px-2.5 py-[7px] text-start text-[14px] text-[var(--m-text)] hover:bg-[var(--m-surface-3)]";
+const MENU_ICON = "h-[18px] w-[18px] shrink-0 text-[var(--m-text-muted)]";
+const FLYOUT =
+  "absolute bottom-0 start-full z-50 ms-1.5 min-w-[14rem] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl";
 
 function openExternal(url: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,9 +59,15 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
   const [description, setDescription] = useState("");
   const [includeDiagnostics, setIncludeDiagnostics] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [submenu, setSubmenu] = useState<Submenu>(null);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const { t } = useT();
+  useEffect(() => {
+    if (panel !== "menu") setSubmenu(null);
+  }, [panel]);
 
-  const name = userName?.trim() || "You";
+  const name = userName?.trim() || t("account.you");
   const initial = name.charAt(0).toUpperCase();
 
   useEffect(() => {
@@ -63,6 +92,11 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
     ? { version: appVersion ?? "unknown", platform: platformName(), provider: providerLabel ?? "unknown" }
     : null;
 
+  function openLink(url: string) {
+    openExternal(url);
+    setPanel(null);
+  }
+
   function openReport() {
     setCopied(false);
     setPanel("report");
@@ -85,39 +119,92 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
 
   return (
     <div ref={rootRef} className="relative border-t border-[var(--m-border-subtle)] px-2 py-2">
+      {languageOpen && <LanguageModal onClose={() => setLanguageOpen(false)} />}
       {panel === "menu" && (
         <div
           role="menu"
-          className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] py-1 shadow-2xl"
+          className="absolute bottom-full start-2 end-2 z-50 mb-1.5 rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl"
         >
+          {appVersion && (
+            <p className="px-2.5 pb-1 pt-1 text-[13px] text-[var(--m-text-muted)]">{t("account.version", { version: appVersion })}</p>
+          )}
           <button
             type="button"
             role="menuitem"
+            onMouseEnter={() => setSubmenu(null)}
             onClick={() => { setPanel(null); onOpenSettings(); }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            className={MENU_ITEM}
           >
-            Settings
+            <GearIcon className={MENU_ICON} />
+            {t("common.settings")}
           </button>
+
           <button
             type="button"
             role="menuitem"
-            onClick={openReport}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            aria-haspopup="dialog"
+            onMouseEnter={() => setSubmenu(null)}
+            onClick={() => { setPanel(null); setLanguageOpen(true); }}
+            className={MENU_ITEM}
           >
-            Report a glitch…
+            <GlobeIcon className={MENU_ICON} />
+            {t("account.language")}
           </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            onMouseEnter={() => setSubmenu(null)}
+            onClick={() => openLink(`${REPO_URL}#readme`)}
+            className={MENU_ITEM}
+          >
+            <HelpCircleIcon className={MENU_ICON} />
+            {t("account.getHelp")}
+          </button>
+
+          <div className="mx-2.5 my-1.5 h-px bg-[var(--m-border)]" />
+
+          <div className="relative" onMouseEnter={() => setSubmenu("learn")}>
+            <button
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={submenu === "learn"}
+              onClick={() => setSubmenu(submenu === "learn" ? null : "learn")}
+              className={`${MENU_ITEM} ${submenu === "learn" ? "bg-[var(--m-surface-3)]" : ""}`}
+            >
+              <InfoIcon className={MENU_ICON} />
+              {t("account.learnMore")}
+              <ChevronRightIcon className="ms-auto h-3.5 w-3.5 text-[var(--m-text-muted)] rtl:rotate-180" />
+            </button>
+            {submenu === "learn" && (
+              <div role="menu" aria-label={t("account.learnMore")} className={FLYOUT}>
+                {LEARN_MORE_LINKS.map((link) => (
+                  <button
+                    key={link.key}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => openLink(link.url)}
+                    className={MENU_ITEM}
+                  >
+                    {t(`account.${link.key}`)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {panel === "report" && (
         <div
           role="dialog"
-          aria-label="Report a glitch"
-          className="absolute bottom-full left-2 z-50 mb-1 w-72 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-3 shadow-2xl"
+          aria-label={t("glitch.report")}
+          className="absolute bottom-full start-2 z-50 mb-1 w-72 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-3 shadow-2xl"
         >
           <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-[var(--m-text)]">
             <GlitchIcon className="h-3.5 w-3.5 text-[var(--m-accent)]" />
-            Report a glitch
+            {t("glitch.report")}
           </div>
           <textarea
             autoFocus
@@ -126,7 +213,7 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitReport();
             }}
-            placeholder="What happened? What did you expect?"
+            placeholder={t("glitch.placeholder")}
             rows={4}
             className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1.5 text-[12px] text-[var(--m-text)] placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)] focus:outline-none"
           />
@@ -138,7 +225,7 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
               className="mt-0.5 accent-[var(--m-accent)]"
             />
             <span>
-              Include version, platform and provider
+              {t("glitch.includeDiagnostics")}
               {diagnostics && (
                 <span className="block text-[10px] text-[var(--m-text-faint)]">
                   v{diagnostics.version} · {diagnostics.platform} · {diagnostics.provider}
@@ -147,7 +234,7 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
             </span>
           </label>
           <p className="mt-2 text-[10px] leading-snug text-[var(--m-text-faint)]">
-            Opens a draft GitHub issue in your browser. Nothing is sent until you submit it there.
+            {t("glitch.disclaimer")}
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <button
@@ -155,14 +242,14 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
               onClick={copyReport}
               className="rounded-md border border-[var(--m-border)] px-2.5 py-1 text-[11px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
             >
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("common.copied") : t("common.copy")}
             </button>
             <button
               type="button"
               onClick={submitReport}
               className="rounded-md border border-[var(--m-accent)]/40 bg-[var(--m-accent-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--m-accent)] hover:border-[var(--m-accent)]"
             >
-              Open draft issue
+              {t("glitch.openDraft")}
             </button>
           </div>
         </div>
@@ -174,7 +261,7 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
           onClick={() => setPanel(panel === "menu" ? null : "menu")}
           aria-haspopup="menu"
           aria-expanded={panel === "menu"}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-start transition-colors hover:bg-[var(--m-surface-2)]"
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--m-border)] bg-[var(--m-surface-2)] text-[10px] font-semibold text-[var(--m-text-muted)]">
             {initial}
@@ -193,10 +280,10 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
         <button
           type="button"
           onClick={() => (panel === "report" ? setPanel(null) : openReport())}
-          title="Report a glitch"
-          aria-label="Report a glitch"
+          title={t("glitch.report")}
+          aria-label={t("glitch.report")}
           aria-expanded={panel === "report"}
-          className={`ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-accent)] ${
+          className={`ms-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-accent)] ${
             panel === "report" ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"
           }`}
         >

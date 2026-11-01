@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { AIProvider } from "@/types";
-import { CloudIcon, HexagonIcon } from "./Icons";
+import { CheckIcon, CloudIcon, HexagonIcon } from "./Icons";
+import { useT } from "@/lib/i18n";
 
 // Re-export so InputBar can keep the same import path for shortModelName
 export function shortModelName(name: string): string {
@@ -23,6 +24,14 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
 
 const CLOUD_PROVIDERS: AIProvider[] = ["groq", "openai", "anthropic", "nim", "openrouter"];
 const LOCAL_PROVIDERS: AIProvider[] = ["ollama", "lmstudio", "llamaserver"];
+
+// Cloud vs local get their own colours everywhere they appear.
+const KIND_TEXT = { cloud: "text-[var(--m-cloud)]", local: "text-[var(--m-local)]" } as const;
+const KIND_TAG = {
+  cloud: "bg-[var(--m-cloud-soft)] text-[var(--m-cloud)]",
+  local: "bg-[var(--m-local-soft)] text-[var(--m-local)]",
+} as const;
+const providerKind = (p: AIProvider) => (LOCAL_PROVIDERS.includes(p) ? "local" : "cloud");
 
 const DEFAULT_ENABLED: Record<AIProvider, boolean> = {
   groq: true, openai: true, ollama: true,
@@ -45,11 +54,10 @@ export function ModelSelector({
   onProviderChange,
   onModelChange,
 }: ModelSelectorProps) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"cloud" | "local">(
-    LOCAL_PROVIDERS.includes(provider) ? "local" : "cloud"
-  );
-  const [hoveredProvider, setHoveredProvider] = useState<AIProvider>(provider);
+  // The provider whose models the right pane shows — changes only on click.
+  const [viewedProvider, setViewedProvider] = useState<AIProvider>(provider);
   const [enabledProviders, setEnabledProviders] = useState<Record<AIProvider, boolean>>(DEFAULT_ENABLED);
   const [models, setModels] = useState<Record<AIProvider, string[]>>({
     groq: [], ollama: [], nim: [], openrouter: [], openai: [],
@@ -114,15 +122,18 @@ export function ModelSelector({
     }
   }, []);
 
-  // On open: refresh settings, sync tab to current provider, load its models
+  // On open: refresh settings and show the provider in use
   useEffect(() => {
     if (!open) return;
     refreshEnabled();
-    const newTab = LOCAL_PROVIDERS.includes(provider) ? "local" : "cloud";
-    setTab(newTab);
-    setHoveredProvider(provider);
+    setViewedProvider(provider);
     loadModels(provider);
   }, [open, provider, loadModels, refreshEnabled]);
+
+  function viewProvider(p: AIProvider) {
+    setViewedProvider(p);
+    loadModels(p);
+  }
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -141,14 +152,15 @@ export function ModelSelector({
     };
   }, [open, close]);
 
-  const tabProviders = (tab === "cloud" ? CLOUD_PROVIDERS : LOCAL_PROVIDERS).filter(
-    (p) => enabledProviders[p]
-  );
+  const groups = [
+    { id: "cloud" as const, label: t("input.cloud"), Icon: CloudIcon, providers: CLOUD_PROVIDERS.filter((p) => enabledProviders[p]) },
+    { id: "local" as const, label: t("input.local"), Icon: HexagonIcon, providers: LOCAL_PROVIDERS.filter((p) => enabledProviders[p]) },
+  ].filter((g) => g.providers.length > 0);
 
   const popoverPos =
     direction === "up"
-      ? "absolute bottom-full left-0 mb-1"
-      : "absolute top-full left-0 mt-1";
+      ? "absolute bottom-full start-0 mb-1.5"
+      : "absolute top-full start-0 mt-1.5";
 
   return (
     <div ref={ref} className="relative">
@@ -156,132 +168,108 @@ export function ModelSelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-[172px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[#2e2e2e]"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={t("input.modelPicker")}
+        className="flex w-[172px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[var(--m-surface-2)]"
       >
-        <span className="w-[52px] shrink-0 truncate text-[#d19a66]">{PROVIDER_LABELS[provider]}</span>
-        <span className="shrink-0 text-[#383838]">·</span>
-        <span className="min-w-0 flex-1 truncate text-[#666]">
+        <span className={`w-[52px] shrink-0 truncate text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
+        <span className="shrink-0 text-[var(--m-text-faint)]">·</span>
+        <span className="min-w-0 flex-1 truncate text-start text-[var(--m-text-muted)]">
           {selectedModel ? shortModelName(selectedModel) : "—"}
         </span>
-        <svg className="ml-auto h-2.5 w-2.5 shrink-0 text-[#333]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+        <svg className={`ms-auto h-2.5 w-2.5 shrink-0 text-[var(--m-text-faint)] transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
 
       {open && (
         <div
-          className={`${popoverPos} z-50 flex h-[234px] w-[280px] flex-col overflow-hidden rounded-lg border border-[#252525] bg-[#161616] shadow-xl`}
+          role="dialog"
+          aria-label={t("input.modelPicker")}
+          className={`${popoverPos} z-50 flex h-[280px] w-[420px] overflow-hidden rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] shadow-2xl`}
         >
-          {/* Tab bar */}
-          <div className="flex border-b border-[#1e1e1e] bg-[#131313]">
-            {(["cloud", "local"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => {
-                  setTab(t);
-                  const first = (t === "cloud" ? CLOUD_PROVIDERS : LOCAL_PROVIDERS).find(
-                    (p) => enabledProviders[p]
-                  );
-                  if (first) {
-                    setHoveredProvider(first);
-                    loadModels(first);
-                  }
-                }}
-                className={`flex-1 py-2 text-[11px] font-medium border-b-2 transition-colors ${
-                  tab === t
-                    ? "border-[#d19a66] text-[#d19a66]"
-                    : "border-transparent text-[#555] hover:text-[#888]"
-                }`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  {t === "cloud" ? <CloudIcon /> : <HexagonIcon />}
-                  {t === "cloud" ? "Cloud" : "Local"}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {tabProviders.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center px-3 text-[11px] text-[#555]">
-              Enable backends in Settings → AI Backends
+          {groups.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-[var(--m-text-muted)]">
+              {t("input.enableBackends")}
             </div>
           ) : (
             <>
-              {/* Provider chips — single row, scrolls horizontally if many chips */}
-              <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[#1e1e1e] px-2.5 py-2 scrollbar-none">
-                {tabProviders.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onMouseEnter={() => {
-                      setHoveredProvider(p);
-                      loadModels(p);
-                    }}
-                    onClick={() => {
-                      setHoveredProvider(p);
-                      loadModels(p);
-                    }}
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
-                      hoveredProvider === p
-                        ? "border-[rgba(209,154,102,0.4)] bg-[rgba(209,154,102,0.12)] text-[#d19a66]"
-                        : "border-[#2d2d2d] bg-[#222] text-[#888] hover:text-[#ccc]"
-                    }`}
-                  >
-                    {PROVIDER_LABELS[p]}
-                  </button>
+              {/* Providers — click to see their models */}
+              <div className="w-[140px] shrink-0 overflow-y-auto border-e border-[var(--m-border-subtle)] p-1.5">
+                {groups.map(({ id, label, Icon, providers }) => (
+                  <div key={id} className="mb-1.5 last:mb-0">
+                    <p className={`mx-1 mb-1 mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${KIND_TAG[id]}`}>
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </p>
+                    {providers.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => viewProvider(p)}
+                        aria-pressed={viewedProvider === p}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-[12px] transition-colors ${
+                          viewedProvider === p
+                            ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
+                            : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-3)]/60 hover:text-[var(--m-text)]"
+                        }`}
+                      >
+                        <span className="flex-1 truncate">{PROVIDER_LABELS[p]}</span>
+                        {p === provider && (
+                          <span title={t("input.inUse")} className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--m-accent)]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
 
-              {/* Model list — fills remaining space */}
-              <div className="flex-1 overflow-y-auto py-1">
-                {loadingProvider === hoveredProvider ? (
-                  <div className="flex h-full items-center justify-center text-[10px] text-[#444]">Loading…</div>
-                ) : errors[hoveredProvider] ? (
-                  <div className="flex h-full flex-col items-start justify-center px-3">
-                    <div className="text-[11px] text-[#555]">
-                      {PROVIDER_LABELS[hoveredProvider]} unavailable
+              {/* Models of the selected provider */}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className={`shrink-0 px-3 pb-1 pt-2.5 text-[11px] font-semibold ${KIND_TEXT[providerKind(viewedProvider)]}`}>
+                  {PROVIDER_LABELS[viewedProvider]}
+                </p>
+                <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+                  {loadingProvider === viewedProvider ? (
+                    <div className="flex h-full items-center justify-center text-[11px] text-[var(--m-text-faint)]">{t("input.loadingModels")}</div>
+                  ) : errors[viewedProvider] ? (
+                    <div className="flex h-full flex-col justify-center px-2">
+                      <div className="text-[12px] text-[var(--m-text-muted)]">
+                        {t("input.providerUnavailable", { provider: PROVIDER_LABELS[viewedProvider] })}
+                      </div>
+                      <div className="mt-1 break-words text-[11px] text-[var(--m-text-faint)]">{errors[viewedProvider]}</div>
                     </div>
-                    <div className="mt-0.5 text-[10px] text-[#383838]">
-                      {errors[hoveredProvider]}
-                    </div>
-                  </div>
-                ) : models[hoveredProvider].length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-[10px] text-[#383838]">No models found</div>
-                ) : (
-                  models[hoveredProvider].map((m) => {
-                    const isActive = m === selectedModel && hoveredProvider === provider;
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => {
-                          onProviderChange(hoveredProvider);
-                          onModelChange(m);
-                          localStorage.setItem("marven_last_provider", hoveredProvider);
-                          localStorage.setItem("marven_last_model", m);
-                          close();
-                        }}
-                        className={`flex w-full items-center gap-2 px-3 py-[6px] text-left transition-colors hover:bg-[#1c1c1c] ${
-                          isActive ? "bg-[#1c1c1c]" : ""
-                        }`}
-                      >
-                        <span
-                          className={`h-[5px] w-[5px] shrink-0 rounded-full ${
-                            isActive ? "bg-[#d19a66]" : "bg-[#2e2e2e]"
-                          }`}
-                        />
-                        <span
-                          className={`truncate text-[11px] ${
-                            isActive ? "text-[#d19a66]" : "text-[#777]"
+                  ) : models[viewedProvider].length === 0 ? (
+                    <div className="flex h-full items-center justify-center text-[11px] text-[var(--m-text-faint)]">{t("input.noModels")}</div>
+                  ) : (
+                    models[viewedProvider].map((m) => {
+                      const isActive = m === selectedModel && viewedProvider === provider;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            onProviderChange(viewedProvider);
+                            onModelChange(m);
+                            localStorage.setItem("marven_last_provider", viewedProvider);
+                            localStorage.setItem("marven_last_model", m);
+                            close();
+                          }}
+                          title={m}
+                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-[var(--m-surface-3)] ${
+                            isActive ? "bg-[var(--m-surface-3)]" : ""
                           }`}
                         >
-                          {shortModelName(m)}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
+                          <span dir="ltr" className={`flex-1 truncate text-[12px] ${isActive ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
+                            {shortModelName(m)}
+                          </span>
+                          {isActive && <CheckIcon className="h-3 w-3 text-[var(--m-accent)]" />}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </>
           )}
