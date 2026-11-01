@@ -295,20 +295,24 @@ export function Sidebar({
   const { t, i18n } = useT();
 
   // Per-conversation "⋯" menu (Rename / Pin / Delete) and inline rename.
-  const [actionsMenu, setActionsMenu] = useState<{ convId: string; x: number; y: number } | null>(null);
+  // Positioned by `bottom` when opening upward (the default), `top` when it can't fit above.
+  const [actionsMenu, setActionsMenu] = useState<{ convId: string; x: number; top?: number; bottom?: number } | null>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
   const [convRenameValue, setConvRenameValue] = useState("");
 
   function openActionsMenu(convId: string, anchor: DOMRect) {
-    const width = 184, height = 132;
+    const width = 184, approxHeight = 132;
     const rtl = document.documentElement.dir === "rtl";
-    // Align to the button's end edge; open upward if it would run off the bottom.
+    // Align to the button's end edge and open upward; drop below only when
+    // there isn't room above (a row right under the top of the window).
     const x = Math.max(8, rtl ? anchor.left : anchor.right - width);
-    const below = anchor.bottom + 4;
-    const y = below + height > window.innerHeight - 8 ? anchor.top - height - 4 : below;
+    const position =
+      anchor.top - approxHeight - 4 >= 8
+        ? { bottom: window.innerHeight - anchor.top + 4 }
+        : { top: anchor.bottom + 4 };
     setContextMenu(null);
-    setActionsMenu((prev) => (prev?.convId === convId ? null : { convId, x, y }));
+    setActionsMenu((prev) => (prev?.convId === convId ? null : { convId, x, ...position }));
   }
 
   function commitConvRename() {
@@ -729,7 +733,7 @@ export function Sidebar({
                 role="menu"
                 aria-label={t("sidebar.moreOptions")}
                 className="fixed z-50 w-[184px] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl"
-                style={{ left: actionsMenu.x, top: actionsMenu.y }}
+                style={{ left: actionsMenu.x, top: actionsMenu.top, bottom: actionsMenu.bottom }}
               >
                 <button
                   type="button"
