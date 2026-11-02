@@ -603,6 +603,10 @@ export async function executeTool(
       }
 
       await fs.mkdir(parentDir, { recursive: true });
+      // Re-check symlinks right before writing (the awaits above leave a
+      // window for a link to appear): writeFile follows a symlink at `abs`,
+      // even a dangling one, so it must not point outside the workspace.
+      assertRealpathInsideWorkspace(path.resolve(workspaceRoot), abs);
       await fs.writeFile(abs, content, "utf-8");
       return `Written: ${args.path}`;
     }
@@ -667,6 +671,7 @@ export async function executeTool(
         return `apply_patch ok — no net change (all edits were no-ops).`;
       }
 
+      assertRealpathInsideWorkspace(path.resolve(workspaceRoot), abs);
       await fs.writeFile(abs, next, "utf-8");
       return `apply_patch ok — ${edits.length} edit(s) applied to ${args.path}\n${summaries.join("\n")}`;
     }
