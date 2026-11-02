@@ -124,6 +124,7 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
         bridge={bridge}
         tab={active}
         downloads={snapshot.downloads}
+        searchEngine={snapshot.searchEngine}
         expanded={expanded}
         onToggleExpand={onToggleExpand}
         onClose={onClose}

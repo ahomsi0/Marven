@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SEARCH_URL, normalizeBrowserInput, hostOf, isWebUrl } from "./inAppBrowser";
+import { SEARCH_URL, SEARCH_ENGINES, DEFAULT_SEARCH_ENGINE, normalizeBrowserInput, hostOf, isWebUrl } from "./inAppBrowser";
 
 describe("normalizeBrowserInput", () => {
   it("returns null for empty input", () => {
@@ -44,5 +44,15 @@ describe("hostOf / isWebUrl", () => {
     expect(hostOf("nope")).toBe("");
     expect(isWebUrl("https://a.com/")).toBe(true);
     expect(isWebUrl("about:blank")).toBe(false);
+  });
+});
+
+describe("search engines", () => {
+  it("defaults to Brave and searches with the engine passed in", () => {
+    expect(DEFAULT_SEARCH_ENGINE.id).toBe("brave");
+    expect(SEARCH_URL).toBe("https://search.brave.com/search?q=");
+    const google = SEARCH_ENGINES.find((e) => e.id === "google")!;
+    expect(normalizeBrowserInput("react hooks", google.searchUrl)).toBe("https://www.google.com/search?q=react%20hooks");
+    expect(normalizeBrowserInput("github.com", google.searchUrl)).toBe("https://github.com/");
   });
 });

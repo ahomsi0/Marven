@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
 import {
-  SEARCH_URL, hostOf, isWebUrl, normalizeBrowserInput, type BrowserBridge, type BrowserTab, type Suggestion,
+  hostOf, isWebUrl, normalizeBrowserInput, type BrowserBridge, type BrowserSnapshot, type BrowserTab, type Suggestion,
 } from "@/lib/inAppBrowser";
 
 interface Row {
@@ -15,11 +15,12 @@ interface Row {
 interface AddressBarProps {
   bridge: BrowserBridge | null;
   tab: BrowserTab | null;
+  searchEngine: BrowserSnapshot["searchEngine"];
   bookmarkVersion: number;
   onSuggestingChange: (open: boolean) => void;
 }
 
-export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }: AddressBarProps) {
+export function AddressBar({ bridge, tab, searchEngine, bookmarkVersion, onSuggestingChange }: AddressBarProps) {
   const { t } = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
@@ -86,7 +87,7 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
   }, [bridge, query]);
 
   const rows: Row[] = query
-    ? [...suggestions, { kind: "search", url: SEARCH_URL + encodeURIComponent(query), title: t("browser.searchFor", { query }) }]
+    ? [...suggestions, { kind: "search", url: searchEngine.searchUrl + encodeURIComponent(query), title: t("browser.searchFor", { engine: searchEngine.name, query }) }]
     : [];
   const open = rows.length > 0;
 
@@ -95,7 +96,7 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
   }, [open, onSuggestingChange]);
 
   function go(target: string | null) {
-    const next = target ?? normalizeBrowserInput(text);
+    const next = target ?? normalizeBrowserInput(text, searchEngine.searchUrl);
     if (!next || !bridge) return;
     setEditing(false);
     setDirty(false);

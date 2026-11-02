@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
-import type { BrowserBridge, BrowserDownload, BrowserTab } from "@/lib/inAppBrowser";
+import type { BrowserBridge, BrowserDownload, BrowserSnapshot, BrowserTab } from "@/lib/inAppBrowser";
 import { AddressBar } from "./AddressBar";
 import { BookmarksMenu } from "./BookmarksMenu";
 import { DownloadsMenu } from "./DownloadsMenu";
@@ -14,6 +14,7 @@ interface ToolbarProps {
   bridge: BrowserBridge | null;
   tab: BrowserTab | null;
   downloads: BrowserDownload[];
+  searchEngine: BrowserSnapshot["searchEngine"];
   expanded: boolean;
   onToggleExpand: () => void;
   onClose: () => void;
@@ -23,7 +24,7 @@ interface ToolbarProps {
 const tool =
   "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:hover:bg-transparent";
 
-export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onClose, onMenuChange }: ToolbarProps) {
+export function Toolbar({ bridge, tab, downloads, searchEngine, expanded, onToggleExpand, onClose, onMenuChange }: ToolbarProps) {
   const { t } = useT();
   const [menu, setMenu] = useState<Menu>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -77,7 +78,7 @@ export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onCl
         )}
       </button>
 
-      <AddressBar key={tab?.id ?? "none"} bridge={bridge} tab={tab} bookmarkVersion={bookmarkVersion} onSuggestingChange={setSuggesting} />
+      <AddressBar key={tab?.id ?? "none"} bridge={bridge} tab={tab} searchEngine={searchEngine} bookmarkVersion={bookmarkVersion} onSuggestingChange={setSuggesting} />
 
       <div ref={menusRef} className="flex items-center gap-1">
         <div className="relative">

@@ -185,6 +185,7 @@ const SETTINGS_DEFAULTS = {
   agentModelFallbacks: [],
   workspaceTrustRequired: true,
   indexExcludePatterns: '',
+  browserSearchEngine: 'brave',
 };
 
 const SECRET_SETTING_KEYS = [
@@ -318,11 +319,14 @@ const inAppBrowser = createBrowserManager({
   getWindow: () => mainWindow,
 });
 registerBrowserIpc(inAppBrowser, () => mainWindow);
+// Only a plain id is needed here, so read the file directly (no secret decryption before ready).
+inAppBrowser.setSearchEngine(readStoredSettings().browserSearchEngine);
 
 ipcMain.handle('get-settings', () => publicSettings(loadSettings()));
 ipcMain.handle('save-settings', (_, settings) => {
   const next = persistSettings(settings);
   applySettings(next);
+  inAppBrowser.setSearchEngine(next.browserSearchEngine);
   return publicSettings(next);
 });
 ipcMain.handle('get-version', () => app.getVersion());
