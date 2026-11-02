@@ -1,5 +1,6 @@
 import type { HistoryMessage } from "@/types";
 import { stripAttachments } from "@/lib/imageHelpers";
+import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/lib/chatStream";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -25,85 +26,37 @@ export function streamOpenRouter(
     ? [{ role: "system", content: systemPrompt }]
     : [];
 
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
+  return providerStream({ provider: "OpenRouter", model }, async (emit, signal) => {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+        "HTTP-Referer": "https://marven.app",
+        "X-Title": "Marven",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          ...sysMessages,
+          ...messages.map((m) => ({
+            role: m.role,
+            content: m.role === "user" && m.attachments?.length
+              ? stripAttachments(m.content, m.attachments)
+              : m.content,
+          })),
+        ],
+        temperature: 0.7,
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+      signal,
+    });
 
-  return new ReadableStream({
-    async start(controller) {
-      let res: Response;
-      try {
-        res = await fetch(OPENROUTER_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${key}`,
-            "HTTP-Referer": "https://marven.app",
-            "X-Title": "Marven",
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              ...sysMessages,
-              ...messages.map((m) => ({
-                role: m.role,
-                content: m.role === "user" && m.attachments?.length
-                  ? stripAttachments(m.content, m.attachments)
-                  : m.content,
-              })),
-            ],
-            temperature: 0.7,
-            stream: true,
-            stream_options: { include_usage: true },
-          }),
-        });
-      } catch (err) {
-        controller.error(err);
-        return;
-      }
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        controller.error(
-          new Error(`OpenRouter error (${res.status}): ${text || "unknown"}`)
-        );
-        return;
-      }
-
-      const body = res.body;
-      if (!body) {
-        controller.close();
-        return;
-      }
-
-      const reader = body.getReader();
-      let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          const trimmed = line.replace(/^data: /, "").trim();
-          if (!trimmed || trimmed === "[DONE]") continue;
-          try {
-            const json = JSON.parse(trimmed);
-            const delta = json.choices?.[0]?.delta?.content;
-            if (delta) controller.enqueue(encoder.encode(delta));
-            if (json.usage) {
-              usage = {
-                promptTokens: json.usage.prompt_tokens ?? 0,
-                completionTokens: json.usage.completion_tokens ?? 0,
-                totalTokens: json.usage.total_tokens ?? 0,
-              };
-            }
-          } catch { /* ignore */ }
-        }
-      }
-
-      controller.enqueue(
-        encoder.encode(`\n\n__USAGE__${JSON.stringify(usage)}`)
-      );
-      controller.close();
-    },
+    if (!res.ok) {
+      throw new ProviderHttpError(res.status, await res.text().catch(() => ""));
+    }
+    if (!res.body) return null;
+    return readOpenAICompatibleSse(res.body, emit);
   });
 }

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AIProvider } from "@/types";
 import { stripCodeFences } from "@/lib/inlineEdit";
+import { parseChatStream } from "@/lib/chatStream";
 
 export interface InlineEditPromptProps {
   selection: string;
@@ -91,12 +92,17 @@ export function InlineEditPrompt({
         const { done, value } = await reader.read();
         if (done) break;
         acc += dec.decode(value, { stream: true });
-        // Drop the `__USAGE__{...}` sentinel emitted by some providers.
-        const usageIdx = acc.indexOf("\n\n__USAGE__");
-        const visible = usageIdx >= 0 ? acc.slice(0, usageIdx) : acc;
+        // Drop the trailing usage/error sentinel (lib/chatStream).
+        const { text: visible } = parseChatStream(acc);
         setStreamed(visible);
         onStream?.(stripCodeFences(visible));
       }
+      const final = parseChatStream(acc + dec.decode(), true);
+      if (final.error) {
+        throw new Error(`${final.error.provider}${final.error.status ? ` (${final.error.status})` : ""}: ${final.error.message}`);
+      }
+      setStreamed(final.text);
+      onStream?.(stripCodeFences(final.text));
       setPhase("review");
     } catch (err) {
       if ((err as Error).name === "AbortError") {

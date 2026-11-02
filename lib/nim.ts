@@ -17,6 +17,7 @@ export const NIM_MODELS = [
 
 import type { HistoryMessage } from "@/types";
 import { stripAttachments } from "@/lib/imageHelpers";
+import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/lib/chatStream";
 
 export function streamNim(
   messages: HistoryMessage[],
@@ -26,67 +27,34 @@ export function streamNim(
   const key = process.env.NIM_API_KEY;
   if (!key) throw new Error("NIM_API_KEY is not set. Add it in Settings → API Keys.");
 
-  const encoder = new TextEncoder();
+  return providerStream({ provider: "NVIDIA NIM", model }, async (emit, signal) => {
+    const res = await fetch(`${NIM_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
+          ...messages.map((m) => ({
+            role: m.role,
+            content: m.role === "user" && m.attachments?.length
+              ? stripAttachments(m.content, m.attachments)
+              : m.content,
+          })),
+        ],
+        temperature: 0.7,
+        stream: true,
+      }),
+      signal,
+    });
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let res: Response;
-      try {
-        res = await fetch(`${NIM_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${key}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-              ...messages.map((m) => ({
-                role: m.role,
-                content: m.role === "user" && m.attachments?.length
-                  ? stripAttachments(m.content, m.attachments)
-                  : m.content,
-              })),
-            ],
-            temperature: 0.7,
-            stream: true,
-          }),
-        });
-      } catch (err) {
-        controller.error(err);
-        return;
-      }
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        controller.error(new Error(`NIM error (${res.status}): ${text || "Unknown error"}`));
-        return;
-      }
-
-      const reader = res.body!.getReader();
-      const dec = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += dec.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            const delta: string = json.choices?.[0]?.delta?.content ?? "";
-            if (delta) controller.enqueue(encoder.encode(delta));
-          } catch { /* skip malformed */ }
-        }
-      }
-      controller.close();
-    },
+    if (!res.ok) {
+      throw new ProviderHttpError(res.status, await res.text().catch(() => ""));
+    }
+    if (!res.body) return null;
+    return readOpenAICompatibleSse(res.body, emit);
   });
 }

@@ -3,6 +3,7 @@
 
 import type { HistoryMessage } from "@/types";
 import { groqUserMessageContent } from "@/lib/imageHelpers";
+import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/lib/chatStream";
 
 // 70B is the default because the agent loop (multi-step tool use) needs a model
 // that reliably emits tool_calls and follows the full system prompt. The 8B
@@ -124,8 +125,8 @@ export async function askGroq(
 }
 
 /**
- * Returns a ReadableStream that streams tokens from Groq.
- * Usage data is appended at the end as: \n\n__USAGE__{...json}
+ * Returns a ReadableStream that streams tokens from Groq, in the
+ * lib/chatStream wire format (usage or error sentinel at the end).
  */
 export function streamGroq(
   messages: HistoryMessage[],
@@ -139,102 +140,36 @@ export function streamGroq(
     );
   }
 
-  const encoder = new TextEncoder();
+  return providerStream({ provider: "Groq", model }, async (emit, signal) => {
+    const res = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
+          ...messages.map((m) => ({
+            role: m.role,
+            content:
+              m.role === "user"
+                ? groqUserMessageContent(m.content, m.attachments, model)
+                : m.content,
+          })),
+        ],
+        temperature: 0.7,
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+      signal,
+    });
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let res: Response;
-      try {
-        res = await fetch(GROQ_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${key}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-              ...messages.map((m) => ({
-                role: m.role,
-                content:
-                  m.role === "user"
-                    ? groqUserMessageContent(m.content, m.attachments, model)
-                    : m.content,
-              })),
-            ],
-            temperature: 0.7,
-            stream: true,
-            stream_options: { include_usage: true },
-          }),
-        });
-      } catch (err) {
-        controller.error(err);
-        return;
-      }
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        controller.error(
-          new Error(`Groq error (${res.status}): ${text || "Unknown error"}`)
-        );
-        return;
-      }
-
-      const body = res.body;
-      if (!body) {
-        controller.close();
-        return;
-      }
-
-      const reader = body.getReader();
-      const dec = new TextDecoder();
-      let buffer = "";
-      let usageData: Record<string, number> | null = null;
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += dec.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            // Usage comes in the final chunk
-            if (json.usage) {
-              usageData = {
-                prompt_tokens: json.usage.prompt_tokens ?? 0,
-                completion_tokens: json.usage.completion_tokens ?? 0,
-                total_tokens: json.usage.total_tokens ?? 0,
-              };
-            }
-            const delta: string =
-              json.choices?.[0]?.delta?.content ?? "";
-            if (delta) {
-              controller.enqueue(encoder.encode(delta));
-            }
-          } catch {
-            // skip malformed chunks
-          }
-        }
-      }
-
-      // Append usage sentinel
-      if (usageData) {
-        controller.enqueue(
-          encoder.encode(`\n\n__USAGE__${JSON.stringify(usageData)}`)
-        );
-      }
-
-      controller.close();
-    },
+    if (!res.ok) {
+      throw new ProviderHttpError(res.status, await res.text().catch(() => ""));
+    }
+    if (!res.body) return null;
+    return readOpenAICompatibleSse(res.body, emit);
   });
 }

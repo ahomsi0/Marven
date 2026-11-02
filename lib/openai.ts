@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { HistoryMessage } from "@/types";
 import { buildOpenAIContent } from "@/lib/imageHelpers";
+import { providerStream, type StreamUsage } from "@/lib/chatStream";
 
 export const DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -32,52 +33,39 @@ export function streamOpenAI(
   }
 
   const client = new OpenAI({ apiKey: key });
-  const encoder = new TextEncoder();
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        const stream = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-            ...messages.map((m): ChatCompletionMessageParam => ({
-              role: m.role as "user" | "assistant",
-              content: (m.role === "user" && m.attachments?.length
-                ? buildOpenAIContent(m.content, m.attachments)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                : m.content) as any,
-            })),
-          ],
-          stream: true,
-          stream_options: { include_usage: true },
-          temperature: 0.7,
-        });
+  return providerStream({ provider: "OpenAI", model }, async (emit, signal) => {
+    const stream = await client.chat.completions.create(
+      {
+        model,
+        messages: [
+          { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
+          ...messages.map((m): ChatCompletionMessageParam => ({
+            role: m.role as "user" | "assistant",
+            content: (m.role === "user" && m.attachments?.length
+              ? buildOpenAIContent(m.content, m.attachments)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              : m.content) as any,
+          })),
+        ],
+        stream: true,
+        stream_options: { include_usage: true },
+        temperature: 0.7,
+      },
+      { signal },
+    );
 
-        let usageData: Record<string, number> | null = null;
-
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content ?? "";
-          if (delta) controller.enqueue(encoder.encode(delta));
-          if (chunk.usage) {
-            usageData = {
-              prompt_tokens: chunk.usage.prompt_tokens ?? 0,
-              completion_tokens: chunk.usage.completion_tokens ?? 0,
-              total_tokens: chunk.usage.total_tokens ?? 0,
-            };
-          }
-        }
-
-        if (usageData) {
-          controller.enqueue(
-            encoder.encode(`\n\n__USAGE__${JSON.stringify(usageData)}`)
-          );
-        }
-      } catch (err) {
-        controller.error(err);
-      } finally {
-        controller.close();
+    let usage: StreamUsage | null = null;
+    for await (const chunk of stream) {
+      emit(chunk.choices[0]?.delta?.content ?? "");
+      if (chunk.usage) {
+        usage = {
+          prompt_tokens: chunk.usage.prompt_tokens ?? 0,
+          completion_tokens: chunk.usage.completion_tokens ?? 0,
+          total_tokens: chunk.usage.total_tokens ?? 0,
+        };
       }
-    },
+    }
+    return usage;
   });
 }

@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { HistoryMessage } from "@/types";
 import { stripAttachments } from "@/lib/imageHelpers";
+import { providerStream } from "@/lib/chatStream";
 
 export const DEFAULT_MODEL = "local-model";
 
@@ -38,7 +39,6 @@ export function streamLlamaServer(
 ): ReadableStream<Uint8Array> {
   const baseUrl = process.env.LLAMA_SERVER_URL ?? "http://localhost:8080";
   const client = new OpenAI({ baseURL: `${baseUrl}/v1`, apiKey: "llama-server" });
-  const encoder = new TextEncoder();
 
   const msgs: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
@@ -51,24 +51,14 @@ export function streamLlamaServer(
     })),
   ];
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        const stream = await client.chat.completions.create({
-          model,
-          messages: msgs,
-          stream: true,
-          temperature: 0.7,
-        });
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content ?? "";
-          if (delta) controller.enqueue(encoder.encode(delta));
-        }
-      } catch (err) {
-        controller.error(err);
-      } finally {
-        controller.close();
-      }
-    },
+  return providerStream({ provider: "llama-server", model }, async (emit, signal) => {
+    const stream = await client.chat.completions.create(
+      { model, messages: msgs, stream: true, temperature: 0.7 },
+      { signal },
+    );
+    for await (const chunk of stream) {
+      emit(chunk.choices[0]?.delta?.content ?? "");
+    }
+    return null;
   });
 }

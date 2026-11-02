@@ -55,7 +55,13 @@ import {
   saveProfile,
   loadMemories,
 } from "@/lib/userProfile";
-import { chatErrorMessage, readChatReply } from "@/lib/chatErrors";
+import {
+  ChatStreamInterruptedError,
+  chatErrorMessage,
+  providerErrorMessage,
+  readChatReply,
+} from "@/lib/chatErrors";
+import { parseChatStream } from "@/lib/chatStream";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
 import {
@@ -992,6 +998,28 @@ export default function Home() {
     });
   }
 
+  function updateMessageContent(convId: string, messageId: string, content: string) {
+    upsertConversation(convId, (conv) => ({
+      ...conv,
+      messages: conv.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  // Stop a streaming message for good: keep it (no spinner) if it has text,
+  // drop it if it's still empty so no blank bubble gets saved.
+  function finalizeStreamingMessage(convId: string, messageId: string, content?: string) {
+    upsertConversation(convId, (conv) => {
+      const target = conv.messages.find((m) => m.id === messageId);
+      if (!target) return conv;
+      const text = content ?? target.content;
+      const messages = text.trim()
+        ? conv.messages.map((m) => (m.id === messageId ? { ...m, content: text, isStreaming: false } : m))
+        : conv.messages.filter((m) => m.id !== messageId);
+      return { ...conv, messages, updatedAt: new Date().toISOString() };
+    });
+  }
+
   // ─── Ensure active conversation exists ────────────────────────────────────
   function ensureActiveConversation(firstMessage: string, mode: ConversationMode = "chat"): string {
     if (activeConversationId) return activeConversationId;
@@ -1825,7 +1853,9 @@ export default function Home() {
       return;
     }
 
-    // 4. AI response (streaming for Groq, non-streaming for Ollama)
+    // 4. AI response (streamed for every provider; JSON for errors the route
+    // catches before streaming starts, e.g. a missing API key)
+    let streamingMsgId: string | null = null;
     try {
       const history = buildHistory([...threadSource, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
@@ -1855,59 +1885,52 @@ export default function Home() {
         // ── Streaming response ──
         const streamingMsg = createMessage("assistant", "", true);
         addMessageToConversation(convId, streamingMsg);
+        streamingMsgId = streamingMsg.id;
 
         const reader = res.body?.getReader();
-        if (!reader) throw new Error("No stream body");
+        if (!reader) throw new ChatStreamInterruptedError();
 
         const dec = new TextDecoder();
-        let fullText = "";
-        let usageRaw = "";
-        const USAGE_SENTINEL = "\n\n__USAGE__";
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = dec.decode(value, { stream: true });
-          const sentinelIdx = (fullText + chunk).indexOf(USAGE_SENTINEL);
-
-          if (sentinelIdx !== -1) {
-            // Split at sentinel
-            const combined = fullText + chunk;
-            fullText = combined.slice(0, sentinelIdx);
-            usageRaw = combined.slice(sentinelIdx + USAGE_SENTINEL.length);
-          } else {
-            fullText += chunk;
+        let raw = "";
+        let shownText = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            raw += dec.decode(value, { stream: true });
+            const { text: partial } = parseChatStream(raw);
+            if (partial !== shownText) {
+              shownText = partial;
+              updateMessageContent(convId, streamingMsg.id, partial);
+            }
           }
+        } catch (readErr) {
+          // The 200 had already arrived, so this is a dropped connection
+          // mid-reply, not "couldn't reach the server".
+          throw new ChatStreamInterruptedError(readErr);
+        }
+        raw += dec.decode();
 
-          // Update the streaming message in real-time
-          const currentText = fullText;
-          updateLastAssistantMessage(convId, (msg) => ({
-            ...msg,
-            content: currentText,
-            isStreaming: true,
-          }));
+        const { text: fullText, usage, error: streamError } = parseChatStream(raw, true);
+        finalizeStreamingMessage(convId, streamingMsg.id, fullText);
+        streamingMsgId = null;
+
+        if (usage) {
+          addChatTokens(convId, {
+            promptTokens: usage.prompt_tokens,
+            completionTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+            source: "actual",
+          });
         }
 
-        // Mark streaming complete
-        updateLastAssistantMessage(convId, (msg) => ({
-          ...msg,
-          content: fullText,
-          isStreaming: false,
-        }));
-
-        // Parse usage
-        if (usageRaw) {
-          try {
-            const usage = JSON.parse(usageRaw.trim());
-            addChatTokens(convId, {
-              promptTokens: usage.prompt_tokens ?? 0,
-              completionTokens: usage.completion_tokens ?? 0,
-              totalTokens: usage.total_tokens ?? 0,
-              source: "actual",
-            });
-          } catch { /* skip */ }
+        if (streamError) {
+          // The provider failed after the response started; any partial reply
+          // stays above, the explanation goes in its own message.
+          const errMsg = providerErrorMessage(streamError);
+          addMessageToConversation(convId, createMessage("assistant", errMsg));
+          speakReply(errMsg);
+          return;
         }
 
         // Auto-copy fixed grammar
@@ -1930,6 +1953,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error("[Marven] chat request failed:", error);
+      if (streamingMsgId) finalizeStreamingMessage(convId, streamingMsgId);
       const errMsg = chatErrorMessage(error);
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
