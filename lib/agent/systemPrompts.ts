@@ -1,4 +1,63 @@
 /**
+ * One prompt line with the current date, time and time zone, in both ISO and
+ * human form. Computed on every call so each agent request sees the real
+ * "now" — models otherwise assume their training-data year.
+ *
+ * @param now Defaults to the current time.
+ * @param timeZone IANA zone; defaults to the machine's zone (the Next server
+ *   runs locally next to the Electron app, so this is the user's zone).
+ */
+export function currentDateTimeLine(now: Date = new Date(), timeZone?: string): string {
+  let tz = timeZone;
+  if (!tz) {
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      tz = "UTC";
+    }
+  }
+
+  const parts: Record<string, string> = {};
+  for (const p of new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now)) {
+    parts[p.type] = p.value;
+  }
+  const y = Number(parts.year);
+  const mo = Number(parts.month);
+  const d = Number(parts.day);
+  const h = Number(parts.hour) % 24;
+  const mi = Number(parts.minute);
+  const s = Number(parts.second);
+  const wholeSecondsMs = Math.floor(now.getTime() / 1000) * 1000;
+  const offsetMin = Math.round((Date.UTC(y, mo - 1, d, h, mi, s) - wholeSecondsMs) / 60000);
+  const sign = offsetMin < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMin);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const offset = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  const iso = `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:${pad(s)}${offset}`;
+
+  const human = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(now);
+
+  return `Current date and time: ${human} (${tz}, UTC${offset}; ISO ${iso}). Use this for anything involving today's date, the current year, or the time — never assume the date from your training data.`;
+}
+
+/**
  * Short prompt for simple single-file tasks (style tweaks, typo fixes).
  * Used by the "lite" tier to reduce noise for weak local models.
  *
@@ -12,8 +71,10 @@ export function makeLiteSystemPrompt(
   memory?: string,
   fileTree?: string,
   rulesBlock?: string,
+  now: Date = new Date(),
 ): string {
   let base = `You are Marven Agent. The workspace is at: ${workspaceRoot}
+${currentDateTimeLine(now)}
 
 Your job: make exactly the change the user asked for. Nothing more, nothing else.
 
@@ -52,8 +113,10 @@ export function makeFullSystemPrompt(
   workspaceRoot: string,
   memory?: string,
   rulesBlock?: string,
+  now: Date = new Date(),
 ): string {
   let base = `You are Marven Agent, an expert software engineer. The user's workspace is at: ${workspaceRoot}
+${currentDateTimeLine(now)}
 
 CRITICAL — TOOL CALLING:
 You MUST invoke the appropriate tool to actually do work. NEVER describe a tool call as text — invoke the tool directly using the function-calling protocol.

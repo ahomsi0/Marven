@@ -116,10 +116,12 @@ export async function POST(req: NextRequest) {
   // conventions injected into the system prompt for both tiers.
   const rulesBlock = formatRulesBlock(await loadWorkspaceRules(workspaceRoot));
 
+  // Per-request "now" so the prompt's date/time line is never stale.
+  const now = new Date();
   let systemPrompt =
     tier === "simple"
-      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree, rulesBlock)
-      : makeFullSystemPrompt(workspaceRoot, body.memory, rulesBlock);
+      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree, rulesBlock, now)
+      : makeFullSystemPrompt(workspaceRoot, body.memory, rulesBlock, now);
 
   if (hasImageTurn) {
     systemPrompt +=
