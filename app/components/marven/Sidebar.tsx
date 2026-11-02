@@ -7,7 +7,6 @@ import { AccountBar } from "./AccountBar";
 import { ChatBubbleIcon, CodeIcon, DotsIcon, PencilIcon, PinIcon, SidebarIcon, TrashIcon } from "./Icons";
 import { filterConversations } from "@/lib/chatHelpers";
 import { useT } from "@/lib/i18n";
-import type { TFunction } from "i18next";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -39,33 +38,6 @@ const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text
 
 // Open/close slide: an ease-out curve that starts quick and settles softly.
 const SLIDE = "duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
-
-function relativeDate(isoString: string, t: TFunction, locale: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return t("sidebar.today");
-  if (diffDays === 1) return t("sidebar.yesterday");
-  if (diffDays < 7) return t("sidebar.daysAgo", { count: diffDays });
-  if (diffDays < 30) return t("sidebar.weeksAgo", { count: Math.floor(diffDays / 7) });
-  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
-}
-
-function groupConversations(
-  conversations: Conversation[],
-  t: TFunction,
-  locale: string,
-): { label: string; items: Conversation[] }[] {
-  const groups: Record<string, Conversation[]> = {};
-  for (const conv of [...conversations].reverse()) {
-    const label = relativeDate(conv.updatedAt, t, locale);
-    if (!groups[label]) groups[label] = [];
-    groups[label].push(conv);
-  }
-  return Object.entries(groups).map(([label, items]) => ({ label, items }));
-}
 
 function ConvRow({
   conv,
@@ -292,7 +264,7 @@ export function Sidebar({
     // No transition runs under reduced motion, so no transitionend will fire.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setSettledOpen(isOpen);
   }, [isOpen]);
-  const { t, i18n } = useT();
+  const { t } = useT();
 
   // Per-conversation "⋯" menu (Rename / Pin / Delete) and inline rename.
   // Positioned by `bottom` when opening upward (the default), `top` when it can't fit above.
@@ -679,21 +651,19 @@ export function Sidebar({
                   </div>
                 )}
 
-                {/* Unfiled date-grouped */}
+                {/* Unfiled chats — a single list, newest first (no date groups) */}
                 {(() => {
-                  const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId);
-                  const unfiledGrouped = groupConversations(unfiledConvs, t, i18n.language);
+                  const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId).reverse();
                   return (
                     <>
-                      {unfiledGrouped.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
+                      {unfiledConvs.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
                         <p className="px-3 text-[13px] text-[var(--m-text-faint)]">
                           {view === "agent" ? t("sidebar.noAgentSessionsYet") : t("sidebar.noChatsYet")}
                         </p>
                       )}
-                      {unfiledGrouped.map(({ label, items }) => (
-                        <div key={label} className="mb-3">
-                          <p className={SECTION_LABEL}>{label}</p>
-                          {items.map((conv) => (
+                      {unfiledConvs.length > 0 && (
+                        <div className="mb-3">
+                          {unfiledConvs.map((conv) => (
                             <ConvRow
                               key={conv.id}
                               conv={conv}
@@ -713,7 +683,7 @@ export function Sidebar({
                             />
                           ))}
                         </div>
-                      ))}
+                      )}
                     </>
                   );
                 })()}

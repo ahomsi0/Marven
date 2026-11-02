@@ -40,12 +40,6 @@ const en = {
     moreOptions: "More options",
     deleteFolder: "Delete folder",
     dropToUnfile: "Drop here to remove from folder",
-    today: "Today",
-    yesterday: "Yesterday",
-    daysAgo_one: "{{count}} day ago",
-    daysAgo_other: "{{count}} days ago",
-    weeksAgo_one: "{{count}}w ago",
-    weeksAgo_other: "{{count}}w ago",
   },
   account: {
     you: "You",

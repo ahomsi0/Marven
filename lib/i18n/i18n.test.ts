@@ -30,20 +30,20 @@ describe("translations", () => {
     for (const [key, value] of enMap) {
       const arValue = key.split(".").reduce<unknown>((o, p) => (o as Record<string, unknown>)[p], ar) as string;
       for (const placeholder of value.match(/{{\w+}}|<\w+>/g) ?? []) {
-        // Arabic plural forms like "منذ يوم" legitimately drop {{count}}.
+        // Arabic plural forms like "نموذج واحد" (one model) legitimately drop {{count}}.
         if (placeholder === "{{count}}" && /_(one|two)$/.test(key)) continue;
         expect(arValue, key).toContain(placeholder);
       }
     }
   });
 
-  it("uses Arabic plural forms for relative dates", async () => {
+  it("uses Arabic plural forms", async () => {
     await i18n.changeLanguage("ar");
-    expect(i18n.t("sidebar.daysAgo", { count: 2 })).toBe("منذ يومين");
-    expect(i18n.t("sidebar.daysAgo", { count: 4 })).toBe("منذ 4 أيام");
-    expect(i18n.t("sidebar.weeksAgo", { count: 1 })).toBe("منذ أسبوع");
+    expect(i18n.t("settings.backends.models", { count: 1 })).toBe("نموذج واحد");
+    expect(i18n.t("settings.backends.models", { count: 2 })).toBe("نموذجان");
+    expect(i18n.t("settings.backends.models", { count: 4 })).toBe("4 نماذج");
     await i18n.changeLanguage("en");
-    expect(i18n.t("sidebar.daysAgo", { count: 4 })).toBe("4 days ago");
+    expect(i18n.t("settings.backends.models", { count: 4 })).toBe("4 models");
   });
 
   it("marks Arabic as right-to-left", () => {
