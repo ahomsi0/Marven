@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     reopenClosedTab: () => ipcRenderer.send("browser-reopen-tab"),
     navigate: (id, url) => ipcRenderer.invoke("browser-navigate", id, url),
     command: (id, name) => ipcRenderer.send("browser-command", id, name),
+    /** `{ url, title, selection, text }` of a tab (active one if no id), or null. */
+    extractPage: (id) => ipcRenderer.invoke("browser-extract-page", id),
     toggleBookmark: (url, title) => ipcRenderer.invoke("browser-toggle-bookmark", url, title),
     removeBookmark: (id) => ipcRenderer.invoke("browser-remove-bookmark", id),
     listBookmarks: (query) => ipcRenderer.invoke("browser-bookmarks", query),
