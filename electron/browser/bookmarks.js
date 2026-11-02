@@ -25,10 +25,12 @@ function searchBookmarks(list, query) {
 function sanitizeBookmarks(raw) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set();
+  const seenIds = new Set();
   const out = [];
   for (const b of raw) {
-    if (!b || !isId(b.id) || !isWebUrl(b.url) || !Number.isFinite(b.addedAt) || seen.has(b.url)) continue;
+    if (!b || !isId(b.id) || !isWebUrl(b.url) || !Number.isFinite(b.addedAt) || seen.has(b.url) || seenIds.has(b.id)) continue;
     seen.add(b.url);
+    seenIds.add(b.id);
     out.push({ id: b.id, url: b.url, title: cleanText(b.title, TITLE_LIMIT), addedAt: b.addedAt });
   }
   return out;

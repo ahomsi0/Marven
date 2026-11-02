@@ -16,7 +16,7 @@ const { createDownloads } = require('./downloads');
 const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
 const { Tab } = require('./tab');
-const { hostOf, isWebUrl } = require('./validate');
+const { hostOf, isWebUrl, isHost } = require('./validate');
 
 const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
@@ -53,7 +53,7 @@ function createBrowserManager({ dir, getWindow }) {
     stores.history.set(history.prune(history.sanitizeHistory(stores.history.get(), now), now));
     stores.bookmarks.set(bookmarks.sanitizeBookmarks(stores.bookmarks.get()));
     const sites = stores.sites.get();
-    if (!Array.isArray(sites?.blockingDisabled)) stores.sites.set({ blockingDisabled: [] });
+    stores.sites.set({ blockingDisabled: Array.isArray(sites?.blockingDisabled) ? sites.blockingDisabled.filter(isHost) : [] });
     state = model.fromSaved(stores.tabs.get(), newId);
 
     ses = session.fromPartition(PARTITION);
@@ -136,7 +136,9 @@ function createBrowserManager({ dir, getWindow }) {
         onVisit: (url, title) => stores.history.set(history.recordVisit(stores.history.get(), url, title, Date.now())),
         onTitle: (url, title) => stores.history.set(history.updateTitle(stores.history.get(), url, title)),
         onFavicon: (t, iconUrl) => {
+          const pageUrl = t.url;
           void fetchFavicon(ses, iconUrl).then((data) => {
+            if (t.url !== pageUrl) return; // the tab moved on while this was loading
             t.favicon = data;
             scheduleSnapshot();
           });

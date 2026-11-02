@@ -76,6 +76,7 @@ class Tab {
       if (!details.isMainFrame || details.isSameDocument) return;
       this.blocked = 0;
       this.error = null;
+      this.favicon = null;
       update();
     });
     wc.on('did-navigate', (_e, url) => {

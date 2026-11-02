@@ -19,6 +19,10 @@ describe("blocker", () => {
     expect(decide(engine, details("https://tracker.example.org/p.gif", "image"), "https://news.com/", false)).toEqual({ cancel: true });
   });
 
+  it("lets a third-party-only rule through on the first party", () => {
+    expect(decide(engine, details("https://tracker.example.org/p.gif", "image"), "https://tracker.example.org/", false)).toBeNull();
+  });
+
   it("lets everything else through", () => {
     expect(decide(engine, details("https://cdn.news.com/app.js"), "https://news.com/", false)).toBeNull();
     expect(decide(engine, details("https://ads.example.net/", "mainFrame"), "https://news.com/", false)).toBeNull();

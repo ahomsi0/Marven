@@ -18,6 +18,10 @@ describe("validate", () => {
     expect(cleanBounds("0,0,1,1")).toBeNull();
   });
 
+  it("clamps huge bounds", () => {
+    expect(cleanBounds({ x: 1e9, y: 5, width: Number.MAX_VALUE, height: 100_001 })).toEqual({ x: 100000, y: 5, width: 100000, height: 100000 });
+  });
+
   it("caps text and drops non-strings", () => {
     expect(cleanText("abcdef", 3)).toBe("abc");
     expect(cleanText(undefined, 3)).toBe("");
@@ -31,8 +35,11 @@ describe("validate", () => {
     expect(isId("")).toBe(false);
     expect(isHost("www.example.com")).toBe(true);
     expect(isHost("[::1]")).toBe(true);
-    expect(isHost("a b")).toBe(false);
-    expect(isHost("")).toBe(false);
+    expect(isHost("a_b.example.com")).toBe(true);
+    expect(isHost("example.com.")).toBe(true);
+    for (const bad of ["..", ".", "a..b", ":::", "a b", "", "EXAMPLE.com", "x/y", "x:80", "a".repeat(254), 42, null]) {
+      expect(isHost(bad)).toBe(false);
+    }
   });
 
   it("extracts the hostname", () => {

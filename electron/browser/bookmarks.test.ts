@@ -40,6 +40,7 @@ describe("bookmarks", () => {
         { id: "2", url: "javascript:x", title: "", addedAt: 1 },
         { id: "../x", url: "https://bad-id.com/", title: "", addedAt: 1 },
         { id: "3", url: "https://ok.com/", title: "dupe", addedAt: 2 },
+        { id: "1", url: "https://other.com/", title: "same id", addedAt: 3 },
       ]),
     ).toEqual([{ id: "1", url: "https://ok.com/", title: "Ok", addedAt: 1 }]);
   });

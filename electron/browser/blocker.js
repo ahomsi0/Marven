@@ -1,6 +1,10 @@
 // Ad and tracker blocking for the browser session: network requests only,
 // matched against EasyList/EasyPrivacy (Ghostery's engine). No cosmetic
 // filtering — that needs a script in every page, which we never inject.
+//
+// Electron allows only one onBeforeRequest listener per session (a second
+// call replaces the first), so `attach` owns that slot for the browser
+// partition; anything else that needs it must go through here.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,6 +13,10 @@ const { hostOf } = require('./validate');
 
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ENGINE_CONFIG = { loadCosmeticFilters: false, loadNetworkFilters: true };
+const FETCH_TIMEOUT_MS = 30_000;
+
+// So a stalled list download can't leave load() pending forever.
+const fetchWithTimeout = (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
 function isCacheFresh(mtimeMs, now) {
   return now - mtimeMs < CACHE_MAX_AGE_MS;
@@ -38,6 +46,19 @@ function createBlocker({ dir, isDisabledFor, onBlocked }) {
     return FiltersEngine.deserialize(new Uint8Array(fs.readFileSync(cacheFile)));
   }
 
+  // Temp file + rename, so a crash mid-write never leaves a truncated cache.
+  function writeCache(fresh) {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = `${cacheFile}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tmp, Buffer.from(fresh.serialize()));
+      fs.renameSync(tmp, cacheFile);
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
+      throw err;
+    }
+  }
+
   async function load() {
     try {
       if (isCacheFresh(fs.statSync(cacheFile).mtimeMs, Date.now())) {
@@ -46,10 +67,13 @@ function createBlocker({ dir, isDisabledFor, onBlocked }) {
       }
     } catch { /* no cache, or it's from another engine version */ }
     try {
-      const fresh = await FiltersEngine.fromLists(fetch, adsAndTrackingLists, ENGINE_CONFIG);
+      const fresh = await FiltersEngine.fromLists(fetchWithTimeout, adsAndTrackingLists, ENGINE_CONFIG);
       engine = fresh;
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(cacheFile, Buffer.from(fresh.serialize()));
+      try {
+        writeCache(fresh);
+      } catch (err) {
+        console.error('[browser] could not cache filter lists:', err.message);
+      }
     } catch (err) {
       console.error('[browser] filter lists unavailable, browsing unblocked for now:', err.message);
       try { engine = readCache(); } catch { /* nothing cached */ }
@@ -59,6 +83,8 @@ function createBlocker({ dir, isDisabledFor, onBlocked }) {
   function attach(ses) {
     ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
       const wc = details.webContents;
+      // The top-level page URL, not the frame's: the per-site allowlist is
+      // about the site the user is on, so it covers its iframes too.
       const pageUrl = wc && !wc.isDestroyed() ? wc.getURL() : details.referrer;
       const response = decide(engine, details, pageUrl, isDisabledFor(hostOf(pageUrl)));
       if (response) onBlocked(details.webContentsId);
