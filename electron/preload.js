@@ -62,7 +62,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     freeze: () => ipcRenderer.invoke("browser-freeze"),
     unfreeze: () => ipcRenderer.send("browser-unfreeze"),
     setFocused: (focused) => ipcRenderer.send("browser-focus", focused),
-    snapshot: () => ipcRenderer.invoke("browser-snapshot"),
+    snapshot: () => ipcRenderer.invoke("browser-get-snapshot"),
     newTab: (url) => ipcRenderer.invoke("browser-new-tab", url),
     closeTab: (id) => ipcRenderer.send("browser-close-tab", id),
     activateTab: (id) => ipcRenderer.send("browser-activate-tab", id),

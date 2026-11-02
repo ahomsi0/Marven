@@ -32,7 +32,7 @@ function registerBrowserIpc(manager, getWindow) {
   handle('browser-freeze', () => manager.freeze());
   on('browser-unfreeze', () => manager.unfreeze());
   on('browser-focus', (focused) => manager.setPanelFocused(focused === true));
-  handle('browser-snapshot', () => manager.snapshot());
+  handle('browser-get-snapshot', () => manager.snapshot());
 
   handle('browser-new-tab', (url) => manager.newTab(isWebUrl(url) ? url : undefined));
   on('browser-close-tab', (id) => { if (isId(id)) manager.closeTab(id); });
