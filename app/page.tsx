@@ -1966,7 +1966,7 @@ export default function Home() {
 
         speakReply(fullText);
       } else {
-        // ── JSON response (Ollama / commands) ──
+        // ── JSON response (route errors before streaming, e.g. missing key) ──
         const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
         addMessageToConversation(convId, assistantMsg);

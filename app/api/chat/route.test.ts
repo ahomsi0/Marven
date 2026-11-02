@@ -13,7 +13,8 @@ vi.mock("@/lib/openrouter", () => ({ streamOpenRouter: vi.fn(fakeStream), DEFAUL
 vi.mock("@/lib/nim", () => ({ streamNim: vi.fn(fakeStream), DEFAULT_MODEL: "n" }));
 vi.mock("@/lib/lmstudio", () => ({ streamLMStudio: vi.fn(fakeStream), DEFAULT_MODEL: "l" }));
 vi.mock("@/lib/llamaserver", () => ({ streamLlamaServer: vi.fn(fakeStream), DEFAULT_MODEL: "s" }));
-vi.mock("@/lib/ollama", () => ({ streamOllama: vi.fn(fakeStream), askOllama: vi.fn(), DEFAULT_MODEL: "phi3" }));
+const streamOllama = vi.fn(fakeStream);
+vi.mock("@/lib/ollama", () => ({ streamOllama, DEFAULT_MODEL: "phi3" }));
 
 const { POST } = await import("./route");
 
@@ -46,6 +47,22 @@ describe("POST /api/chat", () => {
       "be brief",
       signal,
     );
+  });
+
+  it("streams Ollama with the conversation and system prompt (not just the last message)", async () => {
+    const body = {
+      provider: "ollama",
+      model: "llama3.2",
+      systemPrompt: "be brief",
+      messages: [
+        { role: "user", content: "my name is Sam" },
+        { role: "assistant", content: "Hi Sam" },
+        { role: "user", content: "what's my name?" },
+      ],
+    };
+    const res = await POST(makeReq(body));
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(streamOllama).toHaveBeenCalledWith(body.messages, "llama3.2", "be brief", expect.anything());
   });
 
   it("falls back to Groq for unknown providers, including prototype keys", async () => {

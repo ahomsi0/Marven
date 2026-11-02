@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseCommand } from "@/lib/commandParser";
 import { executeCommand } from "@/lib/executeCommand";
 import { streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
-import { askOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
+import { streamOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
 import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { streamOpenRouter, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
 import { streamOpenAI, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
@@ -74,29 +74,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. No command matched — send to selected provider
-  if (provider === "ollama") {
-    try {
-      const reply = await askOllama(messageText, model, undefined, req.signal);
-      const response: ChatResponse = { reply, commandExecuted: false };
-      return NextResponse.json(response, {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json(
-        { reply: `Marven couldn't reach Ollama: ${msg}` },
-        { status: 503 }
-      );
-    }
-  }
-
-  // Streaming providers. Keep the last 20 messages for context. `req.signal`
-  // aborts when the client goes away (Stop button, closed window), so the
-  // provider request is cancelled instead of streaming into the void.
-  // A synchronous throw (missing API key, …) becomes a JSON `{ reply }`.
+  // 3. No command matched — stream from the selected provider, with the last
+  // 20 messages for context. `req.signal` aborts when the client goes away
+  // (Stop button, closed window), so the provider request is cancelled instead
+  // of streaming into the void. A synchronous throw (missing API key, …)
+  // becomes a JSON `{ reply }`.
   const history = messages.slice(-20);
   const streamers: Record<string, { start: StreamFn; failure: (msg: string) => string }> = {
+    ollama:      { start: streamOllama,      failure: (m) => `Marven couldn't reach Ollama: ${m}` },
     nim:         { start: streamNim,         failure: (m) => `Marven couldn't reach NVIDIA NIM: ${m}` },
     openrouter:  { start: streamOpenRouter,  failure: (m) => `Marven couldn't reach OpenRouter: ${m}` },
     openai:      { start: streamOpenAI,      failure: (m) => `Marven couldn't reach OpenAI: ${m}` },
