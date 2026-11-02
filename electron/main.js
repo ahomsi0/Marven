@@ -210,7 +210,7 @@ const SECRET_SETTING_KEYS = [
   'anthropicApiKey',
   'elevenLabsApiKey',
 ];
-const MASKED_SECRET = '••••••••';
+const { MASKED_SECRET, resolveSecretForSave } = require('./settingsSecrets');
 
 function canEncryptSettings() {
   try {
@@ -283,14 +283,24 @@ function loadSettings() {
 }
 
 function persistSettings(settings) {
+  const incomingSettings = settings && typeof settings === 'object' ? settings : {};
+  // loadSettings() may migrate plaintext secrets and rewrite the file, so read
+  // the raw stored values after it.
   const current = loadSettings();
-  const next = { ...current, ...(settings && typeof settings === 'object' ? settings : {}) };
+  const storedRaw = readStoredSettings();
+  const next = { ...current, ...incomingSettings };
   const stored = { ...next };
   for (const key of SECRET_SETTING_KEYS) {
-    const incoming = settings && typeof settings[key] === 'string' ? settings[key].trim() : undefined;
-    const value = incoming === undefined || incoming === MASKED_SECRET ? current[key] : incoming;
-    next[key] = value || '';
-    stored[key] = encryptSetting(next[key]);
+    // Untouched secrets keep their raw stored value — never re-encrypt a value
+    // we couldn't decrypt (that would write '' and erase the key).
+    const resolved = resolveSecretForSave({
+      incoming: incomingSettings[key],
+      storedRaw: storedRaw[key],
+      decrypted: current[key],
+      encrypt: encryptSetting,
+    });
+    next[key] = resolved.value;
+    stored[key] = resolved.stored;
   }
   writeStoredSettings(stored);
   return next;
