@@ -7,6 +7,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
 const { app, shell } = require('electron');
 const { sanitizeFilename, uniqueName } = require('./downloadNames');
 const { createRateLimiter } = require('./rateLimit');
@@ -14,6 +15,24 @@ const { createRateLimiter } = require('./rateLimit');
 const PER_TAB_MAX = 3;
 const PER_TAB_WINDOW_MS = 10_000;
 const MAX_IN_PROGRESS = 10;
+
+// The value macOS expects in the com.apple.quarantine attribute: flags, the
+// time in hex seconds since the epoch, and the name of the app that saved it.
+function quarantineValue(nowMs) {
+  return `0081;${Math.floor(nowMs / 1000).toString(16)};Marven;`;
+}
+
+// Marks a saved file as downloaded from the internet so Gatekeeper checks it
+// on first open. Never rejects: a failure is logged and the file is kept.
+function quarantine(filePath) {
+  if (process.platform !== 'darwin') return Promise.resolve();
+  return new Promise((resolve) => {
+    execFile('/usr/bin/xattr', ['-w', 'com.apple.quarantine', quarantineValue(Date.now()), filePath], (err) => {
+      if (err) console.error('[browser] could not set the quarantine flag on a download:', err.message);
+      resolve();
+    });
+  });
+}
 
 function createDownloads({ onChange }) {
   const entries = new Map();
@@ -76,9 +95,17 @@ function createDownloads({ onChange }) {
     item.once('done', (_e, state) => {
       reserved.delete(key);
       inProgress -= 1;
-      entry.state = state;
       entry.receivedBytes = item.getReceivedBytes();
       entry.item = null;
+      if (state === 'completed' && process.platform === 'darwin') {
+        // Flag the file before it shows as completed, so it can't be opened first.
+        quarantine(target).then(() => {
+          entry.state = state;
+          onChange();
+        });
+        return;
+      }
+      entry.state = state;
       onChange();
     });
   }
@@ -99,4 +126,4 @@ function createDownloads({ onChange }) {
   return { handle, list, cancel, show };
 }
 
-module.exports = { createDownloads };
+module.exports = { createDownloads, quarantineValue };
