@@ -12,6 +12,20 @@ const { registerBrowserIpc } = require('./browser/ipc');
 
 const isDev = !app.isPackaged;
 
+// ── Single instance ──────────────────────────────────────────────────────────
+// A second copy would share the same userData (settings.json, the Chromium
+// profile) and, in production, try to start a second embedded server on the
+// fixed port. Take the lock before anything touches userData or ports; if
+// another instance holds it, that instance gets 'second-instance' (handled
+// below) and this one exits without doing any work. Note: in dev the userData
+// dir is "marven" and packaged it is "Marven" — the same folder on macOS's
+// case-insensitive filesystem — so a dev run and the installed app also
+// exclude each other.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return; // CommonJS module scope: stop evaluating the rest of main.js.
+}
+
 // Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
 // Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
 // nvm dirs, etc. — so `npm`, `node`, `yarn`, etc. aren't found and the agent's
@@ -1044,4 +1058,13 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+});
+
+// Someone launched Marven again (Finder, Spotlight, `open -a`) while this
+// instance is running: bring the existing window forward instead.
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 });
