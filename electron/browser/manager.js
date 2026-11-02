@@ -317,6 +317,13 @@ function createBrowserManager({ dir, getWindow }) {
     try {
       image = await view.webContents.capturePage();
     } catch {
+      // The capture can fail (e.g. the window is occluded). Still hide the
+      // page, or the menu would open underneath it; the renderer then shows
+      // the menu over an empty viewport.
+      if (token === freezeToken) {
+        frozen = true;
+        syncVisibility();
+      }
       return null;
     }
     if (token !== freezeToken) return null;
