@@ -86,3 +86,14 @@ describe("Embedder.ensureModelInstalled", () => {
     ]);
   });
 });
+
+describe("Embedder URL", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("reads OLLAMA_URL when constructed, not at module load", () => {
+    vi.stubEnv("OLLAMA_URL", "http://10.0.0.7:11434/");
+    expect(new Embedder().url).toBe("http://10.0.0.7:11434");
+    vi.stubEnv("OLLAMA_URL", "http://10.0.0.8:11434");
+    expect(new Embedder().url).toBe("http://10.0.0.8:11434");
+    expect(new Embedder({ ollamaUrl: "http://x:1" }).url).toBe("http://x:1");
+  });
+});
