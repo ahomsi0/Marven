@@ -33,6 +33,7 @@ import { getRequireWriteApproval, getPlanMode, setPlanMode } from "@/lib/agentSe
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
 import { WhatsNewCard } from "@/app/components/marven/WhatsNewCard";
+import { GlobalPanels } from "@/app/components/marven/GlobalPanels";
 import { parseCommand } from "@/lib/commandParser";
 import {
   loadConversations,
@@ -64,6 +65,7 @@ import {
 import { parseChatStream } from "@/lib/chatStream";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
+import { MEMORY_CHANGED_EVENT, MEMORY_SAVED_EVENT, dispatchMemorySaved } from "@/lib/memoryEvents";
 import {
   loadChatProvider,
   loadAgentProvider,
@@ -567,6 +569,19 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Settings → Memory, the toast's Undo and the agent's remember tool change
+  // memory outside this component; bump a tick so the effect below refetches.
+  const [memoryRefreshTick, setMemoryRefreshTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setMemoryRefreshTick((n) => n + 1);
+    window.addEventListener(MEMORY_CHANGED_EVENT, bump);
+    window.addEventListener(MEMORY_SAVED_EVENT, bump);
+    return () => {
+      window.removeEventListener(MEMORY_CHANGED_EVENT, bump);
+      window.removeEventListener(MEMORY_SAVED_EVENT, bump);
+    };
+  }, []);
+
   useEffect(() => {
     // Sequence guard: if the deps change again before the fetch resolves, the
     // stale response must not overwrite the newer conversation's memories.
@@ -588,7 +603,7 @@ export default function Home() {
         }));
       })
       .catch(() => {});
-  }, [workspaceRoot, activeConversationId]);
+  }, [workspaceRoot, activeConversationId, memoryRefreshTick]);
 
   // ─── Persist conversations on change ───────────────────────────────────────
   useEffect(() => {
@@ -1681,6 +1696,16 @@ export default function Home() {
             conversation: Array.isArray(data.scopes.conversation) ? data.scopes.conversation : prev.conversation,
           }));
         }
+        // "Remembered: …" toast with Undo / Manage (MemoryToast).
+        if (res.ok && typeof data?.entry?.id === "string") {
+          dispatchMemorySaved({
+            scope: memoryScope,
+            text: typeof data.entry.text === "string" ? data.entry.text : memoryStr,
+            id: data.entry.id,
+            workspaceRoot,
+            conversationId: activeConversationId,
+          });
+        }
       } catch {
         // non-fatal; still continue with the acknowledgement
       }
@@ -2539,6 +2564,7 @@ export default function Home() {
         <SetupModal onSave={handleProfileSave} />
       )}
       <WhatsNewCard />
+      <GlobalPanels />
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[480px] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-4 shadow-2xl">

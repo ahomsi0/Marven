@@ -120,6 +120,13 @@ const en = {
     noModels: "No models found",
     inUse: "In use",
   },
+  memoryToast: {
+    remembered: "Remembered: {{text}}",
+    undo: "Undo",
+    manage: "Manage",
+    undone: "Forgotten.",
+    undoFailed: "Couldn't undo. Manage it in Settings.",
+  },
   searchEngines: {
     label: "Search engine",
     default: "Default",

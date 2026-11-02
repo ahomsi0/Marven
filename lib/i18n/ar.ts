@@ -122,6 +122,13 @@ const ar: Shape<typeof en> = {
     noModels: "لا توجد نماذج",
     inUse: "قيد الاستخدام",
   },
+  memoryToast: {
+    remembered: "تم الحفظ: {{text}}",
+    undo: "تراجع",
+    manage: "إدارة",
+    undone: "تم النسيان.",
+    undoFailed: "تعذّر التراجع. أدِرها من الإعدادات.",
+  },
   searchEngines: {
     label: "محرك البحث",
     default: "الافتراضي",
