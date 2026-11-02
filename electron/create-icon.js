@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Generates:
- *   electron/assets/icon.png       – 512×512 dock / window icon (dark bg + blue logo)
+ *   electron/assets/icon.png       – 512×512 dock / window icon (navy tile + blue logo)
  *   electron/assets/tray.png       – 44×44 menu-bar tray icon (transparent bg, white logo)
  *
  * Uses only Node.js built-ins (zlib, fs, path, crypto). No npm packages needed.
@@ -85,12 +85,6 @@ function makeCanvas(w, h) {
   };
 }
 
-function fillRect(cv, x0, y0, x1, y1, r, g, b, a = 255) {
-  for (let y = Math.round(y0); y <= Math.round(y1); y++)
-    for (let x = Math.round(x0); x <= Math.round(x1); x++)
-      cv.set(x, y, r, g, b, a);
-}
-
 function fillCircle(cv, cx, cy, rad, r, g, b, a = 255) {
   const x0 = Math.floor(cx - rad), x1 = Math.ceil(cx + rad);
   const y0 = Math.floor(cy - rad), y1 = Math.ceil(cy + rad);
@@ -115,64 +109,56 @@ function drawLine(cv, x0, y0, x1, y1, thick, r, g, b, a = 255) {
   }
 }
 
-function drawHex(cv, cx, cy, radius, thick, r, g, b, a = 255) {
-  const pts = Array.from({ length: 6 }, (_, i) => {
-    const ang = (Math.PI / 3) * i - Math.PI / 6;
-    return [cx + radius * Math.cos(ang), cy + radius * Math.sin(ang)];
-  });
-  for (let i = 0; i < 6; i++) {
-    const [ax, ay] = pts[i], [bx, by] = pts[(i+1)%6];
-    drawLine(cv, ax, ay, bx, by, thick, r, g, b, a);
+// Rounded-square tile with a soft deep-navy radial gradient, anti-aliased
+// edges and a faint inner rim.
+function drawTile(cv, x0, y0, size, radius) {
+  const stops = [[0, [29, 42, 68]], [0.55, [13, 18, 32]], [1, [7, 10, 18]]];
+  const colourAt = (t) => {
+    for (let i = 1; i < stops.length; i++) {
+      const [t0, c0] = stops[i - 1], [t1, c1] = stops[i];
+      if (t <= t1) return c0.map((v, j) => v + (c1[j] - v) * ((t - t0) / (t1 - t0)));
+    }
+    return stops[stops.length - 1][1];
+  };
+  const gx = x0 + size * 0.3, gy = y0 + size * 0.15, gr = size * 1.2;
+  const half = size / 2, mx = x0 + half, my = y0 + half;
+  for (let y = Math.floor(y0); y < y0 + size; y++) {
+    for (let x = Math.floor(x0); x < x0 + size; x++) {
+      // Signed distance to the rounded square (negative inside)
+      const qx = Math.abs(x + 0.5 - mx) - (half - radius);
+      const qy = Math.abs(y + 0.5 - my) - (half - radius);
+      const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - radius;
+      if (d > 0.5) continue;
+      const [r, g, b] = colourAt(Math.min(1, Math.hypot(x - gx, y - gy) / gr));
+      cv.set(x, y, r, g, b, Math.round(255 * Math.min(1, 0.5 - d)));
+      if (d > -2) cv.set(x, y, 255, 255, 255, 20); // inner rim
+    }
   }
 }
 
 // ─── Draw the Marven logo onto a canvas ──────────────────────────────────────
-// Matches reference: single hexagon ring + Y-shaped neural mark inside
-function drawLogo(cv, cx, cy, hexR, armThick, dotR, hexThick, r, g, b) {
-  // Single hexagon ring (pointy-top: vertex at 12 o'clock)
-  drawHex(cv, cx, cy, hexR, hexThick, r, g, b, 210);
+// Open hexagon + centre dot, in the 32×32 units of MarvenLogo.tsx.
+const LOGO_PATH = [[24.5, 8.9], [16, 4], [5.6, 10], [5.6, 22], [16, 28], [26.4, 22], [26.4, 15.5]];
 
-  // Y-shape nodes — scaled to sit inside the hex
-  const inner = hexR * 0.52;
-  const nodes = [
-    [cx - inner * 0.95, cy - inner * 0.85],
-    [cx + inner * 0.95, cy - inner * 0.85],
-    [cx,                cy + inner * 1.15],
-  ];
-
-  // Arms
-  for (const [nx, ny] of nodes)
-    drawLine(cv, cx, cy, nx, ny, armThick, r, g, b, 210);
-
-  // Node dots
-  for (const [nx, ny] of nodes) {
-    fillCircle(cv, nx, ny, dotR * 1.6, r, g, b, 30); // glow
-    fillCircle(cv, nx, ny, dotR,       r, g, b, 235);
+function drawLogo(cv, cx, cy, size, r, g, b) {
+  const s = size / 32;
+  const pt = ([x, y]) => [cx + (x - 16) * s, cy + (y - 16) * s];
+  for (let i = 1; i < LOGO_PATH.length; i++) {
+    const [ax, ay] = pt(LOGO_PATH[i - 1]), [bx, by] = pt(LOGO_PATH[i]);
+    drawLine(cv, ax, ay, bx, by, 2.2 * s, r, g, b);
   }
-
-  // Centre dot
-  fillCircle(cv, cx, cy, dotR * 1.5, r, g, b, 35);
-  fillCircle(cv, cx, cy, dotR,       r, g, b, 245);
+  fillCircle(cv, cx, cy, 3.4 * s, r, g, b);
 }
 
-// ─── 1. Dock icon (512×512, dark background) ─────────────────────────────────
+// ─── 1. Dock icon (512×512, navy tile on the macOS icon grid) ────────────────
 {
   const W = 512, H = 512;
   const cv = makeCanvas(W, H);
   const cx = W/2, cy = H/2;
 
-  fillRect(cv, 0, 0, W-1, H-1, 10, 10, 11);
-
-  // Subtle inner glow
-  fillCircle(cv, cx, cy, 170, 91, 156, 246, 12);
-
-  drawLogo(cv, cx, cy,
-    /* hexR */     220,   // fills canvas like other dock icons
-    /* armThick */  18,
-    /* dotR */      20,
-    /* hexThick */  14,
-    91, 156, 246
-  );
+  // 412px tile with a 50px margin and ~22% corner radius, like other dock icons
+  drawTile(cv, 50, 50, 412, 92);
+  drawLogo(cv, cx, cy, 272, 91, 156, 246);
 
   const outPath = path.join(__dirname, "assets", "icon.png");
   writePNG(cv.buf, W, H, outPath);
@@ -185,14 +171,7 @@ function drawLogo(cv, cx, cy, hexR, armThick, dotR, hexThick, r, g, b) {
   const cv = makeCanvas(W, H);
   const cx = W/2, cy = H/2;
 
-  const ratio = W / 512;
-  drawLogo(cv, cx, cy,
-    220 * ratio,   // hexR
-    18  * ratio,   // armThick
-    20  * ratio,   // dotR
-    14  * ratio,   // hexThick
-    255, 255, 255
-  );
+  drawLogo(cv, cx, cy, 52, 255, 255, 255);
 
   const outPath = path.join(__dirname, "assets", "tray.png");
   writePNG(cv.buf, W, H, outPath);
