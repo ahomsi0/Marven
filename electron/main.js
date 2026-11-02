@@ -7,7 +7,8 @@ const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { sanitizedEnv } = require('./envSanitize');
-const { registerInAppBrowser } = require('./browserView');
+const { createBrowserManager } = require('./browser/manager');
+const { registerBrowserIpc } = require('./browser/ipc');
 
 const isDev = !app.isPackaged;
 
@@ -311,8 +312,12 @@ function applySettings(settings) {
   setEnv('ELEVENLABS_MODEL', settings.elevenLabsModel);
 }
 
-// In-app browser (chat panel): native WebContentsView, see browserView.js.
-const attachInAppBrowser = registerInAppBrowser(() => mainWindow);
+// In-app browser (chat panel): native WebContentsViews, see electron/browser/.
+const inAppBrowser = createBrowserManager({
+  dir: path.join(app.getPath('userData'), 'browser'),
+  getWindow: () => mainWindow,
+});
+registerBrowserIpc(inAppBrowser, () => mainWindow);
 
 ipcMain.handle('get-settings', () => publicSettings(loadSettings()));
 ipcMain.handle('save-settings', (_, settings) => {
@@ -419,7 +424,7 @@ function createWindow() {
 
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
-  attachInAppBrowser(mainWindow);
+  inAppBrowser.attachWindow(mainWindow);
 
   const appPort = isDev ? 3000 : 47891;
   mainWindow.loadURL(`http://localhost:${appPort}`);
@@ -871,6 +876,7 @@ ipcMain.on('pty-kill', (_e, args) => {
 
 // Cleanup all PTYs on quit so we don't leak shells.
 app.on('before-quit', () => {
+  inAppBrowser.flush();
   if (workspaceFileWatcher) {
     try { workspaceFileWatcher.close(); } catch {}
     workspaceFileWatcher = null;
