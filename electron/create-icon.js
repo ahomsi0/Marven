@@ -112,7 +112,7 @@ function drawLine(cv, x0, y0, x1, y1, thick, r, g, b, a = 255) {
 // Rounded-square tile with a soft deep-navy radial gradient, anti-aliased
 // edges and a faint inner rim.
 function drawTile(cv, x0, y0, size, radius) {
-  const stops = [[0, [29, 42, 68]], [0.55, [13, 18, 32]], [1, [7, 10, 18]]];
+  const stops = [[0, [48, 72, 120]], [0.55, [27, 42, 76]], [1, [16, 26, 48]]];
   const colourAt = (t) => {
     for (let i = 1; i < stops.length; i++) {
       const [t0, c0] = stops[i - 1], [t1, c1] = stops[i];
@@ -158,7 +158,7 @@ function drawLogo(cv, cx, cy, size, r, g, b) {
 
   // 412px tile with a 50px margin and ~22% corner radius, like other dock icons
   drawTile(cv, 50, 50, 412, 92);
-  drawLogo(cv, cx, cy, 272, 91, 156, 246);
+  drawLogo(cv, cx, cy, 320, 91, 156, 246);
 
   const outPath = path.join(__dirname, "assets", "icon.png");
   writePNG(cv.buf, W, H, outPath);
