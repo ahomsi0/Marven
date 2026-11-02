@@ -16,6 +16,14 @@ const PER_TAB_MAX = 3;
 const PER_TAB_WINDOW_MS = 10_000;
 const MAX_IN_PROGRESS = 10;
 
+const FINISHED = new Set(['completed', 'cancelled', 'interrupted']);
+
+// True once a download is done for good: its item has emitted 'done' (an
+// 'interrupted' update while the item is live can still resume).
+function isFinished(entry) {
+  return !entry.item && FINISHED.has(entry.state);
+}
+
 // The value macOS expects in the com.apple.quarantine attribute: flags, the
 // time in hex seconds since the epoch, and the name of the app that saved it.
 function quarantineValue(nowMs) {
@@ -120,6 +128,18 @@ function createDownloads({ onChange }) {
     return [...entries.values()].map(({ id, filename, state, receivedBytes, totalBytes }) => ({ id, filename, state, receivedBytes, totalBytes }));
   }
 
+  // Drops completed, cancelled and interrupted downloads from the list.
+  function clearFinished() {
+    let changed = false;
+    for (const [id, entry] of entries) {
+      if (isFinished(entry)) {
+        entries.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) onChange();
+  }
+
   function cancel(id) {
     entries.get(id)?.item?.cancel();
   }
@@ -129,7 +149,7 @@ function createDownloads({ onChange }) {
     if (entry?.state === 'completed') shell.showItemInFolder(entry.path);
   }
 
-  return { handle, list, cancel, show };
+  return { handle, list, clearFinished, cancel, show };
 }
 
-module.exports = { createDownloads, quarantineValue };
+module.exports = { createDownloads, quarantineValue, isFinished };

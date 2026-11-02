@@ -38,6 +38,8 @@ function createBrowserManager({ dir, getWindow }) {
   let ses = null;
   let stores = null;
   let downloads = null;
+  let blocker = null;
+  let blockerLoading = false;
   let state = model.emptyState();
   const tabs = new Map(); // tab id → Tab
   const byWebContents = new Map(); // webContents id → Tab
@@ -77,7 +79,7 @@ function createBrowserManager({ dir, getWindow }) {
     ses.setPermissionCheckHandler(() => false);
     downloads = createDownloads({ onChange: scheduleSnapshot });
     ses.on('will-download', (event, item, webContents) => downloads.handle(event, item, webContents));
-    const blocker = createBlocker({
+    blocker = createBlocker({
       dir,
       isDisabledFor: blockingDisabled,
       onBlocked: (webContentsId) => {
@@ -88,7 +90,8 @@ function createBrowserManager({ dir, getWindow }) {
       },
     });
     blocker.attach(ses);
-    void blocker.load();
+    // The filter lists are downloaded on the first show(), not here, so a call
+    // from Settings (clearing browsing data) never starts that download.
   }
 
   function blockingDisabled(host) {
@@ -299,6 +302,10 @@ function createBrowserManager({ dir, getWindow }) {
   // ── Panel placement ────────────────────────────────────────────────────
 
   function show(b) {
+    if (!blockerLoading) {
+      blockerLoading = true;
+      void blocker.load();
+    }
     bounds = b;
     shown = true;
     frozen = false;
@@ -423,10 +430,10 @@ function createBrowserManager({ dir, getWindow }) {
   async function clearBrowsingData() {
     stores.history.set({});
     commit(model.clearClosed(state));
-    for (const tab of tabs.values()) {
-      tab.webContents?.navigationHistory.clear();
-      tab.favicon = null;
-    }
+    downloads.clearFinished();
+    // Open tabs keep their current favicon (it would otherwise show the globe
+    // until each tab navigates); only their back/forward history goes.
+    for (const tab of tabs.values()) tab.webContents?.navigationHistory.clear();
     await ses.clearStorageData();
     await ses.clearCache();
     await ses.clearAuthCache();
