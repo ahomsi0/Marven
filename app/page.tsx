@@ -1466,7 +1466,11 @@ export default function Home() {
           const current = prev[provider];
           const stillAvailable = nextModels.some((m) => m.name === current);
           if (stillAvailable) return prev;
-          const fallback = data.defaultModel ?? nextModels[0]?.name ?? "";
+          // The route picks a ranked default (and Groq's list comes back
+          // best-first); never fall back to a default the list doesn't have.
+          const defaultListed = nextModels.some((m) => m.name === data.defaultModel);
+          const fallback =
+            (defaultListed || nextModels.length === 0 ? data.defaultModel : nextModels[0]?.name) ?? "";
           return { ...prev, [provider]: fallback };
         };
         const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;

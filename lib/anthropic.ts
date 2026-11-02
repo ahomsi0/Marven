@@ -10,7 +10,7 @@ export const DEFAULT_MODEL = "claude-sonnet-4-5";
 export const ANTHROPIC_MODELS = [
   { name: "claude-opus-4-5",   size: 0 },
   { name: "claude-sonnet-4-5", size: 0 },
-  { name: "claude-haiku-3-5",  size: 0 },
+  { name: "claude-haiku-4-5",  size: 0 },
 ];
 
 const SYSTEM_PROMPT =

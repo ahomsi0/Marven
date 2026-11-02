@@ -16,26 +16,73 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const SYSTEM_PROMPT =
   "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
 
-// Fallback list used if the live Groq models API is unavailable.
+// Fallback list used if the live Groq models API is unavailable — only
+// long-standing production chat models, best first.
 export const GROQ_MODELS = [
-  { name: "llama-3.1-8b-instant",    size: 0 },
   { name: "llama-3.3-70b-versatile", size: 0 },
-  { name: "llama3-8b-8192",          size: 0 },
-  { name: "gemma2-9b-it",            size: 0 },
-  { name: "mixtral-8x7b-32768",      size: 0 },
+  { name: "openai/gpt-oss-120b",     size: 0 },
+  { name: "qwen/qwen3-32b",          size: 0 },
+  { name: "openai/gpt-oss-20b",      size: 0 },
+  { name: "llama-3.1-8b-instant",    size: 0 },
 ];
 
+// Speech, TTS and moderation models share the /models list but can't chat.
 const NON_CHAT_MODEL_PATTERNS = [
-  /^whisper/i,
-  /^playai-tts/i,
-  /prompt-guard/i,
-  /safeguard/i,
-  /tts/i,
+  /whisper/i,      // speech-to-text (incl. distil-whisper)
+  /tts/i,          // playai-tts and friends
+  /orpheus/i,      // canopylabs/orpheus text-to-speech
+  /guard/i,        // llama-guard, prompt-guard, gpt-oss-safeguard classifiers
   /transcribe/i,
 ];
 
-function isChatCapableGroqModel(id: string): boolean {
+export function isChatCapableGroqModel(id: string): boolean {
   return !NON_CHAT_MODEL_PATTERNS.some((pattern) => pattern.test(id));
+}
+
+// Best default first: strong general chat models that also handle the agent's
+// tool calls. Anything not listed ranks after these.
+const GROQ_PREFERRED_MODELS = [
+  "llama-3.3-70b-versatile",
+  "openai/gpt-oss-120b",
+  "moonshotai/kimi-k2-instruct-0905",
+  "moonshotai/kimi-k2-instruct",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
+  "qwen/qwen3-32b",
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "openai/gpt-oss-20b",
+  "llama-3.1-8b-instant",
+];
+
+// Unlisted models from these families still beat everything else.
+const PREFERRED_FAMILIES = /llama|qwen|gpt-oss|kimi/i;
+
+function paramBillions(id: string): number {
+  const sizes = [...id.matchAll(/(\d+(?:\.\d+)?)b(?![a-z])/gi)].map((m) => Number(m[1]));
+  return sizes.length ? Math.max(...sizes) : 0;
+}
+
+/**
+ * Order Groq model ids best-default-first: the preference list, then other
+ * llama/qwen/gpt-oss/kimi models (bigger first), then the rest alphabetically.
+ * Never alphabetical overall — that made `allam-2-7b` the default.
+ */
+export function rankGroqModels(ids: string[]): string[] {
+  const rank = (id: string): [number, number, string] => {
+    const listed = GROQ_PREFERRED_MODELS.indexOf(id);
+    if (listed !== -1) return [0, listed, id];
+    if (PREFERRED_FAMILIES.test(id)) return [1, -paramBillions(id), id];
+    return [2, 0, id];
+  };
+  return [...ids].sort((a, b) => {
+    const [ta, sa, na] = rank(a);
+    const [tb, sb, nb] = rank(b);
+    return ta - tb || sa - sb || na.localeCompare(nb);
+  });
+}
+
+/** The model to select when the user hasn't picked one. */
+export function pickDefaultGroqModel(ids: string[]): string {
+  return rankGroqModels(ids.filter(isChatCapableGroqModel))[0] ?? DEFAULT_MODEL;
 }
 
 export async function fetchGroqModels(): Promise<Array<{ name: string; size: number }>> {
@@ -61,10 +108,11 @@ export async function fetchGroqModels(): Promise<Array<{ name: string; size: num
     data?: Array<{ id?: string; active?: boolean }>;
   };
 
-  return (data.data ?? [])
+  const ids = (data.data ?? [])
     .filter((model) => model.id && model.active !== false && isChatCapableGroqModel(model.id))
-    .map((model) => ({ name: model.id!, size: 0 }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((model) => model.id!);
+  // Best first, so anything that falls back to models[0] gets a good model.
+  return rankGroqModels(ids).map((name) => ({ name, size: 0 }));
 }
 
 export interface GroqResult {

@@ -9,10 +9,10 @@ import { providerStream, type StreamUsage } from "@/lib/chatStream";
 export const DEFAULT_MODEL = "gpt-4o-mini";
 
 export const OPENAI_MODELS = [
-  { name: "gpt-4o",        size: 0 },
-  { name: "gpt-4o-mini",   size: 0 },
-  { name: "gpt-4-turbo",   size: 0 },
-  { name: "gpt-3.5-turbo", size: 0 },
+  { name: "gpt-4.1",      size: 0 },
+  { name: "gpt-4.1-mini", size: 0 },
+  { name: "gpt-4o",       size: 0 },
+  { name: "gpt-4o-mini",  size: 0 },
 ];
 
 const SYSTEM_PROMPT =
