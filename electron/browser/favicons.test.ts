@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readCapped, imageType, resolveType } from "./favicons.js";
+import { readCapped, imageType, resolveType, rawDataUrl, RAW_MAX_BYTES } from "./favicons.js";
 
 function streamOf(chunks: Uint8Array[]) {
   let cancelled = false;
@@ -90,5 +90,17 @@ describe("resolveType", () => {
 
   it("does not sniff a non-image type that is not .ico", () => {
     expect(resolveType("text/html", "not a url", ico)).toBeNull();
+  });
+});
+
+describe("rawDataUrl", () => {
+  it("passes a small icon through as a data: URL of its own type", () => {
+    expect(rawDataUrl("image/x-icon", Buffer.from([0, 0, 1, 0]))).toBe("data:image/x-icon;base64,AAABAA==");
+  });
+
+  it("caps the pass-through at 16KB", () => {
+    expect(RAW_MAX_BYTES).toBe(16 * 1024);
+    expect(rawDataUrl("image/gif", Buffer.alloc(RAW_MAX_BYTES))).toMatch(/^data:image\/gif;base64,/);
+    expect(rawDataUrl("image/svg+xml", Buffer.alloc(RAW_MAX_BYTES + 1))).toBeNull();
   });
 });

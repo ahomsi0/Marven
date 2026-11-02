@@ -1,14 +1,20 @@
-// Site icons are fetched here, through the browser's own session, decoded and
-// re-encoded as a small PNG data: URL — so Marven's CSP never has to allow
-// remote images and the renderer never sees the site's own bytes. PNG and JPEG
-// are decoded and re-encoded as a 32px PNG; the other types nativeImage can't
-// decode (ICO, GIF, WebP, SVG) are passed on as-is, which is safe because they
-// only ever render inside an <img>. The fetch is bounded in time and size.
+// Site icons are fetched here, in the main process, through the browser's own
+// session — so Marven's CSP never has to allow remote images (it is unchanged).
+// What reaches the renderer depends on the type:
+// - PNG and JPEG are decoded with nativeImage and re-encoded as a 32px PNG
+//   data: URL, so the renderer gets bytes Chromium's encoder produced.
+// - The other accepted types (ICO, GIF, WebP, SVG), which nativeImage can't
+//   decode, are passed through as data: URLs holding the site's own bytes. That
+//   is safe because the renderer only ever shows them inside an <img>, where
+//   scripts don't run; they are capped at 16KB (larger means no icon).
+// The fetch is bounded in time, and PNG/JPEG reads are capped at 64KB.
 
 const { nativeImage } = require('electron');
 const { isWebUrl } = require('./validate');
 
 const MAX_BYTES = 64 * 1024;
+// Largest icon passed through to the renderer without being re-encoded.
+const RAW_MAX_BYTES = 16 * 1024;
 const TIMEOUT_MS = 5000;
 const ICON_SIZE = 32;
 const IMAGE_TYPES = /^image\/(png|x-icon|vnd\.microsoft\.icon|gif|jpeg|webp|svg\+xml)$/;
@@ -73,6 +79,18 @@ async function readCapped(res, max) {
   return total === 0 ? null : Buffer.concat(chunks);
 }
 
+/**
+ * The site's own bytes as a data: URL, or null when they are over the
+ * pass-through cap.
+ * @param {string} type
+ * @param {Buffer} bytes
+ * @returns {string | null}
+ */
+function rawDataUrl(type, bytes) {
+  if (bytes.length > RAW_MAX_BYTES) return null;
+  return `data:${type};base64,${bytes.toString('base64')}`;
+}
+
 async function fetchFavicon(ses, url) {
   if (!isWebUrl(url)) return null;
   try {
@@ -84,14 +102,13 @@ async function fetchFavicon(ses, url) {
     if (!bytes) return null;
     const type = resolveType(contentType, url, bytes);
     if (!type) return null;
-    const raw = `data:${type};base64,${bytes.toString('base64')}`;
-    if (!DECODABLE.has(type)) return raw;
+    if (!DECODABLE.has(type)) return rawDataUrl(type, bytes);
     const image = nativeImage.createFromBuffer(bytes);
-    if (image.isEmpty()) return raw;
+    if (image.isEmpty()) return rawDataUrl(type, bytes);
     return image.resize({ width: ICON_SIZE, height: ICON_SIZE, quality: 'good' }).toDataURL();
   } catch {
     return null;
   }
 }
 
-module.exports = { fetchFavicon, readCapped, imageType, resolveType };
+module.exports = { fetchFavicon, readCapped, imageType, resolveType, rawDataUrl, RAW_MAX_BYTES };
