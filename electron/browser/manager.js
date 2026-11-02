@@ -21,7 +21,12 @@ const { hostOf, isWebUrl, isHost } = require('./validate');
 
 const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
+// Snapshots are coalesced: structural changes go out within a frame, while
+// bumps of the blocked-request counter (which can fire hundreds of times
+// during a page load) wait a little longer. One push covers both.
 const SNAPSHOT_DELAY_MS = 16;
+const BLOCKED_SNAPSHOT_DELAY_MS = 250;
+const FREEZE_JPEG_QUALITY = 80;
 const MAX_TABS = 100;
 const POPUPS_PER_SECOND = 2;
 const newId = () => crypto.randomUUID();
@@ -43,6 +48,7 @@ function createBrowserManager({ dir, getWindow }) {
   let panelFocused = false;
   let attached = null;
   let snapshotTimer = null;
+  let snapshotDue = 0;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
 
   function init() {
@@ -72,7 +78,7 @@ function createBrowserManager({ dir, getWindow }) {
         const tab = byWebContents.get(webContentsId);
         if (!tab) return;
         tab.blocked += 1;
-        scheduleSnapshot();
+        scheduleSnapshot(BLOCKED_SNAPSHOT_DELAY_MS);
       },
     });
     blocker.attach(ses);
@@ -116,13 +122,22 @@ function createBrowserManager({ dir, getWindow }) {
     };
   }
 
-  function scheduleSnapshot() {
-    if (snapshotTimer) return;
-    snapshotTimer = setTimeout(() => {
-      snapshotTimer = null;
-      const win = getWindow();
-      if (win && !win.isDestroyed()) win.webContents.send('browser-snapshot', snapshot());
-    }, SNAPSHOT_DELAY_MS);
+  function pushSnapshot() {
+    snapshotTimer = null;
+    const win = getWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('browser-snapshot', snapshot());
+  }
+
+  // A pending push that is due sooner already covers this change; a later one
+  // is brought forward.
+  function scheduleSnapshot(delay = SNAPSHOT_DELAY_MS) {
+    const due = Date.now() + delay;
+    if (snapshotTimer) {
+      if (snapshotDue <= due) return;
+      clearTimeout(snapshotTimer);
+    }
+    snapshotDue = due;
+    snapshotTimer = setTimeout(pushSnapshot, delay);
   }
 
   // ── Tabs and views ─────────────────────────────────────────────────────
@@ -291,11 +306,22 @@ function createBrowserManager({ dir, getWindow }) {
     const tab = activeTab();
     if (!attached || !shown || frozen || !tab || tab.error) return null;
     const token = ++freezeToken;
-    const image = await attached.webContents.capturePage();
+    const view = attached;
+    let image;
+    try {
+      image = await view.webContents.capturePage();
+    } catch {
+      return null;
+    }
     if (token !== freezeToken) return null;
     frozen = true;
     syncVisibility();
-    return image.isEmpty() ? null : image.toDataURL();
+    if (image.isEmpty()) return null;
+    // capturePage is in device pixels; the renderer draws it at the view's
+    // size, so shrink it to that and send a JPEG rather than a large PNG.
+    const { width, height } = view.getBounds();
+    const sized = width > 0 && height > 0 ? image.resize({ width, height }) : image;
+    return `data:image/jpeg;base64,${sized.toJPEG(FREEZE_JPEG_QUALITY).toString('base64')}`;
   }
 
   function unfreeze() {
