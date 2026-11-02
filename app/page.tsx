@@ -57,7 +57,7 @@ import {
 } from "@/lib/userProfile";
 import { chatErrorMessage, readChatReply } from "@/lib/chatErrors";
 import { getSystemPrompt } from "@/lib/systemPrompt";
-import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
+import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
 import {
   loadChatProvider,
   loadAgentProvider,
@@ -212,9 +212,6 @@ const SCREEN_RE = /^(?:what(?:'s| is) on (?:my )?(?:screen|display)|analyze (?:m
 
 // ─── Weather detection regex ──────────────────────────────────────────────────
 const WEATHER_RE = /what(?:'s| is) the weather|how(?:'s| is) the weather|weather today/i;
-
-// ─── Memory detection regex ───────────────────────────────────────────────────
-const MEMORY_RE = /^(?:remember(?: that)?|don't forget(?: that)?)\s+(.+)$/i;
 
 export default function Home() {
   // Chat and agent each remember their OWN provider + per-provider model
@@ -1552,8 +1549,25 @@ export default function Home() {
   async function sendMessage(text: string, opts?: { messagesOverride?: Message[] }) {
     if (!text || isLoading) return;
     setInput("");
-    setIsLoading(true);
 
+    if (activeMode === "agent") {
+      if (!agentStreamIsRunning) {
+        await agentStreamSend(text);
+      }
+      return;
+    }
+
+    // Every chat path runs inside this try/finally so an unexpected throw can
+    // never leave the input disabled.
+    setIsLoading(true);
+    try {
+      await sendChatMessage(text, opts);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function sendChatMessage(text: string, opts?: { messagesOverride?: Message[] }) {
     // When the user has set a custom system prompt, ALL of the hardcoded
     // shortcut replies (weather/time/date/open-app/search/memory) are
     // disabled. Those paths return English literals that bypass the LLM and
@@ -1569,18 +1583,9 @@ export default function Home() {
     // upsertConversation state update hasn't re-rendered into `messages` yet.
     const threadSource = opts?.messagesOverride ?? messages;
 
-    if (activeMode === "agent") {
-      setIsLoading(false);
-      if (!agentStreamIsRunning) {
-        await agentStreamSend(text);
-      }
-      return;
-    }
-
     // 0. Memory detection (before everything else)
-    const memoryMatch = useShortcuts ? text.match(MEMORY_RE) : null;
-    if (memoryMatch) {
-      const memoryStr = memoryMatch[2].trim();
+    const memoryStr = useShortcuts ? parseRememberCommand(text) : null;
+    if (memoryStr) {
       const memoryScope = "global";
       try {
         const res = await fetch("/api/memory", {
@@ -1610,7 +1615,6 @@ export default function Home() {
       const reply = `Got it. I'll remember that ${memoryStr} in ${memoryScope} memory.`;
       addMessageToConversation(convId, createMessage("assistant", reply));
       speakReply(reply);
-      setIsLoading(false);
       return;
     }
 
@@ -1627,7 +1631,6 @@ export default function Home() {
         addMessageToConversation(convId, createMessage("assistant", reply));
         speakReply(reply);
       }
-      setIsLoading(false);
       return;
     }
 
@@ -1649,8 +1652,6 @@ export default function Home() {
         speakReply(reply);
       } catch {
         updateLastAssistantMessage(convId, (msg) => ({ ...msg, content: "Could not analyze screen.", isStreaming: false }));
-      } finally {
-        setIsLoading(false);
       }
       return;
     }
@@ -1684,11 +1685,11 @@ export default function Home() {
       const confirmMsg = createMessage("assistant", `Timer set for ${timerParsed.label}.`);
       addMessageToConversation(convId, confirmMsg);
       speakReply(confirmMsg.content);
-      setIsLoading(false);
 
-      // Request notification permission if needed
+      // Request notification permission if needed. Not awaited: the prompt can
+      // sit open indefinitely and the send shouldn't stay "loading" meanwhile.
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        await Notification.requestPermission();
+        void Notification.requestPermission().catch(() => {});
       }
 
       setTimeout(() => {
@@ -1744,7 +1745,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1755,7 +1755,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1764,7 +1763,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1773,7 +1771,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1789,7 +1786,6 @@ export default function Home() {
         const reply = `Opening ${appName}.`;
         addMessageToConversation(convId, createMessage("assistant", reply));
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1825,8 +1821,6 @@ export default function Home() {
         console.error("[Marven] chat request failed:", error);
         const err = createMessage("assistant", chatErrorMessage(error));
         addMessageToConversation(convId, err);
-      } finally {
-        setIsLoading(false);
       }
       return;
     }
@@ -1940,8 +1934,6 @@ export default function Home() {
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
       speakReply(errMsg);
-    } finally {
-      setIsLoading(false);
     }
   }
 
