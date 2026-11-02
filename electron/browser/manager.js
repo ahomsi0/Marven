@@ -1,32 +1,25 @@
-// The in-app browser. Owns the tab list, one native view per tab (only the
-// active one is attached, over the panel's viewport), saved history and
-// bookmarks, ad blocking and downloads. The renderer gets a snapshot after
-// every change and sends commands back (see ipc.js).
+// The in-app browser. Owns the tab list and one Tab per entry; the session
+// (session.js), what's kept on disk (library.js) and where the active page's
+// view sits (viewHost.js) live in their own modules. The renderer gets a
+// snapshot after every change and sends commands back (see ipc.js).
 
-const path = require('node:path');
 const crypto = require('node:crypto');
-const { session } = require('electron');
-const { createJsonStore } = require('./store');
 const model = require('./tabsModel');
-const history = require('./history');
-const bookmarks = require('./bookmarks');
-const { rankSuggestions } = require('./suggest');
-const { createBlocker } = require('./blocker');
-const { createDownloads } = require('./downloads');
+const { createLibrary } = require('./library');
+const { createBrowserSession } = require('./session');
+const { createViewHost } = require('./viewHost');
 const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
 const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
-const { hostOf, isWebUrl, isHost, staysOnOrigin, isAllowedPermission } = require('./validate');
+const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 
-const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
 // during a page load) wait a little longer. One push covers both.
 const SNAPSHOT_DELAY_MS = 16;
 const BLOCKED_SNAPSHOT_DELAY_MS = 250;
-const FREEZE_JPEG_QUALITY = 80;
 const MAX_TABS = 100;
 const POPUPS_PER_SECOND = 2;
 const newId = () => crypto.randomUUID();
@@ -36,66 +29,41 @@ const newId = () => crypto.randomUUID();
  */
 function createBrowserManager({ dir, getWindow }) {
   let ses = null;
-  let stores = null;
+  let library = null;
   let downloads = null;
-  let blocker = null;
-  let blockerLoading = false;
+  let loadBlocker = null;
   let state = model.emptyState();
   const tabs = new Map(); // tab id → Tab
   const byWebContents = new Map(); // webContents id → Tab
-  let bounds = null;
-  let shown = false;
-  let frozen = false;
-  let freezeToken = 0;
   let panelFocused = false;
-  let attached = null;
   let snapshotTimer = null;
   let snapshotDue = 0;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
+  const host = createViewHost({
+    getWindow,
+    getPage: () => {
+      const tab = activeTab();
+      return { showable: !!tab && !tab.error, views: [...tabs.values()].map((t) => t.view) };
+    },
+  });
 
   function init() {
     if (ses) return;
-    stores = {
-      tabs: createJsonStore(path.join(dir, 'tabs.json'), { tabs: [], activeIndex: 0 }),
-      history: createJsonStore(path.join(dir, 'history.json'), {}),
-      bookmarks: createJsonStore(path.join(dir, 'bookmarks.json'), []),
-      sites: createJsonStore(path.join(dir, 'sites.json'), { blockingDisabled: [] }),
-    };
-    const now = Date.now();
-    // Only write a file back when cleaning it actually changed something.
-    const setIfChanged = (store, value) => {
-      if (JSON.stringify(value) !== JSON.stringify(store.get())) store.set(value);
-    };
-    setIfChanged(stores.history, history.prune(history.sanitizeHistory(stores.history.get(), now), now));
-    setIfChanged(stores.bookmarks, bookmarks.sanitizeBookmarks(stores.bookmarks.get()));
-    const sites = stores.sites.get();
-    setIfChanged(stores.sites, { blockingDisabled: Array.isArray(sites?.blockingDisabled) ? sites.blockingDisabled.filter(isHost) : [] });
-    state = model.fromSaved(stores.tabs.get(), newId);
-
-    ses = session.fromPartition(PARTITION);
-    // Drop the app-name and Electron tokens so sites see a plain Chrome UA.
-    ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|marven)\/\S+/gi, ''));
-    ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isAllowedPermission(permission)));
-    ses.setPermissionCheckHandler((_wc, permission) => isAllowedPermission(permission));
-    downloads = createDownloads({ onChange: scheduleSnapshot });
-    ses.on('will-download', (event, item, webContents) => downloads.handle(event, item, webContents));
-    blocker = createBlocker({
+    library = createLibrary({ dir, newId });
+    state = model.fromSaved(library.savedTabs(), newId);
+    ({ ses, downloads, loadBlocker } = createBrowserSession({
       dir,
-      isDisabledFor: blockingDisabled,
+      isDisabledFor: library.blockingDisabled,
       onBlocked: (webContentsId) => {
         const tab = byWebContents.get(webContentsId);
         if (!tab) return;
         tab.blocked += 1;
         scheduleSnapshot(BLOCKED_SNAPSHOT_DELAY_MS);
       },
-    });
-    blocker.attach(ses);
+      onDownloadsChange: scheduleSnapshot,
+    }));
     // The filter lists are downloaded on the first show(), not here, so a call
     // from Settings (clearing browsing data) never starts that download.
-  }
-
-  function blockingDisabled(host) {
-    return !!host && stores.sites.get().blockingDisabled.includes(host);
   }
 
   // ── State and snapshots ────────────────────────────────────────────────
@@ -103,7 +71,7 @@ function createBrowserManager({ dir, getWindow }) {
   function commit(next) {
     if (next === state) return;
     state = next;
-    stores.tabs.set(model.toSaved(state));
+    library.saveTabs(model.toSaved(state));
     scheduleSnapshot();
   }
 
@@ -121,7 +89,7 @@ function createBrowserManager({ dir, getWindow }) {
           canGoBack: tab?.canGoBack() ?? false,
           canGoForward: tab?.canGoForward() ?? false,
           blocked: tab?.blocked ?? 0,
-          blockingEnabled: !blockingDisabled(hostOf(url)),
+          blockingEnabled: !library.blockingDisabled(hostOf(url)),
           error: tab?.error ?? null,
         };
       }),
@@ -148,7 +116,7 @@ function createBrowserManager({ dir, getWindow }) {
     snapshotTimer = setTimeout(pushSnapshot, delay);
   }
 
-  // ── Tabs and views ─────────────────────────────────────────────────────
+  // ── Tabs ───────────────────────────────────────────────────────────────
 
   function tabFor(entry) {
     let tab = tabs.get(entry.id);
@@ -160,8 +128,8 @@ function createBrowserManager({ dir, getWindow }) {
       session: ses,
       hooks: {
         onUpdate,
-        onVisit: (url, title) => stores.history.set(history.recordVisit(stores.history.get(), url, title, Date.now())),
-        onTitle: (url, title) => stores.history.set(history.updateTitle(stores.history.get(), url, title)),
+        onVisit: library.recordVisit,
+        onTitle: library.updateTitle,
         onFavicon: (t, iconUrl) => {
           const navigation = t.navigation;
           if (t.faviconFetch === navigation) return; // one fetch per page at a time
@@ -189,7 +157,7 @@ function createBrowserManager({ dir, getWindow }) {
     } else {
       scheduleSnapshot();
     }
-    if (tab.id === state.activeId) syncVisibility();
+    if (tab.id === state.activeId) host.syncVisibility();
   }
 
   function activeTab() {
@@ -197,47 +165,16 @@ function createBrowserManager({ dir, getWindow }) {
     return entry ? tabFor(entry) : null;
   }
 
-  function setMuted(view, muted) {
-    const wc = view?.webContents;
-    if (wc && !wc.isDestroyed() && wc.isAudioMuted() !== muted) wc.setAudioMuted(muted);
-  }
-
-  function detach() {
-    if (!attached) return;
-    const win = getWindow();
-    attached.setVisible(false);
-    setMuted(attached, true);
-    if (win && !win.isDestroyed() && win.contentView.children.includes(attached)) win.contentView.removeChildView(attached);
-    attached = null;
-  }
-
+  // Attaches the active tab's view (creating it on first show) in place of
+  // whatever was on screen.
   function showActive() {
-    const win = getWindow();
-    if (!win || win.isDestroyed()) return;
+    if (!host.hasWindow()) return;
     const tab = activeTab();
-    const view = shown && tab ? tab.ensureView() : null;
-    if (attached !== view) detach();
-    if (view) {
-      if (!win.contentView.children.includes(view)) win.contentView.addChildView(view);
-      attached = view;
-      if (bounds) view.setBounds(bounds);
-    }
-    syncVisibility();
-  }
-
-  // Only the page on screen plays sound: every other tab is muted, so closing
-  // the panel, opening an overlay or switching tabs silences it. A frozen page
-  // (a toolbar menu is open over it) still counts as on screen.
-  function syncVisibility() {
-    const tab = activeTab();
-    if (attached) attached.setVisible(shown && !frozen && !!tab && !tab.error);
-    for (const t of tabs.values()) {
-      if (t.view) setMuted(t.view, !(shown && t.view === attached));
-    }
+    host.showActive(host.isShown() && tab ? tab.ensureView() : null);
   }
 
   function forget(tab) {
-    if (attached && attached === tab.view) detach();
+    if (host.isAttached(tab.view)) host.detach();
     if (tab.webContentsId != null) byWebContents.delete(tab.webContentsId);
     tab.destroyView();
     tabs.delete(tab.id);
@@ -302,64 +239,11 @@ function createBrowserManager({ dir, getWindow }) {
   // ── Panel placement ────────────────────────────────────────────────────
 
   function show(b) {
-    if (!blockerLoading) {
-      blockerLoading = true;
-      void blocker.load();
-    }
-    bounds = b;
-    shown = true;
-    frozen = false;
-    freezeToken += 1;
+    loadBlocker();
+    host.show(b);
     if (state.tabs.length === 0) newTab(HOME_URL);
     else showActive();
     scheduleSnapshot();
-  }
-
-  function setBounds(b) {
-    bounds = b;
-    if (attached) attached.setBounds(b);
-  }
-
-  function hide() {
-    shown = false;
-    syncVisibility();
-  }
-
-  // Menus in the toolbar open over the page area, but a native view draws
-  // above the DOM. The renderer shows this screenshot in its place meanwhile.
-  async function freeze() {
-    const tab = activeTab();
-    if (!attached || !shown || frozen || !tab || tab.error) return null;
-    const token = ++freezeToken;
-    const view = attached;
-    let image;
-    try {
-      image = await view.webContents.capturePage();
-    } catch {
-      // The capture can fail (e.g. the window is occluded). Still hide the
-      // page, or the menu would open underneath it; the renderer then shows
-      // the menu over an empty viewport.
-      if (token === freezeToken) {
-        frozen = true;
-        syncVisibility();
-      }
-      return null;
-    }
-    if (token !== freezeToken) return null;
-    frozen = true;
-    syncVisibility();
-    if (image.isEmpty()) return null;
-    // capturePage is in device pixels; the renderer draws it at the view's
-    // size, so shrink it to that and send a JPEG rather than a large PNG.
-    const { width, height } = view.getBounds();
-    const sized = width > 0 && height > 0 ? image.resize({ width, height }) : image;
-    return `data:image/jpeg;base64,${sized.toJPEG(FREEZE_JPEG_QUALITY).toString('base64')}`;
-  }
-
-  function unfreeze() {
-    freezeToken += 1;
-    frozen = false;
-    syncVisibility();
   }
 
   // ── Shortcuts ──────────────────────────────────────────────────────────
@@ -394,41 +278,17 @@ function createBrowserManager({ dir, getWindow }) {
     return true;
   }
 
-  // ── Bookmarks, history, blocking, data ─────────────────────────────────
+  // ── Blocking and data ──────────────────────────────────────────────────
 
-  function toggleBookmark(url, title) {
-    const { list, bookmarked } = bookmarks.toggleBookmark(stores.bookmarks.get(), url, title, Date.now(), newId);
-    stores.bookmarks.set(list);
-    return bookmarked;
-  }
-
-  function removeBookmark(id) {
-    stores.bookmarks.set(bookmarks.removeBookmark(stores.bookmarks.get(), id));
-  }
-
-  function listBookmarks(query) {
-    return bookmarks.searchBookmarks(stores.bookmarks.get(), query);
-  }
-
-  function isBookmarked(url) {
-    return stores.bookmarks.get().some((b) => b.url === url);
-  }
-
-  function suggest(query) {
-    return rankSuggestions({ query, bookmarks: stores.bookmarks.get(), history: stores.history.get(), now: Date.now() });
-  }
-
-  function setBlocking(host, enabled) {
-    const list = stores.sites.get().blockingDisabled.filter((h) => h !== host);
-    if (!enabled) list.push(host);
-    stores.sites.set({ blockingDisabled: list });
+  function setBlocking(siteHost, enabled) {
+    library.setBlocking(siteHost, enabled);
     const tab = activeTab();
-    if (tab && hostOf(tab.url) === host) tab.command('reload');
+    if (tab && hostOf(tab.url) === siteHost) tab.command('reload');
     scheduleSnapshot();
   }
 
   async function clearBrowsingData() {
-    stores.history.set({});
+    library.clearData();
     commit(model.clearClosed(state));
     downloads.clearFinished();
     // Open tabs keep their current favicon (it would otherwise show the globe
@@ -448,7 +308,7 @@ function createBrowserManager({ dir, getWindow }) {
     // over a UI that no longer has a browser panel.
     const hideForReload = () => {
       panelFocused = false;
-      if (ses) hide();
+      if (ses) host.hide();
     };
     win.webContents.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
@@ -461,8 +321,7 @@ function createBrowserManager({ dir, getWindow }) {
       if (ses && panelFocused && handleShortcut(input)) event.preventDefault();
     });
     win.on('closed', () => {
-      attached = null;
-      shown = false;
+      host.windowClosed();
       for (const tab of tabs.values()) {
         if (tab.webContentsId != null) byWebContents.delete(tab.webContentsId);
         tab.destroyView();
@@ -471,8 +330,7 @@ function createBrowserManager({ dir, getWindow }) {
   }
 
   function flush() {
-    if (!stores) return;
-    for (const store of Object.values(stores)) store.flush();
+    library?.flush();
   }
 
   const ready = (fn) => (...args) => {
@@ -484,10 +342,10 @@ function createBrowserManager({ dir, getWindow }) {
     attachWindow,
     flush,
     show: ready(show),
-    setBounds: ready(setBounds),
-    hide: ready(hide),
-    freeze: ready(freeze),
-    unfreeze: ready(unfreeze),
+    setBounds: ready(host.setBounds),
+    hide: ready(host.hide),
+    freeze: ready(host.freeze),
+    unfreeze: ready(host.unfreeze),
     setPanelFocused: (focused) => { panelFocused = focused; },
     snapshot: ready(snapshot),
     newTab: ready((url) => newTab(url)),
@@ -497,11 +355,11 @@ function createBrowserManager({ dir, getWindow }) {
     reopenClosedTab: ready(reopenClosedTab),
     navigate: ready(navigate),
     command: ready(command),
-    toggleBookmark: ready(toggleBookmark),
-    removeBookmark: ready(removeBookmark),
-    listBookmarks: ready(listBookmarks),
-    isBookmarked: ready(isBookmarked),
-    suggest: ready(suggest),
+    toggleBookmark: ready((url, title) => library.toggleBookmark(url, title)),
+    removeBookmark: ready((id) => library.removeBookmark(id)),
+    listBookmarks: ready((query) => library.listBookmarks(query)),
+    isBookmarked: ready((url) => library.isBookmarked(url)),
+    suggest: ready((query) => library.suggest(query)),
     setBlocking: ready(setBlocking),
     cancelDownload: ready((id) => downloads.cancel(id)),
     showDownload: ready((id) => downloads.show(id)),
