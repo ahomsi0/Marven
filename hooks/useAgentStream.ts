@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage, AgentSafetyProfile } from "@/types";
+import { cancelInFlightToolCalls, SWITCH_CANCEL_NOTE } from "@/lib/agent/thread";
+
+const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
 const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
 const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
@@ -50,6 +53,11 @@ export function useAgentStream({
   const streamGenRef = useRef(0);
   const planPendingCallIdRef = useRef<string | null>(null);
   const planModeOverrideRef = useRef<boolean | null>(null);
+  // Latest committed thread, readable from stable callbacks (loadMessages
+  // needs the outgoing thread at switch time). loadMessages/clearMessages also
+  // set it synchronously so a send() in the same tick sees the new thread.
+  const messagesRef = useRef<AgentMessage[]>(messages);
+  messagesRef.current = messages;
 
   const addMessage = (msg: AgentMessage) =>
     setMessages((prev) => [...prev, msg]);
@@ -487,9 +495,15 @@ export function useAgentStream({
   }, [messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
+    const wasRunning = isRunningRef.current;
     streamGenRef.current++;
     abortRef.current?.abort();
     setIsRunning(false);
+    // The aborted stream's handlers are now no-ops, so nothing else would ever
+    // move its in-flight tool calls out of "running".
+    if (wasRunning) {
+      setMessages((prev) => cancelInFlightToolCalls(prev, STOP_CANCEL_NOTE));
+    }
   }, []);
 
   // Abort any in-flight stream if the consuming component unmounts, so the
@@ -497,6 +511,7 @@ export function useAgentStream({
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const clearMessages = useCallback(() => {
+    messagesRef.current = [];
     setMessages([]);
     setError(null);
   }, []);
@@ -504,15 +519,26 @@ export function useAgentStream({
   // Used when switching between agent conversations — aborts any in-flight
   // stream first (bumping the generation so its queued handlers no-op) and
   // restores the full message thread of the conversation we're switching to.
-  const loadMessages = useCallback((next: AgentMessage[]) => {
+  //
+  // Returns the OUTGOING thread when a run was aborted by this call, with its
+  // in-flight tool calls marked cancelled, so the caller can save it to the
+  // outgoing conversation (otherwise the partial output would be lost and the
+  // tool calls saved as "running" forever). Returns null when nothing was
+  // running.
+  const loadMessages = useCallback((next: AgentMessage[]): AgentMessage[] | null => {
+    const outgoing = isRunningRef.current
+      ? cancelInFlightToolCalls(messagesRef.current, SWITCH_CANCEL_NOTE)
+      : null;
     streamGenRef.current++;
     abortRef.current?.abort();
     isRunningRef.current = false;
     setIsRunning(false);
+    messagesRef.current = next;
     setMessages(next);
     setError(null);
     setLiveTerminalOutput("");
     setCheckpoints([]);
+    return outgoing;
   }, []);
 
   const injectAssistantMessage = useCallback((content: string) => {

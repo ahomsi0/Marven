@@ -626,33 +626,32 @@ export default function Home() {
     setAgentTokenUsage(agentUsageByConvRef.current.get(activeConversationId) ?? zeroUsage("estimated"));
   }, [activeConversationId, activeMode, conversations]);
 
-  // Save the active conversation's agent messages whenever they change so we
-  // can restore them when the user switches between agent conversations.
+  // Save the agent stream's messages whenever they change so we can restore
+  // them when the user switches between agent conversations.
   //
-  // Guard against the switch race: when activeConversationId changes, React
-  // runs this effect BEFORE the switch effect below (effect order = declaration
-  // order). At that moment agentStreamMessages still holds the OUTGOING conv's
-  // messages, but activeConversationId is already the INCOMING id — so an
-  // unguarded save would clobber the incoming conv's stored messages with the
-  // outgoing one's, making every agent tab appear to share the same thread.
-  // Only persist when the stream state is in sync with the conv we last
-  // swapped to (lastAgentConvIdRef).
+  // The hook's thread (and the editor state) always belongs to the agent
+  // conversation last swapped in — lastAgentConvIdRef — NOT necessarily the
+  // active conversation: mid-switch, activeConversationId is already the
+  // incoming id while agentStreamMessages still holds the outgoing thread, and
+  // while a chat conversation is open the previous agent run keeps streaming.
+  // Keying the save on the owner (instead of activeConversationId + agent
+  // mode) keeps both cases correct.
   useEffect(() => {
-    if (activeMode !== "agent" || !activeConversationId) return;
-    if (activeConversationId !== lastAgentConvIdRef.current) return;
-    agentMessagesByConvRef.current.set(activeConversationId, agentStreamMessages);
-  }, [agentStreamMessages, activeConversationId, activeMode]);
+    const owner = lastAgentConvIdRef.current;
+    if (!owner) return;
+    agentMessagesByConvRef.current.set(owner, agentStreamMessages);
+  }, [agentStreamMessages]);
 
   // Persist agent thread + editor to localStorage (survives app restart).
   useEffect(() => {
-    if (activeMode !== "agent" || !activeConversationId) return;
-    if (activeConversationId !== lastAgentConvIdRef.current) return;
+    const owner = lastAgentConvIdRef.current;
+    if (!owner) return;
     if (persistAgentTimerRef.current) clearTimeout(persistAgentTimerRef.current);
     persistAgentTimerRef.current = setTimeout(() => {
       persistAgentTimerRef.current = null;
       const file = loadAgentSessionsFile();
       saveAgentSessionsFile(
-        upsertPersistedSession(file, activeConversationId, {
+        upsertPersistedSession(file, owner, {
           messages: agentStreamMessages,
           openTabs,
           activeTabIndex,
@@ -681,11 +680,28 @@ export default function Home() {
       });
     }
     lastAgentConvIdRef.current = activeConversationId;
-    // Load the incoming conversation's messages.
+    // Load the incoming conversation's messages. If this aborts a run that
+    // belonged to the outgoing conversation, loadMessages hands back that
+    // thread (in-flight tool calls marked cancelled).
     const savedMsgs = activeConversationId
       ? agentMessagesByConvRef.current.get(activeConversationId) ?? []
       : [];
-    agentStreamLoadMessages(savedMsgs);
+    const abortedOutgoing = agentStreamLoadMessages(savedMsgs);
+    // Snapshot the outgoing conversation now: its pending debounced persist
+    // was cancelled by the switch, and an aborted run's last output (and the
+    // cancelled tool-call states) would otherwise never be saved.
+    if (prevId && (abortedOutgoing || agentMessagesByConvRef.current.has(prevId))) {
+      const outgoingMsgs = abortedOutgoing ?? agentMessagesByConvRef.current.get(prevId) ?? [];
+      agentMessagesByConvRef.current.set(prevId, outgoingMsgs);
+      saveAgentSessionsFile(
+        upsertPersistedSession(loadAgentSessionsFile(), prevId, {
+          messages: outgoingMsgs,
+          openTabs,
+          activeTabIndex,
+          buffers: buffersToEntries(fileBuffers),
+        }),
+      );
+    }
     // Load the incoming conversation's editor state (or empty defaults).
     const savedEditor = activeConversationId
       ? agentEditorByConvRef.current.get(activeConversationId)
@@ -2032,6 +2048,17 @@ export default function Home() {
 
   function handleDeleteConversation(id: string) {
     chatSendsRef.current.get(id)?.abort();
+    // If the agent stream's thread belongs to this conversation, stop it and
+    // drop ownership so the owner-keyed save/persist effects can't write the
+    // deleted conversation back.
+    if (lastAgentConvIdRef.current === id) {
+      agentStreamStop();
+      lastAgentConvIdRef.current = null;
+      if (persistAgentTimerRef.current) {
+        clearTimeout(persistAgentTimerRef.current);
+        persistAgentTimerRef.current = null;
+      }
+    }
     agentMessagesByConvRef.current.delete(id);
     agentEditorByConvRef.current.delete(id);
     saveAgentSessionsFile(removePersistedSession(loadAgentSessionsFile(), id));
