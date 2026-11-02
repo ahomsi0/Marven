@@ -64,7 +64,7 @@ export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onCl
         )}
       </button>
 
-      <AddressBar bridge={bridge} tab={tab} bookmarkVersion={bookmarkVersion} onSuggestingChange={setSuggesting} />
+      <AddressBar key={tab?.id ?? "none"} bridge={bridge} tab={tab} bookmarkVersion={bookmarkVersion} onSuggestingChange={setSuggesting} />
 
       <div ref={menusRef} className="flex items-center gap-1">
         <div className="relative">

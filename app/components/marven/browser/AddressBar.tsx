@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
 import {
   SEARCH_URL, hostOf, isWebUrl, normalizeBrowserInput, type BrowserBridge, type BrowserTab, type Suggestion,
@@ -24,11 +24,20 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [editing, setEditing] = useState(false);
+  // Suggestions only open once the user types, not on focus or Cmd+L, so
+  // clicking into the bar doesn't freeze the page behind it.
+  const [dirty, setDirty] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [highlight, setHighlight] = useState(-1);
   const [bookmarked, setBookmarked] = useState(false);
   const url = tab?.url ?? "";
   const web = isWebUrl(url);
+  const urlRef = useRef(url);
+  const listId = useId();
+
+  useEffect(() => {
+    urlRef.current = url;
+  }, [url]);
 
   useEffect(() => {
     if (!editing) setText(web ? url : "");
@@ -56,7 +65,7 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
     });
   }, [bridge]);
 
-  const query = editing ? text.trim() : "";
+  const query = editing && dirty ? text.trim() : "";
   useEffect(() => {
     if (!bridge || !query) {
       setSuggestions([]);
@@ -89,6 +98,7 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
     const next = target ?? normalizeBrowserInput(text);
     if (!next || !bridge) return;
     setEditing(false);
+    setDirty(false);
     inputRef.current?.blur();
     if (tab) void bridge.navigate(tab.id, next);
     else void bridge.newTab(next);
@@ -115,12 +125,12 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
       className="relative min-w-0 flex-1"
       onSubmit={(e) => {
         e.preventDefault();
-        go(highlight >= 0 ? rows[highlight]?.url ?? null : null);
+        go(highlight >= 0 && highlight < rows.length ? rows[highlight].url : null);
       }}
     >
       <div className="flex h-8 items-center gap-1.5 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] ps-2.5 pe-1 focus-within:border-[var(--m-accent)]/60">
         {url.startsWith("https://") && !editing && (
-          <svg className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-label={t("browser.secure")}>
+          <svg className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" role="img" aria-label={t("browser.secure")}>
             <rect x="5" y="11" width="14" height="10" rx="2" />
             <path d="M8 11V7a4 4 0 0 1 8 0v4" />
           </svg>
@@ -132,16 +142,25 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
           onChange={(e) => {
             setText(e.target.value);
             setEditing(true);
+            setDirty(true);
+            setHighlight(-1);
           }}
           onFocus={(e) => {
             setEditing(true);
+            setDirty(false);
             e.currentTarget.select();
           }}
-          onBlur={() => setEditing(false)}
+          onBlur={() => {
+            setEditing(false);
+            setDirty(false);
+          }}
           onKeyDown={onKeyDown}
           placeholder={t("browser.address")}
+          role="combobox"
           aria-label={t("browser.address")}
           aria-expanded={open}
+          aria-controls={listId}
+          aria-activedescendant={open && highlight >= 0 && highlight < rows.length ? `${listId}-${highlight}` : undefined}
           aria-autocomplete="list"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)]"
@@ -168,7 +187,13 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
             </button>
             <button
               type="button"
-              onClick={() => bridge && void bridge.toggleBookmark(url, tab.title).then(setBookmarked)}
+              onClick={() => {
+                if (!bridge) return;
+                const target = url;
+                void bridge.toggleBookmark(target, tab.title).then((value) => {
+                  if (urlRef.current === target) setBookmarked(value);
+                });
+              }}
               title={bookmarked ? t("browser.removeBookmark") : t("browser.bookmarkPage")}
               aria-label={bookmarked ? t("browser.removeBookmark") : t("browser.bookmarkPage")}
               aria-pressed={bookmarked}
@@ -184,12 +209,14 @@ export function AddressBar({ bridge, tab, bookmarkVersion, onSuggestingChange }:
 
       {open && (
         <ul
+          id={listId}
           role="listbox"
           className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] py-1 shadow-lg"
         >
           {rows.map((row, i) => (
             <li
               key={`${row.kind}:${row.url}`}
+              id={`${listId}-${i}`}
               role="option"
               aria-selected={i === highlight}
               onMouseDown={(e) => {
