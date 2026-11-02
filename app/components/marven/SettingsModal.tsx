@@ -964,8 +964,12 @@ export function SettingsModal({
                   disabled={browsingDataState === "clearing"}
                   onClick={async () => {
                     setBrowsingDataState("clearing");
-                    await browserBridge.clearBrowsingData();
-                    setBrowsingDataState("cleared");
+                    try {
+                      const ok = await browserBridge.clearBrowsingData();
+                      setBrowsingDataState(ok ? "cleared" : "idle");
+                    } catch {
+                      setBrowsingDataState("idle");
+                    }
                   }}
                   className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-50"
                 >

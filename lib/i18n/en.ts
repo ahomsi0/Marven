@@ -204,6 +204,7 @@ const en = {
     noDownloads: "Files you download show up here.",
     cancel: "Cancel",
     showInFolder: "Show in Finder",
+    showInFolderOther: "Show in folder",
     downloadDone: "Done",
     downloadCancelled: "Cancelled",
     downloadFailed: "Failed",

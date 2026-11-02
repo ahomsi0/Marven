@@ -210,6 +210,7 @@ const ar: Shape<typeof en> = {
     noDownloads: "تظهر هنا الملفات التي تنزّلها.",
     cancel: "إلغاء",
     showInFolder: "إظهار في Finder",
+    showInFolderOther: "إظهار في المجلد",
     downloadDone: "اكتمل",
     downloadCancelled: "أُلغي",
     downloadFailed: "فشل",

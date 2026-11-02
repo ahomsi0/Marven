@@ -21,6 +21,11 @@ describe("normalizeBrowserInput", () => {
     expect(normalizeBrowserInput("127.0.0.1:8080/api")).toBe("http://127.0.0.1:8080/api");
   });
 
+  it("searches a loopback address that isn't a valid URL instead of throwing", () => {
+    expect(() => normalizeBrowserInput("localhost:99999")).not.toThrow();
+    expect(normalizeBrowserInput("localhost:99999")).toBe(SEARCH_URL + "localhost%3A99999");
+  });
+
   it("searches everything else", () => {
     expect(normalizeBrowserInput("how to center a div")).toBe(SEARCH_URL + "how%20to%20center%20a%20div");
     expect(normalizeBrowserInput("react")).toBe(SEARCH_URL + "react");

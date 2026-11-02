@@ -122,7 +122,11 @@ export function normalizeBrowserInput(input: string): string | null {
   }
 
   if (/^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?(\/\S*)?$/i.test(text)) {
-    return new URL(`http://${text}`).href;
+    try {
+      return new URL(`http://${text}`).href;
+    } catch {
+      // e.g. an out-of-range port; fall through to search
+    }
   }
 
   if (!/\s/.test(text) && /^[^\s/:]+\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(text)) {

@@ -274,6 +274,12 @@ export function ChatLayout({
   const [browserExpanded, setBrowserExpanded] = useState(false);
   const [convSearchOpen, setConvSearchOpen] = useState(false);
 
+  // Picking another chat while the browser is expanded would leave the chat
+  // hidden behind it; collapse the browser back beside the chat instead.
+  useEffect(() => {
+    setBrowserExpanded(false);
+  }, [activeConversationId]);
+
   // ⌘⇧K — open cross-conversation search palette.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

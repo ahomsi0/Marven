@@ -9,6 +9,12 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// "Finder" is macOS wording; other platforms get a generic label.
+const isMac =
+  typeof window !== "undefined" &&
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).marvenElectron?.platform === "darwin";
+
 export function DownloadsMenu({ bridge, downloads }: { bridge: BrowserBridge; downloads: BrowserDownload[] }) {
   const { t } = useT();
 
@@ -44,7 +50,7 @@ export function DownloadsMenu({ bridge, downloads }: { bridge: BrowserBridge; do
                     </button>
                   ) : d.state === "completed" ? (
                     <button type="button" onClick={() => bridge.showDownload(d.id)} className="hover:text-[var(--m-text)]">
-                      {t("browser.showInFolder")}
+                      {t(isMac ? "browser.showInFolder" : "browser.showInFolderOther")}
                     </button>
                   ) : null}
                 </div>
