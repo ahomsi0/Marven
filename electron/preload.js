@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   close: () => ipcRenderer.send('window-close'),
   openFolderDialog: () => ipcRenderer.invoke('dialog-open-folder'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  /** Last ~300 redacted log lines (main process + renderer warnings/errors). */
+  getRecentLogs: () => ipcRenderer.invoke('get-recent-logs'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   openExternal: (url, browser) => ipcRenderer.invoke('open-external', url, browser),
   getVersion: () => ipcRenderer.invoke('get-version'),

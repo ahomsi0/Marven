@@ -6,6 +6,7 @@ import {
   condenseWindow,
   SWITCH_CANCEL_NOTE,
 } from "@/lib/agent/thread";
+import { dispatchMemorySaved, parseRememberToolResult } from "@/lib/memoryEvents";
 
 const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
@@ -243,6 +244,7 @@ export function useAgentStream({
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
     planModeOverrideRef.current = null;
     const callIdToTool = new Map<string, string>();
+    const rememberTextByCallId = new Map<string, string>();
     let wroteFiles = false;
     let streamHadError = false;
     let completionChars = 0;
@@ -266,6 +268,9 @@ export function useAgentStream({
         if (staleStream()) return;
         if (event.type === "tool_call") {
           callIdToTool.set(event.callId, event.tool);
+          if (event.tool === "remember" && typeof event.args?.content === "string") {
+            rememberTextByCallId.set(event.callId, event.args.content);
+          }
           updateLastAssistant((msg) => ({
             ...msg,
             toolCalls: [
@@ -284,6 +289,14 @@ export function useAgentStream({
         if (event.type === "tool_result") {
           const tool = callIdToTool.get(event.callId);
           if (tool === "write_file" || tool === "apply_patch") wroteFiles = true;
+          if (tool === "remember") {
+            // "Remembered: …" toast with Undo / Manage (MemoryToast).
+            const saved = parseRememberToolResult(event.output);
+            const text = rememberTextByCallId.get(event.callId);
+            if (saved && text) {
+              dispatchMemorySaved({ ...saved, text, workspaceRoot, conversationId });
+            }
+          }
           setLiveTerminalOutput("");
           completionChars += event.output.length;
           updateLastAssistant((msg) => ({

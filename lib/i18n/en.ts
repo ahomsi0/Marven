@@ -122,6 +122,13 @@ const en = {
     imagesNotSent: "This model can't see images — they won't be sent. Pick a vision model like llava or gemma3.",
     pageAttachment: "Page: {{title}}",
   },
+  memoryToast: {
+    remembered: "Remembered: {{text}}",
+    undo: "Undo",
+    manage: "Manage",
+    undone: "Forgotten.",
+    undoFailed: "Couldn't undo. Manage it in Settings.",
+  },
   searchEngines: {
     label: "Search engine",
     default: "Default",

@@ -124,6 +124,13 @@ const ar: Shape<typeof en> = {
     imagesNotSent: "هذا النموذج لا يرى الصور، لذا لن تُرسَل. اختر نموذج رؤية مثل llava أو gemma3.",
     pageAttachment: "صفحة: {{title}}",
   },
+  memoryToast: {
+    remembered: "تم الحفظ: {{text}}",
+    undo: "تراجع",
+    manage: "إدارة",
+    undone: "تم النسيان.",
+    undoFailed: "تعذّر التراجع. أدِرها من الإعدادات.",
+  },
   searchEngines: {
     label: "محرك البحث",
     default: "الافتراضي",

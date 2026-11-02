@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
+import { formatRememberToolResult } from "@/lib/memoryEvents";
 import { runGit } from "./git";
 import { safeFetch } from "@/lib/ssrfGuard";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
@@ -871,11 +872,12 @@ export async function executeTool(
           requestedScope === "global" || requestedScope === "project" || requestedScope === "conversation"
             ? requestedScope
             : workspaceRoot ? "project" : "global";
-        appendScopedMemory(content, scope, {
+        const entry = appendScopedMemory(content, scope, {
           workspaceRoot,
           conversationId: memoryContext?.conversationId,
         });
-        return `Remembered in ${scope} memory.`;
+        // The id lets the client offer Undo (see parseRememberToolResult).
+        return formatRememberToolResult(scope, entry?.id);
       } catch (err) {
         return `Remember failed: ${err instanceof Error ? err.message : String(err)}`;
       }
