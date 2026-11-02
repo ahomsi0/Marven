@@ -211,6 +211,7 @@ const en = {
     expand: "Expand browser",
     collapse: "Back to side panel",
     close: "Close browser",
+    resize: "Resize browser",
     errorUnreachable: "Can't reach this site",
     errorCertificate: "This connection isn't secure",
     errorCrashed: "This page crashed",

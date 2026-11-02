@@ -12,6 +12,8 @@ import { ErrorState } from "./ErrorState";
 
 interface BrowserPanelProps {
   expanded: boolean;
+  /** True while the panel's edge is being dragged. */
+  resizing?: boolean;
   onToggleExpand: () => void;
   onClose: () => void;
 }
@@ -21,7 +23,7 @@ interface BrowserPanelProps {
  * main process positions over `viewport`; this component draws the tabs and
  * toolbar from the main process's snapshot and keeps the view's bounds in sync.
  */
-export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanelProps) {
+export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClose }: BrowserPanelProps) {
   const { t } = useT();
   const bridge = useMemo(getBrowserBridge, []);
   const snapshot = useBrowserSnapshot(bridge);
@@ -31,6 +33,9 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
   const [menuOpen, setMenuOpen] = useState(false);
   const [frozen, setFrozen] = useState<string | null>(null);
   const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeId) ?? null;
+  // A menu over the page, or a drag of the panel's edge (the native page
+  // would swallow pointer moves that cross it), shows a screenshot instead.
+  const covered = menuOpen || resizing;
 
   // Show the active page over the viewport and keep its bounds in sync; hide
   // it while a full-window overlay (Settings, Language…) is open — a native
@@ -74,7 +79,7 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
   // Declared after the bounds effect so `show()` is sent before `freeze()`.
   useEffect(() => {
     if (!bridge) return;
-    if (!menuOpen || overlayOpen) {
+    if (!covered || overlayOpen) {
       setFrozen(null);
       bridge.unfreeze();
       return;
@@ -86,7 +91,7 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
     return () => {
       live = false;
     };
-  }, [bridge, menuOpen, overlayOpen]);
+  }, [bridge, covered, overlayOpen]);
 
   // Lets the main process handle browser shortcuts while focus is in the
   // toolbar (the page's own view handles them while the page has focus).
@@ -134,7 +139,7 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
           </div>
         )}
         {bridge && active?.error && <ErrorState error={active.error} onRetry={() => bridge.command(active.id, "retry")} />}
-        {frozen && menuOpen && (
+        {frozen && covered && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={frozen} alt="" aria-hidden className="pointer-events-none absolute inset-0 h-full w-full object-cover object-left-top" />
         )}

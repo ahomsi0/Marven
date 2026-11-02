@@ -217,6 +217,7 @@ const ar: Shape<typeof en> = {
     expand: "توسيع المتصفح",
     collapse: "العودة إلى اللوحة الجانبية",
     close: "إغلاق المتصفح",
+    resize: "تغيير حجم المتصفح",
     errorUnreachable: "تعذّر الوصول إلى هذا الموقع",
     errorCertificate: "هذا الاتصال غير آمن",
     errorCrashed: "تعطّلت هذه الصفحة",
