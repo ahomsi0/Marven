@@ -195,10 +195,16 @@ function createBrowserManager({ dir, getWindow }) {
     return entry ? tabFor(entry) : null;
   }
 
+  function setMuted(view, muted) {
+    const wc = view?.webContents;
+    if (wc && !wc.isDestroyed() && wc.isAudioMuted() !== muted) wc.setAudioMuted(muted);
+  }
+
   function detach() {
     if (!attached) return;
     const win = getWindow();
     attached.setVisible(false);
+    setMuted(attached, true);
     if (win && !win.isDestroyed() && win.contentView.children.includes(attached)) win.contentView.removeChildView(attached);
     attached = null;
   }
@@ -217,9 +223,15 @@ function createBrowserManager({ dir, getWindow }) {
     syncVisibility();
   }
 
+  // Only the page on screen plays sound: every other tab is muted, so closing
+  // the panel, opening an overlay or switching tabs silences it. A frozen page
+  // (a toolbar menu is open over it) still counts as on screen.
   function syncVisibility() {
     const tab = activeTab();
     if (attached) attached.setVisible(shown && !frozen && !!tab && !tab.error);
+    for (const t of tabs.values()) {
+      if (t.view) setMuted(t.view, !(shown && t.view === attached));
+    }
   }
 
   function forget(tab) {
