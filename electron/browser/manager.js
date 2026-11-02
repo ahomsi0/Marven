@@ -278,6 +278,7 @@ function createBrowserManager({ dir, getWindow }) {
   }
 
   function reopenClosedTab() {
+    if (state.tabs.length >= MAX_TABS) return;
     commit(model.reopenClosed(state, newId));
     showActive();
   }
