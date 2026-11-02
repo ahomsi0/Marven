@@ -24,7 +24,7 @@ import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
 import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
 import { GlobeIcon, SidebarIcon } from "@/app/components/marven/Icons";
-import { BrowserPanel } from "@/app/components/marven/BrowserPanel";
+import { BrowserPanel } from "@/app/components/marven/browser/BrowserPanel";
 import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
@@ -271,6 +271,7 @@ export function ChatLayout({
   const [settingsOpen, setSettingsOpen] = useState(false);
   // In-app browser panel beside the chat (globe button in the header).
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserExpanded, setBrowserExpanded] = useState(false);
   const [convSearchOpen, setConvSearchOpen] = useState(false);
 
   // ⌘⇧K — open cross-conversation search palette.
@@ -431,7 +432,10 @@ export function ChatLayout({
                   {mode === "chat" && (
                     <button
                       type="button"
-                      onClick={() => setBrowserOpen((v) => !v)}
+                      onClick={() => {
+                        setBrowserOpen((v) => !v);
+                        setBrowserExpanded(false);
+                      }}
                       aria-pressed={browserOpen}
                       title={t("browser.open")}
                       aria-label={t("browser.open")}
@@ -533,7 +537,7 @@ export function ChatLayout({
             />
           ) : (
             <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className={`flex min-w-0 flex-1 flex-col ${browserOpen && browserExpanded ? "hidden" : ""}`}>
               {/* Messages */}
               <main
                 ref={messagesViewportRef}
@@ -596,8 +600,21 @@ export function ChatLayout({
               </footer>
             </div>
             {browserOpen && (
-              <aside className="flex w-1/2 min-w-[360px] flex-col border-s border-[var(--m-border)]">
-                <BrowserPanel onClose={() => setBrowserOpen(false)} />
+              <aside
+                className={
+                  browserExpanded
+                    ? "flex min-w-0 flex-1 flex-col"
+                    : "flex w-1/2 min-w-[360px] flex-col border-s border-[var(--m-border)]"
+                }
+              >
+                <BrowserPanel
+                  expanded={browserExpanded}
+                  onToggleExpand={() => setBrowserExpanded((v) => !v)}
+                  onClose={() => {
+                    setBrowserOpen(false);
+                    setBrowserExpanded(false);
+                  }}
+                />
               </aside>
             )}
             </div>
