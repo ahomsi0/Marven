@@ -337,6 +337,9 @@ ipcMain.handle('check-for-updates', () => {
 });
 ipcMain.handle('install-update', () => {
   if (!updateReady) return { ok: false, error: 'No verified update is ready.' };
+  // quitAndInstall closes the windows before app.quit() runs, so the
+  // hide-on-close handler must already know this is a real quit.
+  isQuitting = true;
   autoUpdater.quitAndInstall();
   return { ok: true };
 });
@@ -880,6 +883,12 @@ ipcMain.on('pty-kill', (_e, args) => {
 
 // Cleanup all PTYs on quit so we don't leak shells.
 app.on('before-quit', () => {
+  // Every real quit path (Cmd+Q, Dock > Quit, logout/shutdown, the updater's
+  // quitAndInstall, app.quit() from a signal) comes through here. Mark the
+  // quit first so the window 'close' handler stops hiding the window instead
+  // of closing it — otherwise macOS vetoes the quit after we've already torn
+  // down every shell and the file watcher below.
+  isQuitting = true;
   inAppBrowser.flush();
   if (workspaceFileWatcher) {
     try { workspaceFileWatcher.close(); } catch {}
@@ -910,6 +919,12 @@ app.whenReady().then(async () => {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowDowngrade = false;
+
+    // Fired just before the updater closes the windows to install; without
+    // this the hide-on-close handler would veto the install's quit.
+    autoUpdater.on('before-quit-for-update', () => {
+      isQuitting = true;
+    });
 
     autoUpdater.on('update-available', (info) => {
       if (mainWindow) mainWindow.webContents.send('update-status', { type: 'available', version: info.version });
@@ -1012,6 +1027,16 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   inAppBrowser.flush();
 });
+
+// SIGTERM (kill, `concurrently` shutting down dev, launchd) and SIGINT
+// (Ctrl+C in the dev terminal) should run the normal quit path so the
+// before-quit cleanup happens and the hide-on-close handler doesn't veto it.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    isQuitting = true;
+    app.quit();
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
