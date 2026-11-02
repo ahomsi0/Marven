@@ -923,6 +923,9 @@ app.on('before-quit', () => {
     try { entry.pty.kill(); } catch {}
   }
   ptys.clear();
+  // Dev servers the agent started in the background (run_command). The kill
+  // hook is registered by the in-process Next server (packaged builds only).
+  try { if (typeof globalThis.__marvenKillAgentProcesses === 'function') globalThis.__marvenKillAgentProcesses(); } catch {}
   // Language servers are separate processes; don't leave them running.
   try { lspManager.dispose(); } catch (err) {
     console.error('[Marven] LSP shutdown failed:', err && err.message);
