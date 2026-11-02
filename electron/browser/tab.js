@@ -104,14 +104,20 @@ class Tab {
       this.navigation += 1;
       this.titleRecorded = false;
       this.visitedUrl = url;
-      this.hooks.onVisit(url, wc.getTitle());
+      // Chromium's title at commit time is often just the URL, so the visit is
+      // recorded untitled (keeping any title saved before) and the page's own
+      // page-title-updated fills it in.
+      this.hooks.onVisit(url, '');
       update();
     });
     wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
       if (!isMainFrame) return;
       this.url = url;
+      // A new route in a single-page app (not an anchor jump) is its own
+      // history entry, and gets its own first title.
       if (withoutFragment(url) !== withoutFragment(this.visitedUrl)) {
         this.visitedUrl = url;
+        this.titleRecorded = false;
         this.hooks.onVisit(url, wc.getTitle());
       }
       update();
