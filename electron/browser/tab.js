@@ -84,17 +84,21 @@ class Tab {
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
 
+    // The old page stays on screen until the new one commits, so only the
+    // error is cleared when a navigation starts; the rest resets on commit.
+    // (Failed loads don't emit did-navigate.)
     wc.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
-      this.blocked = 0;
       this.error = null;
-      this.favicon = null;
       update();
     });
     wc.on('did-navigate', (_e, url) => {
       this.url = url;
+      this.favicon = null;
+      this.blocked = 0;
+      this.title = ''; // the page's own page-title-updated sets it
       this.navigation += 1;
-      if (!this.error) this.hooks.onVisit(url, wc.getTitle());
+      this.hooks.onVisit(url, wc.getTitle());
       update();
     });
     wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
@@ -136,11 +140,14 @@ class Tab {
     });
   }
 
+  // With a view, `url` follows the page (did-navigate / did-fail-load set it);
+  // a tab with no view yet keeps the URL so ensureView loads it.
   load(url) {
     if (!isWebUrl(url)) return false;
-    this.url = url;
     this.error = null;
-    this.webContents?.loadURL(url).catch(() => {});
+    const wc = this.webContents;
+    if (wc) wc.loadURL(url).catch(() => {});
+    else this.url = url;
     this.hooks.onUpdate(this);
     return true;
   }
