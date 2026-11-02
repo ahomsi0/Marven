@@ -16,6 +16,7 @@ const en = {
   sidebar: {
     closeSidebar: "Close sidebar",
     openSidebar: "Open sidebar",
+    resize: "Resize sidebar",
     showConversations: "Show conversations",
     chats: "Chats",
     agentSessions: "Agent sessions",

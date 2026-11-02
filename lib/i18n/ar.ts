@@ -18,6 +18,7 @@ const ar: Shape<typeof en> = {
   sidebar: {
     closeSidebar: "إخفاء الشريط الجانبي",
     openSidebar: "إظهار الشريط الجانبي",
+    resize: "تغيير حجم الشريط الجانبي",
     showConversations: "عرض المحادثات",
     chats: "المحادثات",
     agentSessions: "جلسات الوكيل",
