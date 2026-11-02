@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
@@ -10,6 +10,7 @@ import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
 import { useOverlayGuard } from "@/lib/overlays";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
@@ -321,6 +322,8 @@ export function SettingsModal({
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   // System prompt: edited as a draft, saved explicitly (button or ⌘↵).
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const browserBridge = useMemo(getBrowserBridge, []);
+  const [browsingDataState, setBrowsingDataState] = useState<"idle" | "clearing" | "cleared">("idle");
   const [savedSystemPrompt, setSavedSystemPrompt] = useState("");
   const systemPromptDirty = systemPromptDraft !== savedSystemPrompt;
   function saveSystemPrompt() {
@@ -950,6 +953,26 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
+
+            {/* In-app browser data */}
+            {browserBridge && (
+              <div>
+                <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.browsingData")}</h3>
+                <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.browsingDataHint")}</p>
+                <button
+                  type="button"
+                  disabled={browsingDataState === "clearing"}
+                  onClick={async () => {
+                    setBrowsingDataState("clearing");
+                    await browserBridge.clearBrowsingData();
+                    setBrowsingDataState("cleared");
+                  }}
+                  className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-50"
+                >
+                  {browsingDataState === "cleared" ? tr("settings.general.browsingDataCleared") : tr("settings.general.clearBrowsingData")}
+                </button>
+              </div>
+            )}
 
             {/* Theme selector — visual preview tiles */}
             <div>
