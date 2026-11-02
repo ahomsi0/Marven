@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BrowserBridge, BrowserSnapshot } from "@/lib/inAppBrowser";
+import { DEFAULT_SEARCH_ENGINE, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBrowser";
 
-const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, downloads: [] };
+const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, downloads: [], searchEngine: DEFAULT_SEARCH_ENGINE };
 
 /** The latest browser snapshot pushed by the main process. */
 export function useBrowserSnapshot(bridge: BrowserBridge | null): BrowserSnapshot {

@@ -12,9 +12,9 @@ const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
 const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
+const { searchEngine, DEFAULT_ENGINE_ID } = require('./searchEngines');
 const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 
-const HOME_URL = 'https://search.brave.com/';
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
 // during a page load) wait a little longer. One push covers both.
@@ -38,6 +38,8 @@ function createBrowserManager({ dir, getWindow }) {
   let panelFocused = false;
   let snapshotTimer = null;
   let snapshotDue = 0;
+  // The user's search engine (Settings → Browser); new tabs open on its home page.
+  let engine = searchEngine(DEFAULT_ENGINE_ID);
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
   const host = createViewHost({
     getWindow,
@@ -95,6 +97,7 @@ function createBrowserManager({ dir, getWindow }) {
       }),
       activeId: state.activeId,
       downloads: downloads.list(),
+      searchEngine: { id: engine.id, name: engine.name, searchUrl: engine.searchUrl },
     };
   }
 
@@ -182,7 +185,7 @@ function createBrowserManager({ dir, getWindow }) {
 
   function newTab(url, { afterId = null, activate = true } = {}) {
     if (state.tabs.length >= MAX_TABS) return null;
-    const entry = { id: newId(), url: isWebUrl(url) ? url : HOME_URL, title: '' };
+    const entry = { id: newId(), url: isWebUrl(url) ? url : engine.homeUrl, title: '' };
     commit(model.addTab(state, entry, { afterId, activate }));
     showActive();
     return entry.id;
@@ -204,7 +207,7 @@ function createBrowserManager({ dir, getWindow }) {
     const tab = tabs.get(id);
     commit(model.closeTab(state, id));
     if (tab) forget(tab);
-    if (state.tabs.length === 0) newTab(HOME_URL);
+    if (state.tabs.length === 0) newTab(engine.homeUrl);
     else showActive();
   }
 
@@ -241,7 +244,7 @@ function createBrowserManager({ dir, getWindow }) {
   function show(b) {
     loadBlocker();
     host.show(b);
-    if (state.tabs.length === 0) newTab(HOME_URL);
+    if (state.tabs.length === 0) newTab(engine.homeUrl);
     else showActive();
     scheduleSnapshot();
   }
@@ -260,7 +263,7 @@ function createBrowserManager({ dir, getWindow }) {
     if (!shortcut) return false;
     const active = state.activeId;
     switch (shortcut.action) {
-      case 'new-tab': newTab(HOME_URL); break;
+      case 'new-tab': newTab(engine.homeUrl); break;
       // Deferred: closing destroys the view whose input event is being handled.
       case 'close-tab': if (active) setImmediate(() => closeTab(active)); break;
       case 'reopen-tab': reopenClosedTab(); break;
@@ -347,6 +350,10 @@ function createBrowserManager({ dir, getWindow }) {
     freeze: ready(host.freeze),
     unfreeze: ready(host.unfreeze),
     setPanelFocused: (focused) => { panelFocused = focused; },
+    setSearchEngine: (id) => {
+      engine = searchEngine(id);
+      if (ses) scheduleSnapshot();
+    },
     snapshot: ready(snapshot),
     newTab: ready((url) => newTab(url)),
     closeTab: ready(closeTab),
@@ -367,4 +374,4 @@ function createBrowserManager({ dir, getWindow }) {
   };
 }
 
-module.exports = { createBrowserManager, HOME_URL };
+module.exports = { createBrowserManager };

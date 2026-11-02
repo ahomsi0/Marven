@@ -11,6 +11,7 @@ import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
 import { useOverlayGuard } from "@/lib/overlays";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { SearchEnginePicker } from "./SearchEnginePicker";
 import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
@@ -2305,7 +2306,16 @@ export function SettingsModal({
 
         {/* ── Browser ── */}
         {activePage === "browser" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.searchEngine")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.searchEngineHint")}</p>
+              <SearchEnginePicker />
+            </div>
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.openLinks")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.openLinksHint")}</p>
+              <div className="space-y-4">
             {(
               [
                 {
@@ -2374,6 +2384,8 @@ export function SettingsModal({
                 </button>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
 

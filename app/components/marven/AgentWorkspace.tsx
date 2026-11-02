@@ -1277,7 +1277,7 @@ export function AgentWorkspace({
           <>
             <div
               onMouseDown={startRightDrag}
-              className="group relative z-10 -ms-px w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--m-accent)]/40 active:bg-[var(--m-accent)]/60"
+              className="group relative z-10 -ms-px w-1 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
               title={t("agent.resizePanel")}
             />
             <aside

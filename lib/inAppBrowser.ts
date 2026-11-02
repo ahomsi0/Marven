@@ -1,5 +1,7 @@
 // Renderer side of the in-app browser (electron/browser/ does the work).
 
+import searchEngineList from "@/electron/browser/searchEngines.json";
+
 export interface BrowserError {
   kind: "unreachable" | "certificate" | "crashed";
   description: string;
@@ -26,10 +28,20 @@ export interface BrowserDownload {
   totalBytes: number;
 }
 
+export type SearchEngineId = "brave" | "google" | "duckduckgo" | "bing";
+
+export interface SearchEngine {
+  id: SearchEngineId;
+  name: string;
+  searchUrl: string;
+  homeUrl: string;
+}
+
 export interface BrowserSnapshot {
   tabs: BrowserTab[];
   activeId: string | null;
   downloads: BrowserDownload[];
+  searchEngine: Pick<SearchEngine, "id" | "name" | "searchUrl">;
 }
 
 export interface BrowserBounds {
@@ -101,14 +113,17 @@ export function isWebUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
-export const SEARCH_URL = "https://search.brave.com/search?q=";
+/** Search engines offered in onboarding and Settings; the first is the default (Brave). */
+export const SEARCH_ENGINES = searchEngineList as SearchEngine[];
+export const DEFAULT_SEARCH_ENGINE = SEARCH_ENGINES[0];
+export const SEARCH_URL = DEFAULT_SEARCH_ENGINE.searchUrl;
 
 /**
  * Turn address-bar input into a URL: full http(s) URLs pass through, bare
  * hosts get a scheme (http for localhost), anything else becomes a search.
  * Never returns a non-http(s) URL.
  */
-export function normalizeBrowserInput(input: string): string | null {
+export function normalizeBrowserInput(input: string, searchUrl: string = SEARCH_URL): string | null {
   const text = input.trim();
   if (!text) return null;
 
@@ -116,7 +131,7 @@ export function normalizeBrowserInput(input: string): string | null {
     try {
       return new URL(text).href;
     } catch {
-      return SEARCH_URL + encodeURIComponent(text);
+      return searchUrl + encodeURIComponent(text);
     }
   }
 
@@ -136,5 +151,5 @@ export function normalizeBrowserInput(input: string): string | null {
     }
   }
 
-  return SEARCH_URL + encodeURIComponent(text);
+  return searchUrl + encodeURIComponent(text);
 }
