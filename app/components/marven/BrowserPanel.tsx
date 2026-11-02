@@ -7,7 +7,7 @@ import { useAnyOverlayOpen } from "@/lib/overlays";
 import { getBrowserBridge, normalizeBrowserInput, type BrowserBounds, type BrowserState } from "@/lib/inAppBrowser";
 
 const LAST_URL_KEY = "marven-browser-last-url";
-const HOME_URL = "https://duckduckgo.com/";
+const HOME_URL = "https://search.brave.com/";
 
 interface BrowserPanelProps {
   onClose: () => void;

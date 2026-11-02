@@ -31,7 +31,7 @@ export function getBrowserBridge(): BrowserBridge | null {
   return ((window as any).marvenElectron?.browser as BrowserBridge | undefined) ?? null;
 }
 
-export const SEARCH_URL = "https://duckduckgo.com/?q=";
+export const SEARCH_URL = "https://search.brave.com/search?q=";
 
 /**
  * Turn address-bar input into a URL: full http(s) URLs pass through, bare
