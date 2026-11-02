@@ -2189,7 +2189,9 @@ export default function Home() {
     agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
     agentStreamLoadMessages(nextMessages);
     setAgentTokenUsage(zeroUsage("estimated"));
-    await agentStreamSend(trimmed, { attachments });
+    // Pass the truncated thread explicitly — the load above hasn't rendered
+    // yet, so send must not build (or condense) the turn from the old thread.
+    await agentStreamSend(trimmed, { attachments, baseMessages: nextMessages });
   }
 
   async function handleRetryMessage(messageId: string) {
