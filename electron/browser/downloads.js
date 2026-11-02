@@ -49,32 +49,38 @@ function createDownloads({ onChange }) {
     return path.resolve(override || app.getPath('downloads'));
   }
 
+  // Stops a download before anything is saved.
+  function reject(event, item) {
+    event.preventDefault();
+    item.cancel();
+  }
+
   // True when this download may go ahead; otherwise cancels it.
-  function admit(item, webContents) {
+  function admit(event, item, webContents) {
     if (inProgress >= MAX_IN_PROGRESS) {
       if (!capWarned) console.warn(`[browser] too many downloads in progress, cancelling new ones (limit ${MAX_IN_PROGRESS})`);
       capWarned = true;
-      item.cancel();
+      reject(event, item);
       return false;
     }
     const { ok, warn } = perTab.take(webContents?.id ?? 'unknown');
     if (!ok) {
       if (warn) console.warn(`[browser] a page started too many downloads, cancelling new ones (limit ${PER_TAB_MAX} per ${PER_TAB_WINDOW_MS / 1000}s)`);
-      item.cancel();
+      reject(event, item);
       return false;
     }
     capWarned = false;
     return true;
   }
 
-  function handle(_event, item, webContents) {
-    if (!admit(item, webContents)) return;
+  function handle(event, item, webContents) {
+    if (!admit(event, item, webContents)) return;
     const dir = folder();
     const exists = (n) => reserved.has(n.toLowerCase()) || fs.existsSync(path.join(dir, n));
     const name = uniqueName(sanitizeFilename(item.getFilename()), exists);
     const target = path.join(dir, name);
     if (path.dirname(target) !== dir) {
-      item.cancel();
+      reject(event, item);
       return;
     }
     item.setSavePath(target);
