@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GlobeIcon } from "../Icons";
 import { useT } from "@/lib/i18n";
 import { hostOf, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBrowser";
@@ -8,11 +8,51 @@ import { hostOf, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBro
 export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot: BrowserSnapshot }) {
   const { t } = useT();
   const [dragId, setDragId] = useState<string | null>(null);
+  const tabRefs = useRef(new Map<string, HTMLDivElement>());
+
+  // Keep the active tab visible when the strip overflows.
+  useEffect(() => {
+    if (!snapshot.activeId) return;
+    tabRefs.current.get(snapshot.activeId)?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [snapshot.activeId]);
+
+  function focusTab(index: number) {
+    const tab = snapshot.tabs[index];
+    if (!tab) return;
+    bridge.activateTab(tab.id);
+    tabRefs.current.get(tab.id)?.focus();
+  }
+
+  function onTabKeyDown(e: React.KeyboardEvent<HTMLDivElement>, index: number, id: string) {
+    const rtl = document.documentElement.dir === "rtl";
+    const last = snapshot.tabs.length - 1;
+    let next: number | null = null;
+    if (e.key === "ArrowLeft") next = rtl ? index + 1 : index - 1;
+    else if (e.key === "ArrowRight") next = rtl ? index - 1 : index + 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next !== null) {
+      e.preventDefault();
+      focusTab(Math.min(Math.max(next, 0), last));
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      bridge.activateTab(id);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      bridge.closeTab(id);
+    }
+  }
 
   return (
     <div
       role="tablist"
       aria-label={t("browser.tabs")}
+      onWheel={(e) => {
+        // Mouse wheels scroll vertically; move the strip sideways instead
+        // (towards the end of the strip in either direction).
+        if (e.deltaX !== 0 || e.deltaY === 0) return;
+        e.currentTarget.scrollLeft += document.documentElement.dir === "rtl" ? -e.deltaY : e.deltaY;
+      }}
       className="flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-[var(--m-border-subtle)] px-1.5 pt-1.5 [scrollbar-width:none]"
     >
       {snapshot.tabs.map((tab, index) => {
@@ -21,6 +61,10 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
         return (
           <div
             key={tab.id}
+            ref={(el) => {
+              if (el) tabRefs.current.set(tab.id, el);
+              else tabRefs.current.delete(tab.id);
+            }}
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
@@ -43,12 +87,7 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
             onAuxClick={(e) => {
               if (e.button === 1) bridge.closeTab(tab.id);
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                bridge.activateTab(tab.id);
-              }
-            }}
+            onKeyDown={(e) => onTabKeyDown(e, index, tab.id)}
             className={`group flex h-full min-w-[80px] max-w-[180px] flex-1 cursor-default items-center gap-1.5 rounded-t-md border border-b-0 px-2 text-[12px] ${
               active
                 ? "border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text)]"
@@ -66,6 +105,7 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
             <span className="min-w-0 flex-1 truncate">{label}</span>
             <button
               type="button"
+              tabIndex={-1}
               aria-label={t("browser.closeTab")}
               title={t("browser.closeTab")}
               onClick={(e) => {
