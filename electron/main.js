@@ -7,6 +7,7 @@ const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { sanitizedEnv } = require('./envSanitize');
+const { registerInAppBrowser } = require('./browserView');
 
 const isDev = !app.isPackaged;
 
@@ -310,6 +311,9 @@ function applySettings(settings) {
   setEnv('ELEVENLABS_MODEL', settings.elevenLabsModel);
 }
 
+// In-app browser (chat panel): native WebContentsView, see browserView.js.
+const attachInAppBrowser = registerInAppBrowser(() => mainWindow);
+
 ipcMain.handle('get-settings', () => publicSettings(loadSettings()));
 ipcMain.handle('save-settings', (_, settings) => {
   const next = persistSettings(settings);
@@ -415,6 +419,7 @@ function createWindow() {
 
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
+  attachInAppBrowser(mainWindow);
 
   const appPort = isDev ? 3000 : 47891;
   mainWindow.loadURL(`http://localhost:${appPort}`);

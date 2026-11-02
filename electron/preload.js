@@ -52,6 +52,22 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   // Codebase indexing — moved to /api/index/* (see lib/index/client.ts). The
   // renderer talks to the Next.js server directly; no IPC bridge needed.
 
+  // ── In-app browser ──────────────────────────────────────────────────────────
+  // A native view the main process layers over the chat's browser panel.
+  // `bounds` is the panel viewport's rect in CSS pixels.
+  browser: {
+    show: (bounds, url) => ipcRenderer.invoke("browser-show", { bounds, url }),
+    setBounds: (bounds) => ipcRenderer.send("browser-bounds", bounds),
+    hide: () => ipcRenderer.send("browser-hide"),
+    navigate: (url) => ipcRenderer.invoke("browser-navigate", url),
+    command: (name) => ipcRenderer.send("browser-command", name),
+    onState: (cb) => {
+      const handler = (_e, data) => cb(data);
+      ipcRenderer.on("browser-state", handler);
+      return () => ipcRenderer.removeListener("browser-state", handler);
+    },
+  },
+
   // ── LSP bridge ────────────────────────────────────────────────────────────
   lsp: {
     ensure: (languageId) => ipcRenderer.invoke("lsp-ensure", languageId),

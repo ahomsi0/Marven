@@ -179,6 +179,17 @@ const en = {
     menuTrust: "Trust this workspace",
     menuReadOnly: "Make read-only",
   },
+  browser: {
+    open: "Browser",
+    back: "Back",
+    forward: "Forward",
+    reload: "Reload",
+    stop: "Stop loading",
+    address: "Search or enter an address",
+    openExternal: "Open in your browser",
+    close: "Close browser",
+    desktopOnly: "The in-app browser works in the Marven desktop app.",
+  },
   whatsNew: {
     title: "What's new in v{{version}}",
   },

@@ -181,6 +181,17 @@ const ar: Shape<typeof en> = {
     menuTrust: "الوثوق بمساحة العمل",
     menuReadOnly: "جعلها للقراءة فقط",
   },
+  browser: {
+    open: "المتصفح",
+    back: "رجوع",
+    forward: "تقدّم",
+    reload: "إعادة التحميل",
+    stop: "إيقاف التحميل",
+    address: "ابحث أو أدخل عنوانًا",
+    openExternal: "فتح في متصفحك",
+    close: "إغلاق المتصفح",
+    desktopOnly: "يعمل المتصفح المدمج في تطبيق Marven لسطح المكتب.",
+  },
   whatsNew: {
     title: "الجديد في الإصدار {{version}}",
   },

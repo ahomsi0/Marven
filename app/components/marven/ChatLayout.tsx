@@ -23,7 +23,8 @@ import { Message } from "@/app/components/marven/Message";
 import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
 import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
-import { SidebarIcon } from "@/app/components/marven/Icons";
+import { GlobeIcon, SidebarIcon } from "@/app/components/marven/Icons";
+import { BrowserPanel } from "@/app/components/marven/BrowserPanel";
 import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
@@ -268,6 +269,8 @@ export function ChatLayout({
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // In-app browser panel beside the chat (globe button in the header).
+  const [browserOpen, setBrowserOpen] = useState(false);
   const [convSearchOpen, setConvSearchOpen] = useState(false);
 
   // ⌘⇧K — open cross-conversation search palette.
@@ -425,7 +428,22 @@ export function ChatLayout({
                       </svg>
                     </button>
                   )}
-
+                  {mode === "chat" && (
+                    <button
+                      type="button"
+                      onClick={() => setBrowserOpen((v) => !v)}
+                      aria-pressed={browserOpen}
+                      title={t("browser.open")}
+                      aria-label={t("browser.open")}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        browserOpen
+                          ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
+                          : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                      }`}
+                    >
+                      <GlobeIcon className="h-[18px] w-[18px]" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -514,7 +532,8 @@ export function ChatLayout({
               onEditAgentUserMessage={onEditAgentUserMessage}
             />
           ) : (
-            <>
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className="flex min-w-0 flex-1 flex-col">
               {/* Messages */}
               <main
                 ref={messagesViewportRef}
@@ -575,7 +594,13 @@ export function ChatLayout({
                   />
                 </div>
               </footer>
-            </>
+            </div>
+            {browserOpen && (
+              <aside className="flex w-1/2 min-w-[360px] flex-col border-s border-[var(--m-border)]">
+                <BrowserPanel onClose={() => setBrowserOpen(false)} />
+              </aside>
+            )}
+            </div>
           )}
         </div>
       </div>

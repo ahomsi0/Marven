@@ -9,6 +9,7 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
+import { useOverlayGuard } from "@/lib/overlays";
 import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
@@ -309,6 +310,8 @@ export function SettingsModal({
   workspaceRoot = null,
   voiceDiagnostics,
 }: SettingsModalProps) {
+  // The full-window overlay hides the in-app browser's native view while open.
+  useOverlayGuard(!inline);
   const { theme, setTheme } = useTheme();
   // `tr`, not `t`: several loops in this file already use `t` as a variable.
   const { t: tr } = useT();
