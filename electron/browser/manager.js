@@ -15,12 +15,15 @@ const { createBlocker } = require('./blocker');
 const { createDownloads } = require('./downloads');
 const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
+const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
 const { hostOf, isWebUrl, isHost } = require('./validate');
 
 const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
 const SNAPSHOT_DELAY_MS = 16;
+const MAX_TABS = 100;
+const POPUPS_PER_SECOND = 2;
 const newId = () => crypto.randomUUID();
 
 /**
@@ -40,6 +43,7 @@ function createBrowserManager({ dir, getWindow }) {
   let panelFocused = false;
   let attached = null;
   let snapshotTimer = null;
+  const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
 
   function init() {
     if (ses) return;
@@ -60,7 +64,7 @@ function createBrowserManager({ dir, getWindow }) {
     ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     ses.setPermissionCheckHandler(() => false);
     downloads = createDownloads({ onChange: scheduleSnapshot });
-    ses.on('will-download', (event, item) => downloads.handle(event, item));
+    ses.on('will-download', (event, item, webContents) => downloads.handle(event, item, webContents));
     const blocker = createBlocker({
       dir,
       isDisabledFor: blockingDisabled,
@@ -143,7 +147,7 @@ function createBrowserManager({ dir, getWindow }) {
             scheduleSnapshot();
           });
         },
-        onOpenTab: (opener, url) => newTab(url, { afterId: opener.id }),
+        onOpenTab: openPopup,
         onShortcut: handleShortcut,
         onView: (t) => byWebContents.set(t.webContentsId, t),
       },
@@ -202,10 +206,23 @@ function createBrowserManager({ dir, getWindow }) {
   }
 
   function newTab(url, { afterId = null, activate = true } = {}) {
+    if (state.tabs.length >= MAX_TABS) return null;
     const entry = { id: newId(), url: isWebUrl(url) ? url : HOME_URL, title: '' };
     commit(model.addTab(state, entry, { afterId, activate }));
     showActive();
     return entry.id;
+  }
+
+  // window.open from a page: limited per opener so a page can't flood the
+  // tab strip, and dropped once the tab cap is reached.
+  function openPopup(opener, url, { background = false } = {}) {
+    if (state.tabs.length >= MAX_TABS) return;
+    const { ok, warn } = popupLimiter.take(opener.id);
+    if (!ok) {
+      if (warn) console.warn(`[browser] a page opened too many windows, ignoring new ones (limit ${POPUPS_PER_SECOND} per second)`);
+      return;
+    }
+    newTab(url, { afterId: opener.id, activate: !background });
   }
 
   function closeTab(id) {

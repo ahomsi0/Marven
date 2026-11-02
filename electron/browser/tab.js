@@ -1,7 +1,8 @@
 // One browser tab: a native WebContentsView created the first time the tab is
 // shown (restored tabs stay unloaded until then), plus the page state the UI
 // draws. Security is the same for every tab: sandboxed, no Node, no preload,
-// http(s) only, and window.open becomes a new tab.
+// http(s) only, window.open becomes a new tab, client certificates are never
+// handed out, and repeated dialogs can be suppressed by the user.
 
 const { WebContentsView } = require('electron');
 const { isWebUrl } = require('./validate');
@@ -16,7 +17,7 @@ class Tab {
    *   onVisit: (url: string, title: string) => void,
    *   onTitle: (url: string, title: string) => void,
    *   onFavicon: (tab: Tab, iconUrl: string) => void,
-   *   onOpenTab: (tab: Tab, url: string) => void,
+   *   onOpenTab: (tab: Tab, url: string, options: { background: boolean }) => void,
    *   onShortcut: (input: Electron.Input) => boolean,
    *   onView: (tab: Tab) => void,
    * } }} options
@@ -48,6 +49,8 @@ class Tab {
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
+        safeDialogs: true,
+        autoplayPolicy: 'document-user-activation-required',
       },
     });
     this.view.setVisible(false);
@@ -62,9 +65,13 @@ class Tab {
   wire(wc) {
     const update = () => this.hooks.onUpdate(this);
 
-    wc.setWindowOpenHandler(({ url }) => {
-      if (isWebUrl(url)) this.hooks.onOpenTab(this, url);
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (isWebUrl(url)) this.hooks.onOpenTab(this, url, { background: disposition === 'background-tab' });
       return { action: 'deny' };
+    });
+    wc.on('select-client-certificate', (event, _url, _list, callback) => {
+      event.preventDefault();
+      callback();
     });
     const guard = (details) => {
       if (!isWebUrl(details.url)) details.preventDefault();
