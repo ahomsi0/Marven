@@ -39,6 +39,7 @@ import { useProviderModels } from "@/hooks/useProviderModels";
 import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { versionControls } from "@/lib/messageVersions";
+import { OPEN_SETTINGS_EVENT, openSettingsPage } from "@/lib/settingsNav";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -394,6 +395,16 @@ export function ChatLayout({
     setBrowserExpanded(false);
   }, [activeConversationId]);
 
+  // "Report a problem" / "Manage memory" from anywhere (palette, memory toast):
+  // open the real Settings window in chat mode; the modal picks up the pending
+  // page when it mounts (see lib/settingsNav.ts).
+  useEffect(() => {
+    if (mode !== "chat") return;
+    const onOpenSettings = () => setSettingsOpen(true);
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+  }, [mode]);
+
   // ⌘⇧K — open cross-conversation search palette.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -555,6 +566,12 @@ export function ChatLayout({
       group: general,
       label: t("palette.commands.reportProblem"),
       action: () => window.dispatchEvent(new CustomEvent("marven:report-problem")),
+    });
+    commands.push({
+      id: "manage-memory",
+      group: general,
+      label: t("palette.commands.manageMemory"),
+      action: () => openSettingsPage({ page: "memory" }),
     });
 
     if (mode === "agent" && agentPaletteCommandsRef.current.length > 0) {

@@ -172,6 +172,7 @@ const en = {
       exportChat: "Export chat as Markdown",
       checkUpdates: "Check for updates",
       reportProblem: "Report a problem",
+      manageMemory: "Manage memory",
     },
     agent: {
       saveFile: "Save file",

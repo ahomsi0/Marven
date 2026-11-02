@@ -174,6 +174,7 @@ const ar: Shape<typeof en> = {
       exportChat: "تصدير المحادثة بصيغة Markdown",
       checkUpdates: "التحقق من التحديثات",
       reportProblem: "الإبلاغ عن مشكلة",
+      manageMemory: "إدارة الذاكرة",
     },
     agent: {
       saveFile: "حفظ الملف",
