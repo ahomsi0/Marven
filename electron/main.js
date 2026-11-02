@@ -923,6 +923,10 @@ app.on('before-quit', () => {
     try { entry.pty.kill(); } catch {}
   }
   ptys.clear();
+  // Language servers are separate processes; don't leave them running.
+  try { lspManager.dispose(); } catch (err) {
+    console.error('[Marven] LSP shutdown failed:', err && err.message);
+  }
 });
 
 app.whenReady().then(async () => {
