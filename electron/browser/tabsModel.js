@@ -6,10 +6,21 @@ const { isWebUrl, cleanText } = require('./validate');
 const CLOSED_LIMIT = 10;
 const TITLE_LIMIT = 300;
 
+/** @typedef {{ id: string, url: string, title: string }} TabEntry */
+/** @typedef {{ url: string, title: string, index: number }} ClosedEntry */
+/** @typedef {{ tabs: TabEntry[], activeId: string | null, closed: ClosedEntry[] }} TabsState */
+
+/** @returns {TabsState} */
 function emptyState() {
   return { tabs: [], activeId: null, closed: [] };
 }
 
+/**
+ * @param {TabsState} state
+ * @param {TabEntry} tab
+ * @param {{ afterId?: string | null, activate?: boolean }} [options]
+ * @returns {TabsState}
+ */
 function addTab(state, tab, { afterId = null, activate = true } = {}) {
   const tabs = [...state.tabs];
   const at = afterId ? tabs.findIndex((t) => t.id === afterId) : -1;

@@ -27,9 +27,9 @@ describe("bookmarks", () => {
       { id: "2", url: "https://docs.python.org/", title: "Python docs", addedAt: 3 },
       { id: "3", url: "https://gitlab.com/", title: "GitLab", addedAt: 2 },
     ];
-    expect(searchBookmarks(list, "").map((b) => b.id)).toEqual(["2", "3", "1"]);
-    expect(searchBookmarks(list, "GIT").map((b) => b.id)).toEqual(["3", "1"]);
-    expect(searchBookmarks(list, "python").map((b) => b.id)).toEqual(["2"]);
+    expect(searchBookmarks(list, "").map((b: { id: string }) => b.id)).toEqual(["2", "3", "1"]);
+    expect(searchBookmarks(list, "GIT").map((b: { id: string }) => b.id)).toEqual(["3", "1"]);
+    expect(searchBookmarks(list, "python").map((b: { id: string }) => b.id)).toEqual(["2"]);
   });
 
   it("sanitizes whatever was on disk", () => {
