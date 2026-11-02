@@ -23,7 +23,9 @@ const SYSTEM_PROMPT =
 export function streamAnthropic(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
@@ -32,7 +34,7 @@ export function streamAnthropic(
 
   const client = new Anthropic({ apiKey: key });
 
-  return providerStream({ provider: "Anthropic", model }, async (emit, signal) => {
+  return providerStream({ provider: "Anthropic", model, signal }, async (emit, signal) => {
     const stream = client.messages.stream(
       {
         model,

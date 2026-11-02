@@ -83,6 +83,8 @@ interface ChatLayoutProps {
   onOpenFolder: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  /** Stop the chat reply streaming into the active conversation. */
+  onStop?: () => void;
   onVoiceClick: () => void;
   onProviderChange: (provider: AIProvider) => void;
   onModelChange: (model: string) => void;
@@ -213,6 +215,7 @@ export function ChatLayout({
   onOpenFolder,
   onInputChange,
   onSend,
+  onStop,
   onVoiceClick,
   onProviderChange,
   onModelChange,
@@ -667,6 +670,7 @@ export function ChatLayout({
                     promptTemplates={promptTemplates}
                     onChange={onInputChange}
                     onSend={onSend}
+                    onStop={onStop}
                     onVoiceClick={onVoiceClick}
                     onSlashCommand={handleSlashCommand}
                     onProviderChange={onProviderChange}

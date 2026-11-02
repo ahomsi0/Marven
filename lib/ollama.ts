@@ -8,23 +8,32 @@ import { stripAttachments } from "@/lib/imageHelpers";
 export const DEFAULT_MODEL = "phi3";
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 
+// A non-streamed generation has to finish within this; a cold model load plus
+// a long answer on a slow machine can take a while, so it's generous.
+const GENERATE_TIMEOUT_MS = 5 * 60_000;
+const TAGS_TIMEOUT_MS = 5_000;
+
 export async function askOllama(
   prompt: string,
   model: string,
-  attachments?: ImageAttachment[]
+  attachments?: ImageAttachment[],
+  signal?: AbortSignal
 ): Promise<string> {
   const safePrompt = attachments?.length
     ? stripAttachments(prompt, attachments)
     : prompt;
   let response: Response;
+  const timeout = AbortSignal.timeout(GENERATE_TIMEOUT_MS);
 
   try {
     response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, prompt: safePrompt, stream: false }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch {
+    if (timeout.aborted) throw new Error("Ollama took too long to respond.");
     throw new Error(
       "Could not connect to Ollama. Make sure it is running with: ollama serve"
     );
@@ -45,7 +54,9 @@ export async function fetchInstalledModels(): Promise<{ name: string; size: numb
   let response: Response;
 
   try {
-    response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
+    });
   } catch {
     throw new Error("Could not connect to Ollama.");
   }

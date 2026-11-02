@@ -35,7 +35,9 @@ export async function getLlamaServerModels(
 export function streamLlamaServer(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const baseUrl = process.env.LLAMA_SERVER_URL ?? "http://localhost:8080";
   const client = new OpenAI({ baseURL: `${baseUrl}/v1`, apiKey: "llama-server" });
@@ -51,7 +53,7 @@ export function streamLlamaServer(
     })),
   ];
 
-  return providerStream({ provider: "llama-server", model }, async (emit, signal) => {
+  return providerStream({ provider: "llama-server", model, signal }, async (emit, signal) => {
     const stream = await client.chat.completions.create(
       { model, messages: msgs, stream: true, temperature: 0.7 },
       { signal },

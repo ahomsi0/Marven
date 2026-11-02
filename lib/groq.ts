@@ -131,7 +131,9 @@ export async function askGroq(
 export function streamGroq(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const key = process.env.GROQ_API_KEY;
   if (!key) {
@@ -140,7 +142,7 @@ export function streamGroq(
     );
   }
 
-  return providerStream({ provider: "Groq", model }, async (emit, signal) => {
+  return providerStream({ provider: "Groq", model, signal }, async (emit, signal) => {
     const res = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {

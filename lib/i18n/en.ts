@@ -98,6 +98,7 @@ const en = {
     stopListening: "Stop listening",
     send: "Send message",
     sending: "Sending message",
+    stop: "Stop generating",
     sttLocalHint: "Speech-to-text runs on this machine",
     sttGroqHint: "Speech-to-text runs on Groq Cloud",
     sttLocal: "Local",

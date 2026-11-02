@@ -17,7 +17,9 @@ export const OPENROUTER_MODELS = [
 export function streamOpenRouter(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY is not set in settings");
@@ -26,7 +28,7 @@ export function streamOpenRouter(
     ? [{ role: "system", content: systemPrompt }]
     : [];
 
-  return providerStream({ provider: "OpenRouter", model }, async (emit, signal) => {
+  return providerStream({ provider: "OpenRouter", model, signal }, async (emit, signal) => {
     const res = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {

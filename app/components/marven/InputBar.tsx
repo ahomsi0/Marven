@@ -29,6 +29,8 @@ interface InputBarProps {
   lastHeard: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  /** Shown in place of Send while a reply is streaming. */
+  onStop?: () => void;
   onVoiceClick: () => void;
   onSlashCommand?: (cmd: string) => void;
   onProviderChange: (p: AIProvider) => void;
@@ -59,6 +61,7 @@ export function InputBar({
   lastHeard,
   onChange,
   onSend,
+  onStop,
   onVoiceClick,
   onSlashCommand,
   onProviderChange,
@@ -340,17 +343,32 @@ export function InputBar({
             </button>
           )}
 
-          <button
-            type="button"
-            aria-label={isLoading ? t("input.sending") : t("input.send")}
-            onClick={onSend}
-            disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
-            className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
-          >
-            <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
-            </svg>
-          </button>
+          {isLoading && onStop ? (
+            // Same look as the agent panel's stop button.
+            <button
+              type="button"
+              aria-label={t("input.stop")}
+              title={t("input.stop")}
+              onClick={onStop}
+              className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center border border-red-700/40 bg-red-950/25 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/45"
+            >
+              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={isLoading ? t("input.sending") : t("input.send")}
+              onClick={onSend}
+              disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
+              className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
+            >
+              <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Bottom strip */}

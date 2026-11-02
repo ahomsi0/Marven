@@ -270,7 +270,12 @@ export default function Home() {
   const [agentTokenUsage, setAgentTokenUsage] = useState<TokenUsage>(zeroUsage("estimated"));
 
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  // Chat sends in flight, by conversation id — a slow reply in one
+  // conversation mustn't lock the input in the others. The ref holds each
+  // send's AbortController (and doubles as a synchronous double-send guard);
+  // the state mirrors its keys for rendering.
+  const chatSendsRef = useRef<Map<string, AbortController>>(new Map());
+  const [loadingConvIds, setLoadingConvIds] = useState<ReadonlySet<string>>(() => new Set());
 
   // ─── Conversations ──────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -281,6 +286,7 @@ export default function Home() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
+  const isLoading = activeConversationId !== null && loadingConvIds.has(activeConversationId);
   const provider = activeMode === "agent" ? agentProvider : chatProvider;
   const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
   const selectedModel =
@@ -1585,17 +1591,38 @@ export default function Home() {
       return;
     }
 
+    const convId = ensureActiveConversation(text);
+    if (chatSendsRef.current.has(convId)) return;
+
     // Every chat path runs inside this try/finally so an unexpected throw can
     // never leave the input disabled.
-    setIsLoading(true);
+    const controller = new AbortController();
+    chatSendsRef.current.set(convId, controller);
+    setLoadingConvIds((prev) => new Set(prev).add(convId));
     try {
-      await sendChatMessage(text, opts);
+      await sendChatMessage(convId, text, controller.signal, opts);
     } finally {
-      setIsLoading(false);
+      if (chatSendsRef.current.get(convId) === controller) chatSendsRef.current.delete(convId);
+      setLoadingConvIds((prev) => {
+        const next = new Set(prev);
+        next.delete(convId);
+        return next;
+      });
     }
   }
 
-  async function sendChatMessage(text: string, opts?: { messagesOverride?: Message[] }) {
+  /** Stop the reply streaming into the active conversation, keeping what arrived. */
+  function handleStopChat() {
+    if (!activeConversationId) return;
+    chatSendsRef.current.get(activeConversationId)?.abort();
+  }
+
+  async function sendChatMessage(
+    convId: string,
+    text: string,
+    signal: AbortSignal,
+    opts?: { messagesOverride?: Message[] },
+  ) {
     // When the user has set a custom system prompt, ALL of the hardcoded
     // shortcut replies (weather/time/date/open-app/search/memory) are
     // disabled. Those paths return English literals that bypass the LLM and
@@ -1638,7 +1665,6 @@ export default function Home() {
       } catch {
         // non-fatal; still continue with the acknowledgement
       }
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const reply = `Got it. I'll remember that ${memoryStr} in ${memoryScope} memory.`;
       addMessageToConversation(convId, createMessage("assistant", reply));
@@ -1648,7 +1674,6 @@ export default function Home() {
 
     // 0b. Weather detection
     if (useShortcuts && WEATHER_RE.test(text)) {
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       if (weather) {
         const reply = `It's currently ${weather.temp}°C and ${weather.description} in ${weather.city}.`;
@@ -1664,7 +1689,6 @@ export default function Home() {
 
     // 0c. Screen awareness detection
     if (useShortcuts && SCREEN_RE.test(text)) {
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const streamingMsg = createMessage("assistant", "Analyzing your screen...", false);
       addMessageToConversation(convId, streamingMsg);
@@ -1706,7 +1730,6 @@ export default function Home() {
     // 2. Timer detection (client-side)
     const timerParsed = parseTimer(text);
     if (timerParsed) {
-      const convId = ensureActiveConversation(text);
       const userMsg = createMessage("user", text);
       addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -1739,7 +1762,6 @@ export default function Home() {
       ? parseCommand(text, customShortcuts)
       : ({ type: null, payload: "" } as const);
 
-    const convId = ensureActiveConversation(text);
     autoRenameConversation(convId, text);
 
     // Build prompt with doc text appended (for API), but display original input
@@ -1835,6 +1857,7 @@ export default function Home() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         });
         const data = await readChatReply(res);
         const assistantMsg = createMessage("assistant", data.reply);
@@ -1846,6 +1869,7 @@ export default function Home() {
           await navigator.clipboard.writeText(data.reply).catch(() => {});
         }
       } catch (error) {
+        if (signal.aborted) return; // stopped by the user
         console.error("[Marven] chat request failed:", error);
         const err = createMessage("assistant", chatErrorMessage(error));
         addMessageToConversation(convId, err);
@@ -1877,6 +1901,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal,
       });
 
       const contentType = res.headers.get("content-type") ?? "";
@@ -1905,6 +1930,7 @@ export default function Home() {
             }
           }
         } catch (readErr) {
+          if (signal.aborted) throw readErr; // Stop — handled below
           // The 200 had already arrived, so this is a dropped connection
           // mid-reply, not "couldn't reach the server".
           throw new ChatStreamInterruptedError(readErr);
@@ -1952,8 +1978,10 @@ export default function Home() {
         speakReply(data.reply);
       }
     } catch (error) {
-      console.error("[Marven] chat request failed:", error);
+      // Keep whatever had streamed in (or drop the empty bubble), no spinner.
       if (streamingMsgId) finalizeStreamingMessage(convId, streamingMsgId);
+      if (signal.aborted) return; // stopped by the user — not an error
+      console.error("[Marven] chat request failed:", error);
       const errMsg = chatErrorMessage(error);
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
@@ -2000,6 +2028,7 @@ export default function Home() {
   }
 
   function handleDeleteConversation(id: string) {
+    chatSendsRef.current.get(id)?.abort();
     agentMessagesByConvRef.current.delete(id);
     agentEditorByConvRef.current.delete(id);
     saveAgentSessionsFile(removePersistedSession(loadAgentSessionsFile(), id));
@@ -2384,6 +2413,7 @@ export default function Home() {
         onOpenFolder={handleOpenFolder}
         onInputChange={setInput}
         onSend={() => sendMessage(input.trim())}
+        onStop={handleStopChat}
         onVoiceClick={startManualListen}
         onAgentVoiceClick={startManualListen}
         agentPlanMode={planMode}

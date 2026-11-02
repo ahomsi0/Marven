@@ -100,6 +100,7 @@ const ar: Shape<typeof en> = {
     stopListening: "إيقاف الاستماع",
     send: "إرسال الرسالة",
     sending: "جارٍ إرسال الرسالة",
+    stop: "إيقاف التوليد",
     sttLocalHint: "تحويل الكلام إلى نص يعمل على هذا الجهاز",
     sttGroqHint: "تحويل الكلام إلى نص يعمل على Groq Cloud",
     sttLocal: "محلي",

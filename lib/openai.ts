@@ -25,7 +25,9 @@ const SYSTEM_PROMPT =
 export function streamOpenAI(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
@@ -34,7 +36,7 @@ export function streamOpenAI(
 
   const client = new OpenAI({ apiKey: key });
 
-  return providerStream({ provider: "OpenAI", model }, async (emit, signal) => {
+  return providerStream({ provider: "OpenAI", model, signal }, async (emit, signal) => {
     const stream = await client.chat.completions.create(
       {
         model,

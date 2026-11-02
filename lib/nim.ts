@@ -22,12 +22,14 @@ import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/li
 export function streamNim(
   messages: HistoryMessage[],
   model: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  /** Aborts the provider request, e.g. when the chat client disconnects. */
+  signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const key = process.env.NIM_API_KEY;
   if (!key) throw new Error("NIM_API_KEY is not set. Add it in Settings → API Keys.");
 
-  return providerStream({ provider: "NVIDIA NIM", model }, async (emit, signal) => {
+  return providerStream({ provider: "NVIDIA NIM", model, signal }, async (emit, signal) => {
     const res = await fetch(`${NIM_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
