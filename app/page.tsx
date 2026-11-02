@@ -88,6 +88,25 @@ import {
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
+import {
+  attachPendingVersion,
+  beginNewVersion,
+  branchThread,
+  settlePendingVersion,
+  switchVersion,
+  userIndexBefore,
+  type PendingVersion,
+} from "@/lib/messageVersions";
+import i18n from "@/lib/i18n";
+
+/** Options for one chat send. Edit / retry pass the thread and the original turn's files. */
+interface ChatSendOptions {
+  messagesOverride?: Message[];
+  /** Answer this turn with another model, without changing the selected one. */
+  modelOverride?: { provider: AIProvider; model: string };
+  attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
+}
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -1012,10 +1031,21 @@ export default function Home() {
     []
   );
 
+  // Edit / retry in progress, by conversation: the next user message added to
+  // that conversation becomes a new version of the message being replaced.
+  const pendingVersionsRef = useRef<Map<string, PendingVersion>>(new Map());
+
   function addMessageToConversation(convId: string, message: Message, stamped?: { provider: AIProvider; model: string }) {
+    // Read now, not inside the updater: the updater may run after the edit
+    // handler has already settled and cleared the pending version.
+    const pending = message.role === "user" ? pendingVersionsRef.current.get(convId) : undefined;
+    if (pending) pendingVersionsRef.current.delete(convId);
     upsertConversation(convId, (conv) => ({
       ...conv,
-      messages: [...conv.messages, message],
+      messages: [
+        ...conv.messages,
+        pending && conv.messages.length === pending.index ? attachPendingVersion(message, pending) : message,
+      ],
       updatedAt: new Date().toISOString(),
       ...(stamped ?? {}),
     }));
@@ -1614,7 +1644,7 @@ export default function Home() {
   }
 
   // ─── Core send logic ───────────────────────────────────────────────────────
-  async function sendMessage(text: string, opts?: { messagesOverride?: Message[] }) {
+  async function sendMessage(text: string, opts?: ChatSendOptions) {
     if (!text || isLoading) return;
     setInput("");
 
@@ -1655,7 +1685,7 @@ export default function Home() {
     convId: string,
     text: string,
     signal: AbortSignal,
-    opts?: { messagesOverride?: Message[] },
+    opts?: ChatSendOptions,
   ) {
     // When the user has set a custom system prompt, ALL of the hardcoded
     // shortcut replies (weather/time/date/open-app/search/memory) are
@@ -1808,22 +1838,30 @@ export default function Home() {
 
     autoRenameConversation(convId, text);
 
+    // The model that answers this turn. "Retry with…" overrides it for one
+    // reply only; the selected chat model (and the conversation's) stay put.
+    const replyProvider = opts?.modelOverride?.provider ?? provider;
+    const replyModel = opts?.modelOverride?.model ?? selectedModel;
+    // Edit / retry resend the original turn's files, not whatever is staged.
+    const turnDocs = opts?.docs ?? chatDocs;
+    const turnAttachments = opts?.attachments ?? chatAttachments;
+
     // Build prompt with doc text appended (for API), but display original input
     const promptWithDocs =
-      chatDocs.length > 0
-        ? `${text}\n\n${chatDocs
+      turnDocs.length > 0
+        ? `${text}\n\n${turnDocs
             .map((d) => `---\n[Document: ${d.name}]\n${d.text}\n---`)
             .join("\n\n")}`
         : text;
 
     const userMsg = createMessage("user", text);
-    if (chatAttachments.length > 0) {
-      userMsg.attachments = [...chatAttachments];
-      setChatAttachments([]);
+    if (turnAttachments.length > 0) {
+      userMsg.attachments = [...turnAttachments];
+      if (!opts?.attachments) setChatAttachments([]);
     }
-    if (chatDocs.length > 0) {
-      userMsg.docs = [...chatDocs];
-      setChatDocs([]);
+    if (turnDocs.length > 0) {
+      userMsg.docs = [...turnDocs];
+      if (!opts?.docs) setChatDocs([]);
     }
     addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -1889,8 +1927,8 @@ export default function Home() {
         const history = buildHistory(historyMsgs);
         const body: ChatRequest = {
           messages: history,
-          model: selectedModel,
-          provider,
+          model: replyModel,
+          provider: replyProvider,
           systemPrompt: (() => {
             const base = buildSystemPrompt(userProfile?.name ?? null, memories);
             const extra = getSystemPrompt().trim();
@@ -1904,7 +1942,7 @@ export default function Home() {
           signal,
         });
         const data = await readChatReply(res);
-        const assistantMsg = createMessage("assistant", data.reply);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         speakReply(data.reply);
 
@@ -1928,8 +1966,8 @@ export default function Home() {
       const history = buildHistory([...threadSource, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
         messages: history,
-        model: selectedModel,
-        provider,
+        model: replyModel,
+        provider: replyProvider,
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
           const extra = getSystemPrompt().trim();
@@ -1952,7 +1990,7 @@ export default function Home() {
 
       if (contentType.includes("text/plain")) {
         // ── Streaming response ──
-        const streamingMsg = createMessage("assistant", "", true);
+        const streamingMsg = { ...createMessage("assistant", "", true), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, streamingMsg);
         streamingMsgId = streamingMsg.id;
 
@@ -2012,7 +2050,7 @@ export default function Home() {
       } else {
         // ── JSON response (route errors before streaming, e.g. missing key) ──
         const data = await readChatReply(res);
-        const assistantMsg = createMessage("assistant", data.reply);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
 
@@ -2178,17 +2216,25 @@ export default function Home() {
     setChatTokenUsage(zeroUsage("actual"));
   }
 
-  async function handleEditMessage(messageId: string, newContent: string) {
-    if (!activeConversationId || isLoading || !activeConversation) return;
-    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
+  /**
+   * Resend the user message at `userIndex` (edited text for an edit, the same
+   * text for a retry) as a new version: the old branch is kept on the message
+   * and can be switched back to.
+   */
+  async function resendAsNewVersion(userIndex: number, text: string, opts?: Pick<ChatSendOptions, "modelOverride">) {
+    if (!activeConversationId || !activeConversation) return;
+    const convId = activeConversationId;
+    const original = activeConversation.messages[userIndex];
+    if (!original || original.role !== "user") return;
+    const pending = beginNewVersion(activeConversation.messages, userIndex);
     // Snapshot the truncated thread BEFORE the upsert — sendMessage below
     // would otherwise still see the pre-truncation render's `messages`.
-    const truncated = activeConversation.messages.slice(0, idx);
-    upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
+    const truncated = activeConversation.messages.slice(0, userIndex);
+    if (pending) pendingVersionsRef.current.set(convId, pending);
+    upsertConversation(convId, (c) => {
+      const curIdx = c.messages.findIndex((m) => m.id === original.id);
       if (curIdx === -1) return c;
-      // Truncate: remove the edited message and everything after it
+      // Cut back to before the message; its branch lives on in `pending`.
       return {
         ...c,
         messages: c.messages.slice(0, curIdx),
@@ -2196,8 +2242,31 @@ export default function Home() {
         updatedAt: new Date().toISOString(),
       };
     });
-    // sendMessage will add the user message fresh and get the AI reply
-    await sendMessage(newContent, { messagesOverride: truncated });
+    try {
+      // sendMessage adds the user message fresh (as the new version) and gets the reply
+      await sendMessage(text, {
+        messagesOverride: truncated,
+        attachments: original.attachments ?? [],
+        docs: original.docs ?? [],
+        ...opts,
+      });
+    } finally {
+      if (pending) {
+        pendingVersionsRef.current.delete(convId);
+        // If the send bailed before adding the message, restore the old branch.
+        upsertConversation(convId, (c) => {
+          const messages = settlePendingVersion(c.messages, pending);
+          return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
+        });
+      }
+    }
+  }
+
+  async function handleEditMessage(messageId: string, newContent: string) {
+    if (!activeConversationId || isLoading || !activeConversation) return;
+    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    await resendAsNewVersion(idx, newContent);
   }
 
   async function handleEditAgentUserMessage(messageId: string, newContent: string) {
@@ -2219,45 +2288,45 @@ export default function Home() {
     await agentStreamSend(trimmed, { attachments, baseMessages: nextMessages });
   }
 
-  async function handleRetryMessage(messageId: string) {
+  /** Regenerate a reply — with the selected model, or another one for this reply only. */
+  async function handleRetryMessage(messageId: string, override?: { provider: AIProvider; model: string }) {
     if (!activeConversationId || isLoading || !activeConversation) return;
-    let userContent = "";
-    let truncated: Message[] | null = null;
     const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx !== -1) {
-      // Find the user message immediately before this assistant message
-      for (let i = idx - 1; i >= 0; i--) {
-        if (activeConversation.messages[i].role === "user") {
-          userContent = activeConversation.messages[i].content;
-          // Snapshot the truncated thread BEFORE the upsert — sendMessage
-          // below would otherwise see pre-truncation history.
-          truncated = activeConversation.messages.slice(0, i);
-          break;
-        }
-      }
-    }
-    if (!userContent || !truncated) return;
+    if (idx === -1) return;
+    // The user message this reply answers
+    const userIdx = userIndexBefore(activeConversation.messages, idx);
+    if (userIdx === -1) return;
+    const userContent = activeConversation.messages[userIdx].content;
+    if (!userContent) return;
+    await resendAsNewVersion(userIdx, userContent, override ? { modelOverride: override } : undefined);
+  }
+
+  /** Show another version of an edited / retried message. */
+  function handleSwitchVersion(userMessageId: string, target: number) {
+    if (!activeConversationId || isLoading) return;
     upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
-      if (curIdx === -1) return c;
-      // Find the user message immediately before this assistant message
-      let userIdx = -1;
-      for (let i = curIdx - 1; i >= 0; i--) {
-        if (c.messages[i].role === "user") {
-          userIdx = i;
-          break;
-        }
-      }
-      if (userIdx === -1) return c;
-      // Truncate: remove from the user message onwards
-      return {
-        ...c,
-        messages: c.messages.slice(0, userIdx),
-        tokenUsage: zeroUsage("actual"),
-        updatedAt: new Date().toISOString(),
-      };
+      const messages = switchVersion(c.messages, userMessageId, target);
+      return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
     });
-    await sendMessage(userContent, { messagesOverride: truncated });
+  }
+
+  /** Start a new chat holding the visible thread up to and including `messageId`. */
+  function handleBranchFromMessage(messageId: string) {
+    if (!activeConversation || activeConversation.mode === "agent") return;
+    const thread = branchThread(activeConversation.messages, messageId, () => createMessage("user", "").id);
+    if (!thread) return;
+    const base = createConversation(activeConversation.name);
+    const conv: Conversation = {
+      ...base,
+      name: i18n.t("versions.branchName", { name: activeConversation.name || i18n.t("sidebar.untitled") }),
+      messages: thread,
+      provider: activeConversation.provider,
+      model: activeConversation.model,
+      systemPrompt: activeConversation.systemPrompt,
+      folderId: activeConversation.folderId ?? null,
+    };
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
   }
 
   async function handleSlashCommand(cmd: string) {
@@ -2500,6 +2569,8 @@ export default function Home() {
         onRenameConversation={handleRenameConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
+        onSwitchVersion={handleSwitchVersion}
+        onBranchFromMessage={handleBranchFromMessage}
         onSaveShortcuts={handleSaveShortcuts}
         promptTemplates={promptTemplates}
         mcpServers={mcpServers}

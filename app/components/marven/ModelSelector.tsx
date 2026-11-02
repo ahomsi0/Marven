@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { AIProvider } from "@/types";
 import { CheckIcon, CloudIcon, HexagonIcon } from "./Icons";
 import { useT } from "@/lib/i18n";
+import { CLOUD_PROVIDERS, LOCAL_PROVIDERS, useProviderModels } from "@/hooks/useProviderModels";
 
 // Re-export so InputBar can keep the same import path for shortModelName
 export function shortModelName(name: string): string {
@@ -22,9 +23,6 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
   llamaserver: "llama-server",
 };
 
-const CLOUD_PROVIDERS: AIProvider[] = ["groq", "openai", "anthropic", "nim", "openrouter"];
-const LOCAL_PROVIDERS: AIProvider[] = ["ollama", "lmstudio", "llamaserver"];
-
 // Cloud vs local get their own colours everywhere they appear.
 const KIND_TEXT = { cloud: "text-[var(--m-cloud)]", local: "text-[var(--m-local)]" } as const;
 const KIND_TAG = {
@@ -32,12 +30,6 @@ const KIND_TAG = {
   local: "bg-[var(--m-local-soft)] text-[var(--m-local)]",
 } as const;
 const providerKind = (p: AIProvider) => (LOCAL_PROVIDERS.includes(p) ? "local" : "cloud");
-
-const DEFAULT_ENABLED: Record<AIProvider, boolean> = {
-  groq: true, openai: true, ollama: true,
-  anthropic: false, nim: false, openrouter: false,
-  lmstudio: false, llamaserver: false,
-};
 
 interface ModelSelectorProps {
   provider: AIProvider;
@@ -61,61 +53,12 @@ export function ModelSelector({
   const [open, setOpen] = useState(false);
   // The provider whose models the right pane shows — changes only on click.
   const [viewedProvider, setViewedProvider] = useState<AIProvider>(provider);
-  const [enabledProviders, setEnabledProviders] = useState<Record<AIProvider, boolean>>(DEFAULT_ENABLED);
-  const [models, setModels] = useState<Record<AIProvider, string[]>>({
-    groq: [], ollama: [], nim: [], openrouter: [], openai: [],
-    anthropic: [], lmstudio: [], llamaserver: [],
-  });
-  const [loadingProvider, setLoadingProvider] = useState<AIProvider | null>(null);
-  const [errors, setErrors] = useState<Record<AIProvider, string | null>>({
-    groq: null, ollama: null, nim: null, openrouter: null, openai: null,
-    anthropic: null, lmstudio: null, llamaserver: null,
-  });
-  const loadedRef = useRef<Set<AIProvider>>(new Set());
+  const { enabledProviders, models, loading, errors, refreshEnabled, loadModels } = useProviderModels();
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
 
-  // Load enabledProviders from Electron settings — on mount and every time the dropdown opens
-  const refreshEnabled = useCallback(() => {
-    const el = (window as any).marvenElectron;
-    el?.getSettings?.().then((s: Record<string, unknown>) => {
-      if (s.enabledProviders && typeof s.enabledProviders === "object") {
-        setEnabledProviders({
-          ...DEFAULT_ENABLED,
-          ...(s.enabledProviders as Record<AIProvider, boolean>),
-        });
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    refreshEnabled();
-  }, [refreshEnabled]);
-
   // No restore-on-mount here: the page persists chat and agent picks
   // separately, and a shared "last used" restore overwrote them on every mount.
-
-  const loadModels = useCallback(async (p: AIProvider) => {
-    if (loadedRef.current.has(p)) return;
-    setLoadingProvider(p);
-    try {
-      const res = await fetch(`/api/models?provider=${p}`);
-      const data = await res.json();
-      if (data.error) {
-        setErrors((prev) => ({ ...prev, [p]: data.error }));
-      } else {
-        setModels((prev) => ({
-          ...prev,
-          [p]: (data.models ?? []).map((m: { name: string }) => m.name),
-        }));
-        loadedRef.current.add(p);
-      }
-    } catch {
-      setErrors((prev) => ({ ...prev, [p]: "Unavailable" }));
-    } finally {
-      setLoadingProvider(null);
-    }
-  }, []);
 
   // On open: refresh settings and show the provider in use
   useEffect(() => {
@@ -226,7 +169,7 @@ export function ModelSelector({
                   {PROVIDER_LABELS[viewedProvider]}
                 </p>
                 <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-                  {loadingProvider === viewedProvider ? (
+                  {loading.has(viewedProvider) ? (
                     <div className="flex h-full items-center justify-center text-[11px] text-[var(--m-text-faint)]">{t("input.loadingModels")}</div>
                   ) : errors[viewedProvider] ? (
                     <div className="flex h-full flex-col justify-center px-2">
