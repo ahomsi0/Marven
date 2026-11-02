@@ -112,7 +112,7 @@ function drawLine(cv, x0, y0, x1, y1, thick, r, g, b, a = 255) {
 // Rounded-square tile with a soft deep-navy radial gradient, anti-aliased
 // edges and a faint inner rim.
 function drawTile(cv, x0, y0, size, radius) {
-  const stops = [[0, [48, 72, 120]], [0.55, [27, 42, 76]], [1, [16, 26, 48]]];
+  const stops = [[0, [34, 50, 84]], [0.55, [17, 26, 46]], [1, [9, 14, 26]]];
   const colourAt = (t) => {
     for (let i = 1; i < stops.length; i++) {
       const [t0, c0] = stops[i - 1], [t1, c1] = stops[i];
