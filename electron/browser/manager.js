@@ -140,9 +140,12 @@ function createBrowserManager({ dir, getWindow }) {
         onVisit: (url, title) => stores.history.set(history.recordVisit(stores.history.get(), url, title, Date.now())),
         onTitle: (url, title) => stores.history.set(history.updateTitle(stores.history.get(), url, title)),
         onFavicon: (t, iconUrl) => {
-          const pageUrl = t.url;
+          const navigation = t.navigation;
+          if (t.faviconFetch === navigation) return; // one fetch per page at a time
+          t.faviconFetch = navigation;
           void fetchFavicon(ses, iconUrl).then((data) => {
-            if (t.url !== pageUrl) return; // the tab moved on while this was loading
+            if (t.faviconFetch === navigation) t.faviconFetch = null;
+            if (t.navigation !== navigation) return; // the tab moved to another page meanwhile
             t.favicon = data;
             scheduleSnapshot();
           });

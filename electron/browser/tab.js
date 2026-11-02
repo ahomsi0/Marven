@@ -34,6 +34,11 @@ class Tab {
     this.loading = false;
     this.error = null;
     this.blocked = 0;
+    // Bumped on every cross-document main-frame commit, so async work started
+    // for one page (a favicon fetch) can tell the page has changed since.
+    this.navigation = 0;
+    // The `navigation` a favicon fetch is running for, or null.
+    this.faviconFetch = null;
   }
 
   get webContents() {
@@ -88,6 +93,7 @@ class Tab {
     });
     wc.on('did-navigate', (_e, url) => {
       this.url = url;
+      this.navigation += 1;
       if (!this.error) this.hooks.onVisit(url, wc.getTitle());
       update();
     });
