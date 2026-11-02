@@ -393,7 +393,8 @@ export function ChatLayout({
                 <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
               </button>
             )}
-            <div className={`mx-auto min-w-0 flex-1 ${mode === "agent" ? "max-w-none" : "max-w-[760px]"}`}>
+            {/* Full width: the chat name sits at the far left, actions at the far right. */}
+            <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0">
