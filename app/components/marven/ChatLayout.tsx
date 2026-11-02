@@ -691,7 +691,7 @@ export function ChatLayout({
                 onPointerDown={startBrowserResize}
                 onDoubleClick={() => saveBrowserWidth(null)}
                 onKeyDown={nudgeBrowserWidth}
-                className="relative z-10 -me-px w-1 shrink-0 cursor-col-resize bg-transparent outline-none transition-colors hover:bg-[var(--m-accent)]/40 focus-visible:bg-[var(--m-accent)]/60 active:bg-[var(--m-accent)]/60"
+                className="relative z-10 -me-px w-1 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
               />
             )}
             {browserOpen && (

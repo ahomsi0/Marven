@@ -508,7 +508,7 @@ export function Sidebar({
           onPointerDown={startResize}
           onDoubleClick={() => saveWidth(SIDEBAR_DEFAULT_WIDTH)}
           onKeyDown={nudgeWidth}
-          className="absolute inset-y-0 -end-[3px] z-20 w-1.5 cursor-col-resize bg-transparent outline-none transition-colors hover:bg-[var(--m-accent)]/40 focus-visible:bg-[var(--m-accent)]/60 active:bg-[var(--m-accent)]/60"
+          className="absolute inset-y-0 -end-[3px] z-20 w-1.5 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
         />
       )}
       {/* Fixed-width content: the panel's width animates over it, so nothing
