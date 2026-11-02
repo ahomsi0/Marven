@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readCapped, imageType } from "./favicons.js";
+import { readCapped, imageType, resolveType } from "./favicons.js";
 
 function streamOf(chunks: Uint8Array[]) {
   let cancelled = false;
@@ -55,9 +55,40 @@ describe("imageType", () => {
     expect(imageType("image/webp")).toBe("image/webp");
   });
 
-  it("rejects SVG and non-images", () => {
-    expect(imageType("image/svg+xml")).toBeNull();
+  it("accepts ICO, GIF and SVG types", () => {
+    expect(imageType("image/vnd.microsoft.icon")).toBe("image/vnd.microsoft.icon");
+    expect(imageType("image/gif")).toBe("image/gif");
+    expect(imageType("image/jpeg")).toBe("image/jpeg");
+    expect(imageType("image/svg+xml; charset=utf-8")).toBe("image/svg+xml");
+  });
+
+  it("rejects non-images", () => {
     expect(imageType("text/html")).toBeNull();
+    expect(imageType("application/octet-stream")).toBeNull();
+    expect(imageType("image/tiff")).toBeNull();
     expect(imageType(null)).toBeNull();
+  });
+});
+
+describe("resolveType", () => {
+  const ico = new Uint8Array([0, 0, 1, 0, 1, 0]);
+
+  it("uses the declared type when it is accepted", () => {
+    expect(resolveType("image/png", "https://a.test/icon", new Uint8Array([1]))).toBe("image/png");
+  });
+
+  it("treats a .ico URL with ICO magic bytes as image/x-icon when the type is missing or generic", () => {
+    expect(resolveType("application/octet-stream", "https://a.test/favicon.ico", ico)).toBe("image/x-icon");
+    expect(resolveType(null, "https://a.test/favicon.ICO?v=2", ico)).toBe("image/x-icon");
+  });
+
+  it("does not sniff when the URL is not .ico or the bytes are not an ICO", () => {
+    expect(resolveType(null, "https://a.test/favicon.png", ico)).toBeNull();
+    expect(resolveType(null, "https://a.test/favicon.ico", new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
+    expect(resolveType("text/html", "https://a.test/favicon.ico", new Uint8Array([0, 0]))).toBeNull();
+  });
+
+  it("does not sniff a non-image type that is not .ico", () => {
+    expect(resolveType("text/html", "not a url", ico)).toBeNull();
   });
 });
