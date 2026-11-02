@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SEARCH_URL, normalizeBrowserInput } from "./inAppBrowser";
+import { SEARCH_URL, normalizeBrowserInput, hostOf, isWebUrl } from "./inAppBrowser";
 
 describe("normalizeBrowserInput", () => {
   it("returns null for empty input", () => {
@@ -30,5 +30,14 @@ describe("normalizeBrowserInput", () => {
     for (const input of ["javascript:alert(1)", "file:///etc/passwd", "chrome://settings", "data:text/html,hi"]) {
       expect(normalizeBrowserInput(input)!.startsWith(SEARCH_URL)).toBe(true);
     }
+  });
+});
+
+describe("hostOf / isWebUrl", () => {
+  it("extracts hosts and recognises web URLs", () => {
+    expect(hostOf("https://www.example.com/a")).toBe("www.example.com");
+    expect(hostOf("nope")).toBe("");
+    expect(isWebUrl("https://a.com/")).toBe(true);
+    expect(isWebUrl("about:blank")).toBe(false);
   });
 });
