@@ -11,7 +11,7 @@ import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
-import { FolderIcon, SidebarIcon } from "./Icons";
+import { DotsIcon, FolderIcon, SidebarIcon } from "./Icons";
 import { TerminalView } from "./TerminalView";
 import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
@@ -206,35 +206,45 @@ interface ViewMenuItem {
   badge?: boolean;
   onClick: () => void;
   disabled?: boolean;
+  /** Draw a separator above this item. */
+  dividerBefore?: boolean;
 }
 
 function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; items: ViewMenuItem[]; onClose: () => void }) {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return null;
-  const width = 180;
-  const right = Math.max(8, window.innerWidth - rect.right);
-  const top = rect.bottom + 4;
+  const width = 236;
+  // Hang from the button's end edge (its right in LTR, its left in RTL).
+  const rtl = document.documentElement.dir === "rtl";
+  const position = rtl
+    ? { left: Math.max(8, rect.left) }
+    : { right: Math.max(8, window.innerWidth - rect.right) };
+  const top = rect.bottom + 6;
   return (
     <div
-      className="fixed z-[60] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] py-0.5 shadow-2xl"
-      style={{ right, top, width }}
+      role="menu"
+      className="fixed z-[60] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl"
+      style={{ ...position, top, width }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((it) => (
-        <button
-          key={it.key}
-          type="button"
-          disabled={it.disabled}
-          onClick={() => { it.onClick(); onClose(); }}
-          className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center text-[var(--m-text-muted)]">
-            {it.icon}
-            {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1 w-1 rounded-full bg-[#5b9cf6]" />}
-          </span>
-          <span className="flex-1">{it.label}</span>
-          {it.hint && <span className="font-mono text-[8px] text-[var(--m-text-muted)]">{it.hint}</span>}
-        </button>
+        <div key={it.key}>
+          {it.dividerBefore && <div className="mx-2.5 my-1 h-px bg-[var(--m-border)]" />}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { it.onClick(); onClose(); }}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-start text-[13px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center text-[var(--m-text-muted)] [&_svg]:h-3.5 [&_svg]:w-3.5">
+              {it.icon}
+              {it.badge && <span className="absolute -end-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5b9cf6]" />}
+            </span>
+            <span className="flex-1">{it.label}</span>
+            {it.hint && <span dir="ltr" className="font-mono text-[11px] text-[var(--m-text-muted)]">{it.hint}</span>}
+          </button>
+        </div>
       ))}
     </div>
   );
@@ -912,12 +922,19 @@ export function AgentWorkspace({
         {/* Workspace panel — files, changes, terminal */}
         <button
           type="button"
-          aria-pressed={drawerOpen && drawerView === "code" && showExplorer}
+          aria-pressed={drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen}
           onClick={() => {
-            if (drawerOpen && drawerView === "code" && showExplorer) setDrawerOpen(false);
-            else { setShowExplorer(true); openDrawer("code"); }
+            if (drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen) setDrawerOpen(false);
+            else {
+              // Files means the file tree, not whichever panel last took the column.
+              setShowGitPanel(false);
+              setShowWorkflowPanel(false);
+              setGlobalSearchOpen(false);
+              setShowExplorer(true);
+              openDrawer("code");
+            }
           }}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "code" && showExplorer ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
           <FolderIcon className="h-3.5 w-3.5" />
           {t("agent.files")}
@@ -950,81 +967,15 @@ export function AgentWorkspace({
 
         <div className="mx-1 h-5 w-px bg-[var(--m-border)]" />
 
-        {/* Git panel toggle */}
-        {workspaceRoot && (
+        {/* Only shown when it needs attention; trusting / un-trusting lives in ⋯ */}
+        {workspaceRoot && !workspaceTrusted && (
           <button
             type="button"
-            onClick={() => {
-              setShowGitPanel((v) => {
-                const next = !v;
-                if (next) { setShowExplorer(true); openDrawer("code"); }
-                return next;
-              });
-            }}
-            className={`rounded p-1 transition-colors ${
-              showGitPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
-            }`}
-            title={showGitPanel ? "Hide git panel" : "Show git panel (⌥G)"}
+            onClick={() => onWorkspaceTrustChange?.(true)}
+            className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[12px] text-amber-300 transition-colors hover:bg-amber-500/15"
+            title={t("agent.readOnlyHint")}
           >
-            {/* Git branch icon: two-path fork */}
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <circle cx="6" cy="5" r="2" />
-              <circle cx="18" cy="5" r="2" />
-              <circle cx="6" cy="19" r="2" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M6 7c0 4 12 5 12-2" />
-            </svg>
-          </button>
-        )}
-
-        {workspaceRoot && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowWorkflowPanel((v) => {
-                const next = !v;
-                if (next) { setShowExplorer(true); openDrawer("code"); }
-                return next;
-              });
-            }}
-            className={`rounded p-1 transition-colors ${
-              showWorkflowPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
-            }`}
-            title={showWorkflowPanel ? "Hide workflow panel" : "Show workflow intelligence"}
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
-              <circle cx="4" cy="7" r="2" />
-              <circle cx="4" cy="17" r="2" />
-              <circle cx="20" cy="10" r="2" />
-              <circle cx="20" cy="14" r="2" />
-            </svg>
-          </button>
-        )}
-
-        {/* REST client button */}
-        <button
-          type="button"
-          onClick={() => onOpenRestTab?.()}
-          className="rounded p-1 transition-colors text-[#555] hover:text-[#aaa]"
-          title="New REST request"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </button>
-
-        {workspaceRoot && (
-          <button
-            type="button"
-            onClick={() => onWorkspaceTrustChange?.(!workspaceTrusted)}
-            className={`rounded border px-2 py-1 text-[10px] transition-colors ${
-              workspaceTrusted
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-            }`}
-            title={workspaceTrusted ? "Workspace trusted — agent writes and approved commands are available" : "Workspace untrusted — agent is read-only until trusted"}
-          >
-            {workspaceTrusted ? "Trusted" : "Read only"}
+            {t("agent.readOnly")}
           </button>
         )}
 
@@ -1081,18 +1032,15 @@ export function AgentWorkspace({
           <button
             type="button"
             onClick={() => setViewMenuOpen((v) => !v)}
-            title="View menu"
-            className={`flex h-7 items-center gap-0.5 rounded px-1.5 transition-colors ${
-              viewMenuOpen ? "bg-[var(--m-surface-2)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            aria-label={t("agent.more")}
+            aria-haspopup="menu"
+            aria-expanded={viewMenuOpen}
+            title={t("agent.more")}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              viewMenuOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
             }`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-              <line x1="5.5" y1="3.5" x2="5.5" y2="12.5" stroke="currentColor" strokeWidth="1.2" />
-            </svg>
-            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="4 6 8 10 12 6" />
-            </svg>
+            <DotsIcon className="h-4 w-4" />
           </button>
           {viewMenuOpen && (
             <ViewMenu
@@ -1101,7 +1049,7 @@ export function AgentWorkspace({
               items={[
                 {
                   key: "preview",
-                  label: "Preview",
+                  label: t("agent.menuPreview"),
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <polygon points="6 4 20 12 6 20 6 4" />
@@ -1142,7 +1090,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "diff",
-                  label: "Diff" + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
+                  label: t("agent.changes") + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
                   hint: W ? "Ctrl+Shift+D" : "⇧⌘D",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1154,7 +1102,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "terminal",
-                  label: "Terminal",
+                  label: t("agent.terminal"),
                   hint: W ? "Ctrl+`" : "⌃`",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1165,7 +1113,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "files",
-                  label: "Files",
+                  label: t("agent.files"),
                   hint: W ? "Ctrl+B" : "⌘B",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1176,7 +1124,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "search",
-                  label: "Search files",
+                  label: t("agent.menuSearch"),
                   hint: W ? "Ctrl+Shift+F" : "⇧⌘F",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1192,7 +1140,8 @@ export function AgentWorkspace({
                 },
                 {
                   key: "git",
-                  label: "Git panel",
+                  label: t("agent.menuGit"),
+                  dividerBefore: true,
                   hint: "⌥G",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1213,7 +1162,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "workflow",
-                  label: "Workflow",
+                  label: t("agent.menuWorkflow"),
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
@@ -1230,7 +1179,8 @@ export function AgentWorkspace({
                 },
                 {
                   key: "tasks",
-                  label: "Background tasks",
+                  label: t("agent.menuTasks"),
+                  dividerBefore: true,
                   badge: isRunning,
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1247,7 +1197,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "rest",
-                  label: "New REST request",
+                  label: t("agent.menuRest"),
                   hint: "",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1259,6 +1209,20 @@ export function AgentWorkspace({
                     onOpenRestTab?.();
                   },
                 },
+                ...(workspaceRoot
+                  ? [{
+                      key: "trust",
+                      label: workspaceTrusted ? t("agent.menuReadOnly") : t("agent.menuTrust"),
+                      dividerBefore: true,
+                      icon: (
+                        <svg fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                          <path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6Z" />
+                          {!workspaceTrusted && <path d="m9 12 2 2 4-4" />}
+                        </svg>
+                      ),
+                      onClick: () => onWorkspaceTrustChange?.(!workspaceTrusted),
+                    }]
+                  : []),
               ]}
             />
           )}
