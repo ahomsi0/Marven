@@ -38,6 +38,7 @@ import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/t
 import { useProviderModels } from "@/hooks/useProviderModels";
 import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { versionControls } from "@/lib/messageVersions";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -119,7 +120,10 @@ interface ChatLayoutProps {
   onCloseAgentFile?: () => void;
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
-  onRetryMessage: (id: string) => void;
+  /** Regenerate a reply; `override` answers with another model for this reply only. */
+  onRetryMessage: (id: string, override?: { provider: AIProvider; model: string }) => void;
+  onSwitchVersion?: (userMessageId: string, version: number) => void;
+  onBranchFromMessage?: (messageId: string) => void;
   // Multi-tab props
   openTabs: EditorTab[];
   activeTabIndex: number;
@@ -251,6 +255,8 @@ export function ChatLayout({
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
+  onSwitchVersion,
+  onBranchFromMessage,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -587,6 +593,8 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  // Where to draw ‹ n/m › switchers for edited / retried messages.
+  const versionSwitchers = versionControls(messages);
   const agentHasOwnHeader =
     mode === "agent" && (!!workspaceRoot || openTabs.some((tab) => tab.kind === "settings"));
   const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
@@ -795,15 +803,33 @@ export function ChatLayout({
                       <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
                     </div>
                   )}
-                  {messages.map((message) => (
-                    <Message
-                      key={message.id}
-                      message={message}
-                      disabled={isLoading}
-                      onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
-                      onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
-                    />
-                  ))}
+                  {messages.map((message) => {
+                    const switcher = versionSwitchers.get(message.id);
+                    return (
+                      <Message
+                        key={message.id}
+                        message={message}
+                        disabled={isLoading}
+                        onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
+                        onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                        onRetryWith={
+                          message.role === "assistant" ? (p, m) => onRetryMessage(message.id, { provider: p, model: m }) : undefined
+                        }
+                        currentProvider={provider}
+                        currentModel={selectedModel}
+                        onBranch={onBranchFromMessage && !message.isStreaming ? () => onBranchFromMessage(message.id) : undefined}
+                        version={
+                          switcher && onSwitchVersion
+                            ? {
+                                index: switcher.index,
+                                total: switcher.total,
+                                onSelect: (v) => onSwitchVersion(switcher.ownerId, v),
+                              }
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
                     <TypingRow />
                   )}
