@@ -100,6 +100,8 @@ Bookmarks and history are not in the snapshot; the UI asks for them on demand (`
 
 **Closing the last tab** leaves one new tab on the home page.
 
+**Sound:** only the tab on screen plays audio. Every other tab's page is muted, so closing the panel, opening an overlay or switching tabs silences it, and showing a tab unmutes it. (A menu open over the page doesn't mute it.)
+
 **Open in your browser** (PR #6's toolbar button) is dropped — no room at the 360px minimum width.
 
 **RTL:** the tab strip and toolbar follow the app direction; the address bar stays LTR; back/forward icons mirror.
@@ -133,7 +135,7 @@ The page is untrusted web content. Unchanged from PR #6, for every tab:
 - one shared partition `persist:marven-browser`, separate from Marven's UI session
 - `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `webSecurity: true`, no preload
 - only http(s) on navigate, redirect and window-open
-- every permission request denied (including HTML fullscreen)
+- every permission request and check denied (including HTML fullscreen and clipboard reads), with one exception: `clipboard-sanitized-write`, so a page's "Copy" buttons work
 
 New:
 

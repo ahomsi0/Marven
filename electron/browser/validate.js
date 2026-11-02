@@ -48,6 +48,13 @@ function staysOnOrigin(url, current) {
   }
 }
 
+// The one permission pages get: writing (sanitized) text to the clipboard,
+// which "Copy" buttons rely on. Everything else, including clipboard reads,
+// is denied.
+function isAllowedPermission(permission) {
+  return permission === 'clipboard-sanitized-write';
+}
+
 function hostOf(url) {
   try {
     return new URL(url).hostname;
@@ -56,4 +63,4 @@ function hostOf(url) {
   }
 }
 
-module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin };
+module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission };

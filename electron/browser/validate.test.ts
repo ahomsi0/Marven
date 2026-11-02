@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin } from "./validate.js";
+import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission } from "./validate.js";
 
 describe("validate", () => {
   it("accepts only http(s) URLs", () => {
@@ -56,5 +56,12 @@ describe("validate", () => {
   it("staysOnOrigin treats an empty current URL or unparsable input as same-origin", () => {
     expect(staysOnOrigin("http://localhost:3000/", "")).toBe(true);
     expect(staysOnOrigin("not a url", "http://localhost:3000/")).toBe(true);
+  });
+
+  it("isAllowedPermission allows only sanitized clipboard writes", () => {
+    expect(isAllowedPermission("clipboard-sanitized-write")).toBe(true);
+    for (const p of ["clipboard-read", "media", "geolocation", "notifications", "fullscreen", "openExternal", ""]) {
+      expect(isAllowedPermission(p)).toBe(false);
+    }
   });
 });

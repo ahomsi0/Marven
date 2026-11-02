@@ -17,7 +17,7 @@ const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
 const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
-const { hostOf, isWebUrl, isHost, staysOnOrigin } = require('./validate');
+const { hostOf, isWebUrl, isHost, staysOnOrigin, isAllowedPermission } = require('./validate');
 
 const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
@@ -75,8 +75,8 @@ function createBrowserManager({ dir, getWindow }) {
     ses = session.fromPartition(PARTITION);
     // Drop the app-name and Electron tokens so sites see a plain Chrome UA.
     ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|marven)\/\S+/gi, ''));
-    ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-    ses.setPermissionCheckHandler(() => false);
+    ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isAllowedPermission(permission)));
+    ses.setPermissionCheckHandler((_wc, permission) => isAllowedPermission(permission));
     downloads = createDownloads({ onChange: scheduleSnapshot });
     ses.on('will-download', (event, item, webContents) => downloads.handle(event, item, webContents));
     blocker = createBlocker({
