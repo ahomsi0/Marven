@@ -1006,6 +1006,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  inAppBrowser.flush();
 });
 
 app.on('window-all-closed', () => {

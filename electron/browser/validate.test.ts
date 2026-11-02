@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf } from "./validate.js";
+import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin } from "./validate.js";
 
 describe("validate", () => {
   it("accepts only http(s) URLs", () => {
@@ -45,5 +45,16 @@ describe("validate", () => {
   it("extracts the hostname", () => {
     expect(hostOf("https://www.example.com:8080/a")).toBe("www.example.com");
     expect(hostOf("garbage")).toBe("");
+  });
+
+  it("staysOnOrigin compares a navigation target with the current page's origin", () => {
+    expect(staysOnOrigin("http://localhost:3000/chat", "http://localhost:3000/")).toBe(true);
+    expect(staysOnOrigin("http://localhost:3001/", "http://localhost:3000/")).toBe(false);
+    expect(staysOnOrigin("https://evil.example/", "http://localhost:3000/")).toBe(false);
+  });
+
+  it("staysOnOrigin treats an empty current URL or unparsable input as same-origin", () => {
+    expect(staysOnOrigin("http://localhost:3000/", "")).toBe(true);
+    expect(staysOnOrigin("not a url", "http://localhost:3000/")).toBe(true);
   });
 });

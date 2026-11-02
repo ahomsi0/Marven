@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  emptyState, addTab, closeTab, activateTab, moveTab, reopenClosed, updateTab, toSaved, fromSaved, CLOSED_LIMIT,
+  emptyState, addTab, closeTab, activateTab, moveTab, reopenClosed, clearClosed, updateTab, toSaved, fromSaved, CLOSED_LIMIT,
 } from "./tabsModel.js";
 
 const tab = (id: string) => ({ id, url: `https://${id}.com/`, title: id });
@@ -128,5 +128,15 @@ describe("tabsModel", () => {
     expect(restored.tabs).toEqual([{ id: "id0", url: "https://ok.com/", title: "" }]);
     expect(restored.activeId).toBe("id0");
     expect(fromSaved("garbage", () => "x")).toEqual(emptyState());
+  });
+
+  it("clearClosed forgets recently closed tabs and keeps the rest", () => {
+    let s = ["a", "b"].reduce((acc, id) => addTab(acc, tab(id)), emptyState());
+    s = closeTab(s, "a");
+    const cleared = clearClosed(s);
+    expect(cleared.closed).toEqual([]);
+    expect(ids(cleared)).toEqual(["b"]);
+    expect(cleared.activeId).toBe("b");
+    expect(clearClosed(cleared)).toBe(cleared);
   });
 });

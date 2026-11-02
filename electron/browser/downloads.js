@@ -2,7 +2,8 @@
 // and are never opened automatically. The list lasts for the session.
 // A page may start at most PER_TAB_MAX downloads every PER_TAB_WINDOW_MS, and
 // at most MAX_IN_PROGRESS run at once; anything over is cancelled unsaved.
-// MARVEN_DOWNLOADS_DIR overrides the folder — used only by the test run.
+// MARVEN_DOWNLOADS_DIR overrides the folder in unpackaged builds — used only by
+// the test run.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,7 +26,8 @@ function createDownloads({ onChange }) {
   const perTab = createRateLimiter({ max: PER_TAB_MAX, windowMs: PER_TAB_WINDOW_MS });
 
   function folder() {
-    return path.resolve(process.env.MARVEN_DOWNLOADS_DIR || app.getPath('downloads'));
+    const override = app.isPackaged ? '' : process.env.MARVEN_DOWNLOADS_DIR;
+    return path.resolve(override || app.getPath('downloads'));
   }
 
   // True when this download may go ahead; otherwise cancels it.

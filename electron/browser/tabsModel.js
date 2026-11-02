@@ -66,6 +66,10 @@ function reopenClosed(state, makeId) {
   return { ...state, tabs, activeId: tab.id, closed };
 }
 
+function clearClosed(state) {
+  return state.closed.length === 0 ? state : { ...state, closed: [] };
+}
+
 function updateTab(state, id, patch) {
   const index = state.tabs.findIndex((t) => t.id === id);
   if (index === -1) return state;
@@ -101,5 +105,5 @@ function fromSaved(saved, makeId) {
 }
 
 module.exports = {
-  CLOSED_LIMIT, emptyState, addTab, closeTab, activateTab, moveTab, reopenClosed, updateTab, toSaved, fromSaved,
+  CLOSED_LIMIT, emptyState, addTab, closeTab, activateTab, moveTab, reopenClosed, clearClosed, updateTab, toSaved, fromSaved,
 };

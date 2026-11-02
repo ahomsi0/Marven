@@ -1,5 +1,5 @@
-// IPC for the in-app browser. Only Marven's own window may call these, and
-// every argument is checked before it reaches the manager.
+// IPC for the in-app browser. Only the main frame of Marven's own window may
+// call these, and every argument is checked before it reaches the manager.
 
 const { ipcMain } = require('electron');
 const { isWebUrl, cleanBounds, cleanText, isId, isHost } = require('./validate');
@@ -9,7 +9,9 @@ const COMMANDS = new Set(['back', 'forward', 'reload', 'stop', 'retry']);
 function registerBrowserIpc(manager, getWindow) {
   const fromApp = (event) => {
     const win = getWindow();
-    return !!win && !win.isDestroyed() && event.sender === win.webContents;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return false;
+    const frame = event.senderFrame;
+    return !!frame && frame === win.webContents.mainFrame;
   };
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => (fromApp(event) ? fn(...args) : null));
   const on = (channel, fn) => ipcMain.on(channel, (event, ...args) => {

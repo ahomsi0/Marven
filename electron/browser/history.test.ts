@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recordVisit, updateTitle, prune, sanitizeHistory, MAX_ENTRIES, MAX_AGE_MS } from "./history.js";
+import { recordVisit, updateTitle, prune, sanitizeHistory, withoutFragment, MAX_ENTRIES, MAX_AGE_MS } from "./history.js";
 
 const DAY = 86_400_000;
 
@@ -72,5 +72,18 @@ describe("history", () => {
     expect(sanitizeHistory({ "https://a.com/": { title: "", visits: 2, lastVisit: 10_000 } }, 500)).toEqual({
       "https://a.com/": { title: "", visits: 2, lastVisit: 500 },
     });
+  });
+
+  it("withoutFragment drops only the #fragment", () => {
+    expect(withoutFragment("https://a.com/p?q=1#top")).toBe("https://a.com/p?q=1");
+    expect(withoutFragment("https://a.com/p#")).toBe("https://a.com/p");
+    expect(withoutFragment("https://a.com/p")).toBe("https://a.com/p");
+    expect(withoutFragment("https://a.com/p?q=1#top")).toBe(withoutFragment("https://a.com/p?q=1#bottom"));
+    expect(withoutFragment("https://a.com/p?q=1")).not.toBe(withoutFragment("https://a.com/p?q=2"));
+  });
+
+  it("withoutFragment returns empty for nothing", () => {
+    expect(withoutFragment(null)).toBe("");
+    expect(withoutFragment("")).toBe("");
   });
 });

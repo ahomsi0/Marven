@@ -29,6 +29,14 @@ function updateTitle(history, url, title) {
   return { ...history, [url]: { ...prev, title: clean } };
 }
 
+// The URL with any #fragment removed, so in-page anchor jumps count as the
+// same page.
+function withoutFragment(url) {
+  if (typeof url !== 'string') return '';
+  const hash = url.indexOf('#');
+  return hash === -1 ? url : url.slice(0, hash);
+}
+
 function prune(history, now) {
   const kept = Object.entries(history)
     .filter(([, entry]) => entry.lastVisit >= now - MAX_AGE_MS)
@@ -49,4 +57,4 @@ function sanitizeHistory(raw, now) {
   return out;
 }
 
-module.exports = { MAX_ENTRIES, MAX_AGE_MS, recordVisit, updateTitle, prune, sanitizeHistory };
+module.exports = { MAX_ENTRIES, MAX_AGE_MS, recordVisit, updateTitle, prune, sanitizeHistory, withoutFragment };

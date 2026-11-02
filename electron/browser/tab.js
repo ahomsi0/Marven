@@ -6,6 +6,7 @@
 
 const { WebContentsView } = require('electron');
 const { isWebUrl } = require('./validate');
+const { withoutFragment } = require('./history');
 
 const ERR_ABORTED = -3;
 const isCertificateError = (code) => code <= -200 && code > -300;
@@ -39,6 +40,9 @@ class Tab {
     this.navigation = 0;
     // The `navigation` a favicon fetch is running for, or null.
     this.faviconFetch = null;
+    // History bookkeeping, so anchor jumps and title churn don't spam it.
+    this.visitedUrl = null;
+    this.titleRecorded = false;
   }
 
   get webContents() {
@@ -98,18 +102,28 @@ class Tab {
       this.blocked = 0;
       this.title = ''; // the page's own page-title-updated sets it
       this.navigation += 1;
+      this.titleRecorded = false;
+      this.visitedUrl = url;
       this.hooks.onVisit(url, wc.getTitle());
       update();
     });
     wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
       if (!isMainFrame) return;
       this.url = url;
-      this.hooks.onVisit(url, wc.getTitle());
+      if (withoutFragment(url) !== withoutFragment(this.visitedUrl)) {
+        this.visitedUrl = url;
+        this.hooks.onVisit(url, wc.getTitle());
+      }
       update();
     });
+    // History keeps the first title a page sets after each commit; later
+    // changes (unread counters, tickers) only update the tab.
     wc.on('page-title-updated', (_e, title) => {
       this.title = title;
-      this.hooks.onTitle(this.url, title);
+      if (!this.titleRecorded) {
+        this.titleRecorded = true;
+        this.hooks.onTitle(this.url, title);
+      }
       update();
     });
     wc.on('page-favicon-updated', (_e, favicons) => {

@@ -17,7 +17,7 @@ const { fetchFavicon } = require('./favicons');
 const { shortcutAction } = require('./shortcuts');
 const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
-const { hostOf, isWebUrl, isHost } = require('./validate');
+const { hostOf, isWebUrl, isHost, staysOnOrigin } = require('./validate');
 
 const PARTITION = 'persist:marven-browser';
 const HOME_URL = 'https://search.brave.com/';
@@ -60,13 +60,19 @@ function createBrowserManager({ dir, getWindow }) {
       sites: createJsonStore(path.join(dir, 'sites.json'), { blockingDisabled: [] }),
     };
     const now = Date.now();
-    stores.history.set(history.prune(history.sanitizeHistory(stores.history.get(), now), now));
-    stores.bookmarks.set(bookmarks.sanitizeBookmarks(stores.bookmarks.get()));
+    // Only write a file back when cleaning it actually changed something.
+    const setIfChanged = (store, value) => {
+      if (JSON.stringify(value) !== JSON.stringify(store.get())) store.set(value);
+    };
+    setIfChanged(stores.history, history.prune(history.sanitizeHistory(stores.history.get(), now), now));
+    setIfChanged(stores.bookmarks, bookmarks.sanitizeBookmarks(stores.bookmarks.get()));
     const sites = stores.sites.get();
-    stores.sites.set({ blockingDisabled: Array.isArray(sites?.blockingDisabled) ? sites.blockingDisabled.filter(isHost) : [] });
+    setIfChanged(stores.sites, { blockingDisabled: Array.isArray(sites?.blockingDisabled) ? sites.blockingDisabled.filter(isHost) : [] });
     state = model.fromSaved(stores.tabs.get(), newId);
 
     ses = session.fromPartition(PARTITION);
+    // Drop the app-name and Electron tokens so sites see a plain Chrome UA.
+    ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|marven)\/\S+/gi, ''));
     ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     ses.setPermissionCheckHandler(() => false);
     downloads = createDownloads({ onChange: scheduleSnapshot });
@@ -345,7 +351,8 @@ function createBrowserManager({ dir, getWindow }) {
     const active = state.activeId;
     switch (shortcut.action) {
       case 'new-tab': newTab(HOME_URL); break;
-      case 'close-tab': if (active) closeTab(active); break;
+      // Deferred: closing destroys the view whose input event is being handled.
+      case 'close-tab': if (active) setImmediate(() => closeTab(active)); break;
       case 'reopen-tab': reopenClosedTab(); break;
       case 'focus-address': focusAddress(); break;
       case 'reload': if (active) command(active, 'reload'); break;
@@ -396,8 +403,15 @@ function createBrowserManager({ dir, getWindow }) {
 
   async function clearBrowsingData() {
     stores.history.set({});
+    commit(model.clearClosed(state));
+    for (const tab of tabs.values()) {
+      tab.webContents?.navigationHistory.clear();
+      tab.favicon = null;
+    }
     await ses.clearStorageData();
     await ses.clearCache();
+    await ses.clearAuthCache();
+    scheduleSnapshot();
     return true;
   }
 
@@ -406,11 +420,15 @@ function createBrowserManager({ dir, getWindow }) {
   function attachWindow(win) {
     // A renderer reload (HMR, crash recovery) must not leave a page floating
     // over a UI that no longer has a browser panel.
-    win.webContents.on('did-start-navigation', (details) => {
-      if (!details.isMainFrame || details.isSameDocument) return;
+    const hideForReload = () => {
       panelFocused = false;
       if (ses) hide();
+    };
+    win.webContents.on('did-start-navigation', (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return;
+      if (staysOnOrigin(details.url, win.webContents.getURL())) hideForReload();
     });
+    win.webContents.on('render-process-gone', hideForReload);
     // Browser shortcuts while focus is in the panel's toolbar (the page's own
     // view handles them while the page has focus).
     win.webContents.on('before-input-event', (event, input) => {

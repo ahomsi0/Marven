@@ -36,6 +36,18 @@ function isHost(value) {
     && !/^\.|\.\./.test(value) && hostOf('http://' + value) === value;
 }
 
+// Whether a navigation to `url` keeps Marven's window on its current origin
+// (a reload or HMR rather than leaving the app). An empty current URL (not
+// loaded yet) or anything unparsable counts as same-origin.
+function staysOnOrigin(url, current) {
+  if (!current) return true;
+  try {
+    return new URL(url).origin === new URL(current).origin;
+  } catch {
+    return true;
+  }
+}
+
 function hostOf(url) {
   try {
     return new URL(url).hostname;
@@ -44,4 +56,4 @@ function hostOf(url) {
   }
 }
 
-module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf };
+module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin };
