@@ -8,6 +8,7 @@ import { ModelSelector } from "@/app/components/marven/ModelSelector";
 import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
 import type { TokenUsage } from "@/types";
 import { useT } from "@/lib/i18n";
+import { useVisionSupport } from "@/hooks/useVisionSupport";
 
 const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -78,6 +79,9 @@ export function InputBar({
   const docFileInputRef = useRef<HTMLInputElement>(null);
   const [docUploading, setDocUploading] = useState(false);
   const isListening = voiceState === "command-listening";
+  const hasImages = !!attachments && attachments.length > 0;
+  // null for cloud providers (unchanged behaviour) and while still checking.
+  const modelSeesImages = useVisionSupport(provider, selectedModel, hasImages);
 
   const menuOpen = value.startsWith("/") && !value.includes(" ");
   const query = menuOpen ? value.slice(1) : "";
@@ -242,6 +246,14 @@ export function InputBar({
               </div>
             ))}
           </div>
+        )}
+        {hasImages && modelSeesImages === false && (
+          <p role="status" className="flex items-start gap-1.5 px-3 pt-1.5 text-[11px] leading-4 text-[var(--m-text-muted)]">
+            <svg className="mt-px h-3 w-3 shrink-0 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+            </svg>
+            <span>{t("input.imagesNotSent")}</span>
+          </p>
         )}
 
         {/* Doc chip strip */}

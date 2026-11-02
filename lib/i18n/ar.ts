@@ -121,6 +121,7 @@ const ar: Shape<typeof en> = {
     providerUnavailable: "{{provider}} غير متاح",
     noModels: "لا توجد نماذج",
     inUse: "قيد الاستخدام",
+    imagesNotSent: "هذا النموذج لا يرى الصور، لذا لن تُرسَل. اختر نموذج رؤية مثل llava أو gemma3.",
   },
   searchEngines: {
     label: "محرك البحث",

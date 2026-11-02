@@ -9,7 +9,35 @@ vi.mock("openai", () => ({
 }));
 
 import OpenAI from "openai";
-import { getLMStudioModels } from "./lmstudio";
+import { buildLMStudioMessages, getLMStudioModels } from "./lmstudio";
+
+describe("buildLMStudioMessages", () => {
+  const img = { base64: "data:image/jpeg;base64,QUJD", mimeType: "image/jpeg" as const, name: "p.jpg" };
+  const history = [
+    { role: "user" as const, content: "what's this?", attachments: [img] },
+    { role: "assistant" as const, content: "a dog" },
+  ];
+
+  it("sends image_url parts to a vision model", () => {
+    expect(buildLMStudioMessages(history, "google/gemma-3-12b", "sys")).toEqual([
+      { role: "system", content: "sys" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "what's this?" },
+          { type: "image_url", image_url: { url: "data:image/jpeg;base64,QUJD" } },
+        ],
+      },
+      { role: "assistant", content: "a dog" },
+    ]);
+  });
+
+  it("strips images for a text-only model", () => {
+    const [, user] = buildLMStudioMessages(history, "llama-3.2-3b", "sys");
+    expect(typeof user.content).toBe("string");
+    expect(user.content).toContain("can't see images");
+  });
+});
 
 describe("getLMStudioModels", () => {
   beforeEach(() => {

@@ -6,6 +6,8 @@ import {
   stripAttachments,
   groqModelSupportsVision,
   groqUserMessageContent,
+  localUserMessageContent,
+  LOCAL_TEXT_MODEL_IMAGE_STRIP_NOTE,
 } from "./imageHelpers";
 import type { ImageAttachment } from "@/types";
 
@@ -89,5 +91,26 @@ describe("stripAttachments", () => {
     const result = stripAttachments("hello", [IMG]);
     expect(result).toContain("hello");
     expect(result).toContain("does not support vision");
+  });
+});
+
+describe("localUserMessageContent", () => {
+  it("returns plain text when there are no attachments", () => {
+    expect(localUserMessageContent("hi", undefined, "lmstudio", "llava")).toBe("hi");
+    expect(localUserMessageContent("hi", [], "lmstudio", "llava")).toBe("hi");
+  });
+
+  it("sends image_url data URL parts to vision models", () => {
+    expect(localUserMessageContent("what is this?", [IMG], "lmstudio", "qwen/qwen2.5-vl-7b")).toEqual([
+      { type: "text", text: "what is this?" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,abc123" } },
+    ]);
+  });
+
+  it("drops images for text-only models with a note", () => {
+    const result = localUserMessageContent("what is this?", [IMG], "llamaserver", "llama-3.2-3b");
+    expect(typeof result).toBe("string");
+    expect(result).toContain("what is this?");
+    expect(result).toContain(LOCAL_TEXT_MODEL_IMAGE_STRIP_NOTE);
   });
 });

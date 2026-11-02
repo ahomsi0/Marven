@@ -1,4 +1,5 @@
 import type { AIProvider, ImageAttachment } from "@/types";
+import { isLikelyVisionModel } from "@/lib/visionModels";
 
 // openrouter excluded: vision support varies per routed model
 export const VISION_PROVIDERS = new Set<AIProvider>(["groq", "openai", "anthropic"]);
@@ -64,6 +65,26 @@ export function stripAttachments(
 
 export const GROQ_TEXT_MODEL_IMAGE_STRIP_NOTE =
   "[Image attachment removed — this Groq model is text-only. Use a vision model such as meta-llama/llama-4-scout-17b-16e-instruct to send images.]";
+
+export const LOCAL_TEXT_MODEL_IMAGE_STRIP_NOTE =
+  "[Image attachment removed — this local model can't see images. Use a vision model such as llava or gemma3 to send images.]";
+
+/**
+ * `messages[].content` for a user turn sent to an OpenAI-compatible local
+ * server (LM Studio, llama-server): image parts when the model looks
+ * vision-capable, otherwise the text with a note that the images were dropped.
+ */
+export function localUserMessageContent(
+  text: string,
+  attachments: ImageAttachment[] | undefined,
+  provider: AIProvider,
+  modelId: string
+): string | OpenAIContentPart[] {
+  if (!attachments?.length) return text;
+  return isLikelyVisionModel(provider, modelId)
+    ? buildOpenAIContent(text, attachments)
+    : stripAttachments(text, attachments, LOCAL_TEXT_MODEL_IMAGE_STRIP_NOTE);
+}
 
 /** Build Groq `messages[].content` for a user turn (string or OpenAI-style parts). */
 export function groqUserMessageContent(

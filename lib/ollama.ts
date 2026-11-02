@@ -4,6 +4,7 @@
 
 import type { HistoryMessage, ImageAttachment } from "@/types";
 import { stripAttachments } from "@/lib/imageHelpers";
+import { isLikelyVisionModel } from "@/lib/visionModels";
 import {
   ProviderHttpError,
   ProviderTimeoutError,
@@ -29,6 +30,7 @@ const GENERATE_TIMEOUT_MS = 5 * 60_000;
 const CHAT_FIRST_RESPONSE_TIMEOUT_MS = 3 * 60_000;
 const CHAT_IDLE_TIMEOUT_MS = 2 * 60_000;
 const TAGS_TIMEOUT_MS = 5_000;
+const SHOW_TIMEOUT_MS = 3_000;
 
 export async function askOllama(
   prompt: string,
@@ -67,21 +69,70 @@ export async function askOllama(
   return (data.response as string).trim();
 }
 
-/** The `/api/chat` messages for a conversation: system prompt, then history. */
+export type OllamaChatMessage = { role: string; content: string; images?: string[] };
+
+/** Base64 image data without the `data:<mime>;base64,` prefix, as `/api/chat` wants it. */
+export function ollamaImageData(attachments: ImageAttachment[]): string[] {
+  return attachments.map((a) => a.base64.replace(/^data:[^;]+;base64,/, ""));
+}
+
+/**
+ * The `/api/chat` messages for a conversation: system prompt, then history.
+ * Images go on their user message as `images` when the model can see them;
+ * otherwise they're dropped with a note in the text.
+ */
 export function buildOllamaMessages(
   messages: HistoryMessage[],
-  systemPrompt?: string
-): Array<{ role: string; content: string }> {
+  systemPrompt?: string,
+  { vision = false }: { vision?: boolean } = {}
+): OllamaChatMessage[] {
   return [
     { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-    ...messages.map((m) => ({
-      role: m.role,
-      content:
-        m.role === "user" && m.attachments?.length
-          ? stripAttachments(m.content, m.attachments)
-          : m.content,
-    })),
+    ...messages.map((m): OllamaChatMessage => {
+      if (m.role !== "user" || !m.attachments?.length) return { role: m.role, content: m.content };
+      return vision
+        ? { role: m.role, content: m.content, images: ollamaImageData(m.attachments) }
+        : { role: m.role, content: stripAttachments(m.content, m.attachments) };
+    }),
   ];
+}
+
+// Per model (and server), for the life of the process. Failures aren't kept,
+// so a model checked while Ollama was down is asked again next time.
+const visionCache = new Map<string, Promise<boolean>>();
+
+/** Test hook: forget cached capability answers. */
+export function clearOllamaCapabilityCache(): void {
+  visionCache.clear();
+}
+
+/**
+ * Whether an Ollama model accepts images. `/api/show` lists `capabilities`
+ * (e.g. ["completion", "vision"]) on Ollama 0.6+, which is authoritative; on
+ * older servers, or if the request fails, the name heuristic decides.
+ */
+export function ollamaModelSupportsVision(model: string): Promise<boolean> {
+  const key = `${ollamaBaseUrl()} ${model}`;
+  const cached = visionCache.get(key);
+  if (cached) return cached;
+  const pending = (async () => {
+    const res = await fetch(`${ollamaBaseUrl()}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+      signal: AbortSignal.timeout(SHOW_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`Ollama /api/show returned ${res.status}`);
+    const data = (await res.json()) as { capabilities?: unknown };
+    return Array.isArray(data.capabilities)
+      ? data.capabilities.includes("vision")
+      : isLikelyVisionModel("ollama", model);
+  })().catch(() => {
+    if (visionCache.get(key) === pending) visionCache.delete(key);
+    return isLikelyVisionModel("ollama", model);
+  });
+  visionCache.set(key, pending);
+  return pending;
 }
 
 /**
@@ -152,14 +203,16 @@ export function streamOllama(
   signal?: AbortSignal
 ): ReadableStream<Uint8Array> {
   const url = `${ollamaBaseUrl()}/api/chat`;
-  const body = JSON.stringify({
-    model,
-    messages: buildOllamaMessages(messages, systemPrompt),
-    stream: true,
-    options: { temperature: 0.7 },
-  });
+  const hasImages = messages.some((m) => m.role === "user" && m.attachments?.length);
 
   return providerStream({ provider: "Ollama", model, signal }, async (emit, signal) => {
+    const vision = hasImages ? await ollamaModelSupportsVision(model) : false;
+    const body = JSON.stringify({
+      model,
+      messages: buildOllamaMessages(messages, systemPrompt, { vision }),
+      stream: true,
+      options: { temperature: 0.7 },
+    });
     const timeout = new AbortController();
     let timer = setTimeout(() => timeout.abort(), CHAT_FIRST_RESPONSE_TIMEOUT_MS);
     const bump = () => {

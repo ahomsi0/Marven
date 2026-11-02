@@ -119,6 +119,7 @@ const en = {
     providerUnavailable: "{{provider}} is unavailable",
     noModels: "No models found",
     inUse: "In use",
+    imagesNotSent: "This model can't see images — they won't be sent. Pick a vision model like llava or gemma3.",
   },
   searchEngines: {
     label: "Search engine",
