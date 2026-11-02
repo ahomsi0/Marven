@@ -69,10 +69,12 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
   }, [bridge, overlayOpen]);
 
   // Toolbar menus open over the page area; swap the page for a screenshot
-  // while one is open so the menu isn't hidden under the native view.
+  // while one is open so the menu isn't hidden under the native view. A
+  // full-window overlay already hides the view, so it counts as no menu.
+  // Declared after the bounds effect so `show()` is sent before `freeze()`.
   useEffect(() => {
     if (!bridge) return;
-    if (!menuOpen) {
+    if (!menuOpen || overlayOpen) {
       setFrozen(null);
       bridge.unfreeze();
       return;
@@ -84,7 +86,7 @@ export function BrowserPanel({ expanded, onToggleExpand, onClose }: BrowserPanel
     return () => {
       live = false;
     };
-  }, [bridge, menuOpen]);
+  }, [bridge, menuOpen, overlayOpen]);
 
   // Lets the main process handle browser shortcuts while focus is in the
   // toolbar (the page's own view handles them while the page has focus).

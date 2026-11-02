@@ -56,7 +56,7 @@ export function BookmarksMenu({ bridge, onOpen, onChanged }: BookmarksMenuProps)
                     onChanged();
                   })
                 }
-                className="me-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--m-text-faint)] opacity-0 hover:text-[var(--m-text)] group-hover:opacity-100"
+                className="me-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--m-text-faint)] opacity-0 hover:text-[var(--m-text)] focus-visible:opacity-100 group-hover:opacity-100"
               >
                 <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
                   <path d="M6 6l12 12M18 6 6 18" />

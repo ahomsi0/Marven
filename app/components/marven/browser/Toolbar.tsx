@@ -6,7 +6,7 @@ import type { BrowserBridge, BrowserDownload, BrowserTab } from "@/lib/inAppBrow
 import { AddressBar } from "./AddressBar";
 import { BookmarksMenu } from "./BookmarksMenu";
 import { DownloadsMenu } from "./DownloadsMenu";
-import { useDismiss } from "./useDismiss";
+import { useDismiss, type DismissReason } from "./useDismiss";
 
 type Menu = "bookmarks" | "downloads" | null;
 
@@ -29,7 +29,20 @@ export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onCl
   const [suggesting, setSuggesting] = useState(false);
   const [bookmarkVersion, setBookmarkVersion] = useState(0);
   const menusRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => setMenu(null), []);
+  const downloadsButtonRef = useRef<HTMLButtonElement>(null);
+  const bookmarksButtonRef = useRef<HTMLButtonElement>(null);
+  // Escape returns focus to the button that opened the menu; a click
+  // elsewhere leaves focus wherever the user clicked.
+  const closeMenu = useCallback(
+    (reason: DismissReason) => {
+      if (reason === "escape") {
+        const button = menu === "downloads" ? downloadsButtonRef.current : bookmarksButtonRef.current;
+        button?.focus();
+      }
+      setMenu(null);
+    },
+    [menu],
+  );
   useDismiss(menusRef, menu !== null, closeMenu);
 
   useEffect(() => {
@@ -68,7 +81,7 @@ export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onCl
 
       <div ref={menusRef} className="flex items-center gap-1">
         <div className="relative">
-          <button type="button" className={tool} disabled={!bridge} onClick={() => toggle("downloads")} aria-expanded={menu === "downloads"} aria-label={t("browser.downloads")} title={t("browser.downloads")}>
+          <button ref={downloadsButtonRef} type="button" className={tool} disabled={!bridge} onClick={() => toggle("downloads")} aria-expanded={menu === "downloads"} aria-label={t("browser.downloads")} title={t("browser.downloads")}>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>
             {active.length > 0 && (
               <svg className="pointer-events-none absolute inset-0.5" viewBox="0 0 24 24" aria-hidden>
@@ -79,7 +92,7 @@ export function Toolbar({ bridge, tab, downloads, expanded, onToggleExpand, onCl
           {menu === "downloads" && bridge && <DownloadsMenu bridge={bridge} downloads={downloads} />}
         </div>
         <div className="relative">
-          <button type="button" className={tool} disabled={!bridge} onClick={() => toggle("bookmarks")} aria-expanded={menu === "bookmarks"} aria-label={t("browser.bookmarks")} title={t("browser.bookmarks")}>
+          <button ref={bookmarksButtonRef} type="button" className={tool} disabled={!bridge} onClick={() => toggle("bookmarks")} aria-expanded={menu === "bookmarks"} aria-label={t("browser.bookmarks")} title={t("browser.bookmarks")}>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><path d="M7 4h10v16l-5-3.5L7 20V4z" /></svg>
           </button>
           {menu === "bookmarks" && bridge && (
