@@ -26,6 +26,19 @@ if (!app.requestSingleInstanceLock()) {
   return; // CommonJS module scope: stop evaluating the rest of main.js.
 }
 
+// ── Log capture (for "Report a problem") ─────────────────────────────────────
+// Every main-process console.* call, plus renderer warnings/errors (wired in
+// createWindow), lands in a redacted ring buffer and userData/logs/main.log.
+// The renderer reads the buffer through the 'get-recent-logs' IPC below.
+const os = require('os');
+const { createLogCapture, patchConsole, rendererConsoleEntry } = require('./logCapture');
+const { redactLines } = require('./redact');
+const logCapture = createLogCapture({
+  getDir: () => path.join(app.getPath('userData'), 'logs'),
+  homeDir: os.homedir(),
+});
+patchConsole(logCapture);
+
 // Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
 // Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
 // nvm dirs, etc. — so `npm`, `node`, `yarn`, etc. aren't found and the agent's
@@ -354,6 +367,13 @@ ipcMain.handle('save-settings', (_, settings) => {
   return publicSettings(next);
 });
 ipcMain.handle('get-version', () => app.getVersion());
+// Recent log lines for the "Report a problem" preview. Only Marven's own
+// window (main frame) may read them; lines are redacted again on the way out.
+ipcMain.handle('get-recent-logs', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return [];
+  if (!event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) return [];
+  return redactLines(logCapture.recent(), { homeDir: os.homedir() });
+});
 ipcMain.handle('check-for-updates', () => {
   if (isDev) return { status: 'dev' };
   autoUpdater.checkForUpdates();
@@ -456,6 +476,12 @@ function createWindow() {
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
   inAppBrowser.attachWindow(mainWindow);
+
+  // Renderer warnings/errors go into the same log buffer as the main process.
+  mainWindow.webContents.on('console-message', (...args) => {
+    const entry = rendererConsoleEntry(...args);
+    if (entry) logCapture.push(entry.level, 'renderer', [entry.text]);
+  });
 
   const appPort = isDev ? 3000 : 47891;
   mainWindow.loadURL(`http://localhost:${appPort}`);
