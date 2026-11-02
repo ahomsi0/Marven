@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { BrowserBridge, BrowserSnapshot } from "@/lib/inAppBrowser";
 
-const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, downloads: [], canReopenClosed: false };
+const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, downloads: [] };
 
 /** The latest browser snapshot pushed by the main process. */
 export function useBrowserSnapshot(bridge: BrowserBridge | null): BrowserSnapshot {

@@ -124,7 +124,6 @@ function createBrowserManager({ dir, getWindow }) {
       }),
       activeId: state.activeId,
       downloads: downloads.list(),
-      canReopenClosed: state.closed.length > 0,
     };
   }
 

@@ -30,7 +30,6 @@ export interface BrowserSnapshot {
   tabs: BrowserTab[];
   activeId: string | null;
   downloads: BrowserDownload[];
-  canReopenClosed: boolean;
 }
 
 export interface BrowserBounds {

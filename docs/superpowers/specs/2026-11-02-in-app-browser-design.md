@@ -61,7 +61,6 @@ interface BrowserSnapshot {
   activeId: string | null;
   downloads: Array<{ id: string; filename: string; state: "progressing" | "completed" | "cancelled" | "interrupted";
                      receivedBytes: number; totalBytes: number }>;
-  canReopenClosed: boolean;
 }
 ```
 
