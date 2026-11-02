@@ -288,7 +288,6 @@ export default function Home() {
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
   const isLoading = activeConversationId !== null && loadingConvIds.has(activeConversationId);
   const provider = activeMode === "agent" ? agentProvider : chatProvider;
-  const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
   const selectedModel =
     activeMode === "agent"
       ? agentModelByProvider[provider]
@@ -2254,11 +2253,18 @@ export default function Home() {
     }
   }
 
-  function handleModelChange(model: string) {
-    // Only update the bucket for the active mode — chat and agent are
-    // independent so picking a fast chat model doesn't pin the agent to it.
-    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
-    setter((prev) => ({ ...prev, [provider]: model }));
+  function handleModelSelect(nextProvider: AIProvider, model: string) {
+    // Provider and model change together, into the active mode's buckets only
+    // — chat and agent are independent so picking a fast chat model doesn't
+    // pin the agent to it. (Setting them in two calls filed the model under
+    // the previous provider, read from a stale closure.)
+    if (activeMode === "agent") {
+      setAgentProvider(nextProvider);
+      setAgentModelByProvider((prev) => ({ ...prev, [nextProvider]: model }));
+    } else {
+      setChatProvider(nextProvider);
+      setChatModelByProvider((prev) => ({ ...prev, [nextProvider]: model }));
+    }
   }
 
   async function handleDiskConflictReload() {
@@ -2429,8 +2435,7 @@ export default function Home() {
           setWorkspaceTrusted(workspaceRoot, trusted);
           setWorkspaceTrustedState(trusted);
         }}
-        onProviderChange={setProvider}
-        onModelChange={handleModelChange}
+        onModelSelect={handleModelSelect}
         onToggleWakeWord={toggleWakeWord}
         onToggleSpeech={toggleSpeech}
         onNewChat={handleNewChat}

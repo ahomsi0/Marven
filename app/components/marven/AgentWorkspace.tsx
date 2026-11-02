@@ -289,8 +289,7 @@ interface AgentWorkspaceProps {
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   onInputChange: (value: string) => void;
@@ -370,8 +369,7 @@ export function AgentWorkspace({
   isFileLoading,
   isFileDirty,
   terminalOutput,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleSpeech,
   onToggleWakeWord,
   onInputChange,
@@ -1252,8 +1250,7 @@ export function AgentWorkspace({
           provider={provider as import("@/types").AIProvider}
           selectedModel={model}
           tokenUsage={tokenUsage}
-          onProviderChange={onProviderChange}
-          onModelChange={onModelChange}
+          onModelSelect={onModelSelect}
           onInputChange={onInputChange}
           onSend={onSend}
           onStop={onStop}

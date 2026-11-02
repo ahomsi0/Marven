@@ -43,16 +43,19 @@ interface ModelSelectorProps {
   provider: AIProvider;
   selectedModel: string;
   direction?: "up" | "down";
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  /**
+   * The user picked `model` from `provider`. One call, so the parent updates
+   * both together — two separate setters let the model land in the old
+   * provider's slot.
+   */
+  onSelect: (provider: AIProvider, model: string) => void;
 }
 
 export function ModelSelector({
   provider,
   selectedModel,
   direction = "up",
-  onProviderChange,
-  onModelChange,
+  onSelect,
 }: ModelSelectorProps) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -89,16 +92,8 @@ export function ModelSelector({
     refreshEnabled();
   }, [refreshEnabled]);
 
-  // Restore last-used provider and model from localStorage on mount
-  useEffect(() => {
-    const savedProvider = localStorage.getItem("marven_last_provider") as AIProvider | null;
-    const savedModel = localStorage.getItem("marven_last_model");
-    if (savedProvider && savedModel) {
-      onProviderChange(savedProvider);
-      onModelChange(savedModel);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount only
+  // No restore-on-mount here: the page persists chat and agent picks
+  // separately, and a shared "last used" restore overwrote them on every mount.
 
   const loadModels = useCallback(async (p: AIProvider) => {
     if (loadedRef.current.has(p)) return;
@@ -250,10 +245,7 @@ export function ModelSelector({
                           key={m}
                           type="button"
                           onClick={() => {
-                            onProviderChange(viewedProvider);
-                            onModelChange(m);
-                            localStorage.setItem("marven_last_provider", viewedProvider);
-                            localStorage.setItem("marven_last_model", m);
+                            onSelect(viewedProvider, m);
                             close();
                           }}
                           title={m}

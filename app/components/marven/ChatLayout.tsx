@@ -86,8 +86,7 @@ interface ChatLayoutProps {
   /** Stop the chat reply streaming into the active conversation. */
   onStop?: () => void;
   onVoiceClick: () => void;
-  onProviderChange: (provider: AIProvider) => void;
-  onModelChange: (model: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleWakeWord: () => void;
   onToggleSpeech: () => void;
   onNewChat: () => void;
@@ -217,8 +216,7 @@ export function ChatLayout({
   onSend,
   onStop,
   onVoiceClick,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleWakeWord,
   onToggleSpeech,
   onNewChat,
@@ -573,8 +571,7 @@ export function ChatLayout({
               // not as an editor tab. Override the page.tsx-supplied handler.
               onOpenSettings={() => setSettingsOpen(true)}
               appVersion={appVersion}
-              onProviderChange={onProviderChange}
-              onModelChange={onModelChange}
+              onModelSelect={onModelSelect}
               onToggleSpeech={onToggleSpeech}
               onToggleWakeWord={onToggleWakeWord}
               onInputChange={onAgentInputChange}
@@ -673,8 +670,7 @@ export function ChatLayout({
                     onStop={onStop}
                     onVoiceClick={onVoiceClick}
                     onSlashCommand={handleSlashCommand}
-                    onProviderChange={onProviderChange}
-                    onModelChange={onModelChange}
+                    onModelSelect={onModelSelect}
                     onToggleSpeech={onToggleSpeech}
                     onToggleWakeWord={onToggleWakeWord}
                   />

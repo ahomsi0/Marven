@@ -33,8 +33,7 @@ interface InputBarProps {
   onStop?: () => void;
   onVoiceClick: () => void;
   onSlashCommand?: (cmd: string) => void;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   attachments?: ImageAttachment[];
@@ -64,8 +63,7 @@ export function InputBar({
   onStop,
   onVoiceClick,
   onSlashCommand,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleSpeech,
   onToggleWakeWord,
   attachments,
@@ -376,8 +374,7 @@ export function InputBar({
           <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
-            onProviderChange={onProviderChange}
-            onModelChange={onModelChange}
+            onSelect={onModelSelect}
           />
           <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} align="left" />
 
