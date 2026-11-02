@@ -37,6 +37,19 @@ describe("rankSuggestions", () => {
     expect(rows.map((r) => r.url)).toEqual(["https://fresh-news.com/", "https://old-news.com/"]);
   });
 
+  it("does not let an entry dated in the future outrank a busy one from today", () => {
+    const rows = rankSuggestions({
+      query: "site",
+      bookmarks: [],
+      history: {
+        "https://future-site.com/": { title: "", visits: 1, lastVisit: NOW + 100 * HALF_LIFE_MS },
+        "https://busy-site.com/": { title: "", visits: 999, lastVisit: NOW },
+      },
+      now: NOW,
+    });
+    expect(rows.map((r) => r.url)).toEqual(["https://busy-site.com/", "https://future-site.com/"]);
+  });
+
   it("matches the title too, case-insensitively, and breaks ties by shorter URL", () => {
     const rows = rankSuggestions({
       query: "PYTHON",

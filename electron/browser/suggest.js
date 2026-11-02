@@ -25,7 +25,7 @@ function rankSuggestions({ query, bookmarks, history, now, limit = LIMIT }) {
 
   const visited = Object.entries(history)
     .filter(([url, h]) => !seen.has(url) && matches(q, url, h.title))
-    .map(([url, h]) => ({ url, title: h.title, score: h.visits * Math.pow(0.5, (now - h.lastVisit) / HALF_LIFE_MS) }))
+    .map(([url, h]) => ({ url, title: h.title, score: h.visits * Math.pow(0.5, Math.max(0, now - h.lastVisit) / HALF_LIFE_MS) }))
     .sort((a, b) => b.score - a.score || a.url.length - b.url.length);
   for (const h of visited) {
     if (out.length >= limit) break;

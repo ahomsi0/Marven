@@ -21,6 +21,24 @@ describe("history", () => {
     expect(updateTitle(h, "https://other.com/", "x")).toBe(h);
   });
 
+  it("treats a long title equal to the stored capped one as unchanged", () => {
+    const long = "t".repeat(1000);
+    const h = recordVisit({}, "https://a.com/", long, 1);
+    expect(h["https://a.com/"].title).toHaveLength(300);
+    expect(updateTitle(h, "https://a.com/", long)).toBe(h);
+  });
+
+  it("prunes as it records once well past the entry limit", () => {
+    const now = 10 * DAY;
+    const h: Record<string, { title: string; visits: number; lastVisit: number }> = {};
+    const over = Math.floor(MAX_ENTRIES * 1.1);
+    for (let i = 0; i < over; i++) h[`https://s${i}.com/`] = { title: "", visits: 1, lastVisit: now - DAY + i };
+    expect(Object.keys(recordVisit(h, "https://s0.com/", "", now))).toHaveLength(over); // no growth, no prune
+    const next = recordVisit(h, "https://new.com/", "", now);
+    expect(Object.keys(next)).toHaveLength(MAX_ENTRIES);
+    expect(next["https://new.com/"]).toBeDefined();
+  });
+
   it("drops entries older than 90 days", () => {
     const now = 200 * DAY;
     const h = { "https://old.com/": { title: "", visits: 1, lastVisit: now - MAX_AGE_MS - 1 }, "https://new.com/": { title: "", visits: 1, lastVisit: now - DAY } };
@@ -37,14 +55,22 @@ describe("history", () => {
   });
 
   it("sanitizes whatever was on disk", () => {
-    expect(sanitizeHistory(null)).toEqual({});
-    expect(sanitizeHistory([1, 2])).toEqual({});
+    expect(sanitizeHistory(null, 100)).toEqual({});
+    expect(sanitizeHistory([1, 2], 100)).toEqual({});
     expect(
       sanitizeHistory({
         "https://ok.com/": { title: "Ok", visits: 3, lastVisit: 5 },
         "javascript:x": { title: "", visits: 1, lastVisit: 1 },
         "https://bad.com/": { title: "x", visits: "lots", lastVisit: 1 },
-      }),
+        "https://zero.com/": { title: "x", visits: 0, lastVisit: 1 },
+        "https://half.com/": { title: "x", visits: 1.5, lastVisit: 1 },
+      }, 100),
     ).toEqual({ "https://ok.com/": { title: "Ok", visits: 3, lastVisit: 5 } });
+  });
+
+  it("clamps a lastVisit in the future to now", () => {
+    expect(sanitizeHistory({ "https://a.com/": { title: "", visits: 2, lastVisit: 10_000 } }, 500)).toEqual({
+      "https://a.com/": { title: "", visits: 2, lastVisit: 500 },
+    });
   });
 });

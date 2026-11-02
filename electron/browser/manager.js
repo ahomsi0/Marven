@@ -49,7 +49,8 @@ function createBrowserManager({ dir, getWindow }) {
       bookmarks: createJsonStore(path.join(dir, 'bookmarks.json'), []),
       sites: createJsonStore(path.join(dir, 'sites.json'), { blockingDisabled: [] }),
     };
-    stores.history.set(history.prune(history.sanitizeHistory(stores.history.get()), Date.now()));
+    const now = Date.now();
+    stores.history.set(history.prune(history.sanitizeHistory(stores.history.get(), now), now));
     stores.bookmarks.set(bookmarks.sanitizeBookmarks(stores.bookmarks.get()));
     const sites = stores.sites.get();
     if (!Array.isArray(sites?.blockingDisabled)) stores.sites.set({ blockingDisabled: [] });

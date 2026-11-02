@@ -76,6 +76,23 @@ describe("tabsModel", () => {
     expect(s.tabs[0]).toEqual({ id: "a", url: "https://new.com/", title: "New" });
   });
 
+  it("caps a patched title and ignores a non-web url", () => {
+    let s = addTab(emptyState(), tab("a"));
+    s = updateTab(s, "a", { title: "x".repeat(10_000) });
+    expect(s.tabs[0].title).toHaveLength(300);
+    s = updateTab(s, "a", { url: "javascript:alert(1)" });
+    expect(s.tabs[0].url).toBe("https://a.com/");
+    expect(updateTab(s, "a", { title: "x".repeat(10_000), url: "https://a.com/" })).toBe(s); // nothing changed
+  });
+
+  it("keeps extra state fields when closing and reopening", () => {
+    let s = { ...addTab(emptyState(), tab("a")), extra: 1 };
+    s = closeTab(s, "a");
+    expect(s.extra).toBe(1);
+    s = reopenClosed(s, () => "a2");
+    expect(s.extra).toBe(1);
+  });
+
   it("ignores unknown ids", () => {
     const s = addTab(emptyState(), tab("a"));
     expect(activateTab(s, "nope")).toBe(s);

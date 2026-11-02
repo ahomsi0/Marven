@@ -27,7 +27,7 @@ function closeTab(state, id) {
   let { activeId } = state;
   if (activeId === id) activeId = (tabs[index] ?? tabs[index - 1] ?? null)?.id ?? null;
   const closed = [{ url: closing.url, title: closing.title, index }, ...state.closed].slice(0, CLOSED_LIMIT);
-  return { tabs, activeId, closed };
+  return { ...state, tabs, activeId, closed };
 }
 
 function activateTab(state, id) {
@@ -52,14 +52,19 @@ function reopenClosed(state, makeId) {
   const tab = { id: makeId(), url: entry.url, title: entry.title };
   const tabs = [...state.tabs];
   tabs.splice(Math.min(entry.index, tabs.length), 0, tab);
-  return { tabs, activeId: tab.id, closed };
+  return { ...state, tabs, activeId: tab.id, closed };
 }
 
 function updateTab(state, id, patch) {
   const index = state.tabs.findIndex((t) => t.id === id);
   if (index === -1) return state;
+  const clean = { ...patch };
+  if ('title' in clean) clean.title = cleanText(clean.title, TITLE_LIMIT);
+  if ('url' in clean && !isWebUrl(clean.url)) delete clean.url;
+  const current = state.tabs[index];
+  if (Object.keys(clean).every((key) => current[key] === clean[key])) return state;
   const tabs = [...state.tabs];
-  tabs[index] = { ...tabs[index], ...patch };
+  tabs[index] = { ...tabs[index], ...clean };
   return { ...state, tabs };
 }
 

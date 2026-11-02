@@ -10,7 +10,7 @@ const TITLE_LIMIT = 300;
 function recordVisit(history, url, title, now) {
   if (!isWebUrl(url)) return history;
   const prev = history[url];
-  return {
+  const next = {
     ...history,
     [url]: {
       title: cleanText(title, TITLE_LIMIT) || prev?.title || '',
@@ -18,12 +18,15 @@ function recordVisit(history, url, title, now) {
       lastVisit: now,
     },
   };
+  // Pruning is otherwise only done at startup; keep a long-running app bounded.
+  return Object.keys(next).length > MAX_ENTRIES * 1.1 ? prune(next, now) : next;
 }
 
 function updateTitle(history, url, title) {
   const prev = history[url];
-  if (!prev || !title || prev.title === title) return history;
-  return { ...history, [url]: { ...prev, title: cleanText(title, TITLE_LIMIT) } };
+  const clean = cleanText(title, TITLE_LIMIT);
+  if (!prev || !clean || prev.title === clean) return history;
+  return { ...history, [url]: { ...prev, title: clean } };
 }
 
 function prune(history, now) {
@@ -34,13 +37,14 @@ function prune(history, now) {
   return Object.fromEntries(kept);
 }
 
-function sanitizeHistory(raw) {
+// `now` caps lastVisit, so an entry saved under a wrong clock can't rank forever.
+function sanitizeHistory(raw, now) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out = {};
   for (const [url, entry] of Object.entries(raw)) {
     if (!isWebUrl(url) || !entry || typeof entry !== 'object') continue;
-    if (!Number.isFinite(entry.visits) || !Number.isFinite(entry.lastVisit)) continue;
-    out[url] = { title: cleanText(entry.title, TITLE_LIMIT), visits: entry.visits, lastVisit: entry.lastVisit };
+    if (!Number.isInteger(entry.visits) || entry.visits < 1 || !Number.isFinite(entry.lastVisit)) continue;
+    out[url] = { title: cleanText(entry.title, TITLE_LIMIT), visits: entry.visits, lastVisit: Math.min(entry.lastVisit, now) };
   }
   return out;
 }
