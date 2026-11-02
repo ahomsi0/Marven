@@ -285,6 +285,8 @@ export default function Home() {
   useEffect(() => { saveAgentModelMap(agentModelByProvider); }, [agentModelByProvider]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  // Which provider `models` belongs to, and the route's ranked default for it.
+  const [modelsFor, setModelsFor] = useState<{ provider: AIProvider; defaultModel: string } | null>(null);
   // selectedModel is computed per active mode — declared after activeMode below.
 
   const [chatTokenUsage, setChatTokenUsage] = useState<TokenUsage>(zeroUsage("actual"));
@@ -1517,27 +1519,12 @@ export default function Home() {
         if (cancelled) return;
         const nextModels: OllamaModel[] = data.models ?? [];
         setModels(nextModels);
+        setModelsFor({ provider, defaultModel: typeof data.defaultModel === "string" ? data.defaultModel : "" });
         if (data.error) setModelsError(data.error as string);
-        // Seed the ACTIVE mode's bucket only — the other mode keeps whatever
-        // pick the user made for it (or its own seeded default the first time
-        // its provider was visited). Cross-mode bleed was the root cause of
-        // "chat is always following agent."
-        const seed = (prev: Record<AIProvider, string>) => {
-          const current = prev[provider];
-          const stillAvailable = nextModels.some((m) => m.name === current);
-          if (stillAvailable) return prev;
-          // The route picks a ranked default (and Groq's list comes back
-          // best-first); never fall back to a default the list doesn't have.
-          const defaultListed = nextModels.some((m) => m.name === data.defaultModel);
-          const fallback =
-            (defaultListed || nextModels.length === 0 ? data.defaultModel : nextModels[0]?.name) ?? "";
-          return { ...prev, [provider]: fallback };
-        };
-        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
-        setter(seed);
       } catch {
         if (!cancelled) {
           setModels([]);
+          setModelsFor(null);
           setModelsError(`Could not load ${provider} models`);
         }
       } finally {
@@ -1547,6 +1534,27 @@ export default function Home() {
     loadModels();
     return () => { cancelled = true; };
   }, [provider]);
+
+  // Keep the ACTIVE mode's pick on a model the provider actually offers. This
+  // re-checks whenever the list, the mode or the pick changes — not only when
+  // the provider changes — so a stale pick (a retired model, one saved from the
+  // offline fallback list, or one restored from an old conversation) gets
+  // replaced by the route's ranked default instead of failing every send. The
+  // other mode keeps its own pick until it's active.
+  useEffect(() => {
+    if (modelsLoading || !modelsFor || modelsFor.provider !== provider) return;
+    if (models.length === 0) {
+      if (!selectedModel && modelsFor.defaultModel) {
+        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+        setter((prev) => ({ ...prev, [provider]: modelsFor.defaultModel }));
+      }
+      return;
+    }
+    if (models.some((m) => m.name === selectedModel)) return;
+    const fallback = models.some((m) => m.name === modelsFor.defaultModel) ? modelsFor.defaultModel : models[0].name;
+    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+    setter((prev) => ({ ...prev, [provider]: fallback }));
+  }, [models, modelsFor, modelsLoading, provider, activeMode, selectedModel]);
 
   // ─── Voice ────────────────────────────────────────────────────────────────
   const sendVoiceCommandRef = useRef<(text: string) => void>(() => {});
