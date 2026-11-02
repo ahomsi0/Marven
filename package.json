@@ -35,7 +35,8 @@
     },
     "files": [
       "electron/**/*",
-      "!electron/assets/icon.svg"
+      "!electron/assets/icon.svg",
+      "!electron/**/*.test.*"
     ],
     "extraResources": [
       {
