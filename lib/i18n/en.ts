@@ -120,6 +120,7 @@ const en = {
     noModels: "No models found",
     inUse: "In use",
     imagesNotSent: "This model can't see images — they won't be sent. Pick a vision model like llava or gemma3.",
+    pageAttachment: "Page: {{title}}",
   },
   searchEngines: {
     label: "Search engine",
@@ -238,6 +239,12 @@ const en = {
     errorCertificate: "This connection isn't secure",
     errorCrashed: "This page crashed",
     retry: "Retry",
+    askMarven: "Ask Marven",
+    askAboutPage: "Ask about this page",
+    summarisePage: "Summarise this page",
+    summarisePrompt: "Summarise this page.",
+    readingPage: "Reading the page…",
+    askFailed: "Couldn't read this page.",
     desktopOnly: "The in-app browser works in the Marven desktop app.",
   },
   whatsNew: {

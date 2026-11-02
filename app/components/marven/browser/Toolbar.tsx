@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
-import type { BrowserBridge, BrowserDownload, BrowserSnapshot, BrowserTab } from "@/lib/inAppBrowser";
+import { isWebUrl, type BrowserBridge, type BrowserDownload, type BrowserSnapshot, type BrowserTab } from "@/lib/inAppBrowser";
+import { ATTACH_PAGE_EVENT, type PageAttachDetail } from "@/lib/pageAttachment";
+import { SparkleIcon } from "../Icons";
 import { AddressBar } from "./AddressBar";
+import { AskMenu, type AskKind } from "./AskMenu";
 import { BookmarksMenu } from "./BookmarksMenu";
 import { DownloadsMenu } from "./DownloadsMenu";
 import { useDismiss, type DismissReason } from "./useDismiss";
 
-type Menu = "bookmarks" | "downloads" | null;
+type Menu = "ask" | "bookmarks" | "downloads" | null;
 
 interface ToolbarProps {
   bridge: BrowserBridge | null;
@@ -32,12 +35,16 @@ export function Toolbar({ bridge, tab, downloads, searchEngine, expanded, onTogg
   const menusRef = useRef<HTMLDivElement>(null);
   const downloadsButtonRef = useRef<HTMLButtonElement>(null);
   const bookmarksButtonRef = useRef<HTMLButtonElement>(null);
+  const askButtonRef = useRef<HTMLButtonElement>(null);
+  const [askBusy, setAskBusy] = useState(false);
+  const [askFailed, setAskFailed] = useState(false);
   // Escape returns focus to the button that opened the menu; a click
   // elsewhere leaves focus wherever the user clicked.
   const closeMenu = useCallback(
     (reason: DismissReason) => {
       if (reason === "escape") {
-        const button = menu === "downloads" ? downloadsButtonRef.current : bookmarksButtonRef.current;
+        const button =
+          menu === "downloads" ? downloadsButtonRef.current : menu === "ask" ? askButtonRef.current : bookmarksButtonRef.current;
         button?.focus();
       }
       setMenu(null);
@@ -50,7 +57,36 @@ export function Toolbar({ bridge, tab, downloads, searchEngine, expanded, onTogg
     onMenuChange(menu !== null || suggesting);
   }, [menu, suggesting, onMenuChange]);
 
+  // "Ask Marven": read the page and hand it to the chat input (InputBar
+  // listens for ATTACH_PAGE_EVENT). The chat is hidden while the browser is
+  // expanded, so go back to the side panel first.
+  const canAsk = !!bridge && !!tab && isWebUrl(tab.url) && !tab.error;
+
+  useEffect(() => {
+    setAskFailed(false);
+  }, [menu, tab?.id, tab?.url]);
+
+  // The page went away (error, blank tab) while the menu was open.
+  useEffect(() => {
+    if (!canAsk) setMenu((m) => (m === "ask" ? null : m));
+  }, [canAsk]);
+
   const toggle = (next: Exclude<Menu, null>) => setMenu((m) => (m === next ? null : next));
+  const askMarven = async (kind: AskKind) => {
+    if (!bridge || !tab || askBusy) return;
+    setAskBusy(true);
+    setAskFailed(false);
+    const page = await bridge.extractPage(tab.id).catch(() => null);
+    setAskBusy(false);
+    if (!page) {
+      setAskFailed(true);
+      return;
+    }
+    const detail: PageAttachDetail = kind === "summarise" ? { ...page, prompt: t("browser.summarisePrompt") } : page;
+    setMenu(null);
+    if (expanded) onToggleExpand();
+    window.dispatchEvent(new CustomEvent<PageAttachDetail>(ATTACH_PAGE_EVENT, { detail }));
+  };
   const active = downloads.filter((d) => d.state === "progressing");
   const totals = active.reduce((acc, d) => ({ got: acc.got + d.receivedBytes, all: acc.all + d.totalBytes }), { got: 0, all: 0 });
   const progress = totals.all > 0 ? totals.got / totals.all : 0;
@@ -81,6 +117,22 @@ export function Toolbar({ bridge, tab, downloads, searchEngine, expanded, onTogg
       <AddressBar key={tab?.id ?? "none"} bridge={bridge} tab={tab} searchEngine={searchEngine} bookmarkVersion={bookmarkVersion} onSuggestingChange={setSuggesting} />
 
       <div ref={menusRef} className="flex items-center gap-1">
+        <div className="relative">
+          <button
+            ref={askButtonRef}
+            type="button"
+            className={tool}
+            disabled={!canAsk}
+            onClick={() => toggle("ask")}
+            aria-haspopup="menu"
+            aria-expanded={menu === "ask"}
+            aria-label={t("browser.askMarven")}
+            title={t("browser.askMarven")}
+          >
+            <SparkleIcon className="h-4 w-4" />
+          </button>
+          {menu === "ask" && canAsk && <AskMenu busy={askBusy} failed={askFailed} onPick={(kind) => void askMarven(kind)} />}
+        </div>
         <div className="relative">
           <button ref={downloadsButtonRef} type="button" className={tool} disabled={!bridge} onClick={() => toggle("downloads")} aria-expanded={menu === "downloads"} aria-label={t("browser.downloads")} title={t("browser.downloads")}>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>

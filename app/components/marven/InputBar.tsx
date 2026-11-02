@@ -9,6 +9,7 @@ import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
 import type { TokenUsage } from "@/types";
 import { useT } from "@/lib/i18n";
 import { useVisionSupport } from "@/hooks/useVisionSupport";
+import { ATTACH_PAGE_EVENT, cleanPageDetail, pageChipTitle, pageToDocAttachment } from "@/lib/pageAttachment";
 
 const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -91,6 +92,32 @@ export function InputBar({
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
 
   useEffect(() => { setMenuActiveIdx(0); }, [query]);
+
+  // "Ask Marven about this page" from the in-app browser toolbar: attach the
+  // page as an (untrusted) document, prefill the prompt if the input is empty.
+  // The ref keeps the listener on the latest props without re-subscribing.
+  const pageTargetRef = useRef({ value, docs, onChange, onDocsChange, t });
+  pageTargetRef.current = { value, docs, onChange, onDocsChange, t };
+  useEffect(() => {
+    const onAttachPage = (event: Event) => {
+      const detail = cleanPageDetail((event as CustomEvent).detail);
+      if (!detail) return;
+      const { value, docs, onChange, onDocsChange, t } = pageTargetRef.current;
+      const doc = pageToDocAttachment(detail, t("input.pageAttachment", { title: pageChipTitle(detail) }));
+      // Asking again about the same page replaces its earlier attachment.
+      onDocsChange?.([...(docs ?? []).filter((d) => d.name !== doc.name), doc]);
+      if (detail.prompt && !value.trim()) onChange(detail.prompt);
+      // The chat may only now be coming back into view (browser was expanded).
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
+    };
+    window.addEventListener(ATTACH_PAGE_EVENT, onAttachPage);
+    return () => window.removeEventListener(ATTACH_PAGE_EVENT, onAttachPage);
+  }, []);
 
   useEffect(() => {
     const textarea = textareaRef.current;

@@ -122,6 +122,7 @@ const ar: Shape<typeof en> = {
     noModels: "لا توجد نماذج",
     inUse: "قيد الاستخدام",
     imagesNotSent: "هذا النموذج لا يرى الصور، لذا لن تُرسَل. اختر نموذج رؤية مثل llava أو gemma3.",
+    pageAttachment: "صفحة: {{title}}",
   },
   searchEngines: {
     label: "محرك البحث",
@@ -244,6 +245,12 @@ const ar: Shape<typeof en> = {
     errorCertificate: "هذا الاتصال غير آمن",
     errorCrashed: "تعطّلت هذه الصفحة",
     retry: "إعادة المحاولة",
+    askMarven: "اسأل Marven",
+    askAboutPage: "اسأل عن هذه الصفحة",
+    summarisePage: "لخّص هذه الصفحة",
+    summarisePrompt: "لخّص هذه الصفحة.",
+    readingPage: "جارٍ قراءة الصفحة…",
+    askFailed: "تعذّرت قراءة هذه الصفحة.",
     desktopOnly: "يعمل المتصفح المدمج في تطبيق Marven لسطح المكتب.",
   },
   whatsNew: {
