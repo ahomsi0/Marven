@@ -9,6 +9,9 @@ const { sanitizeFilename, uniqueName } = require('./downloadNames');
 
 function createDownloads({ onChange }) {
   const entries = new Map();
+  // Names of downloads still in progress, lower-cased (APFS is case-insensitive
+  // by default), so two downloads started together never pick the same file.
+  const reserved = new Set();
   let seq = 0;
 
   function folder() {
@@ -17,13 +20,16 @@ function createDownloads({ onChange }) {
 
   function handle(_event, item) {
     const dir = folder();
-    const name = uniqueName(sanitizeFilename(item.getFilename()), (n) => fs.existsSync(path.join(dir, n)));
+    const exists = (n) => reserved.has(n.toLowerCase()) || fs.existsSync(path.join(dir, n));
+    const name = uniqueName(sanitizeFilename(item.getFilename()), exists);
     const target = path.join(dir, name);
     if (path.dirname(target) !== dir) {
       item.cancel();
       return;
     }
     item.setSavePath(target);
+    const key = name.toLowerCase();
+    reserved.add(key);
 
     const entry = { id: `d${++seq}`, filename: name, path: target, state: 'progressing', receivedBytes: 0, totalBytes: item.getTotalBytes(), item };
     entries.set(entry.id, entry);
@@ -36,6 +42,7 @@ function createDownloads({ onChange }) {
       onChange();
     });
     item.once('done', (_e, state) => {
+      reserved.delete(key);
       entry.state = state;
       entry.receivedBytes = item.getReceivedBytes();
       entry.item = null;

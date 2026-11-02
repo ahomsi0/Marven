@@ -3,15 +3,38 @@
 
 const path = require('node:path');
 
+// In UTF-8 bytes; leaves room for " (999)" under the usual 255-byte limit.
 const NAME_LIMIT = 200;
+const EXT_LIMIT = 20;
+// Control characters, DEL, characters Windows/macOS treat specially, and the
+// bidi / format controls that can make "fdp.exe" display as "exe.pdf".
+const UNSAFE = /[\x00-\x1f\x7f<>:"|?*\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+function byteLength(s) {
+  return Buffer.byteLength(s, 'utf8');
+}
+
+// Longest prefix of `s` that fits in `limit` bytes, cut between code points.
+function truncateBytes(s, limit) {
+  let out = '';
+  let used = 0;
+  for (const ch of s) {
+    const size = byteLength(ch);
+    if (used + size > limit) break;
+    out += ch;
+    used += size;
+  }
+  return out;
+}
 
 function sanitizeFilename(name) {
   let base = String(name ?? '').split(/[\\/]/).pop();
-  base = base.replace(/[\x00-\x1f<>:"|?*]/g, '_').replace(/^\.+/, '').trim();
+  base = base.replace(UNSAFE, '_').trim().replace(/^[.\s]+/, '');
   if (!base) base = 'download';
-  if (base.length <= NAME_LIMIT) return base;
-  const ext = path.extname(base).slice(0, 20);
-  return base.slice(0, NAME_LIMIT - ext.length) + ext;
+  if (byteLength(base) <= NAME_LIMIT) return base;
+  const ext = [...path.extname(base)].slice(0, EXT_LIMIT).join('');
+  const stem = base.slice(0, base.length - path.extname(base).length);
+  return truncateBytes(stem, NAME_LIMIT - byteLength(ext)) + ext;
 }
 
 function uniqueName(name, exists) {
@@ -22,7 +45,10 @@ function uniqueName(name, exists) {
     const candidate = `${stem} (${i})${ext}`;
     if (!exists(candidate)) return candidate;
   }
-  return `${stem} (${Date.now()})${ext}`;
+  for (let n = Date.now(); ; n++) {
+    const candidate = `${stem} (${n})${ext}`;
+    if (!exists(candidate)) return candidate;
+  }
 }
 
 module.exports = { sanitizeFilename, uniqueName };

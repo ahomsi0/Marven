@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { sanitizeFilename, uniqueName } from "./downloadNames.js";
 
 describe("sanitizeFilename", () => {
@@ -19,6 +19,32 @@ describe("sanitizeFilename", () => {
     expect(sanitizeFilename(undefined)).toBe("download");
     expect(sanitizeFilename("x".repeat(300) + ".zip").length).toBe(200);
   });
+
+  it("strips leading whitespace mixed with dots", () => {
+    expect(sanitizeFilename("  .bashrc")).toBe("bashrc");
+    expect(sanitizeFilename(". .zshrc")).toBe("zshrc");
+    expect(sanitizeFilename("  report.pdf  ")).toBe("report.pdf");
+  });
+
+  it("replaces DEL and bidi / format controls", () => {
+    expect(sanitizeFilename("a\x7fb.txt")).toBe("a_b.txt");
+    expect(sanitizeFilename("invoice\u202Efdp.exe")).toBe("invoice_fdp.exe");
+    expect(sanitizeFilename("\u200E\u200F\u202A\u202B\u202C\u202D\u2066\u2067\u2068\u2069x")).toBe("__________x");
+  });
+
+  it("caps the name by UTF-8 bytes, keeping the extension", () => {
+    const arabic = sanitizeFilename("ملف".repeat(84) + ".pdf");
+    expect(Buffer.byteLength(arabic)).toBeLessThanOrEqual(200);
+    expect(arabic.endsWith(".pdf")).toBe(true);
+    expect(arabic.startsWith("ملف")).toBe(true);
+  });
+
+  it("never cuts a character in half", () => {
+    const emoji = sanitizeFilename("😀".repeat(150) + ".txt");
+    expect(Buffer.byteLength(emoji)).toBeLessThanOrEqual(200);
+    expect(emoji.endsWith(".txt")).toBe(true);
+    expect(emoji).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+  });
 });
 
 describe("uniqueName", () => {
@@ -28,5 +54,12 @@ describe("uniqueName", () => {
     expect(uniqueName("b.pdf", exists)).toBe("b.pdf");
     expect(uniqueName("a.pdf", exists)).toBe("a (2).pdf");
     expect(uniqueName("notes", exists)).toBe("notes (1)");
+  });
+
+  it("checks the timestamp fallback too", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(5000);
+    const exists = (n: string) => n !== "a (5001).pdf";
+    expect(uniqueName("a.pdf", exists)).toBe("a (5001).pdf");
+    now.mockRestore();
   });
 });
