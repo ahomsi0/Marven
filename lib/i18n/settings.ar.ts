@@ -342,6 +342,8 @@ const settingsAr = {
     project: "هذا المشروع",
     projectHint: "تُستخدم فقط أثناء فتح {{name}}.",
     noProject: "افتح مشروعًا في وضع الوكيل لإدارة ذاكرته هنا. تظهر الذاكرة العامة فقط.",
+    pickProject: "ذاكرة المشروع:",
+    globalOnly: "لا شيء (العامة فقط)",
     empty: "لا شيء محفوظ بعد.",
     addPlaceholder: "أضف شيئًا ليتذكره Marven…",
     add: "إضافة",
