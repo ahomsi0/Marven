@@ -33,6 +33,7 @@ import { getRequireWriteApproval, getPlanMode, setPlanMode } from "@/lib/agentSe
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
 import { WhatsNewCard } from "@/app/components/marven/WhatsNewCard";
+import { GlobalPanels } from "@/app/components/marven/GlobalPanels";
 import { parseCommand } from "@/lib/commandParser";
 import {
   loadConversations,
@@ -64,6 +65,7 @@ import {
 import { parseChatStream } from "@/lib/chatStream";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
+import { MEMORY_CHANGED_EVENT, MEMORY_SAVED_EVENT, dispatchMemorySaved } from "@/lib/memoryEvents";
 import {
   loadChatProvider,
   loadAgentProvider,
@@ -86,6 +88,25 @@ import {
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
+import {
+  attachPendingVersion,
+  beginNewVersion,
+  branchThread,
+  settlePendingVersion,
+  switchVersion,
+  userIndexBefore,
+  type PendingVersion,
+} from "@/lib/messageVersions";
+import i18n from "@/lib/i18n";
+
+/** Options for one chat send. Edit / retry pass the thread and the original turn's files. */
+interface ChatSendOptions {
+  messagesOverride?: Message[];
+  /** Answer this turn with another model, without changing the selected one. */
+  modelOverride?: { provider: AIProvider; model: string };
+  attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
+}
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -264,6 +285,8 @@ export default function Home() {
   useEffect(() => { saveAgentModelMap(agentModelByProvider); }, [agentModelByProvider]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  // Which provider `models` belongs to, and the route's ranked default for it.
+  const [modelsFor, setModelsFor] = useState<{ provider: AIProvider; defaultModel: string } | null>(null);
   // selectedModel is computed per active mode — declared after activeMode below.
 
   const [chatTokenUsage, setChatTokenUsage] = useState<TokenUsage>(zeroUsage("actual"));
@@ -567,6 +590,19 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Settings → Memory, the toast's Undo and the agent's remember tool change
+  // memory outside this component; bump a tick so the effect below refetches.
+  const [memoryRefreshTick, setMemoryRefreshTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setMemoryRefreshTick((n) => n + 1);
+    window.addEventListener(MEMORY_CHANGED_EVENT, bump);
+    window.addEventListener(MEMORY_SAVED_EVENT, bump);
+    return () => {
+      window.removeEventListener(MEMORY_CHANGED_EVENT, bump);
+      window.removeEventListener(MEMORY_SAVED_EVENT, bump);
+    };
+  }, []);
+
   useEffect(() => {
     // Sequence guard: if the deps change again before the fetch resolves, the
     // stale response must not overwrite the newer conversation's memories.
@@ -588,7 +624,7 @@ export default function Home() {
         }));
       })
       .catch(() => {});
-  }, [workspaceRoot, activeConversationId]);
+  }, [workspaceRoot, activeConversationId, memoryRefreshTick]);
 
   // ─── Persist conversations on change ───────────────────────────────────────
   useEffect(() => {
@@ -997,10 +1033,21 @@ export default function Home() {
     []
   );
 
+  // Edit / retry in progress, by conversation: the next user message added to
+  // that conversation becomes a new version of the message being replaced.
+  const pendingVersionsRef = useRef<Map<string, PendingVersion>>(new Map());
+
   function addMessageToConversation(convId: string, message: Message, stamped?: { provider: AIProvider; model: string }) {
+    // Read now, not inside the updater: the updater may run after the edit
+    // handler has already settled and cleared the pending version.
+    const pending = message.role === "user" ? pendingVersionsRef.current.get(convId) : undefined;
+    if (pending) pendingVersionsRef.current.delete(convId);
     upsertConversation(convId, (conv) => ({
       ...conv,
-      messages: [...conv.messages, message],
+      messages: [
+        ...conv.messages,
+        pending && conv.messages.length === pending.index ? attachPendingVersion(message, pending) : message,
+      ],
       updatedAt: new Date().toISOString(),
       ...(stamped ?? {}),
     }));
@@ -1472,27 +1519,12 @@ export default function Home() {
         if (cancelled) return;
         const nextModels: OllamaModel[] = data.models ?? [];
         setModels(nextModels);
+        setModelsFor({ provider, defaultModel: typeof data.defaultModel === "string" ? data.defaultModel : "" });
         if (data.error) setModelsError(data.error as string);
-        // Seed the ACTIVE mode's bucket only — the other mode keeps whatever
-        // pick the user made for it (or its own seeded default the first time
-        // its provider was visited). Cross-mode bleed was the root cause of
-        // "chat is always following agent."
-        const seed = (prev: Record<AIProvider, string>) => {
-          const current = prev[provider];
-          const stillAvailable = nextModels.some((m) => m.name === current);
-          if (stillAvailable) return prev;
-          // The route picks a ranked default (and Groq's list comes back
-          // best-first); never fall back to a default the list doesn't have.
-          const defaultListed = nextModels.some((m) => m.name === data.defaultModel);
-          const fallback =
-            (defaultListed || nextModels.length === 0 ? data.defaultModel : nextModels[0]?.name) ?? "";
-          return { ...prev, [provider]: fallback };
-        };
-        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
-        setter(seed);
       } catch {
         if (!cancelled) {
           setModels([]);
+          setModelsFor(null);
           setModelsError(`Could not load ${provider} models`);
         }
       } finally {
@@ -1502,6 +1534,27 @@ export default function Home() {
     loadModels();
     return () => { cancelled = true; };
   }, [provider]);
+
+  // Keep the ACTIVE mode's pick on a model the provider actually offers. This
+  // re-checks whenever the list, the mode or the pick changes — not only when
+  // the provider changes — so a stale pick (a retired model, one saved from the
+  // offline fallback list, or one restored from an old conversation) gets
+  // replaced by the route's ranked default instead of failing every send. The
+  // other mode keeps its own pick until it's active.
+  useEffect(() => {
+    if (modelsLoading || !modelsFor || modelsFor.provider !== provider) return;
+    if (models.length === 0) {
+      if (!selectedModel && modelsFor.defaultModel) {
+        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+        setter((prev) => ({ ...prev, [provider]: modelsFor.defaultModel }));
+      }
+      return;
+    }
+    if (models.some((m) => m.name === selectedModel)) return;
+    const fallback = models.some((m) => m.name === modelsFor.defaultModel) ? modelsFor.defaultModel : models[0].name;
+    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+    setter((prev) => ({ ...prev, [provider]: fallback }));
+  }, [models, modelsFor, modelsLoading, provider, activeMode, selectedModel]);
 
   // ─── Voice ────────────────────────────────────────────────────────────────
   const sendVoiceCommandRef = useRef<(text: string) => void>(() => {});
@@ -1599,7 +1652,7 @@ export default function Home() {
   }
 
   // ─── Core send logic ───────────────────────────────────────────────────────
-  async function sendMessage(text: string, opts?: { messagesOverride?: Message[] }) {
+  async function sendMessage(text: string, opts?: ChatSendOptions) {
     if (!text || isLoading) return;
     setInput("");
 
@@ -1640,7 +1693,7 @@ export default function Home() {
     convId: string,
     text: string,
     signal: AbortSignal,
-    opts?: { messagesOverride?: Message[] },
+    opts?: ChatSendOptions,
   ) {
     // When the user has set a custom system prompt, ALL of the hardcoded
     // shortcut replies (weather/time/date/open-app/search/memory) are
@@ -1680,6 +1733,16 @@ export default function Home() {
             project: Array.isArray(data.scopes.project) ? data.scopes.project : prev.project,
             conversation: Array.isArray(data.scopes.conversation) ? data.scopes.conversation : prev.conversation,
           }));
+        }
+        // "Remembered: …" toast with Undo / Manage (MemoryToast).
+        if (res.ok && typeof data?.entry?.id === "string") {
+          dispatchMemorySaved({
+            scope: memoryScope,
+            text: typeof data.entry.text === "string" ? data.entry.text : memoryStr,
+            id: data.entry.id,
+            workspaceRoot,
+            conversationId: activeConversationId,
+          });
         }
       } catch {
         // non-fatal; still continue with the acknowledgement
@@ -1783,22 +1846,30 @@ export default function Home() {
 
     autoRenameConversation(convId, text);
 
+    // The model that answers this turn. "Retry with…" overrides it for one
+    // reply only; the selected chat model (and the conversation's) stay put.
+    const replyProvider = opts?.modelOverride?.provider ?? provider;
+    const replyModel = opts?.modelOverride?.model ?? selectedModel;
+    // Edit / retry resend the original turn's files, not whatever is staged.
+    const turnDocs = opts?.docs ?? chatDocs;
+    const turnAttachments = opts?.attachments ?? chatAttachments;
+
     // Build prompt with doc text appended (for API), but display original input
     const promptWithDocs =
-      chatDocs.length > 0
-        ? `${text}\n\n${chatDocs
+      turnDocs.length > 0
+        ? `${text}\n\n${turnDocs
             .map((d) => `---\n[Document: ${d.name}]\n${d.text}\n---`)
             .join("\n\n")}`
         : text;
 
     const userMsg = createMessage("user", text);
-    if (chatAttachments.length > 0) {
-      userMsg.attachments = [...chatAttachments];
-      setChatAttachments([]);
+    if (turnAttachments.length > 0) {
+      userMsg.attachments = [...turnAttachments];
+      if (!opts?.attachments) setChatAttachments([]);
     }
-    if (chatDocs.length > 0) {
-      userMsg.docs = [...chatDocs];
-      setChatDocs([]);
+    if (turnDocs.length > 0) {
+      userMsg.docs = [...turnDocs];
+      if (!opts?.docs) setChatDocs([]);
     }
     addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -1864,8 +1935,8 @@ export default function Home() {
         const history = buildHistory(historyMsgs);
         const body: ChatRequest = {
           messages: history,
-          model: selectedModel,
-          provider,
+          model: replyModel,
+          provider: replyProvider,
           systemPrompt: (() => {
             const base = buildSystemPrompt(userProfile?.name ?? null, memories);
             const extra = getSystemPrompt().trim();
@@ -1879,7 +1950,7 @@ export default function Home() {
           signal,
         });
         const data = await readChatReply(res);
-        const assistantMsg = createMessage("assistant", data.reply);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         speakReply(data.reply);
 
@@ -1903,8 +1974,8 @@ export default function Home() {
       const history = buildHistory([...threadSource, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
         messages: history,
-        model: selectedModel,
-        provider,
+        model: replyModel,
+        provider: replyProvider,
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
           const extra = getSystemPrompt().trim();
@@ -1927,7 +1998,7 @@ export default function Home() {
 
       if (contentType.includes("text/plain")) {
         // ── Streaming response ──
-        const streamingMsg = createMessage("assistant", "", true);
+        const streamingMsg = { ...createMessage("assistant", "", true), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, streamingMsg);
         streamingMsgId = streamingMsg.id;
 
@@ -1987,7 +2058,7 @@ export default function Home() {
       } else {
         // ── JSON response (route errors before streaming, e.g. missing key) ──
         const data = await readChatReply(res);
-        const assistantMsg = createMessage("assistant", data.reply);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
 
@@ -2153,17 +2224,25 @@ export default function Home() {
     setChatTokenUsage(zeroUsage("actual"));
   }
 
-  async function handleEditMessage(messageId: string, newContent: string) {
-    if (!activeConversationId || isLoading || !activeConversation) return;
-    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
+  /**
+   * Resend the user message at `userIndex` (edited text for an edit, the same
+   * text for a retry) as a new version: the old branch is kept on the message
+   * and can be switched back to.
+   */
+  async function resendAsNewVersion(userIndex: number, text: string, opts?: Pick<ChatSendOptions, "modelOverride">) {
+    if (!activeConversationId || !activeConversation) return;
+    const convId = activeConversationId;
+    const original = activeConversation.messages[userIndex];
+    if (!original || original.role !== "user") return;
+    const pending = beginNewVersion(activeConversation.messages, userIndex);
     // Snapshot the truncated thread BEFORE the upsert — sendMessage below
     // would otherwise still see the pre-truncation render's `messages`.
-    const truncated = activeConversation.messages.slice(0, idx);
-    upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
+    const truncated = activeConversation.messages.slice(0, userIndex);
+    if (pending) pendingVersionsRef.current.set(convId, pending);
+    upsertConversation(convId, (c) => {
+      const curIdx = c.messages.findIndex((m) => m.id === original.id);
       if (curIdx === -1) return c;
-      // Truncate: remove the edited message and everything after it
+      // Cut back to before the message; its branch lives on in `pending`.
       return {
         ...c,
         messages: c.messages.slice(0, curIdx),
@@ -2171,8 +2250,31 @@ export default function Home() {
         updatedAt: new Date().toISOString(),
       };
     });
-    // sendMessage will add the user message fresh and get the AI reply
-    await sendMessage(newContent, { messagesOverride: truncated });
+    try {
+      // sendMessage adds the user message fresh (as the new version) and gets the reply
+      await sendMessage(text, {
+        messagesOverride: truncated,
+        attachments: original.attachments ?? [],
+        docs: original.docs ?? [],
+        ...opts,
+      });
+    } finally {
+      if (pending) {
+        pendingVersionsRef.current.delete(convId);
+        // If the send bailed before adding the message, restore the old branch.
+        upsertConversation(convId, (c) => {
+          const messages = settlePendingVersion(c.messages, pending);
+          return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
+        });
+      }
+    }
+  }
+
+  async function handleEditMessage(messageId: string, newContent: string) {
+    if (!activeConversationId || isLoading || !activeConversation) return;
+    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    await resendAsNewVersion(idx, newContent);
   }
 
   async function handleEditAgentUserMessage(messageId: string, newContent: string) {
@@ -2194,45 +2296,45 @@ export default function Home() {
     await agentStreamSend(trimmed, { attachments, baseMessages: nextMessages });
   }
 
-  async function handleRetryMessage(messageId: string) {
+  /** Regenerate a reply — with the selected model, or another one for this reply only. */
+  async function handleRetryMessage(messageId: string, override?: { provider: AIProvider; model: string }) {
     if (!activeConversationId || isLoading || !activeConversation) return;
-    let userContent = "";
-    let truncated: Message[] | null = null;
     const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx !== -1) {
-      // Find the user message immediately before this assistant message
-      for (let i = idx - 1; i >= 0; i--) {
-        if (activeConversation.messages[i].role === "user") {
-          userContent = activeConversation.messages[i].content;
-          // Snapshot the truncated thread BEFORE the upsert — sendMessage
-          // below would otherwise see pre-truncation history.
-          truncated = activeConversation.messages.slice(0, i);
-          break;
-        }
-      }
-    }
-    if (!userContent || !truncated) return;
+    if (idx === -1) return;
+    // The user message this reply answers
+    const userIdx = userIndexBefore(activeConversation.messages, idx);
+    if (userIdx === -1) return;
+    const userContent = activeConversation.messages[userIdx].content;
+    if (!userContent) return;
+    await resendAsNewVersion(userIdx, userContent, override ? { modelOverride: override } : undefined);
+  }
+
+  /** Show another version of an edited / retried message. */
+  function handleSwitchVersion(userMessageId: string, target: number) {
+    if (!activeConversationId || isLoading) return;
     upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
-      if (curIdx === -1) return c;
-      // Find the user message immediately before this assistant message
-      let userIdx = -1;
-      for (let i = curIdx - 1; i >= 0; i--) {
-        if (c.messages[i].role === "user") {
-          userIdx = i;
-          break;
-        }
-      }
-      if (userIdx === -1) return c;
-      // Truncate: remove from the user message onwards
-      return {
-        ...c,
-        messages: c.messages.slice(0, userIdx),
-        tokenUsage: zeroUsage("actual"),
-        updatedAt: new Date().toISOString(),
-      };
+      const messages = switchVersion(c.messages, userMessageId, target);
+      return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
     });
-    await sendMessage(userContent, { messagesOverride: truncated });
+  }
+
+  /** Start a new chat holding the visible thread up to and including `messageId`. */
+  function handleBranchFromMessage(messageId: string) {
+    if (!activeConversation || activeConversation.mode === "agent") return;
+    const thread = branchThread(activeConversation.messages, messageId, () => createMessage("user", "").id);
+    if (!thread) return;
+    const base = createConversation(activeConversation.name);
+    const conv: Conversation = {
+      ...base,
+      name: i18n.t("versions.branchName", { name: activeConversation.name || i18n.t("sidebar.untitled") }),
+      messages: thread,
+      provider: activeConversation.provider,
+      model: activeConversation.model,
+      systemPrompt: activeConversation.systemPrompt,
+      folderId: activeConversation.folderId ?? null,
+    };
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
   }
 
   async function handleSlashCommand(cmd: string) {
@@ -2475,6 +2577,8 @@ export default function Home() {
         onRenameConversation={handleRenameConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
+        onSwitchVersion={handleSwitchVersion}
+        onBranchFromMessage={handleBranchFromMessage}
         onSaveShortcuts={handleSaveShortcuts}
         promptTemplates={promptTemplates}
         mcpServers={mcpServers}
@@ -2539,6 +2643,7 @@ export default function Home() {
         <SetupModal onSave={handleProfileSave} />
       )}
       <WhatsNewCard />
+      <GlobalPanels />
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[480px] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-4 shadow-2xl">

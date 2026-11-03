@@ -22,7 +22,7 @@ import type { VoiceState } from "@/hooks/useVoice";
 import { Message } from "@/app/components/marven/Message";
 import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
-import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
+import { PROVIDER_LABELS, shortModelName } from "@/app/components/marven/ModelSelector";
 import { GlobeIcon, SidebarIcon } from "@/app/components/marven/Icons";
 import { BrowserPanel } from "@/app/components/marven/browser/BrowserPanel";
 import { useT } from "@/lib/i18n";
@@ -31,7 +31,15 @@ import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
 import { AgentWorkspace } from "@/app/components/marven/AgentWorkspace";
 import { ConversationSearchPalette } from "@/app/components/marven/ConversationSearchPalette";
+import { CommandPalette, type PaletteCommand } from "@/app/components/marven/CommandPalette";
+import { LanguageModal } from "@/app/components/marven/LanguageModal";
 import { generateMarkdown } from "@/lib/chatHelpers";
+import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/theme";
+import { useProviderModels } from "@/hooks/useProviderModels";
+import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { versionControls } from "@/lib/messageVersions";
+import { OPEN_SETTINGS_EVENT, openSettingsPage } from "@/lib/settingsNav";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -113,7 +121,10 @@ interface ChatLayoutProps {
   onCloseAgentFile?: () => void;
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
-  onRetryMessage: (id: string) => void;
+  /** Regenerate a reply; `override` answers with another model for this reply only. */
+  onRetryMessage: (id: string, override?: { provider: AIProvider; model: string }) => void;
+  onSwitchVersion?: (userMessageId: string, version: number) => void;
+  onBranchFromMessage?: (messageId: string) => void;
   // Multi-tab props
   openTabs: EditorTab[];
   activeTabIndex: number;
@@ -144,6 +155,7 @@ interface ChatLayoutProps {
 }
 
 const BROWSER_WIDTH_KEY = "marven-browser-width";
+const THEMES: Theme[] = ["dark", "light", "midnight", "aurora"];
 // The browser panel's minimum width, and the space the chat always keeps.
 const BROWSER_MIN_WIDTH = 360;
 
@@ -244,6 +256,8 @@ export function ChatLayout({
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
+  onSwitchVersion,
+  onBranchFromMessage,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -346,12 +360,50 @@ export function ChatLayout({
     saveBrowserWidth(clampBrowserWidth(current + (grow ? 24 : -24)));
   }
   const [convSearchOpen, setConvSearchOpen] = useState(false);
+  // App-wide command palette (⌘⇧P by default, remappable in Settings → Keyboard).
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  // Agent mode publishes its workspace commands here for the palette.
+  const agentPaletteCommandsRef = useRef<PaletteCommand[]>([]);
+  const providerModels = useProviderModels();
+  const { enabledList: enabledProviderList, loadModels } = providerModels;
+  // Set once the palette's model list is first opened; loads every enabled provider.
+  const [paletteModelsWanted, setPaletteModelsWanted] = useState(false);
+  const enabledProvidersKey = enabledProviderList.join(",");
+  useEffect(() => {
+    if (!paletteModelsWanted) return;
+    for (const p of enabledProviderList) void loadModels(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteModelsWanted, enabledProvidersKey, loadModels]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) return;
+      const combo = getBindingCombo("command-palette", isMacPlatform(), loadKeybindings());
+      if (combo && eventMatchesCombo(e, combo)) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Picking another chat while the browser is expanded would leave the chat
   // hidden behind it; collapse the browser back beside the chat instead.
   useEffect(() => {
     setBrowserExpanded(false);
   }, [activeConversationId]);
+
+  // "Report a problem" / "Manage memory" from anywhere (palette, memory toast):
+  // open the real Settings window in chat mode; the modal picks up the pending
+  // page when it mounts (see lib/settingsNav.ts).
+  useEffect(() => {
+    if (mode !== "chat") return;
+    const onOpenSettings = () => setSettingsOpen(true);
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+  }, [mode]);
 
   // ⌘⇧K — open cross-conversation search palette.
   useEffect(() => {
@@ -395,6 +447,142 @@ export function ChatLayout({
     URL.revokeObjectURL(url);
   }
 
+  function buildPaletteCommands(): PaletteCommand[] {
+    const isMac = isMacPlatform();
+    // Read when the palette renders: Settings changes the theme through its own hook.
+    const theme = getStoredTheme();
+    const general = t("palette.groups.general");
+    const bridge = getBrowserBridge();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+
+    // Models from every enabled provider, the one in use first.
+    const modelProviders = [provider, ...enabledProviderList.filter((p) => p !== provider)];
+    const modelItems: PaletteCommand[] = modelProviders.flatMap((p) =>
+      providerModels.models[p].map((m) => ({
+        id: `${p}:${m}`,
+        label: shortModelName(m),
+        hint: PROVIDER_LABELS[p],
+        keywords: [m],
+        active: p === provider && m === selectedModel,
+        action: () => onModelSelect(p, m),
+      })),
+    );
+
+    const commands: PaletteCommand[] = [
+      { id: "new-chat", group: general, label: t("palette.commands.newChat"), action: onNewChat },
+      { id: "new-agent", group: general, label: t("palette.commands.newAgent"), action: onNewAgent },
+      {
+        id: "search-conversations",
+        group: general,
+        label: t("palette.commands.searchConversations"),
+        keybinding: isMac ? "⇧⌘K" : "Ctrl+Shift+K",
+        action: () => setConvSearchOpen(true),
+      },
+      {
+        id: "switch-model",
+        group: general,
+        label: t("palette.commands.switchModel"),
+        hint: selectedModel ? shortModelName(selectedModel) : undefined,
+        children: modelItems,
+        childrenLoading:
+          modelProviders.some((p) => providerModels.loading.has(p)) || (!paletteModelsWanted && modelItems.length === 0),
+        emptyText: t("palette.commands.noModels"),
+        onEnter: () => {
+          providerModels.refreshEnabled();
+          setPaletteModelsWanted(true);
+          void loadModels(provider);
+        },
+      },
+      {
+        id: "toggle-theme",
+        group: general,
+        label: t("palette.commands.toggleTheme"),
+        action: () => setStoredTheme(isDarkTheme(theme) ? "light" : "dark"),
+      },
+      {
+        id: "pick-theme",
+        group: general,
+        label: t("palette.commands.pickTheme"),
+        hint: t(`settings.general.theme_${theme}`),
+        children: THEMES.map((id) => ({
+          id,
+          label: t(`settings.general.theme_${id}`),
+          active: theme === id,
+          action: () => setStoredTheme(id),
+        })),
+      },
+      { id: "language", group: general, label: t("palette.commands.language"), action: () => setLanguageOpen(true) },
+      {
+        id: "open-settings",
+        group: general,
+        label: t("palette.commands.openSettings"),
+        // ⌘, is only wired up inside the agent workspace.
+        keybinding: mode === "agent" ? formatBinding("open-settings", isMac) : undefined,
+        action: () => setSettingsOpen(true),
+      },
+      { id: "toggle-sidebar", group: general, label: t("palette.commands.toggleSidebar"), action: () => setSidebarOpen((v) => !v) },
+    ];
+
+    // The in-app browser lives beside the chat, and only in the desktop app.
+    if (mode === "chat" && bridge) {
+      commands.push(
+        {
+          id: "toggle-browser",
+          group: general,
+          label: browserOpen ? t("palette.commands.closeBrowser") : t("palette.commands.openBrowser"),
+          action: () => {
+            setBrowserOpen((v) => !v);
+            setBrowserExpanded(false);
+          },
+        },
+        {
+          id: "new-browser-tab",
+          group: general,
+          label: t("palette.commands.newBrowserTab"),
+          action: () => {
+            setBrowserOpen(true);
+            setBrowserExpanded(false);
+            // Let the panel mount (and show its native view) before adding the tab.
+            requestAnimationFrame(() => void bridge.newTab().catch(() => {}));
+          },
+        },
+      );
+    }
+
+    if (mode === "chat" && messages.length > 0) {
+      commands.push({ id: "export-chat", group: general, label: t("palette.commands.exportChat"), action: handleExport });
+    }
+    if (typeof electron?.checkForUpdates === "function") {
+      commands.push({
+        id: "check-updates",
+        group: general,
+        label: t("palette.commands.checkUpdates"),
+        action: () => void Promise.resolve(electron.checkForUpdates()).catch(() => {}),
+      });
+    }
+    commands.push({
+      id: "report-problem",
+      group: general,
+      label: t("palette.commands.reportProblem"),
+      action: () => window.dispatchEvent(new CustomEvent("marven:report-problem")),
+    });
+    commands.push({
+      id: "manage-memory",
+      group: general,
+      label: t("palette.commands.manageMemory"),
+      action: () => openSettingsPage({ page: "memory" }),
+    });
+
+    if (mode === "agent" && agentPaletteCommandsRef.current.length > 0) {
+      const workspace = t("palette.groups.workspace");
+      const agentCommands = agentPaletteCommandsRef.current.map((c) => ({ ...c, id: `agent:${c.id}`, group: workspace }));
+      // In the agent workspace its own commands come first.
+      return [...agentCommands, ...commands];
+    }
+    return commands;
+  }
+
   // Auto-scroll only when the user is already near the bottom — otherwise
   // streaming deltas yank the viewport down while they're scrolling up to
   // re-read earlier messages.
@@ -422,6 +610,8 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  // Where to draw ‹ n/m › switchers for edited / retried messages.
+  const versionSwitchers = versionControls(messages);
   const agentHasOwnHeader =
     mode === "agent" && (!!workspaceRoot || openTabs.some((tab) => tab.kind === "settings"));
   const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
@@ -612,6 +802,8 @@ export function ChatLayout({
               onOpenRestTab={onOpenRestTab}
               onEditorScroll={onAgentEditorScroll}
               onEditAgentUserMessage={onEditAgentUserMessage}
+              onOpenCommandPalette={() => setPaletteOpen(true)}
+              paletteCommandsRef={agentPaletteCommandsRef}
             />
           ) : (
             <div ref={browserRowRef} className="flex min-h-0 flex-1 overflow-hidden">
@@ -628,15 +820,33 @@ export function ChatLayout({
                       <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
                     </div>
                   )}
-                  {messages.map((message) => (
-                    <Message
-                      key={message.id}
-                      message={message}
-                      disabled={isLoading}
-                      onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
-                      onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
-                    />
-                  ))}
+                  {messages.map((message) => {
+                    const switcher = versionSwitchers.get(message.id);
+                    return (
+                      <Message
+                        key={message.id}
+                        message={message}
+                        disabled={isLoading}
+                        onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
+                        onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                        onRetryWith={
+                          message.role === "assistant" ? (p, m) => onRetryMessage(message.id, { provider: p, model: m }) : undefined
+                        }
+                        currentProvider={provider}
+                        currentModel={selectedModel}
+                        onBranch={onBranchFromMessage && !message.isStreaming ? () => onBranchFromMessage(message.id) : undefined}
+                        version={
+                          switcher && onSwitchVersion
+                            ? {
+                                index: switcher.index,
+                                total: switcher.total,
+                                onSelect: (v) => onSwitchVersion(switcher.ownerId, v),
+                              }
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
                     <TypingRow />
                   )}
@@ -747,6 +957,13 @@ export function ChatLayout({
           }}
         />
       )}
+
+      {/* App-wide command palette (⌘⇧P) */}
+      {paletteOpen && (
+        <CommandPalette commands={buildPaletteCommands()} onClose={() => setPaletteOpen(false)} />
+      )}
+
+      {languageOpen && <LanguageModal onClose={() => setLanguageOpen(false)} />}
 
       {/* Cross-conversation search palette (⌘⇧K) */}
       {convSearchOpen && (

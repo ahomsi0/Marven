@@ -66,6 +66,14 @@ export interface Suggestion {
 
 export type TabCommand = "back" | "forward" | "reload" | "stop" | "retry";
 
+/** A page's readable text and selection (electron/browser/pageText.js). Untrusted. */
+export interface PageExtract {
+  url: string;
+  title: string;
+  selection: string;
+  text: string;
+}
+
 export interface BrowserBridge {
   show: (bounds: BrowserBounds) => Promise<boolean>;
   setBounds: (bounds: BrowserBounds) => void;
@@ -81,6 +89,8 @@ export interface BrowserBridge {
   reopenClosedTab: () => void;
   navigate: (id: string, url: string) => Promise<boolean>;
   command: (id: string, name: TabCommand) => void;
+  /** The page in a tab (the active one if no id), or null for blank/error tabs. */
+  extractPage: (id?: string) => Promise<PageExtract | null>;
   toggleBookmark: (url: string, title: string) => Promise<boolean>;
   removeBookmark: (id: string) => Promise<void>;
   listBookmarks: (query: string) => Promise<Bookmark[]>;

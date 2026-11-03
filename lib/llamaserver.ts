@@ -4,7 +4,7 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { HistoryMessage } from "@/types";
-import { stripAttachments } from "@/lib/imageHelpers";
+import { localUserMessageContent } from "@/lib/imageHelpers";
 import { providerStream } from "@/lib/chatStream";
 
 export const DEFAULT_MODEL = "local-model";
@@ -29,6 +29,26 @@ export async function getLlamaServerModels(
 }
 
 /**
+ * The chat messages for llama-server: system prompt, then history. Images go
+ * as `image_url` parts when the model looks vision-capable (llama-server also
+ * needs to be started with the model's mmproj file), else they're dropped.
+ */
+export function buildLlamaServerMessages(
+  messages: HistoryMessage[],
+  model: string,
+  systemPrompt?: string
+): ChatCompletionMessageParam[] {
+  return [
+    { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
+    ...messages.map((m): ChatCompletionMessageParam =>
+      m.role === "user"
+        ? { role: "user", content: localUserMessageContent(m.content, m.attachments, "llamaserver", model) }
+        : { role: "assistant", content: m.content },
+    ),
+  ];
+}
+
+/**
  * Returns a ReadableStream that streams tokens from llama-server.
  * Reads LLAMA_SERVER_URL from env (set by Electron's applySettings).
  */
@@ -42,16 +62,7 @@ export function streamLlamaServer(
   const baseUrl = process.env.LLAMA_SERVER_URL ?? "http://localhost:8080";
   const client = new OpenAI({ baseURL: `${baseUrl}/v1`, apiKey: "llama-server" });
 
-  const msgs: ChatCompletionMessageParam[] = [
-    { role: "system", content: systemPrompt ?? SYSTEM_PROMPT },
-    ...messages.map((m): ChatCompletionMessageParam => ({
-      role: m.role as "user" | "assistant",
-      content:
-        m.role === "user" && m.attachments?.length
-          ? stripAttachments(m.content, m.attachments)
-          : m.content,
-    })),
-  ];
+  const msgs = buildLlamaServerMessages(messages, model, systemPrompt);
 
   return providerStream({ provider: "llama-server", model, signal }, async (emit, signal) => {
     const stream = await client.chat.completions.create(
