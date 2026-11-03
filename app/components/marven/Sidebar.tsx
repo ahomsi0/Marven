@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { AccountBar } from "./AccountBar";
@@ -38,6 +38,15 @@ const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text
 
 // Open/close slide: an ease-out curve that starts quick and settles softly.
 const SLIDE = "duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+
+const SIDEBAR_WIDTH_KEY = "marven-sidebar-width";
+const SIDEBAR_DEFAULT_WIDTH = 260;
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 420;
+
+function clampSidebarWidth(width: number) {
+  return Math.round(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width)));
+}
 
 function ConvRow({
   conv,
@@ -266,6 +275,66 @@ export function Sidebar({
   }, [isOpen]);
   const { t } = useT();
 
+  // Width set by dragging the sidebar's edge, remembered across launches.
+  // Read after mount: the server renders the default, and hydration keeps the
+  // server's inline style, so a saved width must come in as a state update.
+  const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      if (saved) setWidth(clampSidebarWidth(saved));
+    } catch { /* best effort */ }
+  }, []);
+
+  function saveWidth(next: number) {
+    setWidth(next);
+    try {
+      if (next === SIDEBAR_DEFAULT_WIDTH) localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+      else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next));
+    } catch { /* best effort */ }
+  }
+
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const rtl = document.documentElement.dir === "rtl";
+    const startX = e.clientX;
+    const startWidth = width;
+    let latest: number | null = null;
+    setResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      const delta = rtl ? startX - ev.clientX : ev.clientX - startX;
+      latest = clampSidebarWidth(startWidth + delta);
+      setWidth(latest);
+    };
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setResizing(false);
+      if (latest !== null) saveWidth(latest);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
+  function nudgeWidth(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    // The handle sits on the sidebar's end edge: moving it outward widens it.
+    const grow = (e.key === "ArrowRight") !== (document.documentElement.dir === "rtl");
+    saveWidth(clampSidebarWidth(width + (grow ? 16 : -16)));
+  }
+
   // Per-conversation "⋯" menu (Rename / Pin / Delete) and inline rename.
   // Positioned by `bottom` when opening upward (the default), `top` when it can't fit above.
   const [actionsMenu, setActionsMenu] = useState<{ convId: string; x: number; top?: number; bottom?: number } | null>(null);
@@ -412,19 +481,41 @@ export function Sidebar({
 
   return (
     <aside
+      ref={asideRef}
       aria-hidden={!isOpen}
       inert={!isOpen}
-      className={`h-full shrink-0 border-e bg-[var(--m-surface)] ${SLIDE} transition-[width,border-color] ${
-        isOpen ? "w-[260px] border-[var(--m-border-subtle)]" : "w-0 border-transparent"
-      } ${isOpen && settledOpen ? "overflow-visible" : "overflow-hidden"}`}
+      style={{ width: isOpen ? width : 0 }}
+      className={`relative h-full shrink-0 border-e bg-[var(--m-surface)] ${SLIDE} ${
+        // No width animation while dragging, so the edge follows the pointer.
+        resizing ? "transition-none" : "transition-[width,border-color]"
+      } ${isOpen ? "border-[var(--m-border-subtle)]" : "border-transparent"} ${
+        isOpen && settledOpen ? "overflow-visible" : "overflow-hidden"
+      }`}
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === "width") setSettledOpen(isOpen);
       }}
     >
+      {isOpen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sidebar.resize")}
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={width}
+          title={t("sidebar.resize")}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onDoubleClick={() => saveWidth(SIDEBAR_DEFAULT_WIDTH)}
+          onKeyDown={nudgeWidth}
+          className="absolute inset-y-0 -end-[3px] z-20 w-1.5 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
+        />
+      )}
       {/* Fixed-width content: the panel's width animates over it, so nothing
           reflows mid-slide; it also fades and drifts toward the edge. */}
       <div
-        className={`flex h-full w-[260px] flex-col ${SLIDE} transition-[opacity,translate] ${
+        style={{ width }}
+        className={`flex h-full flex-col ${SLIDE} transition-[opacity,translate] ${
           // "translate-none" (not translate-x-0) when open: any translate makes this
           // a containing block, which would offset the fixed-position context menu.
           isOpen ? "translate-none opacity-100" : "-translate-x-3 opacity-0 rtl:translate-x-3"

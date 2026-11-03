@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SEARCH_URL, normalizeBrowserInput } from "./inAppBrowser";
+import { SEARCH_URL, SEARCH_ENGINES, DEFAULT_SEARCH_ENGINE, normalizeBrowserInput, hostOf, isWebUrl } from "./inAppBrowser";
 
 describe("normalizeBrowserInput", () => {
   it("returns null for empty input", () => {
@@ -21,6 +21,11 @@ describe("normalizeBrowserInput", () => {
     expect(normalizeBrowserInput("127.0.0.1:8080/api")).toBe("http://127.0.0.1:8080/api");
   });
 
+  it("searches a loopback address that isn't a valid URL instead of throwing", () => {
+    expect(() => normalizeBrowserInput("localhost:99999")).not.toThrow();
+    expect(normalizeBrowserInput("localhost:99999")).toBe(SEARCH_URL + "localhost%3A99999");
+  });
+
   it("searches everything else", () => {
     expect(normalizeBrowserInput("how to center a div")).toBe(SEARCH_URL + "how%20to%20center%20a%20div");
     expect(normalizeBrowserInput("react")).toBe(SEARCH_URL + "react");
@@ -30,5 +35,24 @@ describe("normalizeBrowserInput", () => {
     for (const input of ["javascript:alert(1)", "file:///etc/passwd", "chrome://settings", "data:text/html,hi"]) {
       expect(normalizeBrowserInput(input)!.startsWith(SEARCH_URL)).toBe(true);
     }
+  });
+});
+
+describe("hostOf / isWebUrl", () => {
+  it("extracts hosts and recognises web URLs", () => {
+    expect(hostOf("https://www.example.com/a")).toBe("www.example.com");
+    expect(hostOf("nope")).toBe("");
+    expect(isWebUrl("https://a.com/")).toBe(true);
+    expect(isWebUrl("about:blank")).toBe(false);
+  });
+});
+
+describe("search engines", () => {
+  it("defaults to Brave and searches with the engine passed in", () => {
+    expect(DEFAULT_SEARCH_ENGINE.id).toBe("brave");
+    expect(SEARCH_URL).toBe("https://search.brave.com/search?q=");
+    const google = SEARCH_ENGINES.find((e) => e.id === "google")!;
+    expect(normalizeBrowserInput("react hooks", google.searchUrl)).toBe("https://www.google.com/search?q=react%20hooks");
+    expect(normalizeBrowserInput("github.com", google.searchUrl)).toBe("https://github.com/");
   });
 });

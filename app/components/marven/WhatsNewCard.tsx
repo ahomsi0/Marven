@@ -6,6 +6,7 @@ import { getRelease } from "@/lib/changelog";
 import type { ChangeTag } from "@/lib/changelog";
 import { SparkleIcon } from "./Icons";
 import { useT } from "@/lib/i18n";
+import { useOverlayGuard } from "@/lib/overlays";
 
 const STORAGE_KEY = "marven_last_seen_version";
 
@@ -34,6 +35,10 @@ export function WhatsNewCard() {
   }, [version, release]);
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  // The card sits bottom-end, where the browser panel is; the native page
+  // would draw over it, so the browser hides while the card is shown.
+  useOverlayGuard(visible && !!release);
 
   function dismiss() {
     setDismissing(true);
