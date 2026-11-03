@@ -102,7 +102,7 @@ describe("createJsonStore", () => {
     errors.mockRestore();
   });
 
-  // Windows has no POSIX permission bits; Node reports 0o666 there whatever mode is passed.
+  // Windows has no POSIX permission bits: every file reports 0666.
   it.skipIf(process.platform === "win32")("writes the file readable only by the owner", () => {
     const file = path.join(dir, "a.json");
     const store = createJsonStore(file, { n: 0 });
