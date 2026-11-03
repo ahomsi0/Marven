@@ -19,7 +19,23 @@
 export const REPORT_PROBLEM_EVENT = "marven:report-problem";
 export const OPEN_SETTINGS_EVENT = "marven:open-settings";
 
-export type SettingsRequestPage = "about" | "memory";
+/** Every Settings page, in nav order. */
+export const SETTINGS_PAGES = [
+  "general",
+  "memory",
+  "ai-backends",
+  "keys-ai",
+  "keys-voice",
+  "connectors",
+  "browser",
+  "shortcuts",
+  "keyboard",
+  "templates",
+  "commands",
+  "about",
+] as const;
+
+export type SettingsRequestPage = (typeof SETTINGS_PAGES)[number];
 
 export interface SettingsRequest {
   page: SettingsRequestPage;

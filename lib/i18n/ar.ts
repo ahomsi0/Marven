@@ -175,6 +175,9 @@ const ar: Shape<typeof en> = {
       checkUpdates: "التحقق من التحديثات",
       reportProblem: "الإبلاغ عن مشكلة",
       manageMemory: "إدارة الذاكرة",
+      settingsPage: "الانتقال إلى صفحة في الإعدادات…",
+      keyboardShortcuts: "اختصارات لوحة المفاتيح",
+      bookmarks: "فتح إشارة مرجعية…",
     },
     agent: {
       saveFile: "حفظ الملف",

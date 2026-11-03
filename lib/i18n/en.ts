@@ -173,6 +173,9 @@ const en = {
       checkUpdates: "Check for updates",
       reportProblem: "Report a problem",
       manageMemory: "Manage memory",
+      settingsPage: "Go to Settings page…",
+      keyboardShortcuts: "Keyboard shortcuts",
+      bookmarks: "Open bookmark…",
     },
     agent: {
       saveFile: "Save file",
