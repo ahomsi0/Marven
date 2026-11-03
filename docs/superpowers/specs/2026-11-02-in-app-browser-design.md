@@ -36,7 +36,10 @@ click in UI ─▶ command (IPC) ─▶ main process acts ─▶ snapshot (IPC) 
 
 | File | Job |
 |---|---|
-| `manager.js` | Owns the tab list; creates/closes/activates/reorders tabs; attaches only the active tab's view at the panel's bounds; broadcasts the snapshot on every change (coalesced to one per animation frame / ~16ms) |
+| `manager.js` | Owns the tab list; creates/closes/activates/reorders tabs; browser shortcuts; tab and popup caps; broadcasts the snapshot on every change (coalesced to one per animation frame / ~16ms) |
+| `session.js` | The `persist:marven-browser` session: permission handlers, plain Chrome user agent, `will-download` → `downloads.js`, blocker attached with its lists loaded lazily |
+| `library.js` | The four JSON stores, cleaned on load (written back only if cleaning changed them): tabs, history, bookmarks, per-site blocking; suggestions and clearing history |
+| `viewHost.js` | Attaches only the active tab's view at the panel's bounds; shown/frozen state, freeze screenshots, and muting every view that isn't on screen |
 | `tab.js` | One tab = one `WebContentsView`. Hardened `webPreferences`, http(s)-only navigation guards, `setWindowOpenHandler` → new tab after the current one; reports url, title, favicon, loading, canGoBack/Forward, error state, blocked count |
 | `tabsModel.js` | Pure tab-list logic, no Electron import: next active tab after close, reorder, restore ordering, closed-tab stack (last 10). Unit-tested |
 | `history.js`, `bookmarks.js`, `suggest.js`, `downloadNames.js`, `shortcuts.js`, `validate.js` | Pure helpers (history map, bookmark list, suggestion ranking, download names, shortcut mapping, argument checks). Unit-tested |
