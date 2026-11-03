@@ -4,6 +4,7 @@
 // snapshot after every change and sends commands back (see ipc.js).
 
 const crypto = require('node:crypto');
+const { Menu, clipboard } = require('electron');
 const model = require('./tabsModel');
 const { createLibrary } = require('./library');
 const { createBrowserSession } = require('./session');
@@ -15,6 +16,7 @@ const { Tab } = require('./tab');
 const { searchEngine, DEFAULT_ENGINE_ID } = require('./searchEngines');
 const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 const { EXTRACT_SCRIPT, cleanExtract } = require('./pageText');
+const { cleanLabels, contextMenuTemplate } = require('./contextMenu');
 
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
@@ -45,12 +47,17 @@ function createBrowserManager({ dir, getWindow }) {
   let snapshotDue = 0;
   // The user's search engine (Settings → Browser); new tabs open on its home page.
   let engine = searchEngine(DEFAULT_ENGINE_ID);
+  // Right-click menu labels in the app's language (sent by the renderer).
+  let menuLabels = cleanLabels(null);
+  // The tab whose page is fullscreen, if any (it's always the active one).
+  let fullscreenTab = null;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
   const host = createViewHost({
     getWindow,
     getPage: () => {
       const tab = activeTab();
-      return { showable: !!tab && !tab.error, views: [...tabs.values()].map((t) => t.view) };
+      // A tab with an error or a sign-in prompt shows the UI's page instead.
+      return { showable: !!tab && !tab.error && !tab.auth, views: [...tabs.values()].map((t) => t.view) };
     },
   });
 
@@ -98,9 +105,12 @@ function createBrowserManager({ dir, getWindow }) {
           blocked: tab?.blocked ?? 0,
           blockingEnabled: !library.blockingDisabled(hostOf(url)),
           error: tab?.error ?? null,
+          find: tab?.find ?? null,
+          auth: tab?.auth ? { host: tab.auth.host, realm: tab.auth.realm, isProxy: tab.auth.isProxy } : null,
         };
       }),
       activeId: state.activeId,
+      canReopen: state.closed.length > 0,
       downloads: downloads.list(),
       searchEngine: { id: engine.id, name: engine.name, searchUrl: engine.searchUrl },
     };
@@ -150,6 +160,14 @@ function createBrowserManager({ dir, getWindow }) {
           });
         },
         onOpenTab: openPopup,
+        allowPopup,
+        onPopup: openPopupWindow,
+        // Deferred: the page's webContents is being destroyed right now.
+        onClosedByPage: (t) => setImmediate(() => {
+          if (tabs.get(t.id) === t) closeTab(t.id);
+        }),
+        onContextMenu: showContextMenu,
+        onFullscreen,
         onShortcut: handleShortcut,
         onView: (t) => byWebContents.set(t.webContentsId, t),
       },
@@ -178,10 +196,12 @@ function createBrowserManager({ dir, getWindow }) {
   function showActive() {
     if (!host.hasWindow()) return;
     const tab = activeTab();
+    if (fullscreenTab && fullscreenTab !== tab) leaveFullscreen();
     host.showActive(host.isShown() && tab ? tab.ensureView() : null);
   }
 
   function forget(tab) {
+    if (fullscreenTab === tab) leaveFullscreen();
     if (host.isAttached(tab.view)) host.detach();
     if (tab.webContentsId != null) byWebContents.delete(tab.webContentsId);
     tab.destroyView();
@@ -198,14 +218,25 @@ function createBrowserManager({ dir, getWindow }) {
 
   // window.open from a page: limited per opener so a page can't flood the
   // tab strip, and dropped once the tab cap is reached.
-  function openPopup(opener, url, { background = false } = {}) {
-    if (state.tabs.length >= MAX_TABS) return;
+  function allowPopup(opener) {
+    if (state.tabs.length >= MAX_TABS) return false;
     const { ok, warn } = popupLimiter.take(opener.id);
-    if (!ok) {
-      if (warn) console.warn(`[browser] a page opened too many windows, ignoring new ones (limit ${POPUPS_PER_SECOND} per second)`);
-      return;
-    }
-    newTab(url, { afterId: opener.id, activate: !background });
+    if (!ok && warn) console.warn(`[browser] a page opened too many windows, ignoring new ones (limit ${POPUPS_PER_SECOND} per second)`);
+    return ok;
+  }
+
+  function openPopup(opener, url, { background = false } = {}) {
+    if (allowPopup(opener)) newTab(url, { afterId: opener.id, activate: !background });
+  }
+
+  // A pop-up window that keeps its opener (allowPopup already ran): a new tab
+  // next to the opener, around the webContents Chromium is creating.
+  function openPopupWindow(opener, url, options) {
+    const entry = { id: newId(), url, title: '' };
+    commit(model.addTab(state, entry, { afterId: opener.id, activate: true }));
+    const webContents = tabFor(entry).adoptPopup(options);
+    showActive();
+    return webContents;
   }
 
   function closeTab(id) {
@@ -244,6 +275,69 @@ function createBrowserManager({ dir, getWindow }) {
     existingTab(id)?.command(name);
   }
 
+  function find(id, text, options) {
+    existingTab(id)?.findInPage(text, options);
+  }
+
+  function stopFind(id) {
+    existingTab(id)?.stopFind();
+  }
+
+  function answerAuth(id, username, password) {
+    existingTab(id)?.answerAuth(username, password);
+  }
+
+  // ── Context menu and fullscreen ────────────────────────────────────────
+
+  function showContextMenu(tab, params) {
+    const win = getWindow();
+    const wc = tab.webContents;
+    if (!win || win.isDestroyed() || !wc) return;
+    const template = contextMenuTemplate(params, {
+      labels: menuLabels,
+      canGoBack: tab.canGoBack(),
+      canGoForward: tab.canGoForward(),
+      engineName: engine.name,
+      actions: {
+        back: () => tab.command('back'),
+        forward: () => tab.command('forward'),
+        reload: () => tab.command('reload'),
+        openTab: (url) => newTab(url, { afterId: tab.id, activate: false }),
+        copyText: (text) => clipboard.writeText(text),
+        download: (url) => wc.downloadURL(url),
+        copyImageAt: (x, y) => wc.copyImageAt(x, y),
+        edit: (name) => wc[name](),
+        search: (query) => newTab(engine.searchUrl + encodeURIComponent(query), { afterId: tab.id }),
+        find: openFind,
+      },
+    });
+    Menu.buildFromTemplate(template).popup({ window: win });
+  }
+
+  // Only the page on screen may go fullscreen; it then covers the window.
+  function onFullscreen(tab, on) {
+    if (on) {
+      if (tab.id !== state.activeId || !host.isShown()) {
+        tab.exitFullscreen();
+        return;
+      }
+      fullscreenTab = tab;
+      host.setFullscreen(true);
+    } else if (fullscreenTab === tab) {
+      fullscreenTab = null;
+      host.setFullscreen(false);
+    }
+  }
+
+  // Puts the window back when the fullscreen page goes off screen.
+  function leaveFullscreen() {
+    const tab = fullscreenTab;
+    if (!tab) return;
+    fullscreenTab = null;
+    host.setFullscreen(false);
+    tab.exitFullscreen();
+  }
+
   // The readable text and selection of a tab (the active one by default), for
   // "Ask Marven about this page". Null for blank, unloaded or failed tabs.
   async function extractPage(id) {
@@ -276,12 +370,16 @@ function createBrowserManager({ dir, getWindow }) {
 
   // ── Shortcuts ──────────────────────────────────────────────────────────
 
-  function focusAddress() {
+  // Moves keyboard focus to the panel and tells it what to focus.
+  function focusPanel(channel) {
     const win = getWindow();
     if (!win || win.isDestroyed()) return;
     win.webContents.focus();
-    win.webContents.send('browser-focus-address');
+    win.webContents.send(channel);
   }
+
+  const focusAddress = () => focusPanel('browser-focus-address');
+  const openFind = () => focusPanel('browser-open-find');
 
   function handleShortcut(input) {
     const shortcut = shortcutAction(input);
@@ -293,6 +391,7 @@ function createBrowserManager({ dir, getWindow }) {
       case 'close-tab': if (active) setImmediate(() => closeTab(active)); break;
       case 'reopen-tab': reopenClosedTab(); break;
       case 'focus-address': focusAddress(); break;
+      case 'find': openFind(); break;
       case 'reload': if (active) command(active, 'reload'); break;
       case 'back': if (active) command(active, 'back'); break;
       case 'forward': if (active) command(active, 'forward'); break;
@@ -336,13 +435,18 @@ function createBrowserManager({ dir, getWindow }) {
     // over a UI that no longer has a browser panel.
     const hideForReload = () => {
       panelFocused = false;
-      if (ses) host.hide();
+      if (ses) hide();
     };
     win.webContents.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
       if (staysOnOrigin(details.url, win.webContents.getURL())) hideForReload();
     });
     win.webContents.on('render-process-gone', hideForReload);
+    // The window left fullscreen on its own (green button, Mission Control):
+    // the page leaves too, or it would keep covering the whole window.
+    win.on('leave-full-screen', () => {
+      if (fullscreenTab) leaveFullscreen();
+    });
     // Browser shortcuts while focus is in the panel's toolbar (the page's own
     // view handles them while the page has focus).
     win.webContents.on('before-input-event', (event, input) => {
@@ -355,6 +459,11 @@ function createBrowserManager({ dir, getWindow }) {
         tab.destroyView();
       }
     });
+  }
+
+  function hide() {
+    leaveFullscreen();
+    host.hide();
   }
 
   function flush() {
@@ -371,10 +480,11 @@ function createBrowserManager({ dir, getWindow }) {
     flush,
     show: ready(show),
     setBounds: ready(host.setBounds),
-    hide: ready(host.hide),
+    hide: ready(hide),
     freeze: ready(host.freeze),
     unfreeze: ready(host.unfreeze),
     setPanelFocused: (focused) => { panelFocused = focused; },
+    setMenuLabels: (labels) => { menuLabels = cleanLabels(labels); },
     setSearchEngine: (id) => {
       engine = searchEngine(id);
       if (ses) scheduleSnapshot();
@@ -387,6 +497,9 @@ function createBrowserManager({ dir, getWindow }) {
     reopenClosedTab: ready(reopenClosedTab),
     navigate: ready(navigate),
     command: ready(command),
+    find: ready(find),
+    stopFind: ready(stopFind),
+    answerAuth: ready(answerAuth),
     extractPage: ready(extractPage),
     toggleBookmark: ready((url, title) => library.toggleBookmark(url, title)),
     removeBookmark: ready((id) => library.removeBookmark(id)),

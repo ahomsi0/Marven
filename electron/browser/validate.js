@@ -48,11 +48,14 @@ function staysOnOrigin(url, current) {
   }
 }
 
-// The one permission pages get: writing (sanitized) text to the clipboard,
-// which "Copy" buttons rely on. Everything else, including clipboard reads,
-// is denied.
+// The permissions pages get: writing (sanitized) text to the clipboard, which
+// "Copy" buttons rely on, and fullscreen (a video's button; Chromium only
+// allows it from a click, and the view host fits it to the window).
+// Everything else, including clipboard reads, is denied.
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen']);
+
 function isAllowedPermission(permission) {
-  return permission === 'clipboard-sanitized-write';
+  return ALLOWED_PERMISSIONS.has(permission);
 }
 
 function hostOf(url) {

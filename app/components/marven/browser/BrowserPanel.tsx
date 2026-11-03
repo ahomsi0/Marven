@@ -9,6 +9,14 @@ import { useBrowserSnapshot } from "./useBrowserSnapshot";
 import { TabStrip } from "./TabStrip";
 import { Toolbar } from "./Toolbar";
 import { ErrorState } from "./ErrorState";
+import { FindBar } from "./FindBar";
+import { AuthPrompt } from "./AuthPrompt";
+
+// Right-click menu labels (electron/browser/contextMenu.js) → keys under browser.menu.
+const MENU_LABELS = [
+  "back", "forward", "reload", "openLinkInNewTab", "copyLink", "openImageInNewTab", "saveImage", "copyImage",
+  "copyImageAddress", "undo", "redo", "cut", "copy", "paste", "selectAll", "searchFor", "find",
+] as const;
 
 interface BrowserPanelProps {
   expanded: boolean;
@@ -24,7 +32,7 @@ interface BrowserPanelProps {
  * toolbar from the main process's snapshot and keeps the view's bounds in sync.
  */
 export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClose }: BrowserPanelProps) {
-  const { t } = useT();
+  const { t, i18n } = useT();
   const bridge = useMemo(getBrowserBridge, []);
   const snapshot = useBrowserSnapshot(bridge);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -32,7 +40,10 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
   const overlayOpen = useAnyOverlayOpen();
   const [menuOpen, setMenuOpen] = useState(false);
   const [frozen, setFrozen] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findRequest, setFindRequest] = useState(0);
   const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeId) ?? null;
+  const activeId = active?.id ?? null;
   // A menu over the page, or a drag of the panel's edge (the native page
   // would swallow pointer moves that cross it), shows a screenshot instead.
   const covered = menuOpen || resizing;
@@ -93,6 +104,27 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
     };
   }, [bridge, covered, overlayOpen]);
 
+  // ⌘F (from the page, the toolbar or the right-click menu) opens find, or
+  // focuses it again; switching tabs closes it.
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onOpenFind(() => {
+      setFindOpen(true);
+      setFindRequest((n) => n + 1);
+    });
+  }, [bridge]);
+  useEffect(() => {
+    setFindOpen(false);
+  }, [activeId]);
+
+  // The page's right-click menu is native (main process); give it our labels.
+  useEffect(() => {
+    if (!bridge) return;
+    const labels: Record<string, string> = {};
+    for (const key of MENU_LABELS) labels[key] = t(`browser.menu.${key}`, { engine: "{{engine}}", query: "{{query}}" });
+    bridge.setMenuLabels(labels);
+  }, [bridge, t, i18n.language]);
+
   // Lets the main process handle browser shortcuts while focus is in the
   // toolbar (the page's own view handles them while the page has focus).
   useEffect(() => {
@@ -130,6 +162,9 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
         onClose={onClose}
         onMenuChange={setMenuOpen}
       />
+      {bridge && active && findOpen && (
+        <FindBar key={active.id} bridge={bridge} tab={active} focusRequest={findRequest} onClose={() => setFindOpen(false)} />
+      )}
 
       {/* The native page view is positioned over this element. */}
       <div ref={viewportRef} className="relative min-h-0 flex-1">
@@ -140,6 +175,14 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
           </div>
         )}
         {bridge && active?.error && <ErrorState error={active.error} onRetry={() => bridge.command(active.id, "retry")} />}
+        {bridge && active?.auth && !active.error && (
+          <AuthPrompt
+            key={`${active.id}:${active.auth.host}:${active.auth.realm}`}
+            auth={active.auth}
+            onSubmit={(username, password) => bridge.answerAuth(active.id, username, password)}
+            onCancel={() => bridge.answerAuth(active.id, null, null)}
+          />
+        )}
         {frozen && covered && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={frozen} alt="" aria-hidden className="pointer-events-none absolute inset-0 h-full w-full object-cover object-left-top" />

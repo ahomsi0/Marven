@@ -58,9 +58,10 @@ describe("validate", () => {
     expect(staysOnOrigin("not a url", "http://localhost:3000/")).toBe(true);
   });
 
-  it("isAllowedPermission allows only sanitized clipboard writes", () => {
+  it("isAllowedPermission allows only sanitized clipboard writes and fullscreen", () => {
     expect(isAllowedPermission("clipboard-sanitized-write")).toBe(true);
-    for (const p of ["clipboard-read", "media", "geolocation", "notifications", "fullscreen", "openExternal", ""]) {
+    expect(isAllowedPermission("fullscreen")).toBe(true);
+    for (const p of ["clipboard-read", "media", "geolocation", "notifications", "pointerLock", "keyboardLock", "openExternal", ""]) {
       expect(isAllowedPermission(p)).toBe(false);
     }
   });

@@ -36,17 +36,18 @@ click in UI ─▶ command (IPC) ─▶ main process acts ─▶ snapshot (IPC) 
 
 | File | Job |
 |---|---|
-| `manager.js` | Owns the tab list; creates/closes/activates/reorders tabs; browser shortcuts; tab and popup caps; broadcasts the snapshot on every change (coalesced to one per animation frame / ~16ms) |
+| `manager.js` | Owns the tab list; creates/closes/activates/reorders tabs; browser shortcuts (including ⌘F find); tab and popup caps; the right-click menu; which tab is fullscreen; broadcasts the snapshot on every change (coalesced to one per animation frame / ~16ms) |
 | `session.js` | The `persist:marven-browser` session: permission handlers, plain Chrome user agent, `will-download` → `downloads.js`, blocker attached with its lists loaded lazily |
 | `library.js` | The four JSON stores, cleaned on load (written back only if cleaning changed them): tabs, history, bookmarks, per-site blocking; suggestions and clearing history |
-| `viewHost.js` | Attaches only the active tab's view at the panel's bounds; shown/frozen state, freeze screenshots, and muting every view that isn't on screen |
-| `tab.js` | One tab = one `WebContentsView`. Hardened `webPreferences`, http(s)-only navigation guards, `setWindowOpenHandler` → new tab after the current one; reports url, title, favicon, loading, canGoBack/Forward, error state, blocked count |
+| `viewHost.js` | Attaches only the active tab's view at the panel's bounds (the whole window while its page is fullscreen); shown/frozen state, freeze screenshots, and muting every view that isn't on screen |
+| `tab.js` | One tab = one `WebContentsView`. Hardened `webPreferences`, http(s)-only navigation guards, `setWindowOpenHandler` → new tab after the current one (a pop-up window with features keeps its opener, so sign-in pop-ups can post back and close themselves); find in page, HTTP sign-in requests, fullscreen; reports url, title, favicon, loading, canGoBack/Forward, error state, blocked count, find result, pending sign-in |
 | `tabsModel.js` | Pure tab-list logic, no Electron import: next active tab after close, reorder, restore ordering, closed-tab stack (last 10). Unit-tested |
 | `history.js`, `bookmarks.js`, `suggest.js`, `downloadNames.js`, `shortcuts.js`, `validate.js` | Pure helpers (history map, bookmark list, suggestion ranking, download names, shortcut mapping, argument checks). Unit-tested |
 | `store.js` | Load/save `tabs.json`, `bookmarks.json`, `history.json`, `sites.json`. Debounced (~1s) atomic writes (temp file + rename), flush on quit; unreadable file → renamed to `.bak`, start empty |
 | `blocker.js` | Ghostery engine from prebuilt ads+tracking lists, cached compiled engine in `userData/browser/adblock.bin`, refreshed weekly; per-site allowlist; per-tab blocked counter |
-| `downloads.js` | `will-download` → unique path in Downloads (`name (1).ext`), progress/cancel/done/failed, Show in Finder (`shell.showItemInFolder`) |
+| `downloads.js` | `will-download` → unique path in Downloads (`name (1).ext`), progress/cancel/done/failed, Show in Finder (`shell.showItemInFolder`); downloads over the rate limits are listed as blocked |
 | `favicons.js` | Fetch favicon URLs through the browser session (`session.fetch`), cap at 64 KB, return a `data:` URL for the UI |
+| `contextMenu.js` | The page's right-click menu template (links, images, text fields, selection, page), labels from the renderer in the app's language. Unit-tested |
 | `ipc.js` | Registers every channel; accepts only from Marven's own window; validates every argument |
 
 `electron/main.js` keeps one call to register the browser and one to attach it to the window, as today.
@@ -138,7 +139,7 @@ The page is untrusted web content. Unchanged from PR #6, for every tab:
 - one shared partition `persist:marven-browser`, separate from Marven's UI session
 - `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `webSecurity: true`, no preload
 - only http(s) on navigate, redirect and window-open
-- every permission request and check denied (including HTML fullscreen and clipboard reads), with one exception: `clipboard-sanitized-write`, so a page's "Copy" buttons work
+- every permission request and check denied (including clipboard reads), with two exceptions: `clipboard-sanitized-write`, so a page's "Copy" buttons work, and `fullscreen` (Chromium only grants it from a click; the page's view then covers the window until it leaves fullscreen or goes off screen)
 
 New:
 
@@ -192,4 +193,4 @@ Plus `npm run typecheck` and the existing suite.
 
 ## Out of Scope
 
-Bookmark folders and a bookmarks bar, a history page, private windows, discarding idle tabs, HTML fullscreen, extensions, sync, and letting Marven's agent drive the browser (a separate design).
+Bookmark folders and a bookmarks bar, a history page, private windows, discarding idle tabs, extensions, sync, and letting Marven's agent drive the browser (a separate design).

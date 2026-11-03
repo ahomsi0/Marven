@@ -43,6 +43,22 @@ function registerBrowserIpc(manager, getWindow) {
   on('browser-command', (id, name) => { if (isId(id) && COMMANDS.has(name)) manager.command(id, name); });
   // No id (undefined/null) means the active tab.
   handle('browser-extract-page', (id) => (id == null || isId(id) ? manager.extractPage(id ?? null) : null));
+  on('browser-find', (id, text, options) => {
+    if (!isId(id) || typeof text !== 'string') return;
+    const o = options && typeof options === 'object' ? options : {};
+    manager.find(id, cleanText(text, 500), { forward: o.forward !== false, again: o.again === true });
+  });
+  on('browser-stop-find', (id) => { if (isId(id)) manager.stopFind(id); });
+  // A sign-in answer for the server's prompt; no username cancels it.
+  on('browser-auth', (id, username, password) => {
+    if (!isId(id)) return;
+    if (typeof username === 'string' && username && typeof password === 'string') {
+      manager.answerAuth(id, username.slice(0, 1000), password.slice(0, 1000));
+    } else {
+      manager.answerAuth(id, null, null);
+    }
+  });
+  on('browser-menu-labels', (labels) => manager.setMenuLabels(labels));
 
   handle('browser-toggle-bookmark', (url, title) => (isWebUrl(url) ? manager.toggleBookmark(url, cleanText(title, 300)) : false));
   handle('browser-remove-bookmark', (id) => { if (isId(id)) manager.removeBookmark(id); });

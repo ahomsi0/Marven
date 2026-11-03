@@ -9,6 +9,7 @@ describe("shortcutAction", () => {
     expect(shortcutAction(key("w"), "darwin")).toEqual({ action: "close-tab" });
     expect(shortcutAction(key("T", { shift: true }), "darwin")).toEqual({ action: "reopen-tab" });
     expect(shortcutAction(key("l"), "darwin")).toEqual({ action: "focus-address" });
+    expect(shortcutAction(key("f"), "darwin")).toEqual({ action: "find" });
     expect(shortcutAction(key("r"), "darwin")).toEqual({ action: "reload" });
     expect(shortcutAction(key("["), "darwin")).toEqual({ action: "back" });
     expect(shortcutAction(key("]"), "darwin")).toEqual({ action: "forward" });
@@ -33,6 +34,7 @@ describe("shortcutAction", () => {
     expect(shortcutAction({ key: "ف", code: "KeyT", meta: true, type: "keyDown" }, "darwin")).toEqual({ action: "new-tab" });
     expect(shortcutAction({ key: "ض", code: "KeyW", meta: true, type: "keyDown" }, "darwin")).toEqual({ action: "close-tab" });
     expect(shortcutAction({ key: "ج", code: "BracketLeft", meta: true, type: "keyDown" }, "darwin")).toEqual({ action: "back" });
+    expect(shortcutAction({ key: "ب", code: "KeyF", meta: true, type: "keyDown" }, "darwin")).toEqual({ action: "find" });
     expect(shortcutAction({ key: "٣", code: "Digit3", meta: true, type: "keyDown" }, "darwin")).toEqual({ action: "select-tab", index: 2 });
     expect(shortcutAction({ key: "ف", code: "KeyT", meta: true, shift: true, type: "keyDown" }, "darwin")).toEqual({ action: "reopen-tab" });
     expect(shortcutAction({ key: "ث", code: "KeyE", meta: true, type: "keyDown" }, "darwin")).toBeNull();

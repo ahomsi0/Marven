@@ -18,14 +18,20 @@ export interface BrowserTab {
   blocked: number;
   blockingEnabled: boolean;
   error: BrowserError | null;
+  /** Find in page: the current match (1-based, 0 for none) and the total, or null. */
+  find: { active: number; total: number } | null;
+  /** A server asking for a username and password, or null. */
+  auth: { host: string; realm: string; isProxy: boolean } | null;
 }
 
 export interface BrowserDownload {
   id: string;
   filename: string;
-  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  state: "progressing" | "completed" | "cancelled" | "interrupted" | "blocked";
   receivedBytes: number;
   totalBytes: number;
+  /** For "blocked": how many downloads in a row were stopped. */
+  count?: number;
 }
 
 export type SearchEngineId = "brave" | "google" | "duckduckgo" | "bing";
@@ -40,6 +46,8 @@ export interface SearchEngine {
 export interface BrowserSnapshot {
   tabs: BrowserTab[];
   activeId: string | null;
+  /** A closed tab can be reopened. */
+  canReopen: boolean;
   downloads: BrowserDownload[];
   searchEngine: Pick<SearchEngine, "id" | "name" | "searchUrl">;
 }
@@ -91,6 +99,13 @@ export interface BrowserBridge {
   command: (id: string, name: TabCommand) => void;
   /** The page in a tab (the active one if no id), or null for blank/error tabs. */
   extractPage: (id?: string) => Promise<PageExtract | null>;
+  /** Searches the page; `again` moves to the next (or previous) match of the same text. */
+  find: (id: string, text: string, options?: { forward?: boolean; again?: boolean }) => void;
+  stopFind: (id: string) => void;
+  /** Answers a sign-in prompt; a null username cancels it. */
+  answerAuth: (id: string, username: string | null, password: string | null) => void;
+  /** Right-click menu labels in the app's language (keys in electron/browser/contextMenu.js). */
+  setMenuLabels: (labels: Record<string, string>) => void;
   toggleBookmark: (url: string, title: string) => Promise<boolean>;
   removeBookmark: (id: string) => Promise<void>;
   listBookmarks: (query: string) => Promise<Bookmark[]>;
@@ -102,6 +117,7 @@ export interface BrowserBridge {
   clearBrowsingData: () => Promise<boolean>;
   onSnapshot: (cb: (snapshot: BrowserSnapshot) => void) => () => void;
   onFocusAddress: (cb: () => void) => () => void;
+  onOpenFind: (cb: () => void) => () => void;
 }
 
 /** The Electron bridge, or null outside the desktop app (e.g. `next dev` in a browser). */

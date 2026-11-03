@@ -29,7 +29,9 @@ export function DownloadsMenu({ bridge, downloads }: { bridge: BrowserBridge; do
             const status =
               d.state === "progressing"
                 ? pct !== null ? `${pct}%` : formatBytes(d.receivedBytes)
-                : d.state === "completed"
+                : d.state === "blocked"
+                  ? t("browser.downloadBlocked", { n: d.count ?? 1 })
+                  : d.state === "completed"
                   ? t("browser.downloadDone")
                   : d.state === "cancelled"
                     ? t("browser.downloadCancelled")

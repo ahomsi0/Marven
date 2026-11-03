@@ -5,6 +5,11 @@ import { GlobeIcon } from "../Icons";
 import { useT } from "@/lib/i18n";
 import { hostOf, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBrowser";
 
+const isMac =
+  typeof window !== "undefined" &&
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).marvenElectron?.platform === "darwin";
+
 export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot: BrowserSnapshot }) {
   const { t } = useT();
   const [dragId, setDragId] = useState<string | null>(null);
@@ -123,6 +128,20 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
           </div>
         );
       })}
+      {snapshot.canReopen && (
+        <button
+          type="button"
+          onClick={() => bridge.reopenClosedTab()}
+          aria-label={t("browser.reopenTab")}
+          title={`${t("browser.reopenTab")} (${isMac ? "⇧⌘T" : "Ctrl+Shift+T"})`}
+          className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+        >
+          <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => void bridge.newTab()}

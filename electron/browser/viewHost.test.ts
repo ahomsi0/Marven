@@ -24,9 +24,18 @@ type View = ReturnType<typeof fakeView>;
 
 function fakeWindow() {
   const children: View[] = [];
+  const listeners = new Map<string, () => void>();
   return {
     destroyed: false,
+    fullScreen: false,
+    size: [1200, 800] as [number, number],
+    listeners,
     isDestroyed() { return this.destroyed; },
+    getContentSize() { return this.size; },
+    isFullScreen() { return this.fullScreen; },
+    setFullScreen(on: boolean) { this.fullScreen = on; },
+    on(event: string, fn: () => void) { listeners.set(event, fn); },
+    off(event: string, fn: () => void) { if (listeners.get(event) === fn) listeners.delete(event); },
     contentView: {
       children,
       addChildView: (v: View) => { children.push(v); },
@@ -146,6 +155,49 @@ describe("createViewHost", () => {
     host.windowClosed();
     expect(host.isAttached(views[0] as never)).toBe(false);
     expect(host.isShown()).toBe(false);
+  });
+
+  describe("fullscreen", () => {
+    it("covers the whole window and puts the view back after", () => {
+      showFirst();
+      host.setFullscreen(true);
+      expect(host.isFullscreen()).toBe(true);
+      expect(views[0].bounds).toEqual({ x: 0, y: 0, width: 1200, height: 800 });
+
+      host.setFullscreen(false);
+      expect(host.isFullscreen()).toBe(false);
+      expect(views[0].bounds).toEqual(BOUNDS);
+    });
+
+    it("follows the window as it grows, ignoring the panel's bounds", () => {
+      showFirst();
+      host.setFullscreen(true);
+      win!.size = [1440, 900];
+      win!.listeners.get("resize")!();
+      expect(views[0].bounds).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
+      host.setBounds({ ...BOUNDS, width: 300 });
+      expect(views[0].bounds).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
+
+      host.setFullscreen(false);
+      expect(win!.listeners.has("resize")).toBe(false);
+      expect(views[0].bounds).toEqual({ ...BOUNDS, width: 300 });
+    });
+
+    it("leaves the window's own fullscreen state to Electron", () => {
+      showFirst();
+      host.setFullscreen(true);
+      expect(win!.fullScreen).toBe(false);
+      win!.fullScreen = true;
+      host.setFullscreen(false);
+      expect(win!.fullScreen).toBe(true);
+    });
+
+    it("places a view attached while fullscreen over the whole window", () => {
+      showFirst();
+      host.setFullscreen(true);
+      host.showActive(views[1] as never);
+      expect(views[1].bounds).toEqual({ x: 0, y: 0, width: 1200, height: 800 });
+    });
   });
 
   describe("freeze", () => {
