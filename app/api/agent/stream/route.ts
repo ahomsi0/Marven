@@ -1,11 +1,6 @@
 import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/agent/loop";
-import { groqAgentStep, type ProviderStepResult } from "@/lib/agent/groq";
-import { ollamaAgentStep } from "@/lib/agent/ollama";
-import { nimAgentStep } from "@/lib/agent/nim";
-import { openrouterAgentStep } from "@/lib/agent/openrouter";
-import { openaiAgentStep } from "@/lib/agent/openai";
-import { anthropicAgentStep } from "@/lib/agent/anthropic";
+import { defaultAgentModel, makeAgentProviderStep } from "@/lib/agent/providerRouting";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agent/tools";
 import { mcpClient, mcpToolToDefinition } from "@/lib/mcpClient";
 import type { AIProvider, InternalMessage, HistoryMessage, MCPServer, ImageAttachment, Mention } from "@/types";
@@ -82,12 +77,7 @@ export async function POST(req: NextRequest) {
   const model =
     (typeof body.model === "string" && body.model.trim().length > 0
       ? body.model.trim()
-      : null) ??
-    (provider === "groq"      ? "llama-3.3-70b-versatile" :
-    provider === "nim"       ? "mistralai/mistral-nemotron" :
-    provider === "openai"    ? "gpt-4o-mini" :
-    provider === "anthropic" ? "claude-sonnet-4-5" :
-    "qwen2.5-coder");
+      : null) ?? defaultAgentModel(provider);
 
   const hasImageTurn =
     (body.attachments?.length ?? 0) > 0 ||
@@ -126,10 +116,12 @@ export async function POST(req: NextRequest) {
   // conventions injected into the system prompt for both tiers.
   const rulesBlock = formatRulesBlock(await loadWorkspaceRules(workspaceRoot));
 
+  // Per-request "now" so the prompt's date/time line is never stale.
+  const now = new Date();
   let systemPrompt =
     tier === "simple"
-      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree, rulesBlock)
-      : makeFullSystemPrompt(workspaceRoot, body.memory, rulesBlock);
+      ? makeLiteSystemPrompt(workspaceRoot, body.memory, fileTree, rulesBlock, now)
+      : makeFullSystemPrompt(workspaceRoot, body.memory, rulesBlock, now);
 
   if (hasImageTurn) {
     systemPrompt +=
@@ -157,15 +149,9 @@ export async function POST(req: NextRequest) {
   }));
   history.push({ role: "user", content: prompt, ...(body.attachments?.length ? { attachments: body.attachments } : {}) });
 
-  const makeProviderStep =
-    (p: AIProvider, m: string) =>
-    (msgs: InternalMessage[], tools: typeof TOOL_DEFINITIONS): Promise<ProviderStepResult> =>
-      p === "groq"       ? groqAgentStep(msgs, tools, m) :
-      p === "nim"        ? nimAgentStep(msgs, tools, m) :
-      p === "openrouter" ? openrouterAgentStep(msgs, tools, m) :
-      p === "openai"     ? openaiAgentStep(msgs, tools, m) :
-      p === "anthropic"  ? anthropicAgentStep(msgs, tools, m) :
-      ollamaAgentStep(msgs, tools, m);
+  // LM Studio / llama-server go to the OpenAI-compatible local step; Ollama
+  // to its native /api/chat step. All local URLs are read per call.
+  const makeProviderStep = makeAgentProviderStep;
 
   const providerStep = makeProviderStep(provider, model);
 

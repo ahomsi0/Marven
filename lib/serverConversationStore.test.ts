@@ -97,4 +97,16 @@ describe("ConversationStore (SQLite)", () => {
     ]);
     expect(store.listAll().map((c) => c.id)).toEqual(["ok", "fine"]);
   });
+
+  it("deleteMany removes only the listed ids", () => {
+    store.replaceAll([conv("a"), conv("b"), conv("c")]);
+    store.deleteMany(["a", "c", "missing"]);
+    expect(store.listAll().map((c) => c.id)).toEqual(["b"]);
+  });
+
+  it("replaceAll never re-inserts tombstoned ids from a stale payload", () => {
+    store.replaceAll([conv("a"), conv("b")]);
+    store.replaceAll([conv("a"), conv("b"), conv("c")], ["b"]);
+    expect(store.listAll().map((c) => c.id)).toEqual(["a", "c"]);
+  });
 });

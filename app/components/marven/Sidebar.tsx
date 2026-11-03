@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { AccountBar } from "./AccountBar";
 import { ChatBubbleIcon, CodeIcon, DotsIcon, PencilIcon, PinIcon, SidebarIcon, TrashIcon } from "./Icons";
 import { filterConversations } from "@/lib/chatHelpers";
 import { useT } from "@/lib/i18n";
-import type { TFunction } from "i18next";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -40,31 +39,13 @@ const SECTION_LABEL = "mb-1 mt-2 px-3 text-[13px] font-medium text-[var(--m-text
 // Open/close slide: an ease-out curve that starts quick and settles softly.
 const SLIDE = "duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
-function relativeDate(isoString: string, t: TFunction, locale: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+const SIDEBAR_WIDTH_KEY = "marven-sidebar-width";
+const SIDEBAR_DEFAULT_WIDTH = 260;
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 420;
 
-  if (diffDays === 0) return t("sidebar.today");
-  if (diffDays === 1) return t("sidebar.yesterday");
-  if (diffDays < 7) return t("sidebar.daysAgo", { count: diffDays });
-  if (diffDays < 30) return t("sidebar.weeksAgo", { count: Math.floor(diffDays / 7) });
-  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
-}
-
-function groupConversations(
-  conversations: Conversation[],
-  t: TFunction,
-  locale: string,
-): { label: string; items: Conversation[] }[] {
-  const groups: Record<string, Conversation[]> = {};
-  for (const conv of [...conversations].reverse()) {
-    const label = relativeDate(conv.updatedAt, t, locale);
-    if (!groups[label]) groups[label] = [];
-    groups[label].push(conv);
-  }
-  return Object.entries(groups).map(([label, items]) => ({ label, items }));
+function clampSidebarWidth(width: number) {
+  return Math.round(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width)));
 }
 
 function ConvRow({
@@ -292,7 +273,67 @@ export function Sidebar({
     // No transition runs under reduced motion, so no transitionend will fire.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setSettledOpen(isOpen);
   }, [isOpen]);
-  const { t, i18n } = useT();
+  const { t } = useT();
+
+  // Width set by dragging the sidebar's edge, remembered across launches.
+  // Read after mount: the server renders the default, and hydration keeps the
+  // server's inline style, so a saved width must come in as a state update.
+  const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      if (saved) setWidth(clampSidebarWidth(saved));
+    } catch { /* best effort */ }
+  }, []);
+
+  function saveWidth(next: number) {
+    setWidth(next);
+    try {
+      if (next === SIDEBAR_DEFAULT_WIDTH) localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+      else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next));
+    } catch { /* best effort */ }
+  }
+
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const rtl = document.documentElement.dir === "rtl";
+    const startX = e.clientX;
+    const startWidth = width;
+    let latest: number | null = null;
+    setResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      const delta = rtl ? startX - ev.clientX : ev.clientX - startX;
+      latest = clampSidebarWidth(startWidth + delta);
+      setWidth(latest);
+    };
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setResizing(false);
+      if (latest !== null) saveWidth(latest);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
+  function nudgeWidth(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    // The handle sits on the sidebar's end edge: moving it outward widens it.
+    const grow = (e.key === "ArrowRight") !== (document.documentElement.dir === "rtl");
+    saveWidth(clampSidebarWidth(width + (grow ? 16 : -16)));
+  }
 
   // Per-conversation "⋯" menu (Rename / Pin / Delete) and inline rename.
   // Positioned by `bottom` when opening upward (the default), `top` when it can't fit above.
@@ -440,19 +481,41 @@ export function Sidebar({
 
   return (
     <aside
+      ref={asideRef}
       aria-hidden={!isOpen}
       inert={!isOpen}
-      className={`h-full shrink-0 border-e bg-[var(--m-surface)] ${SLIDE} transition-[width,border-color] ${
-        isOpen ? "w-[260px] border-[var(--m-border-subtle)]" : "w-0 border-transparent"
-      } ${isOpen && settledOpen ? "overflow-visible" : "overflow-hidden"}`}
+      style={{ width: isOpen ? width : 0 }}
+      className={`relative h-full shrink-0 border-e bg-[var(--m-surface)] ${SLIDE} ${
+        // No width animation while dragging, so the edge follows the pointer.
+        resizing ? "transition-none" : "transition-[width,border-color]"
+      } ${isOpen ? "border-[var(--m-border-subtle)]" : "border-transparent"} ${
+        isOpen && settledOpen ? "overflow-visible" : "overflow-hidden"
+      }`}
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === "width") setSettledOpen(isOpen);
       }}
     >
+      {isOpen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sidebar.resize")}
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={width}
+          title={t("sidebar.resize")}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onDoubleClick={() => saveWidth(SIDEBAR_DEFAULT_WIDTH)}
+          onKeyDown={nudgeWidth}
+          className="absolute inset-y-0 -end-[3px] z-20 w-1.5 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
+        />
+      )}
       {/* Fixed-width content: the panel's width animates over it, so nothing
           reflows mid-slide; it also fades and drifts toward the edge. */}
       <div
-        className={`flex h-full w-[260px] flex-col ${SLIDE} transition-[opacity,translate] ${
+        style={{ width }}
+        className={`flex h-full flex-col ${SLIDE} transition-[opacity,translate] ${
           // "translate-none" (not translate-x-0) when open: any translate makes this
           // a containing block, which would offset the fixed-position context menu.
           isOpen ? "translate-none opacity-100" : "-translate-x-3 opacity-0 rtl:translate-x-3"
@@ -679,21 +742,19 @@ export function Sidebar({
                   </div>
                 )}
 
-                {/* Unfiled date-grouped */}
+                {/* Unfiled chats — a single list, newest first (no date groups) */}
                 {(() => {
-                  const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId);
-                  const unfiledGrouped = groupConversations(unfiledConvs, t, i18n.language);
+                  const unfiledConvs = unpinnedConvs.filter((c) => !c.folderId).reverse();
                   return (
                     <>
-                      {unfiledGrouped.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
+                      {unfiledConvs.length === 0 && pinnedConvs.length === 0 && folders.length === 0 && (
                         <p className="px-3 text-[13px] text-[var(--m-text-faint)]">
                           {view === "agent" ? t("sidebar.noAgentSessionsYet") : t("sidebar.noChatsYet")}
                         </p>
                       )}
-                      {unfiledGrouped.map(({ label, items }) => (
-                        <div key={label} className="mb-3">
-                          <p className={SECTION_LABEL}>{label}</p>
-                          {items.map((conv) => (
+                      {unfiledConvs.length > 0 && (
+                        <div className="mb-3">
+                          {unfiledConvs.map((conv) => (
                             <ConvRow
                               key={conv.id}
                               conv={conv}
@@ -713,7 +774,7 @@ export function Sidebar({
                             />
                           ))}
                         </div>
-                      ))}
+                      )}
                     </>
                   );
                 })()}

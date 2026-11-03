@@ -1,6 +1,7 @@
 "use client";
 
 import type { Conversation, ConversationFolder, Message, CustomShortcut, ConversationMode } from "@/types";
+import { stripAttachmentsDeep } from "@/lib/messageVersions";
 
 const CONVERSATIONS_KEY = "marven_conversations";
 const SHORTCUTS_KEY = "marven_custom_shortcuts";
@@ -67,12 +68,8 @@ export interface SaveResult {
 function stripHeavyAttachments(conversations: Conversation[]): Conversation[] {
   return conversations.map((c) => ({
     ...c,
-    messages: c.messages.map((m) => {
-      if (!m.attachments && !m.docs) return m;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { attachments, docs, ...rest } = m;
-      return rest;
-    }),
+    // Older message versions can hold attachments too.
+    messages: c.messages.map((m) => (m.attachments || m.docs || m.versions ? stripAttachmentsDeep(m) : m)),
   }));
 }
 

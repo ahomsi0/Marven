@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { assertSafePath, executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
 import * as memoryClient from "@/lib/memoryClient";
+import { parseRememberToolResult } from "@/lib/memoryEvents";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -285,9 +286,14 @@ describe("executeTool – search_files", () => {
 
 describe("executeTool — remember", () => {
   it("returns scoped success text and calls appendScopedMemory", async () => {
-    const spy = vi.spyOn(memoryClient, "appendScopedMemory").mockImplementation(() => {});
+    const id = "2026-11-02T10:00:00.000Z";
+    const spy = vi
+      .spyOn(memoryClient, "appendScopedMemory")
+      .mockImplementation((text) => ({ id, timestamp: id, text }));
     const result = await executeTool("remember", { content: "user prefers TypeScript" }, "/tmp");
-    expect(result).toBe("Remembered in project memory.");
+    // The entry id rides along so the client can offer Undo.
+    expect(result).toBe(`Remembered in project memory (memory id ${id}).`);
+    expect(parseRememberToolResult(result)).toEqual({ scope: "project", id });
     expect(spy).toHaveBeenCalledWith("user prefers TypeScript", "project", {
       workspaceRoot: "/tmp",
       conversationId: undefined,

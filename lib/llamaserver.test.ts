@@ -7,7 +7,38 @@ vi.mock("openai", () => ({
 }));
 
 import OpenAI from "openai";
-import { getLlamaServerModels } from "./llamaserver";
+import { buildLlamaServerMessages, getLlamaServerModels } from "./llamaserver";
+
+describe("buildLlamaServerMessages", () => {
+  const img = { base64: "data:image/png;base64,QUJD", mimeType: "image/png" as const, name: "p.png" };
+
+  it("sends image_url parts to a vision model", () => {
+    const [, user] = buildLlamaServerMessages(
+      [{ role: "user", content: "describe", attachments: [img] }],
+      "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+    );
+    expect(user).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "describe" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,QUJD" } },
+      ],
+    });
+  });
+
+  it("strips images for a text-only model and keeps plain turns as-is", () => {
+    const [system, user, plain] = buildLlamaServerMessages(
+      [
+        { role: "user", content: "describe", attachments: [img] },
+        { role: "user", content: "hello" },
+      ],
+      "local-model",
+    );
+    expect(system.role).toBe("system");
+    expect(user.content).toContain("can't see images");
+    expect(plain).toEqual({ role: "user", content: "hello" });
+  });
+});
 
 describe("getLlamaServerModels", () => {
   beforeEach(() => {

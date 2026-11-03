@@ -17,6 +17,26 @@ export interface Message {
   isStreaming?: boolean;
   attachments?: ImageAttachment[];
   docs?: DocAttachment[];
+  /** Assistant replies: the provider and model that wrote it (absent on older messages). */
+  provider?: AIProvider;
+  model?: string;
+  /**
+   * User messages that were edited or retried keep every version here (see
+   * lib/messageVersions.ts). The visible thread is always the active version.
+   */
+  versions?: MessageVersion[];
+  activeVersion?: number;
+}
+
+/** One version of a user message plus the conversation that followed it. */
+export interface MessageVersion {
+  content: string;
+  attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
+  /** A Date in memory; an ISO string once it has been through JSON storage. */
+  timestamp: Date | string;
+  /** Messages after this version. Empty for the active version — the live thread holds those. */
+  replies: Message[];
 }
 
 export interface ImageAttachment {

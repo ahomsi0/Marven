@@ -6,6 +6,7 @@
 // palette so the two don't have to fight over the same shortcut.
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useOverlayGuard } from "@/lib/overlays";
 import type { Conversation } from "@/types";
 
 interface ConversationSearchPaletteProps {
@@ -51,6 +52,7 @@ export function ConversationSearchPalette({
   onClose,
   onJump,
 }: ConversationSearchPaletteProps) {
+  useOverlayGuard();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);

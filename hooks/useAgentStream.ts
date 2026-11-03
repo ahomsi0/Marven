@@ -1,8 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage, AgentSafetyProfile } from "@/types";
+import {
+  buildWireHistory,
+  cancelInFlightToolCalls,
+  condenseWindow,
+  SWITCH_CANCEL_NOTE,
+} from "@/lib/agent/thread";
+import { dispatchMemorySaved, parseRememberToolResult } from "@/lib/memoryEvents";
 
-const SUMMARIZE_THRESHOLD = 30; // auto-summarize when thread exceeds this many messages
-const KEEP_RECENT = 10; // always keep this many recent messages uncompressed
+const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
 interface UseAgentStreamOptions {
   provider: AIProvider;
@@ -50,6 +56,11 @@ export function useAgentStream({
   const streamGenRef = useRef(0);
   const planPendingCallIdRef = useRef<string | null>(null);
   const planModeOverrideRef = useRef<boolean | null>(null);
+  // Latest committed thread, readable from stable callbacks (loadMessages
+  // needs the outgoing thread at switch time). loadMessages/clearMessages also
+  // set it synchronously so a send() in the same tick sees the new thread.
+  const messagesRef = useRef<AgentMessage[]>(messages);
+  messagesRef.current = messages;
 
   const addMessage = (msg: AgentMessage) =>
     setMessages((prev) => [...prev, msg]);
@@ -116,7 +127,17 @@ export function useAgentStream({
 
   const send = useCallback(async (
     prompt: string,
-    opts?: { attachments?: ImageAttachment[]; mentions?: Mention[] },
+    opts?: {
+      attachments?: ImageAttachment[];
+      mentions?: Mention[];
+      /**
+       * The exact thread this turn continues. Pass it when the caller has
+       * just replaced the thread (e.g. editing a message truncates it) — the
+       * replacement may not have rendered yet, so without this the turn
+       * would be built on the previous, untruncated thread.
+       */
+      baseMessages?: AgentMessage[];
+    },
   ) => {
     const attachments = opts?.attachments;
     const mentions = opts?.mentions;
@@ -132,25 +153,31 @@ export function useAgentStream({
       content: prompt,
       ...(attachments?.length ? { attachments } : {}),
     };
-    addMessage(userMsg);
-
     const assistantMsg: AgentMessage = {
       id: `a-${Date.now()}`,
       role: "assistant",
       content: "",
       toolCalls: [],
     };
-    addMessage(assistantMsg);
 
-    // Thread including the two messages queued above — `messages` is still the
-    // pre-send render's array because addMessage uses functional updates, so
-    // building the summary window from it directly would drop the new turn.
-    const threadWithTurn: AgentMessage[] = [...messages, userMsg, assistantMsg];
+    // Read the thread from the ref, not a render closure: loadMessages()
+    // updates the ref synchronously, so a send in the same tick sees it.
+    const base = opts?.baseMessages ?? messagesRef.current;
+    const threadWithTurn: AgentMessage[] = [...base, userMsg, assistantMsg];
+    if (opts?.baseMessages) {
+      // Make the visible thread exactly base + this turn.
+      setMessages(threadWithTurn);
+    } else {
+      addMessage(userMsg);
+      addMessage(assistantMsg);
+    }
+    messagesRef.current = threadWithTurn;
     let activeMessages = threadWithTurn;
 
-    if (threadWithTurn.length > SUMMARIZE_THRESHOLD && workspaceRoot && provider && model) {
-      const oldMessages = threadWithTurn.slice(0, threadWithTurn.length - KEEP_RECENT);
-      const recentMessages = threadWithTurn.slice(threadWithTurn.length - KEEP_RECENT);
+    // Condense only the thread this turn is actually built on.
+    const condense = workspaceRoot && provider && model ? condenseWindow(threadWithTurn) : null;
+    if (condense) {
+      const { oldMessages, recentMessages } = condense;
 
       try {
         const summarizeRes = await fetch("/api/agent/summarize", {
@@ -184,44 +211,28 @@ export function useAgentStream({
               content: trimmedSummary,
               isSummary: true,
             };
-            // Replace old messages with summary in state
+            // Replace old messages with summary in state — unless the thread
+            // was swapped (conversation switch / stop) while summarizing.
             const condensed = [summaryMsg, ...recentMessages];
-            setMessages(condensed);
+            if (gen === streamGenRef.current) {
+              setMessages(condensed);
+              messagesRef.current = condensed;
+            }
             activeMessages = condensed;
           }
         }
       } catch {
         // On failure, continue without summarizing
       }
+      // Stopped or switched away while summarizing: don't start a stream
+      // nobody will read (stop/loadMessages already reset the running flags).
+      if (gen !== streamGenRef.current) return;
     }
 
     // History for the wire excludes the current turn — the stream route
     // appends `prompt` itself, so including userMsg here would duplicate it.
     // (assistantMsg is empty and filtered below regardless.)
-    const history = activeMessages
-      .slice(0, Math.max(0, activeMessages.length - 2))
-      .map((m) => {
-        const content =
-          m.role === "assistant"
-            ? (m.content || (m.toolCalls?.length
-              ? `[Used tools: ${m.toolCalls.map((tc) => tc.tool).join(", ")}]`
-              : ""))
-            : (m.content || "");
-        const row: {
-          role: "user" | "assistant";
-          content: string;
-          attachments?: ImageAttachment[];
-        } = { role: m.role, content };
-        if (m.role === "user" && m.attachments?.length) {
-          row.attachments = m.attachments;
-        }
-        return row;
-      })
-      .filter(
-        (m) =>
-          m.content.trim().length > 0
-          || (m.role === "user" && (m.attachments?.length ?? 0) > 0),
-      );
+    const history = buildWireHistory(activeMessages);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -233,6 +244,7 @@ export function useAgentStream({
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
     planModeOverrideRef.current = null;
     const callIdToTool = new Map<string, string>();
+    const rememberTextByCallId = new Map<string, string>();
     let wroteFiles = false;
     let streamHadError = false;
     let completionChars = 0;
@@ -256,6 +268,9 @@ export function useAgentStream({
         if (staleStream()) return;
         if (event.type === "tool_call") {
           callIdToTool.set(event.callId, event.tool);
+          if (event.tool === "remember" && typeof event.args?.content === "string") {
+            rememberTextByCallId.set(event.callId, event.args.content);
+          }
           updateLastAssistant((msg) => ({
             ...msg,
             toolCalls: [
@@ -274,6 +289,14 @@ export function useAgentStream({
         if (event.type === "tool_result") {
           const tool = callIdToTool.get(event.callId);
           if (tool === "write_file" || tool === "apply_patch") wroteFiles = true;
+          if (tool === "remember") {
+            // "Remembered: …" toast with Undo / Manage (MemoryToast).
+            const saved = parseRememberToolResult(event.output);
+            const text = rememberTextByCallId.get(event.callId);
+            if (saved && text) {
+              dispatchMemorySaved({ ...saved, text, workspaceRoot, conversationId });
+            }
+          }
           setLiveTerminalOutput("");
           completionChars += event.output.length;
           updateLastAssistant((msg) => ({
@@ -481,15 +504,27 @@ export function useAgentStream({
         setError(err.message);
       }
     } finally {
-      isRunningRef.current = false;
-      setIsRunning(false);
+      // Only the current stream owns the running flags: a superseded one
+      // (stop / conversation switch already reset them) must not clear the
+      // flags of a newer run that started meanwhile.
+      if (gen === streamGenRef.current) {
+        isRunningRef.current = false;
+        setIsRunning(false);
+      }
     }
-  }, [messages, provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
+  }, [provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
+    const wasRunning = isRunningRef.current;
     streamGenRef.current++;
     abortRef.current?.abort();
+    isRunningRef.current = false;
     setIsRunning(false);
+    // The aborted stream's handlers are now no-ops, so nothing else would ever
+    // move its in-flight tool calls out of "running".
+    if (wasRunning) {
+      setMessages((prev) => cancelInFlightToolCalls(prev, STOP_CANCEL_NOTE));
+    }
   }, []);
 
   // Abort any in-flight stream if the consuming component unmounts, so the
@@ -497,6 +532,7 @@ export function useAgentStream({
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const clearMessages = useCallback(() => {
+    messagesRef.current = [];
     setMessages([]);
     setError(null);
   }, []);
@@ -504,15 +540,26 @@ export function useAgentStream({
   // Used when switching between agent conversations — aborts any in-flight
   // stream first (bumping the generation so its queued handlers no-op) and
   // restores the full message thread of the conversation we're switching to.
-  const loadMessages = useCallback((next: AgentMessage[]) => {
+  //
+  // Returns the OUTGOING thread when a run was aborted by this call, with its
+  // in-flight tool calls marked cancelled, so the caller can save it to the
+  // outgoing conversation (otherwise the partial output would be lost and the
+  // tool calls saved as "running" forever). Returns null when nothing was
+  // running.
+  const loadMessages = useCallback((next: AgentMessage[]): AgentMessage[] | null => {
+    const outgoing = isRunningRef.current
+      ? cancelInFlightToolCalls(messagesRef.current, SWITCH_CANCEL_NOTE)
+      : null;
     streamGenRef.current++;
     abortRef.current?.abort();
     isRunningRef.current = false;
     setIsRunning(false);
+    messagesRef.current = next;
     setMessages(next);
     setError(null);
     setLiveTerminalOutput("");
     setCheckpoints([]);
+    return outgoing;
   }, []);
 
   const injectAssistantMessage = useCallback((content: string) => {

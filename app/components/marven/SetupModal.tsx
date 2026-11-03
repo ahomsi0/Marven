@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { CheckIcon, CloseIcon, CubeIcon, CloudIcon } from "./Icons";
 import { Trans } from "react-i18next";
 import { useT } from "@/lib/i18n";
+import { SearchEnginePicker } from "./SearchEnginePicker";
 
 interface SetupModalProps {
   onSave: (name: string) => void;
 }
 
-type Step = "welcome" | "backend" | "model" | "done";
+type Step = "welcome" | "backend" | "search" | "model" | "done";
 
 interface BackendProbe {
   /** "live" once we've heard back from a local backend */
@@ -21,14 +22,16 @@ interface BackendProbe {
 const PROBE_TIMEOUT_MS = 1500;
 
 /**
- * First-run onboarding. Three steps so a brand-new user lands in a usable
+ * First-run onboarding. Four steps so a brand-new user lands in a usable
  * state without poking around in Settings:
  *
  *   1. Name (kept short — sets userProfile so the rest of the app boots).
  *   2. Backend detection (probes Ollama / LM Studio / llama-server in
  *      parallel; tells the user what's running on their machine + offers
  *      a cloud fallback link if nothing is).
- *   3. Model recommendation (suggests a known-good local 7B-coder model
+ *   3. Search engine for the in-app browser (saved straight to settings;
+ *      Brave is preselected).
+ *   4. Model recommendation (suggests a known-good local 7B-coder model
  *      if Ollama is up; otherwise explains how to add an API key for cloud).
  *
  * "Skip & explore" is always available — onboarding shouldn't gate use.
@@ -99,7 +102,7 @@ export function SetupModal({ onSave }: SetupModalProps) {
       <div className="relative flex w-full max-w-[460px] flex-col gap-6 rounded-2xl border border-[var(--m-border)] bg-[#1e1e1e] px-8 py-9 text-[#d4d4d4] mx-4">
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-1.5">
-          {(["welcome", "backend", "model"] as Step[]).map((s) => (
+          {(["welcome", "backend", "search", "model"] as Step[]).map((s) => (
             <span
               key={s}
               className={`h-[3px] w-6 rounded-full transition-colors ${
@@ -167,6 +170,34 @@ export function SetupModal({ onSave }: SetupModalProps) {
                 />
               </div>
             )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="flex-1 rounded-xl border border-[var(--m-border)] bg-transparent px-4 py-2 text-[13px] text-[#888] hover:bg-[#262626]"
+              >
+                {t("setup.skip")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep("search")}
+                className="flex-1 rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-4 py-2 text-[13px] text-[#d19a66] hover:bg-[#d19a66]/20"
+              >
+                {t("setup.next")}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "search" && (
+          <>
+            <div className="text-center">
+              <h1 className="text-[18px] font-semibold">{t("setup.searchTitle")}</h1>
+              <p className="mt-2 text-[13px] text-[#888]">{t("setup.searchBody")}</p>
+            </div>
+
+            <SearchEnginePicker />
 
             <div className="flex gap-2">
               <button

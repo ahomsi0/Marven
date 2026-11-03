@@ -8,6 +8,8 @@ import { ModelSelector } from "@/app/components/marven/ModelSelector";
 import { UsageIndicator } from "@/app/components/marven/UsageIndicator";
 import type { TokenUsage } from "@/types";
 import { useT } from "@/lib/i18n";
+import { useVisionSupport } from "@/hooks/useVisionSupport";
+import { ATTACH_PAGE_EVENT, cleanPageDetail, pageChipTitle, pageToDocAttachment } from "@/lib/pageAttachment";
 
 const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -29,10 +31,11 @@ interface InputBarProps {
   lastHeard: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  /** Shown in place of Send while a reply is streaming. */
+  onStop?: () => void;
   onVoiceClick: () => void;
   onSlashCommand?: (cmd: string) => void;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   attachments?: ImageAttachment[];
@@ -59,10 +62,10 @@ export function InputBar({
   lastHeard,
   onChange,
   onSend,
+  onStop,
   onVoiceClick,
   onSlashCommand,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleSpeech,
   onToggleWakeWord,
   attachments,
@@ -77,6 +80,9 @@ export function InputBar({
   const docFileInputRef = useRef<HTMLInputElement>(null);
   const [docUploading, setDocUploading] = useState(false);
   const isListening = voiceState === "command-listening";
+  const hasImages = !!attachments && attachments.length > 0;
+  // null for cloud providers (unchanged behaviour) and while still checking.
+  const modelSeesImages = useVisionSupport(provider, selectedModel, hasImages);
 
   const menuOpen = value.startsWith("/") && !value.includes(" ");
   const query = menuOpen ? value.slice(1) : "";
@@ -86,6 +92,32 @@ export function InputBar({
   const [menuActiveIdx, setMenuActiveIdx] = useState(0);
 
   useEffect(() => { setMenuActiveIdx(0); }, [query]);
+
+  // "Ask Marven about this page" from the in-app browser toolbar: attach the
+  // page as an (untrusted) document, prefill the prompt if the input is empty.
+  // The ref keeps the listener on the latest props without re-subscribing.
+  const pageTargetRef = useRef({ value, docs, onChange, onDocsChange, t });
+  pageTargetRef.current = { value, docs, onChange, onDocsChange, t };
+  useEffect(() => {
+    const onAttachPage = (event: Event) => {
+      const detail = cleanPageDetail((event as CustomEvent).detail);
+      if (!detail) return;
+      const { value, docs, onChange, onDocsChange, t } = pageTargetRef.current;
+      const doc = pageToDocAttachment(detail, t("input.pageAttachment", { title: pageChipTitle(detail) }));
+      // Asking again about the same page replaces its earlier attachment.
+      onDocsChange?.([...(docs ?? []).filter((d) => d.name !== doc.name), doc]);
+      if (detail.prompt && !value.trim()) onChange(detail.prompt);
+      // The chat may only now be coming back into view (browser was expanded).
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
+    };
+    window.addEventListener(ATTACH_PAGE_EVENT, onAttachPage);
+    return () => window.removeEventListener(ATTACH_PAGE_EVENT, onAttachPage);
+  }, []);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -242,6 +274,14 @@ export function InputBar({
             ))}
           </div>
         )}
+        {hasImages && modelSeesImages === false && (
+          <p role="status" className="flex items-start gap-1.5 px-3 pt-1.5 text-[11px] leading-4 text-[var(--m-text-muted)]">
+            <svg className="mt-px h-3 w-3 shrink-0 text-[#d19a66]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+            </svg>
+            <span>{t("input.imagesNotSent")}</span>
+          </p>
+        )}
 
         {/* Doc chip strip */}
         {docs && docs.length > 0 && (
@@ -340,17 +380,32 @@ export function InputBar({
             </button>
           )}
 
-          <button
-            type="button"
-            aria-label={isLoading ? t("input.sending") : t("input.send")}
-            onClick={onSend}
-            disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
-            className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
-          >
-            <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
-            </svg>
-          </button>
+          {isLoading && onStop ? (
+            // Same look as the agent panel's stop button.
+            <button
+              type="button"
+              aria-label={t("input.stop")}
+              title={t("input.stop")}
+              onClick={onStop}
+              className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center border border-red-700/40 bg-red-950/25 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/45"
+            >
+              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={isLoading ? t("input.sending") : t("input.send")}
+              onClick={onSend}
+              disabled={isLoading || (!value.trim() && !(attachments && attachments.length > 0) && !(docs && docs.length > 0))}
+              className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center bg-[#d19a66]/10 border border-[#d19a66]/30 text-[#d19a66] transition-all hover:bg-[#d19a66]/20 hover:border-[#d19a66]/50 disabled:cursor-not-allowed disabled:opacity-25"
+            >
+              <svg className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.3} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.25 20.75L20.75 12L3.25 3.25V9.25L13 12L3.25 14.75V20.75Z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Bottom strip */}
@@ -358,8 +413,7 @@ export function InputBar({
           <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
-            onProviderChange={onProviderChange}
-            onModelChange={onModelChange}
+            onSelect={onModelSelect}
           />
           <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} align="left" />
 

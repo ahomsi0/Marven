@@ -5,12 +5,11 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   GearIcon,
-  GlitchIcon,
   GlobeIcon,
   HelpCircleIcon,
   InfoIcon,
 } from "./Icons";
-import { REPO_URL, glitchBody, glitchIssueUrl } from "@/lib/glitchReport";
+import { REPO_URL } from "@/lib/glitchReport";
 import { useT } from "@/lib/i18n";
 import { LanguageModal } from "./LanguageModal";
 
@@ -21,7 +20,7 @@ interface AccountBarProps {
   onOpenSettings: () => void;
 }
 
-type Panel = "menu" | "report" | null;
+type Panel = "menu" | null;
 type Submenu = "learn" | null;
 
 const LEARN_MORE_LINKS = [
@@ -43,22 +42,12 @@ function openExternal(url: string) {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function platformName(): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const el = (window as any).marvenElectron;
-  return el?.platform ?? navigator.platform ?? "unknown";
-}
-
 /**
  * Sidebar footer: who's using Marven and which provider is active, with an
- * account menu (chevron) and a "Report a glitch" button that drafts a GitHub
- * issue for the user to review — nothing leaves the machine on its own.
+ * account menu (chevron) and a Settings button.
  */
 export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings }: AccountBarProps) {
   const [panel, setPanel] = useState<Panel>(null);
-  const [description, setDescription] = useState("");
-  const [includeDiagnostics, setIncludeDiagnostics] = useState(true);
-  const [copied, setCopied] = useState(false);
   const [submenu, setSubmenu] = useState<Submenu>(null);
   const [languageOpen, setLanguageOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -86,35 +75,9 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
     };
   }, [panel]);
 
-  // Only built while the report panel is open — that's client-only, so
-  // platformName() never runs during server rendering.
-  const diagnostics = panel === "report" && includeDiagnostics
-    ? { version: appVersion ?? "unknown", platform: platformName(), provider: providerLabel ?? "unknown" }
-    : null;
-
   function openLink(url: string) {
     openExternal(url);
     setPanel(null);
-  }
-
-  function openReport() {
-    setCopied(false);
-    setPanel("report");
-  }
-
-  function submitReport() {
-    openExternal(glitchIssueUrl(description, diagnostics));
-    setDescription("");
-    setPanel(null);
-  }
-
-  async function copyReport() {
-    try {
-      await navigator.clipboard.writeText(glitchBody(description, diagnostics));
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
   }
 
   return (
@@ -196,65 +159,6 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
         </div>
       )}
 
-      {panel === "report" && (
-        <div
-          role="dialog"
-          aria-label={t("glitch.report")}
-          className="absolute bottom-full start-2 z-50 mb-1 w-72 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-3 shadow-2xl"
-        >
-          <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-[var(--m-text)]">
-            <GlitchIcon className="h-3.5 w-3.5 text-[var(--m-accent)]" />
-            {t("glitch.report")}
-          </div>
-          <textarea
-            autoFocus
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitReport();
-            }}
-            placeholder={t("glitch.placeholder")}
-            rows={4}
-            className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1.5 text-[12px] text-[var(--m-text)] placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)] focus:outline-none"
-          />
-          <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-[var(--m-text-muted)]">
-            <input
-              type="checkbox"
-              checked={includeDiagnostics}
-              onChange={(e) => setIncludeDiagnostics(e.target.checked)}
-              className="mt-0.5 accent-[var(--m-accent)]"
-            />
-            <span>
-              {t("glitch.includeDiagnostics")}
-              {diagnostics && (
-                <span className="block text-[10px] text-[var(--m-text-faint)]">
-                  v{diagnostics.version} · {diagnostics.platform} · {diagnostics.provider}
-                </span>
-              )}
-            </span>
-          </label>
-          <p className="mt-2 text-[10px] leading-snug text-[var(--m-text-faint)]">
-            {t("glitch.disclaimer")}
-          </p>
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={copyReport}
-              className="rounded-md border border-[var(--m-border)] px-2.5 py-1 text-[11px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
-            >
-              {copied ? t("common.copied") : t("common.copy")}
-            </button>
-            <button
-              type="button"
-              onClick={submitReport}
-              className="rounded-md border border-[var(--m-accent)]/40 bg-[var(--m-accent-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--m-accent)] hover:border-[var(--m-accent)]"
-            >
-              {t("glitch.openDraft")}
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center gap-0.5">
         <button
           type="button"
@@ -279,15 +183,12 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
         </button>
         <button
           type="button"
-          onClick={() => (panel === "report" ? setPanel(null) : openReport())}
-          title={t("glitch.report")}
-          aria-label={t("glitch.report")}
-          aria-expanded={panel === "report"}
-          className={`ms-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-accent)] ${
-            panel === "report" ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"
-          }`}
+          onClick={() => { setPanel(null); onOpenSettings(); }}
+          title={t("common.settings")}
+          aria-label={t("common.settings")}
+          className="ms-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]"
         >
-          <GlitchIcon className="h-5 w-5" />
+          <GearIcon className="h-5 w-5" />
         </button>
       </div>
     </div>

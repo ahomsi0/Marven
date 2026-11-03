@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseCommand } from "@/lib/commandParser";
 import { executeCommand } from "@/lib/executeCommand";
-import { askGroq, streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
-import { askOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
+import { streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { streamOllama, DEFAULT_MODEL as OLLAMA_DEFAULT_MODEL } from "@/lib/ollama";
 import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import { streamOpenRouter, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
 import { streamOpenAI, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
@@ -10,6 +10,13 @@ import { streamAnthropic, DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib
 import { streamLMStudio, DEFAULT_MODEL as LMSTUDIO_DEFAULT_MODEL } from "@/lib/lmstudio";
 import { streamLlamaServer, DEFAULT_MODEL as LLAMASERVER_DEFAULT_MODEL } from "@/lib/llamaserver";
 import type { ChatRequest, ChatResponse, HistoryMessage } from "@/types";
+
+type StreamFn = (
+  messages: HistoryMessage[],
+  model: string,
+  systemPrompt: string | undefined,
+  signal: AbortSignal,
+) => ReadableStream<Uint8Array>;
 
 export async function POST(req: NextRequest) {
   let body: ChatRequest;
@@ -67,141 +74,26 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. No command matched — send to selected provider
-  if (provider === "nim") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamNim(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json({ reply: `Marven couldn't reach NVIDIA NIM: ${msg}` }, { status: 503 });
-    }
-  }
+  // 3. No command matched — stream from the selected provider, with the last
+  // 20 messages for context. `req.signal` aborts when the client goes away
+  // (Stop button, closed window), so the provider request is cancelled instead
+  // of streaming into the void. A synchronous throw (missing API key, …)
+  // becomes a JSON `{ reply }`.
+  const history = messages.slice(-20);
+  const streamers: Record<string, { start: StreamFn; failure: (msg: string) => string }> = {
+    ollama:      { start: streamOllama,      failure: (m) => `Marven couldn't reach Ollama: ${m}` },
+    nim:         { start: streamNim,         failure: (m) => `Marven couldn't reach NVIDIA NIM: ${m}` },
+    openrouter:  { start: streamOpenRouter,  failure: (m) => `Marven couldn't reach OpenRouter: ${m}` },
+    openai:      { start: streamOpenAI,      failure: (m) => `Marven couldn't reach OpenAI: ${m}` },
+    anthropic:   { start: streamAnthropic,   failure: (m) => `Marven couldn't reach Anthropic: ${m}` },
+    lmstudio:    { start: streamLMStudio,    failure: (m) => `LM Studio is not running. Start it and try again. (${m})` },
+    llamaserver: { start: streamLlamaServer, failure: (m) => `llama-server is not running. Start it and try again. (${m})` },
+    groq:        { start: streamGroq,        failure: (m) => `Marven couldn't reach Cloud models: ${m}` },
+  };
+  const streamer = Object.hasOwn(streamers, provider) ? streamers[provider] : streamers.groq;
 
-  if (provider === "ollama") {
-    try {
-      const reply = await askOllama(messageText, model);
-      const response: ChatResponse = { reply, commandExecuted: false };
-      return NextResponse.json(response, {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json(
-        { reply: `Marven couldn't reach Ollama: ${msg}` },
-        { status: 503 }
-      );
-    }
-  }
-
-  if (provider === "openrouter") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamOpenRouter(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json({ reply: `Marven couldn't reach OpenRouter: ${msg}` }, { status: 503 });
-    }
-  }
-
-  if (provider === "openai") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamOpenAI(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json({ reply: `Marven couldn't reach OpenAI: ${msg}` }, { status: 503 });
-    }
-  }
-
-  if (provider === "anthropic") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamAnthropic(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json({ reply: `Marven couldn't reach Anthropic: ${msg}` }, { status: 503 });
-    }
-  }
-
-  if (provider === "lmstudio") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamLMStudio(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json(
-        { reply: `LM Studio is not running. Start it and try again. (${msg})` },
-        { status: 503 }
-      );
-    }
-  }
-
-  if (provider === "llamaserver") {
-    try {
-      const history = messages.slice(-20);
-      const stream = streamLlamaServer(history, model, body.systemPrompt);
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error.";
-      return NextResponse.json(
-        { reply: `llama-server is not running. Start it and try again. (${msg})` },
-        { status: 503 }
-      );
-    }
-  }
-
-  // 4. Groq — stream tokens, keep last 20 messages for context
   try {
-    const history = messages.slice(-20);
-    const stream = streamGroq(history, model, body.systemPrompt);
+    const stream = streamer.start(history, model, body.systemPrompt, req.signal);
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
@@ -212,10 +104,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error.";
-    return NextResponse.json(
-      { reply: `Marven couldn't reach Cloud models: ${msg}` },
-      { status: 503 }
-    );
+    return NextResponse.json({ reply: streamer.failure(msg) }, { status: 503 });
   }
 }
-
