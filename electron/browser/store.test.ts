@@ -102,7 +102,8 @@ describe("createJsonStore", () => {
     errors.mockRestore();
   });
 
-  it("writes the file readable only by the owner", () => {
+  // Windows has no POSIX permission bits; Node reports 0o666 there whatever mode is passed.
+  it.skipIf(process.platform === "win32")("writes the file readable only by the owner", () => {
     const file = path.join(dir, "a.json");
     const store = createJsonStore(file, { n: 0 });
     store.set({ n: 1 });
