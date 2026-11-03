@@ -277,14 +277,14 @@ export function Message({
                   onClick={handleEditCancel}
                   className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
                   onClick={handleEditSave}
                   className="rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-3 py-1 text-[11px] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20"
                 >
-                  Save & Resend
+                  {t("versions.saveResend")}
                 </button>
               </div>
             </div>
@@ -331,8 +331,8 @@ export function Message({
               </div>
               {/* Action bar — left of bubble, visible on hover */}
               <div ref={actionBarRef} className={`absolute end-full top-1 me-1.5 z-10 flex gap-1 transition-opacity duration-150 ${actionBarVisibility}`}>
-                {actionBtn("Edit message", () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
-                {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
+                {actionBtn(t("versions.edit"), () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
+                {actionBtn(copied ? t("common.copied") : t("common.copy"), handleCopy, <CopyIcon />)}
                 {moreMenu()}
               </div>
               {version && (
@@ -384,7 +384,7 @@ export function Message({
                 )}
               </div>
             )}
-            {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
+            {actionBtn(copied ? t("common.copied") : t("common.copy"), handleCopy, <CopyIcon />)}
             {moreMenu()}
           </div>
 

@@ -209,6 +209,8 @@ const en = {
     moreActions: "More actions",
     branch: "Branch from here",
     branchName: "{{name}} (branch)",
+    edit: "Edit message",
+    saveResend: "Save & Resend",
   },
   setup: {
     welcomeTitle: "Welcome to Marven",

@@ -211,6 +211,8 @@ const ar: Shape<typeof en> = {
     moreActions: "إجراءات أخرى",
     branch: "تفريع من هنا",
     branchName: "{{name}} (فرع)",
+    edit: "تعديل الرسالة",
+    saveResend: "حفظ وإعادة الإرسال",
   },
   setup: {
     welcomeTitle: "مرحبًا بك في Marven",
