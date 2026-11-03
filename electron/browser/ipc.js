@@ -41,6 +41,8 @@ function registerBrowserIpc(manager, getWindow) {
   on('browser-reopen-tab', () => manager.reopenClosedTab());
   handle('browser-navigate', (id, url) => (isId(id) && isWebUrl(url) ? manager.navigate(id, url) : false));
   on('browser-command', (id, name) => { if (isId(id) && COMMANDS.has(name)) manager.command(id, name); });
+  // No id (undefined/null) means the active tab.
+  handle('browser-extract-page', (id) => (id == null || isId(id) ? manager.extractPage(id ?? null) : null));
 
   handle('browser-toggle-bookmark', (url, title) => (isWebUrl(url) ? manager.toggleBookmark(url, cleanText(title, 300)) : false));
   handle('browser-remove-bookmark', (id) => { if (isId(id)) manager.removeBookmark(id); });

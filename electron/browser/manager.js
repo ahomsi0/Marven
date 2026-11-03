@@ -14,6 +14,7 @@ const { createRateLimiter } = require('./rateLimit');
 const { Tab } = require('./tab');
 const { searchEngine, DEFAULT_ENGINE_ID } = require('./searchEngines');
 const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
+const { EXTRACT_SCRIPT, cleanExtract } = require('./pageText');
 
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
@@ -22,6 +23,10 @@ const SNAPSHOT_DELAY_MS = 16;
 const BLOCKED_SNAPSHOT_DELAY_MS = 250;
 const MAX_TABS = 100;
 const POPUPS_PER_SECOND = 2;
+// Page extraction runs in its own isolated world (not the page's main world,
+// and not 999, which Electron uses for preloads) and gives up after this long.
+const EXTRACT_WORLD_ID = 1001;
+const EXTRACT_TIMEOUT_MS = 5000;
 const newId = () => crypto.randomUUID();
 
 /**
@@ -239,6 +244,26 @@ function createBrowserManager({ dir, getWindow }) {
     existingTab(id)?.command(name);
   }
 
+  // The readable text and selection of a tab (the active one by default), for
+  // "Ask Marven about this page". Null for blank, unloaded or failed tabs.
+  async function extractPage(id) {
+    const tab = id ? existingTab(id) : activeTab();
+    const wc = tab && !tab.error ? tab.webContents : null;
+    if (!wc || !isWebUrl(wc.getURL())) return null;
+    let timer = null;
+    try {
+      const run = wc.executeJavaScriptInIsolatedWorld(EXTRACT_WORLD_ID, [{ code: EXTRACT_SCRIPT }], false);
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timed out')), EXTRACT_TIMEOUT_MS);
+      });
+      return cleanExtract(await Promise.race([run, timeout]), isWebUrl);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // ── Panel placement ────────────────────────────────────────────────────
 
   function show(b) {
@@ -362,6 +387,7 @@ function createBrowserManager({ dir, getWindow }) {
     reopenClosedTab: ready(reopenClosedTab),
     navigate: ready(navigate),
     command: ready(command),
+    extractPage: ready(extractPage),
     toggleBookmark: ready((url, title) => library.toggleBookmark(url, title)),
     removeBookmark: ready((id) => library.removeBookmark(id)),
     listBookmarks: ready((query) => library.listBookmarks(query)),

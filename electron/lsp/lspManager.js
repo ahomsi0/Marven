@@ -9,6 +9,12 @@ const { sanitizedEnv } = require("../envSanitize");
 
 const DEFAULT_INSTALL_ROOT = path.join(os.homedir(), ".marven", "lsp");
 
+// How long a language server stays alive after its last editor session
+// closes. Switching files closes the old session and opens the new one right
+// after, so killing immediately would tear down (and then reuse) a dying
+// server on every file switch.
+const DEFAULT_IDLE_SHUTDOWN_MS = 30_000;
+
 function defaultRunNpmInstall(languageId, { installDir, npmPackages }) {
   return new Promise((resolve) => {
     const args = ["install", ...npmPackages, "--prefix", installDir, "--no-audit", "--no-fund"];
@@ -35,7 +41,9 @@ class LspManager extends EventEmitter {
     this._isInstalledOverride = opts.isInstalled || null;
     this._runInstall = opts.runInstall || null; // injected for tests; set in Task 4.
     this._spawnFn = opts.spawnFn || spawn; // injectable for tests
-    this._servers = new Map();   // languageId -> { child, buf, pending, nextId, sessions }
+    this._idleShutdownMs = typeof opts.idleShutdownMs === "number" ? opts.idleShutdownMs : DEFAULT_IDLE_SHUTDOWN_MS;
+    this._disposed = false;
+    this._servers = new Map();   // languageId -> { child, buf, pending, nextId, sessions, idleTimer, opening }
     this._sessions = new Map();  // sessionId -> { languageId, filePath, version }
     this._installing = new Map(); // languageId -> Promise<EnsureResult>
     this._ensuring = new Map();   // languageId -> Promise<EnsureResult> (spawn mutex)
@@ -58,6 +66,7 @@ class LspManager extends EventEmitter {
   async ensure(languageId) {
     const spec = LSP_SERVERS[languageId];
     if (!spec) return { status: "failed", error: `unknown languageId: ${languageId}` };
+    if (this._disposed) return { status: "failed", error: "LSP manager is shut down" };
     if (this._servers.has(languageId)) return { status: "ready" };
 
     // Mutex: two concurrent opens for the same language must not both pass the
@@ -71,6 +80,7 @@ class LspManager extends EventEmitter {
         const installRes = await this._install(languageId);
         if (installRes.status !== "ready") return installRes;
       }
+      if (this._disposed) return { status: "failed", error: "LSP manager is shut down" };
       this._spawn(languageId);
       return { status: "ready" };
     })();
@@ -90,6 +100,7 @@ class LspManager extends EventEmitter {
       env: sanitizedEnv(),
     });
     const state = {
+      languageId,
       child,
       buf: Buffer.alloc(0),
       pending: new Map(), // id -> { resolve, reject }
@@ -97,6 +108,8 @@ class LspManager extends EventEmitter {
       sessions: new Set(),
       initialized: false,
       initPromise: null,
+      idleTimer: null, // pending shutdown after the last session closed
+      opening: 0,      // openSession calls in flight against this server
     };
     this._servers.set(languageId, state);
 
@@ -108,14 +121,16 @@ class LspManager extends EventEmitter {
     child.stdout?.on?.("error", swallow);
     child.stderr?.on?.("error", swallow);
 
-    child.stdout.on("data", (chunk) => this._onData(languageId, chunk));
+    // Handlers are bound to this server's own state (not looked up by
+    // languageId): a dying server's late output or exit must never touch a
+    // replacement already registered under the same languageId.
+    child.stdout.on("data", (chunk) => this._onData(state, chunk));
     child.stderr.on("data", (chunk) => this.emit("stderr", { languageId, text: chunk.toString("utf8") }));
-    child.on("exit", (code, signal) => this._onExit(languageId, code, signal));
+    child.on("exit", (code, signal) => this._onExit(state, code, signal));
   }
 
-  _onData(languageId, chunk) {
-    const state = this._servers.get(languageId);
-    if (!state) return;
+  _onData(state, chunk) {
+    if (this._servers.get(state.languageId) !== state) return;
     state.buf = Buffer.concat([state.buf, chunk]);
     while (true) {
       const sep = state.buf.indexOf("\r\n\r\n");
@@ -134,13 +149,12 @@ class LspManager extends EventEmitter {
       state.buf = state.buf.slice(start + len);
       let msg;
       try { msg = JSON.parse(body); } catch { continue; }
-      this._dispatch(languageId, msg);
+      this._dispatch(state, msg);
     }
   }
 
-  _dispatch(languageId, msg) {
-    const state = this._servers.get(languageId);
-    if (!state) return;
+  _dispatch(state, msg) {
+    const { languageId } = state;
     if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
       const p = state.pending.get(msg.id);
       if (!p) return;
@@ -154,15 +168,49 @@ class LspManager extends EventEmitter {
     }
   }
 
-  _onExit(languageId, code, signal) {
-    const state = this._servers.get(languageId);
-    if (!state) return;
+  _onExit(state, code, signal) {
+    const { languageId } = state;
+    const wasCurrent = this._servers.get(languageId) === state;
+    this._forgetServer(state, `LSP server for ${languageId} exited (code=${code})`);
+    if (wasCurrent) this.emit("server-exit", { languageId, code, signal });
+  }
+
+  // Drop every trace of a server: cancel its idle shutdown, fail its pending
+  // requests, remove its sessions (they referred to documents opened on this
+  // process, which a respawned server knows nothing about) and unregister it
+  // so the next ensure()/openSession() spawns a fresh one.
+  _forgetServer(state, reason) {
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
     for (const { reject } of state.pending.values()) {
-      reject(new Error(`LSP server for ${languageId} exited (code=${code})`));
+      reject(new Error(reason));
     }
     state.pending.clear();
-    this._servers.delete(languageId);
-    this.emit("server-exit", { languageId, code, signal });
+    for (const sessionId of state.sessions) this._sessions.delete(sessionId);
+    state.sessions.clear();
+    if (this._servers.get(state.languageId) === state) this._servers.delete(state.languageId);
+  }
+
+  _cancelIdleShutdown(state) {
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
+  }
+
+  _scheduleIdleShutdown(state) {
+    this._cancelIdleShutdown(state);
+    if (state.sessions.size > 0 || state.opening > 0) return;
+    state.idleTimer = setTimeout(() => {
+      state.idleTimer = null;
+      if (this._servers.get(state.languageId) !== state) return;
+      if (state.sessions.size > 0 || state.opening > 0) return;
+      try { state.child.kill(); } catch {}
+    }, this._idleShutdownMs);
+    // Never keep the process alive just to run this timer.
+    state.idleTimer.unref?.();
   }
 
   _writeFrame(languageId, obj) {
@@ -213,7 +261,21 @@ class LspManager extends EventEmitter {
       if (r.status !== "ready") throw new Error(`LSP not ready: ${r.error || r.status}`);
     }
     const state = this._servers.get(languageId);
+    if (!state) throw new Error(`LSP server for ${languageId} is not running`);
 
+    // A session is coming: keep the server alive even if it was idling
+    // toward shutdown (close-then-open when the user switches files).
+    this._cancelIdleShutdown(state);
+    state.opening++;
+    try {
+      return await this._openSessionOn(state, { languageId, filePath, workspaceRoot, text });
+    } finally {
+      state.opening--;
+      if (this._servers.get(languageId) === state) this._scheduleIdleShutdown(state);
+    }
+  }
+
+  async _openSessionOn(state, { languageId, filePath, workspaceRoot, text }) {
     let initPromise = state.initPromise ?? null;
     if (!state.initialized && !initPromise) {
       const rootUri = this._filePathToUri(workspaceRoot);
@@ -242,6 +304,9 @@ class LspManager extends EventEmitter {
     }
     if (initPromise) {
       await initPromise;
+      if (this._servers.get(languageId) !== state) {
+        throw new Error(`LSP server for ${languageId} exited during startup`);
+      }
       if (!state.initialized) {
         this._sendNotification(languageId, "initialized", {});
         state.initialized = true;
@@ -280,16 +345,21 @@ class LspManager extends EventEmitter {
   async closeSession(sessionId) {
     const s = this._sessions.get(sessionId);
     if (!s) return;
-    this._sendNotification(s.languageId, "textDocument/didClose", {
-      textDocument: { uri: this._filePathToUri(s.filePath) },
-    });
     this._sessions.delete(sessionId);
+    try {
+      this._sendNotification(s.languageId, "textDocument/didClose", {
+        textDocument: { uri: this._filePathToUri(s.filePath) },
+      });
+    } catch {
+      // Server already gone — nothing to tell it.
+    }
     const state = this._servers.get(s.languageId);
     if (state) {
       state.sessions.delete(sessionId);
-      if (state.sessions.size === 0) {
-        try { state.child.kill(); } catch {}
-      }
+      // Don't kill right away: the editor closes the old file's session just
+      // before opening the next one. Shut down only if nothing reopens
+      // within the grace period.
+      if (state.sessions.size === 0) this._scheduleIdleShutdown(state);
     }
   }
 
@@ -313,8 +383,24 @@ class LspManager extends EventEmitter {
         state.child.once("exit", () => { clearTimeout(timer); resolve(); });
         try { state.child.kill(); } catch { clearTimeout(timer); resolve(); }
       });
+      // If the exit never arrived, don't let ensure() report the stale entry
+      // as "ready".
+      this._forgetServer(state, `LSP server for ${languageId} restarted`);
     }
     return this.ensure(languageId);
+  }
+
+  // Kill every language server and forget all sessions. Called when the app
+  // quits so no server process outlives Marven. The manager refuses to spawn
+  // new servers afterwards.
+  dispose() {
+    this._disposed = true;
+    for (const state of Array.from(this._servers.values())) {
+      const { child } = state;
+      this._forgetServer(state, `LSP server for ${state.languageId} shut down`);
+      try { child.kill(); } catch {}
+    }
+    this._sessions.clear();
   }
 
   listSessions() {

@@ -5,10 +5,12 @@ import fs from "fs/promises";
 import path from "path";
 import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
+import { formatRememberToolResult } from "@/lib/memoryEvents";
 import { runGit } from "./git";
 import { safeFetch } from "@/lib/ssrfGuard";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 import { sanitizedChildEnv } from "./sanitizedEnv";
+import { isLongRunningServerCommand, killProcessTree, registerAgentProcess } from "./agentProcesses";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
@@ -87,7 +89,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "run_command",
-    description: "Run a shell command inside the workspace. Use for npm install, git, tests, builds, etc. Server-starting commands (node server.js, npm start, python -m http.server, etc.) are automatically run in the background and return the local URL immediately.",
+    description: "Run a shell command inside the workspace. Use for npm install, git, tests, builds, etc. Commands run with a 30-second timeout and return their output. Dev-server commands (npm run dev, npm start, next dev, vite, python -m http.server, rails s, etc.) are automatically run in the background and return the local URL instead.",
     parameters: {
       type: "object",
       properties: {
@@ -410,7 +412,16 @@ function shellInvocation(command: string): { shell: string; args: string[] } {
   return { shell: "sh", args: ["-c", command] };
 }
 
-async function streamShellCommand(
+const COMMAND_OUTPUT_LIMIT = 8000;
+// After the shell exits, wait this long for 'close' (pipes drained). If a
+// background grandchild that escaped the process group still holds the pipes,
+// 'close' never comes — resolve anyway instead of hanging the agent.
+const EXIT_CLOSE_GRACE_MS = 500;
+// After a timeout kill, never wait longer than this for exit/close.
+const KILL_SETTLE_MS = 3000;
+
+/** @internal exported for tests */
+export async function streamShellCommand(
   command: string,
   cwd: string,
   onChunk: (chunk: string) => void,
@@ -419,11 +430,38 @@ async function streamShellCommand(
   return new Promise((resolve) => {
     let acc = "";
     let killed = false;
+    let settled = false;
+    let exitCode: number | null = null;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
     const { shell, args } = shellInvocation(command);
-    const child = spawn(shell, args, { cwd, windowsHide: true, env: sanitizedChildEnv() });
+    // detached → own process group (Unix), so a timeout can kill the shell
+    // AND everything it spawned. We still wait for it; it isn't unref'd.
+    const child = spawn(shell, args, {
+      cwd,
+      windowsHide: true,
+      env: sanitizedChildEnv(),
+      detached: process.platform !== "win32",
+    });
+    registerAgentProcess(child);
+
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      // Stop listening to pipes a stray grandchild may still hold open.
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      const suffix = killed
+        ? `\n[killed: timed out after ${timeoutMs}ms]`
+        : code === 0 ? "" : `\n[exit code: ${code}]`;
+      resolve(acc.slice(0, COMMAND_OUTPUT_LIMIT - suffix.length) + suffix);
+    };
+
     const timer = setTimeout(() => {
       killed = true;
-      child.kill("SIGKILL");
+      killProcessTree(child, "SIGKILL");
+      graceTimer = setTimeout(() => finish(exitCode), KILL_SETTLE_MS);
     }, timeoutMs);
 
     const handle = (buf: Buffer) => {
@@ -431,19 +469,22 @@ async function streamShellCommand(
       acc += chunk;
       onChunk(chunk);
     };
-    child.stdout.on("data", handle);
-    child.stderr.on("data", handle);
+    child.stdout?.on("data", handle);
+    child.stderr?.on("data", handle);
 
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const suffix = killed
-        ? `\n[killed: timed out after ${timeoutMs}ms]`
-        : code === 0 ? "" : `\n[exit code: ${code}]`;
-      resolve((acc + suffix).slice(0, 8000));
+    child.on("exit", (code) => {
+      exitCode = code;
+      if (graceTimer) clearTimeout(graceTimer);
+      graceTimer = setTimeout(() => finish(code), EXIT_CLOSE_GRACE_MS);
     });
 
+    child.on("close", (code) => finish(code ?? exitCode));
+
     child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
       resolve(`Command failed to start: ${err.message}`);
     });
   });
@@ -563,6 +604,10 @@ export async function executeTool(
       }
 
       await fs.mkdir(parentDir, { recursive: true });
+      // Re-check symlinks right before writing (the awaits above leave a
+      // window for a link to appear): writeFile follows a symlink at `abs`,
+      // even a dangling one, so it must not point outside the workspace.
+      assertRealpathInsideWorkspace(path.resolve(workspaceRoot), abs);
       await fs.writeFile(abs, content, "utf-8");
       return `Written: ${args.path}`;
     }
@@ -627,6 +672,7 @@ export async function executeTool(
         return `apply_patch ok — no net change (all edits were no-ops).`;
       }
 
+      assertRealpathInsideWorkspace(path.resolve(workspaceRoot), abs);
       await fs.writeFile(abs, next, "utf-8");
       return `apply_patch ok — ${edits.length} edit(s) applied to ${args.path}\n${summaries.join("\n")}`;
     }
@@ -642,10 +688,11 @@ export async function executeTool(
         ? assertSafePath(workspaceRoot, args.cwd as string)
         : workspaceRoot;
 
-      // Detect server-starting commands — run them in background and return the URL
-      const serverPattern = /(?:^|\s)(node\s+\S+\.(?:js|mjs)|python\s+-m\s+http\.server|python3?\s+\S+\.py|npx?\s+serve|npm\s+(?:start|run\s+\S+)|bun\s+(?:run\s+\S+|\S+\.(?:js|ts)))\b/i;
+      // Detect clear long-running dev servers — run them in the background
+      // and return the URL. Everything else runs normally (with a timeout)
+      // so its output reaches the model.
       const explicitPort = cmd.match(/\b(3\d{3}|4\d{3}|5\d{3}|8\d{3}|9\d{3})\b/);
-      if (serverPattern.test(cmd)) {
+      if (isLongRunningServerCommand(cmd)) {
         // Snapshot which ports are ALREADY open (Marven itself runs on 3000 in dev,
         // and other services may be running) — so we only pick a NEW port that
         // appears after we spawn the child.
@@ -667,6 +714,8 @@ export async function executeTool(
         env: sanitizedChildEnv(),
       });
         child.unref();
+        // Tracked so the whole server tree can be killed when the app quits.
+        registerAgentProcess(child);
 
         const urlFromOutput = new Promise<string | null>((resolve) => {
           const matcher = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::(\d+))?(?:\/\S*)?/i;
@@ -823,11 +872,12 @@ export async function executeTool(
           requestedScope === "global" || requestedScope === "project" || requestedScope === "conversation"
             ? requestedScope
             : workspaceRoot ? "project" : "global";
-        appendScopedMemory(content, scope, {
+        const entry = appendScopedMemory(content, scope, {
           workspaceRoot,
           conversationId: memoryContext?.conversationId,
         });
-        return `Remembered in ${scope} memory.`;
+        // The id lets the client offer Undo (see parseRememberToolResult).
+        return formatRememberToolResult(scope, entry?.id);
       } catch (err) {
         return `Remember failed: ${err instanceof Error ? err.message : String(err)}`;
       }

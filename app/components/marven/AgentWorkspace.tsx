@@ -17,7 +17,6 @@ import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
-import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
 import type { CodeEditorActions } from "./CodeEditor";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
@@ -289,8 +288,7 @@ interface AgentWorkspaceProps {
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   onInputChange: (value: string) => void;
@@ -341,6 +339,10 @@ interface AgentWorkspaceProps {
   onRunAgentPrompt?: (prompt: string) => void;
   workspaceTrusted?: boolean;
   onWorkspaceTrustChange?: (trusted: boolean) => void;
+  /** Opens the app-wide command palette (mounted by the layout). */
+  onOpenCommandPalette?: () => void;
+  /** The workspace's own palette commands are published here while mounted. */
+  paletteCommandsRef?: React.MutableRefObject<PaletteCommand[]>;
 }
 
 export function AgentWorkspace({
@@ -370,8 +372,7 @@ export function AgentWorkspace({
   isFileLoading,
   isFileDirty,
   terminalOutput,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleSpeech,
   onToggleWakeWord,
   onInputChange,
@@ -420,6 +421,8 @@ export function AgentWorkspace({
   onRunAgentPrompt,
   workspaceTrusted = false,
   onWorkspaceTrustChange,
+  onOpenCommandPalette,
+  paletteCommandsRef,
 }: AgentWorkspaceProps) {
   const { t } = useT();
   const { theme } = useTheme();
@@ -449,7 +452,6 @@ export function AgentWorkspace({
     else openDrawer("terminal");
   }
   const [quickOpen, setQuickOpen] = useState(false);
-  const [commandPalette, setCommandPalette] = useState(false);
   // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
   // useEditorShortcuts can drive it. EditorPanel reads the props and renders
   // the bar + highlight overlay; navigation/replace actions stay inside the
@@ -762,7 +764,6 @@ export function AgentWorkspace({
     // The chat is always visible now; this shortcut toggles the workspace panel.
     onToggleChat: () => setDrawerOpen((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
-    onCommandPalette: () => setCommandPalette(true),
     onOpenSettings: () => onOpenSettings?.(),
     onFind: () => {
       setFindOpen(true);
@@ -850,35 +851,55 @@ export function AgentWorkspace({
     return () => cancelAnimationFrame(id);
   }, [pendingJump, isPendingPathActive, isActiveBufferLoading]);
 
-  // ── Command Palette commands list ────────────────────────────────────────
+  // ── Command Palette commands (shown by the layout's palette in agent mode) ──
   const W = isWindows;
+  const revealPanel = (setter: React.Dispatch<React.SetStateAction<boolean>>) =>
+    setter((v) => {
+      const next = !v;
+      if (next) { setShowExplorer(true); openDrawer("code"); }
+      return next;
+    });
   const paletteCommands: PaletteCommand[] = [
-    { label: "Save File", keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
-    { label: "Close Tab", keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
-    { label: "Toggle Sidebar", keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
-    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalView },
-    { label: "Problems panel", action: () => {
+    { id: "save-file", label: t("palette.agent.saveFile"), keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
+    { id: "close-tab", label: t("palette.agent.closeTab"), keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
+    { id: "toggle-explorer", label: t("palette.agent.toggleExplorer"), keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
+    { id: "toggle-terminal", label: t("palette.agent.toggleTerminal"), keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalView },
+    { id: "problems", label: t("palette.agent.problems"), action: () => {
       setEditorBottomTab("problems");
       setShowTerminal(true);
     } },
-    { label: "Rename symbol (LSP)", keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
-    { label: "Toggle Workspace Panel", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setDrawerOpen((v) => !v) },
-    { label: "Open Quick File", keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
-    { label: "Find", keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Find and Replace", keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Search files", keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
-    { label: "Inline AI Edit (selection)", keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
-    { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) { setShowExplorer(true); openDrawer("code"); } return next; }); } },
-    { label: "Workflow intelligence", action: () => { setShowWorkflowPanel((v) => { const next = !v; if (next) { setShowExplorer(true); openDrawer("code"); } return next; }); } },
-    { label: "Open Settings", action: () => onOpenSettings?.() },
-    { label: "Open Folder", action: onOpenFolder },
-    { label: "Toggle Diff Panel", action: () => openDrawer(drawerOpen && showDiff ? "code" : "diff") },
-    { label: "New REST request", action: () => onOpenRestTab?.() },
+    { id: "rename-symbol", label: t("palette.agent.renameSymbol"), keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
+    { id: "toggle-workspace-panel", label: t("palette.agent.toggleWorkspacePanel"), keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setDrawerOpen((v) => !v) },
+    { id: "quick-open", label: t("palette.agent.quickOpen"), keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
+    { id: "find", label: t("palette.agent.find"), keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { id: "find-replace", label: t("palette.agent.findReplace"), keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { id: "search-files", label: t("palette.agent.searchFiles"), keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
+    { id: "inline-edit", label: t("palette.agent.inlineEdit"), keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
+    { id: "vcs-panel", label: t("palette.agent.gitPanel"), keybinding: W ? "Alt+G" : "⌥G", action: () => revealPanel(setShowGitPanel) },
+    { id: "workflow", label: t("palette.agent.workflow"), action: () => revealPanel(setShowWorkflowPanel) },
+    { id: "open-folder", label: t("palette.agent.openFolder"), action: onOpenFolder },
+    { id: "toggle-diff", label: t("palette.agent.toggleDiff"), action: () => openDrawer(drawerOpen && showDiff ? "code" : "diff") },
+    { id: "new-rest-request", label: t("palette.agent.newRestRequest"), action: () => onOpenRestTab?.() },
   ];
 
   // Landing page when no workspace is open AND no settings tab is open
   const hasSettingsTab = openTabs.some((t) => t.kind === "settings");
-  if (!workspaceRoot && !hasSettingsTab) {
+  const onLanding = !workspaceRoot && !hasSettingsTab;
+
+  // Publish the commands to the layout's palette; the landing page only offers
+  // opening a folder. Runs every render so actions never go stale.
+  useEffect(() => {
+    if (!paletteCommandsRef) return;
+    paletteCommandsRef.current = onLanding
+      ? paletteCommands.filter((c) => c.id === "open-folder")
+      : paletteCommands;
+  });
+  useEffect(() => {
+    if (!paletteCommandsRef) return;
+    return () => { paletteCommandsRef.current = []; };
+  }, [paletteCommandsRef]);
+
+  if (onLanding) {
     return (
       <WorkspaceLanding
         recentWorkspaces={recentWorkspaces}
@@ -1252,8 +1273,7 @@ export function AgentWorkspace({
           provider={provider as import("@/types").AIProvider}
           selectedModel={model}
           tokenUsage={tokenUsage}
-          onProviderChange={onProviderChange}
-          onModelChange={onModelChange}
+          onModelSelect={onModelSelect}
           onInputChange={onInputChange}
           onSend={onSend}
           onStop={onStop}
@@ -1478,7 +1498,7 @@ export function AgentWorkspace({
               lastHeard,
             }}
             onToggleChat={() => setDrawerOpen(false)}
-            onCommandPalette={() => setCommandPalette(true)}
+            onCommandPalette={onOpenCommandPalette}
             findOpen={findOpen}
             replaceVisible={replaceVisible}
             onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
@@ -1504,14 +1524,6 @@ export function AgentWorkspace({
           files={files}
           onOpen={(path) => { onSelectFile(path); }}
           onClose={() => setQuickOpen(false)}
-        />
-      )}
-
-      {/* Command Palette modal */}
-      {commandPalette && (
-        <CommandPalette
-          commands={paletteCommands}
-          onClose={() => setCommandPalette(false)}
         />
       )}
     </div>

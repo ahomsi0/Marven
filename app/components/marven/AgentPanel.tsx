@@ -21,8 +21,7 @@ interface AgentPanelProps {
   provider: AIProvider;
   selectedModel: string;
   tokenUsage: TokenUsage;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onInputChange: (value: string) => void;
   onSend: (opts?: { mentions?: Mention[] }) => void;
   onStop: () => void;
@@ -64,8 +63,7 @@ export function AgentPanel({
   provider,
   selectedModel,
   tokenUsage,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onInputChange,
   onSend,
   onStop,
@@ -570,8 +568,7 @@ export function AgentPanel({
           <ModelSelector
             provider={provider}
             selectedModel={selectedModel}
-            onProviderChange={onProviderChange}
-            onModelChange={onModelChange}
+            onSelect={onModelSelect}
           />
           {liteAgentMode === true && (
             <span

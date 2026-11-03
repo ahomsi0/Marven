@@ -12,6 +12,33 @@ const { registerBrowserIpc } = require('./browser/ipc');
 
 const isDev = !app.isPackaged;
 
+// ── Single instance ──────────────────────────────────────────────────────────
+// A second copy would share the same userData (settings.json, the Chromium
+// profile) and, in production, try to start a second embedded server on the
+// fixed port. Take the lock before anything touches userData or ports; if
+// another instance holds it, that instance gets 'second-instance' (handled
+// below) and this one exits without doing any work. Note: in dev the userData
+// dir is "marven" and packaged it is "Marven" — the same folder on macOS's
+// case-insensitive filesystem — so a dev run and the installed app also
+// exclude each other.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return; // CommonJS module scope: stop evaluating the rest of main.js.
+}
+
+// ── Log capture (for "Report a problem") ─────────────────────────────────────
+// Every main-process console.* call, plus renderer warnings/errors (wired in
+// createWindow), lands in a redacted ring buffer and userData/logs/main.log.
+// The renderer reads the buffer through the 'get-recent-logs' IPC below.
+const os = require('os');
+const { createLogCapture, patchConsole, rendererConsoleEntry } = require('./logCapture');
+const { redactLines } = require('./redact');
+const logCapture = createLogCapture({
+  getDir: () => path.join(app.getPath('userData'), 'logs'),
+  homeDir: os.homedir(),
+});
+patchConsole(logCapture);
+
 // Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
 // Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
 // nvm dirs, etc. — so `npm`, `node`, `yarn`, etc. aren't found and the agent's
@@ -196,7 +223,7 @@ const SECRET_SETTING_KEYS = [
   'anthropicApiKey',
   'elevenLabsApiKey',
 ];
-const MASKED_SECRET = '••••••••';
+const { MASKED_SECRET, resolveSecretForSave } = require('./settingsSecrets');
 
 function canEncryptSettings() {
   try {
@@ -269,14 +296,24 @@ function loadSettings() {
 }
 
 function persistSettings(settings) {
+  const incomingSettings = settings && typeof settings === 'object' ? settings : {};
+  // loadSettings() may migrate plaintext secrets and rewrite the file, so read
+  // the raw stored values after it.
   const current = loadSettings();
-  const next = { ...current, ...(settings && typeof settings === 'object' ? settings : {}) };
+  const storedRaw = readStoredSettings();
+  const next = { ...current, ...incomingSettings };
   const stored = { ...next };
   for (const key of SECRET_SETTING_KEYS) {
-    const incoming = settings && typeof settings[key] === 'string' ? settings[key].trim() : undefined;
-    const value = incoming === undefined || incoming === MASKED_SECRET ? current[key] : incoming;
-    next[key] = value || '';
-    stored[key] = encryptSetting(next[key]);
+    // Untouched secrets keep their raw stored value — never re-encrypt a value
+    // we couldn't decrypt (that would write '' and erase the key).
+    const resolved = resolveSecretForSave({
+      incoming: incomingSettings[key],
+      storedRaw: storedRaw[key],
+      decrypted: current[key],
+      encrypt: encryptSetting,
+    });
+    next[key] = resolved.value;
+    stored[key] = resolved.stored;
   }
   writeStoredSettings(stored);
   return next;
@@ -330,6 +367,13 @@ ipcMain.handle('save-settings', (_, settings) => {
   return publicSettings(next);
 });
 ipcMain.handle('get-version', () => app.getVersion());
+// Recent log lines for the "Report a problem" preview. Only Marven's own
+// window (main frame) may read them; lines are redacted again on the way out.
+ipcMain.handle('get-recent-logs', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return [];
+  if (!event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) return [];
+  return redactLines(logCapture.recent(), { homeDir: os.homedir() });
+});
 ipcMain.handle('check-for-updates', () => {
   if (isDev) return { status: 'dev' };
   autoUpdater.checkForUpdates();
@@ -337,6 +381,9 @@ ipcMain.handle('check-for-updates', () => {
 });
 ipcMain.handle('install-update', () => {
   if (!updateReady) return { ok: false, error: 'No verified update is ready.' };
+  // quitAndInstall closes the windows before app.quit() runs, so the
+  // hide-on-close handler must already know this is a real quit.
+  isQuitting = true;
   autoUpdater.quitAndInstall();
   return { ok: true };
 });
@@ -429,6 +476,12 @@ function createWindow() {
   if (!APP_ICON.isEmpty()) windowOptions.icon = APP_ICON;
   mainWindow = new BrowserWindow(windowOptions);
   inAppBrowser.attachWindow(mainWindow);
+
+  // Renderer warnings/errors go into the same log buffer as the main process.
+  mainWindow.webContents.on('console-message', (...args) => {
+    const entry = rendererConsoleEntry(...args);
+    if (entry) logCapture.push(entry.level, 'renderer', [entry.text]);
+  });
 
   const appPort = isDev ? 3000 : 47891;
   mainWindow.loadURL(`http://localhost:${appPort}`);
@@ -880,6 +933,12 @@ ipcMain.on('pty-kill', (_e, args) => {
 
 // Cleanup all PTYs on quit so we don't leak shells.
 app.on('before-quit', () => {
+  // Every real quit path (Cmd+Q, Dock > Quit, logout/shutdown, the updater's
+  // quitAndInstall, app.quit() from a signal) comes through here. Mark the
+  // quit first so the window 'close' handler stops hiding the window instead
+  // of closing it — otherwise macOS vetoes the quit after we've already torn
+  // down every shell and the file watcher below.
+  isQuitting = true;
   inAppBrowser.flush();
   if (workspaceFileWatcher) {
     try { workspaceFileWatcher.close(); } catch {}
@@ -890,6 +949,13 @@ app.on('before-quit', () => {
     try { entry.pty.kill(); } catch {}
   }
   ptys.clear();
+  // Dev servers the agent started in the background (run_command). The kill
+  // hook is registered by the in-process Next server (packaged builds only).
+  try { if (typeof globalThis.__marvenKillAgentProcesses === 'function') globalThis.__marvenKillAgentProcesses(); } catch {}
+  // Language servers are separate processes; don't leave them running.
+  try { lspManager.dispose(); } catch (err) {
+    console.error('[Marven] LSP shutdown failed:', err && err.message);
+  }
 });
 
 app.whenReady().then(async () => {
@@ -910,6 +976,12 @@ app.whenReady().then(async () => {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowDowngrade = false;
+
+    // Fired just before the updater closes the windows to install; without
+    // this the hide-on-close handler would veto the install's quit.
+    autoUpdater.on('before-quit-for-update', () => {
+      isQuitting = true;
+    });
 
     autoUpdater.on('update-available', (info) => {
       if (mainWindow) mainWindow.webContents.send('update-status', { type: 'available', version: info.version });
@@ -1013,10 +1085,29 @@ app.on('will-quit', () => {
   inAppBrowser.flush();
 });
 
+// SIGTERM (kill, `concurrently` shutting down dev, launchd) and SIGINT
+// (Ctrl+C in the dev terminal) should run the normal quit path so the
+// before-quit cleanup happens and the hide-on-close handler doesn't veto it.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    isQuitting = true;
+    app.quit();
+  });
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+});
+
+// Someone launched Marven again (Finder, Spotlight, `open -a`) while this
+// instance is running: bring the existing window forward instead.
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 });
