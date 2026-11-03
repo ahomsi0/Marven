@@ -302,3 +302,127 @@ describe("LspManager (sessions + handshake)", () => {
     expect(didOpen.params.textDocument.uri).toBe("file:///tmp/has%20space/foo.ts");
   });
 });
+
+describe("LspManager (idle shutdown + exit cleanup)", () => {
+  let LspManager;
+  let spawnFn;
+
+  beforeEach(() => {
+    vi.resetModules();
+    ({ LspManager } = require("../lspManager"));
+    spawnFn = vi.fn(() => makeFakeChild());
+  });
+
+  function framesOf(c) {
+    return c.stdin.write.mock.calls.map(([buf]) => {
+      const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+      const sep = b.indexOf("\r\n\r\n");
+      return JSON.parse(b.slice(sep + 4).toString("utf8"));
+    });
+  }
+
+  // Open a session, answering initialize on whichever child is current.
+  async function open(mgr, filePath) {
+    const p = mgr.openSession({ languageId: "typescript", filePath, workspaceRoot: "/tmp" });
+    // Let ensure()/spawn run if the server isn't up yet.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    const child = spawnFn.mock.results.at(-1).value;
+    const init = framesOf(child).find((f) => f.method === "initialize");
+    if (init && !child.__answered) {
+      child.__answered = true;
+      child.stdout.emit("data", frame({ jsonrpc: "2.0", id: init.id, result: { capabilities: {} } }));
+    }
+    return p;
+  }
+
+  it("keeps the server alive across close-then-open (file switch)", async () => {
+    vi.useFakeTimers();
+    try {
+      const mgr = new LspManager({ installRoot: "/tmp/x", isInstalled: () => true, spawnFn, idleShutdownMs: 30_000 });
+      const { sessionId: a } = await open(mgr, "/tmp/a.ts");
+      const child = spawnFn.mock.results[0].value;
+
+      await mgr.closeSession(a);
+      expect(child.kill).not.toHaveBeenCalled();
+
+      const { sessionId: b } = await open(mgr, "/tmp/b.ts");
+      vi.advanceTimersByTime(60_000);
+
+      expect(child.kill).not.toHaveBeenCalled();
+      expect(spawnFn).toHaveBeenCalledTimes(1);
+      const didOpens = framesOf(child).filter((f) => f.method === "textDocument/didOpen");
+      expect(didOpens.map((f) => f.params.textDocument.uri)).toEqual(["file:///tmp/a.ts", "file:///tmp/b.ts"]);
+      expect(mgr.listSessions().map((s) => s.sessionId)).toEqual([b]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("kills the server after the idle grace period when nothing reopens", async () => {
+    vi.useFakeTimers();
+    try {
+      const mgr = new LspManager({ installRoot: "/tmp/x", isInstalled: () => true, spawnFn, idleShutdownMs: 30_000 });
+      const { sessionId } = await open(mgr, "/tmp/a.ts");
+      const child = spawnFn.mock.results[0].value;
+
+      await mgr.closeSession(sessionId);
+      vi.advanceTimersByTime(29_999);
+      expect(child.kill).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(child.kill).toHaveBeenCalledTimes(1);
+      expect(mgr._servers.has("typescript")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("respawns on the next openSession after the server exits, and drops its sessions", async () => {
+    const mgr = new LspManager({ installRoot: "/tmp/x", isInstalled: () => true, spawnFn });
+    const { sessionId: a } = await open(mgr, "/tmp/a.ts");
+    const first = spawnFn.mock.results[0].value;
+
+    first.emit("exit", 1, null);
+    expect(mgr._servers.has("typescript")).toBe(false);
+    expect(mgr.listSessions()).toEqual([]);
+    await expect(mgr.request(a, "textDocument/hover", {})).rejects.toThrow(/unknown sessionId/);
+    await expect(mgr.closeSession(a)).resolves.toBeUndefined();
+
+    const { sessionId: b } = await open(mgr, "/tmp/b.ts");
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const second = spawnFn.mock.results[1].value;
+    expect(framesOf(second).some((f) => f.method === "initialize")).toBe(true);
+    expect(mgr.listSessions().map((s) => s.sessionId)).toEqual([b]);
+  });
+
+  it("ignores a late exit from a replaced server", async () => {
+    const mgr = new LspManager({ installRoot: "/tmp/x", isInstalled: () => true, spawnFn });
+    await mgr.ensure("typescript");
+    const first = spawnFn.mock.results[0].value;
+    first.kill = vi.fn(); // the exit arrives later, not synchronously
+    const restarting = mgr.restart("typescript");
+    first.emit("exit", null, "SIGTERM");
+    await restarting;
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const second = spawnFn.mock.results[1].value;
+
+    const exits = [];
+    mgr.on("server-exit", (e) => exits.push(e));
+    first.emit("exit", null, "SIGTERM"); // duplicate/late exit from the old child
+    expect(mgr._servers.get("typescript").child).toBe(second);
+    expect(exits).toEqual([]);
+  });
+
+  it("dispose() kills every server and refuses to spawn more", async () => {
+    const mgr = new LspManager({ installRoot: "/tmp/x", isInstalled: () => true, spawnFn });
+    await open(mgr, "/tmp/a.ts");
+    const child = spawnFn.mock.results[0].value;
+
+    mgr.dispose();
+    expect(child.kill).toHaveBeenCalled();
+    expect(mgr._servers.size).toBe(0);
+    expect(mgr.listSessions()).toEqual([]);
+    const r = await mgr.ensure("typescript");
+    expect(r.status).toBe("failed");
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+  });
+});

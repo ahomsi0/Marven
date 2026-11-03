@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
@@ -9,6 +9,18 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
+import { useOverlayGuard } from "@/lib/overlays";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { SearchEnginePicker } from "./SearchEnginePicker";
+import { ReportProblemPanel } from "./ReportProblemPanel";
+import { MemoryManager } from "./MemoryManager";
+import {
+  OPEN_SETTINGS_EVENT,
+  clearPendingSettingsRequest,
+  registerSettingsMount,
+  takePendingSettingsRequest,
+  type SettingsRequest,
+} from "@/lib/settingsNav";
 import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
@@ -66,6 +78,7 @@ interface SettingsModalProps {
 
 type SettingsPage =
   | "general"
+  | "memory"
   | "ai-backends"
   | "keys-ai"
   | "keys-voice"
@@ -143,7 +156,7 @@ const SECTIONS: Array<{
   heading: "workspace" | "integrations" | "customization" | "help";
   items: SettingsPage[];
 }> = [
-  { heading: "workspace", items: ["general"] },
+  { heading: "workspace", items: ["general", "memory"] },
   { heading: "integrations", items: ["ai-backends", "keys-ai", "keys-voice", "connectors", "browser"] },
   { heading: "customization", items: ["shortcuts", "keyboard", "templates"] },
   { heading: "help", items: ["commands", "about"] },
@@ -309,15 +322,46 @@ export function SettingsModal({
   workspaceRoot = null,
   voiceDiagnostics,
 }: SettingsModalProps) {
+  // The full-window overlay hides the in-app browser's native view while open.
+  useOverlayGuard(!inline);
   const { theme, setTheme } = useTheme();
   // `tr`, not `t`: several loops in this file already use `t` as a variable.
   const { t: tr } = useT();
   // For keys built from runtime ids (keybindings) that the typed `tr` can't check.
   const trAny = tr as unknown as (key: string, opts?: Record<string, unknown>) => string;
   const [activePage, setActivePage] = useState<SettingsPage>("general");
+  // "Report a problem" panel on the About page.
+  const [reportOpen, setReportOpen] = useState(false);
+  // Workspace passed along with a "Manage memory" request, for when this
+  // Settings view wasn't given one (chat mode).
+  const [memoryWorkspace, setMemoryWorkspace] = useState<string | null>(null);
+
+  // Jump to a page when asked from elsewhere (see lib/settingsNav.ts), both for
+  // a request made just before this view mounted and while it's open.
+  useEffect(() => {
+    const unregister = registerSettingsMount();
+    const apply = (req: SettingsRequest | null) => {
+      if (!req) return;
+      setActivePage(req.page);
+      if (req.page === "about" && req.reportProblem) setReportOpen(true);
+      if (req.page === "memory" && req.workspaceRoot) setMemoryWorkspace(req.workspaceRoot);
+    };
+    apply(takePendingSettingsRequest());
+    const onRequest = (e: Event) => {
+      clearPendingSettingsRequest();
+      apply((e as CustomEvent<SettingsRequest>).detail ?? null);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, onRequest);
+    return () => {
+      unregister();
+      window.removeEventListener(OPEN_SETTINGS_EVENT, onRequest);
+    };
+  }, []);
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
   // System prompt: edited as a draft, saved explicitly (button or ⌘↵).
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const browserBridge = useMemo(getBrowserBridge, []);
+  const [browsingDataState, setBrowsingDataState] = useState<"idle" | "clearing" | "cleared">("idle");
   const [savedSystemPrompt, setSavedSystemPrompt] = useState("");
   const systemPromptDirty = systemPromptDraft !== savedSystemPrompt;
   function saveSystemPrompt() {
@@ -947,6 +991,30 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
+
+            {/* In-app browser data */}
+            {browserBridge && (
+              <div>
+                <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.browsingData")}</h3>
+                <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.browsingDataHint")}</p>
+                <button
+                  type="button"
+                  disabled={browsingDataState === "clearing"}
+                  onClick={async () => {
+                    setBrowsingDataState("clearing");
+                    try {
+                      const ok = await browserBridge.clearBrowsingData();
+                      setBrowsingDataState(ok ? "cleared" : "idle");
+                    } catch {
+                      setBrowsingDataState("idle");
+                    }
+                  }}
+                  className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-50"
+                >
+                  {browsingDataState === "cleared" ? tr("settings.general.browsingDataCleared") : tr("settings.general.clearBrowsingData")}
+                </button>
+              </div>
+            )}
 
             {/* Theme selector — visual preview tiles */}
             <div>
@@ -2275,7 +2343,16 @@ export function SettingsModal({
 
         {/* ── Browser ── */}
         {activePage === "browser" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.searchEngine")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.searchEngineHint")}</p>
+              <SearchEnginePicker />
+            </div>
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.openLinks")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.openLinksHint")}</p>
+              <div className="space-y-4">
             {(
               [
                 {
@@ -2344,6 +2421,8 @@ export function SettingsModal({
                 </button>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2894,6 +2973,10 @@ export function SettingsModal({
         )}
 
         {/* ── About ── */}
+        {activePage === "memory" && (
+          <MemoryManager workspaceRoot={workspaceRoot ?? memoryWorkspace} />
+        )}
+
         {activePage === "about" && (
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-xl border border-[var(--m-border-subtle)] bg-gradient-to-br from-[rgba(209,154,102,0.04)] to-transparent px-5 py-4">
@@ -3040,6 +3123,29 @@ export function SettingsModal({
             <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
+                  <p className="text-[11px] font-medium text-[var(--m-text)]">{tr("settings.report.title")}</p>
+                  <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">{tr("settings.report.hint")}</p>
+                </div>
+                {!reportOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setReportOpen(true)}
+                    className="shrink-0 rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[10px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                  >
+                    {tr("settings.report.open")}
+                  </button>
+                )}
+              </div>
+              {reportOpen && (
+                <div className="mt-3 border-t border-[var(--m-border-subtle)] pt-3">
+                  <ReportProblemPanel onClose={() => setReportOpen(false)} />
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
                   <p className="text-[11px] font-medium text-[var(--m-text)]">{tr("settings.about.diagnostics")}</p>
                   <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">{tr("settings.about.diagnosticsHint")}</p>
                 </div>
@@ -3062,10 +3168,10 @@ export function SettingsModal({
 
   function renderSidebar() {
     return (
-      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-e border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-4">
+      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-e border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {SECTIONS.map((section) => (
-          <div key={section.heading} className="mb-4">
-            <p className="px-4 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
+          <div key={section.heading} className="mb-3 last:mb-0">
+            <p className="px-4 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
               {tr(`settings.nav.${section.heading}`)}
             </p>
             {section.items.map((item) => {
@@ -3075,7 +3181,7 @@ export function SettingsModal({
                   key={item}
                   type="button"
                   onClick={() => setActivePage(item)}
-                  className={`relative w-full px-4 py-2 text-start text-[13px] transition-colors ${
+                  className={`relative w-full px-4 py-1.5 text-start text-[13px] transition-colors ${
                     isActive
                       ? "bg-[var(--m-surface-2)] text-[var(--m-text)]"
                       : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface)] hover:text-[var(--m-text)]"

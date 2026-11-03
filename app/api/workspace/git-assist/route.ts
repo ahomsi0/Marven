@@ -10,6 +10,7 @@ import { streamAnthropic } from "@/lib/anthropic";
 import { streamNim } from "@/lib/nim";
 import { streamLMStudio } from "@/lib/lmstudio";
 import { streamLlamaServer } from "@/lib/llamaserver";
+import { parseChatStream } from "@/lib/chatStream";
 
 type AssistMode = "commit_message" | "commit_groups" | "pr_summary" | "explain_changes";
 
@@ -22,7 +23,14 @@ async function streamToText(stream: ReadableStream<Uint8Array>): Promise<string>
     if (done) break;
     text += dec.decode(value, { stream: true });
   }
-  return text.replace(/\n\n__USAGE__[\s\S]*$/, "").trim();
+  text += dec.decode();
+  // Provider failures arrive in-band as an error sentinel — surface them as a
+  // throw, never as part of the generated text.
+  const parsed = parseChatStream(text, true);
+  if (parsed.error) {
+    throw new Error(`${parsed.error.provider} error${parsed.error.status ? ` (${parsed.error.status})` : ""}: ${parsed.error.message}`);
+  }
+  return parsed.text.trim();
 }
 
 async function completeText(

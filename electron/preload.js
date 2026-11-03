@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   close: () => ipcRenderer.send('window-close'),
   openFolderDialog: () => ipcRenderer.invoke('dialog-open-folder'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  /** Last ~300 redacted log lines (main process + renderer warnings/errors). */
+  getRecentLogs: () => ipcRenderer.invoke('get-recent-logs'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   openExternal: (url, browser) => ipcRenderer.invoke('open-external', url, browser),
   getVersion: () => ipcRenderer.invoke('get-version'),
@@ -51,6 +53,47 @@ contextBridge.exposeInMainWorld('marvenElectron', {
 
   // Codebase indexing — moved to /api/index/* (see lib/index/client.ts). The
   // renderer talks to the Next.js server directly; no IPC bridge needed.
+
+  // ── In-app browser ──────────────────────────────────────────────────────────
+  // A native view the main process layers over the chat's browser panel.
+  // `bounds` is the panel viewport's rect in CSS pixels.
+  browser: {
+    show: (bounds) => ipcRenderer.invoke("browser-show", bounds),
+    setBounds: (bounds) => ipcRenderer.send("browser-bounds", bounds),
+    hide: () => ipcRenderer.send("browser-hide"),
+    freeze: () => ipcRenderer.invoke("browser-freeze"),
+    unfreeze: () => ipcRenderer.send("browser-unfreeze"),
+    setFocused: (focused) => ipcRenderer.send("browser-focus", focused),
+    snapshot: () => ipcRenderer.invoke("browser-get-snapshot"),
+    newTab: (url) => ipcRenderer.invoke("browser-new-tab", url),
+    closeTab: (id) => ipcRenderer.send("browser-close-tab", id),
+    activateTab: (id) => ipcRenderer.send("browser-activate-tab", id),
+    moveTab: (id, toIndex) => ipcRenderer.send("browser-move-tab", id, toIndex),
+    reopenClosedTab: () => ipcRenderer.send("browser-reopen-tab"),
+    navigate: (id, url) => ipcRenderer.invoke("browser-navigate", id, url),
+    command: (id, name) => ipcRenderer.send("browser-command", id, name),
+    /** `{ url, title, selection, text }` of a tab (active one if no id), or null. */
+    extractPage: (id) => ipcRenderer.invoke("browser-extract-page", id),
+    toggleBookmark: (url, title) => ipcRenderer.invoke("browser-toggle-bookmark", url, title),
+    removeBookmark: (id) => ipcRenderer.invoke("browser-remove-bookmark", id),
+    listBookmarks: (query) => ipcRenderer.invoke("browser-bookmarks", query),
+    isBookmarked: (url) => ipcRenderer.invoke("browser-is-bookmarked", url),
+    suggest: (query) => ipcRenderer.invoke("browser-suggest", query),
+    setBlocking: (host, enabled) => ipcRenderer.send("browser-set-blocking", host, enabled),
+    cancelDownload: (id) => ipcRenderer.send("browser-cancel-download", id),
+    showDownload: (id) => ipcRenderer.send("browser-show-download", id),
+    clearBrowsingData: () => ipcRenderer.invoke("browser-clear-data"),
+    onSnapshot: (cb) => {
+      const handler = (_e, data) => cb(data);
+      ipcRenderer.on("browser-snapshot", handler);
+      return () => ipcRenderer.removeListener("browser-snapshot", handler);
+    },
+    onFocusAddress: (cb) => {
+      const handler = () => cb();
+      ipcRenderer.on("browser-focus-address", handler);
+      return () => ipcRenderer.removeListener("browser-focus-address", handler);
+    },
+  },
 
   // ── LSP bridge ────────────────────────────────────────────────────────────
   lsp: {

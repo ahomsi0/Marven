@@ -88,10 +88,13 @@ export class ConversationStore {
    * seq column; updates keep their original position), then remove rows whose
    * ids are absent from the payload so deletions propagate.
    */
-  replaceAll(convs: ConversationDoc[]): void {
+  replaceAll(convs: ConversationDoc[], deletedIds: string[] = []): void {
+    const deleted = new Set(deletedIds);
     const tx = this.db.transaction((docs: ConversationDoc[]) => {
       for (const doc of docs) {
         if (!doc || typeof doc.id !== "string" || !doc.id) continue;
+        // Tombstoned by the client: never (re-)insert, the sweep below drops it.
+        if (deleted.has(doc.id)) continue;
         const updatedAt =
           typeof doc.updatedAt === "string" && doc.updatedAt
             ? doc.updatedAt
@@ -102,13 +105,23 @@ export class ConversationStore {
       }
       // Deletion sync: anything not in the incoming payload is gone.
       const keep = new Set(
-        docs.map((d) => d?.id).filter((id): id is string => typeof id === "string"),
+        docs
+          .map((d) => d?.id)
+          .filter((id): id is string => typeof id === "string" && !deleted.has(id)),
       );
       for (const row of this.allIdsStmt.all() as Array<{ id: string }>) {
         if (!keep.has(row.id)) this.removeStmt.run(row.id);
       }
     });
     tx(convs);
+  }
+
+  /** Delete specific conversations without touching the rest (tombstone sync). */
+  deleteMany(ids: string[]): void {
+    const tx = this.db.transaction((list: string[]) => {
+      for (const id of list) this.removeStmt.run(id);
+    });
+    tx(ids);
   }
 
   count(): number {

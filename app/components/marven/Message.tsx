@@ -1,19 +1,89 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Message as ChatMessage } from "@/types";
+import type { AIProvider, Message as ChatMessage } from "@/types";
+import { useT } from "@/lib/i18n";
+import { PROVIDER_LABELS, shortModelName } from "./ModelSelector";
+import { RetryModelMenu } from "./RetryModelMenu";
+
+/** A ‹ n/m › switcher for an edited / retried message. */
+export interface MessageVersionSwitch {
+  index: number; // 0-based
+  total: number;
+  onSelect: (index: number) => void;
+}
 
 interface MessageProps {
   message: ChatMessage;
   disabled?: boolean;
   onEdit?: (newContent: string) => void;   // user messages only
   onRetry?: () => void;                     // assistant messages only
+  /** Regenerate this reply with another model (this reply only). */
+  onRetryWith?: (provider: AIProvider, model: string) => void;
+  /** The selected chat model, listed first in "Retry with…". */
+  currentProvider?: AIProvider;
+  currentModel?: string;
+  /** Start a new conversation from the thread up to this message. */
+  onBranch?: () => void;
+  version?: MessageVersionSwitch;
 }
 
-export function Message({ message, disabled = false, onEdit, onRetry }: MessageProps) {
+function VersionSwitcher({ version, disabled }: { version: MessageVersionSwitch; disabled: boolean }) {
+  const { t } = useT();
+  const { index, total, onSelect } = version;
+  const arrow =
+    "flex h-5 w-5 items-center justify-center rounded text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div role="group" aria-label={t("versions.position", { current: index + 1, total })} className="flex items-center gap-0.5 text-[11px] text-[var(--m-text-muted)]">
+      <button
+        type="button"
+        onClick={() => onSelect(index - 1)}
+        disabled={disabled || index === 0}
+        aria-label={t("versions.previous")}
+        title={t("versions.previous")}
+        className={arrow}
+      >
+        <svg className="h-3 w-3 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <span className="min-w-[2.25rem] text-center tabular-nums">
+        {index + 1} / {total}
+      </span>
+      <button
+        type="button"
+        onClick={() => onSelect(index + 1)}
+        disabled={disabled || index >= total - 1}
+        aria-label={t("versions.next")}
+        title={t("versions.next")}
+        className={arrow}
+      >
+        <svg className="h-3 w-3 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+export function Message({
+  message,
+  disabled = false,
+  onEdit,
+  onRetry,
+  onRetryWith,
+  currentProvider,
+  currentModel,
+  onBranch,
+  version,
+}: MessageProps) {
+  const { t } = useT();
   const isUser = message.role === "user";
+  // Which dropdown is open from the hover action bar.
+  const [menu, setMenu] = useState<"retry" | "more" | null>(null);
+  const actionBarRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
@@ -31,6 +101,28 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
   useEffect(() => {
     if (!isEditing) setEditValue(message.content);
   }, [message.content, isEditing]);
+
+  // Close the open dropdown on an outside click or Escape.
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      if (actionBarRef.current && !actionBarRef.current.contains(e.target as Node)) setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  // A reply that starts streaming (e.g. after a retry) closes any open menu.
+  useEffect(() => {
+    if (disabled) setMenu(null);
+  }, [disabled]);
 
   async function handleCopy() {
     try {
@@ -98,6 +190,51 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
     </svg>
   );
 
+  // ─── Dots icon SVG ─────────────────────────────────────────────────────────
+  const DotsIcon = () => (
+    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+
+  const actionBarVisibility = menu ? "opacity-100" : "opacity-0 group-hover:opacity-100";
+
+  // "⋯" menu: Branch from here
+  function moreMenu() {
+    if (!onBranch) return null;
+    return (
+      <div className="relative">
+        {actionBtn(t("versions.moreActions"), () => setMenu((m) => (m === "more" ? null : "more")), <DotsIcon />)}
+        {menu === "more" && (
+          <div
+            role="menu"
+            className={`absolute top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1 shadow-2xl ${isUser ? "end-0" : "start-0"}`}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenu(null);
+                onBranch();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-[12px] text-[var(--m-text)] hover:bg-[var(--m-surface-3)]"
+            >
+              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--m-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                <circle cx="6" cy="5" r="2" />
+                <circle cx="6" cy="19" r="2" />
+                <circle cx="18" cy="7" r="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M18 9c0 5-6 4-11.5 8.5" />
+              </svg>
+              {t("versions.branch")}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Shared action button style
   function actionBtn(title: string, onClick: () => void, children: ReactNode) {
     return (
@@ -115,7 +252,9 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
   }
 
   return (
-    <div className={`message-in group flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+    // Each message is its own stacking context (the entry animation's
+    // transform); lift it while a dropdown is open so later messages can't cover it.
+    <div className={`message-in group flex w-full ${isUser ? "justify-end" : "justify-start"} ${menu ? "relative z-20" : ""}`}>
       {isUser ? (
         <div className="relative max-w-[88%] sm:max-w-[72%]">
           {isEditing ? (
@@ -191,10 +330,16 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
                 )}
               </div>
               {/* Action bar — left of bubble, visible on hover */}
-              <div className="absolute end-full top-1 me-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              <div ref={actionBarRef} className={`absolute end-full top-1 me-1.5 z-10 flex gap-1 transition-opacity duration-150 ${actionBarVisibility}`}>
                 {actionBtn("Edit message", () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
                 {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
+                {moreMenu()}
               </div>
+              {version && (
+                <div className="mt-1 flex justify-end">
+                  <VersionSwitcher version={version} disabled={disabled} />
+                </div>
+              )}
               {/* Timestamp shown on hover */}
               <span className="pointer-events-none absolute end-1 top-full mt-0.5 whitespace-nowrap text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {timeLabel}
@@ -205,9 +350,42 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
       ) : (
         <div className="relative max-w-[100%]">
           {/* Action bar — right of bubble, visible on hover */}
-          <div className="absolute start-full top-1 ms-1.5 z-10 flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            {onRetry && actionBtn("Retry", onRetry, <RetryIcon />)}
+          <div ref={actionBarRef} className={`absolute start-full top-1 ms-1.5 z-10 flex gap-1 transition-opacity duration-150 ${actionBarVisibility}`}>
+            {onRetry && (
+              <div className="relative flex">
+                {actionBtn(t("versions.retry"), onRetry, <RetryIcon />)}
+                {onRetryWith && (
+                  <button
+                    type="button"
+                    onClick={() => setMenu((m) => (m === "retry" ? null : "retry"))}
+                    disabled={disabled}
+                    aria-haspopup="menu"
+                    aria-expanded={menu === "retry"}
+                    aria-label={t("versions.retryOptions")}
+                    title={t("versions.retryWith")}
+                    className="-ms-px flex h-6 w-4 items-center justify-center rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text-muted)] shadow-sm transition-all duration-150 hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                )}
+                {menu === "retry" && onRetryWith && (
+                  <div className="absolute start-0 top-full z-50 mt-1">
+                    <RetryModelMenu
+                      currentProvider={currentProvider}
+                      currentModel={currentModel}
+                      onPick={(p, m) => {
+                        setMenu(null);
+                        onRetryWith(p, m);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             {actionBtn(copied ? "Copied!" : "Copy", handleCopy, <CopyIcon />)}
+            {moreMenu()}
           </div>
 
           <div className="rounded-xl px-1 py-1">
@@ -254,6 +432,24 @@ export function Message({ message, disabled = false, onEdit, onRetry }: MessageP
               )}
             </div>
           </div>
+
+          {(version || (message.model && !message.isStreaming)) && (
+            <div className="flex items-center gap-2 px-1">
+              {version && <VersionSwitcher version={version} disabled={disabled} />}
+              {message.model && !message.isStreaming && (
+                <span
+                  dir="ltr"
+                  title={t("versions.repliedBy", {
+                    provider: message.provider ? PROVIDER_LABELS[message.provider] : "",
+                    model: message.model,
+                  })}
+                  className="truncate text-[10px] text-[var(--m-text-faint)]"
+                >
+                  {shortModelName(message.model)}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Timestamp shown on hover */}
           <span className="pointer-events-none absolute start-1 top-full mt-0.5 whitespace-nowrap text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">

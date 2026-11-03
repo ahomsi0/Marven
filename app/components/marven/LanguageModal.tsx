@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CheckIcon } from "./Icons";
 import { APP_LANGUAGES, setAppLanguage, useT } from "@/lib/i18n";
+import { useOverlayGuard } from "@/lib/overlays";
 
 interface LanguageModalProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ interface LanguageModalProps {
  */
 export function LanguageModal({ onClose }: LanguageModalProps) {
   const { t, i18n } = useT();
+  useOverlayGuard();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
