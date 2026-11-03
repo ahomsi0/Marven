@@ -1,7 +1,8 @@
 // Downloads go straight to the Downloads folder under a cleaned, unique name,
 // and are never opened automatically. The list lasts for the session.
 // A page may start at most PER_TAB_MAX downloads every PER_TAB_WINDOW_MS, and
-// at most MAX_IN_PROGRESS run at once; anything over is cancelled unsaved.
+// at most MAX_IN_PROGRESS run at once; anything over is cancelled unsaved and
+// listed as blocked (one entry counts a run of them).
 // MARVEN_DOWNLOADS_DIR overrides the folder in unpackaged builds — used only by
 // the test run.
 
@@ -16,7 +17,7 @@ const PER_TAB_MAX = 3;
 const PER_TAB_WINDOW_MS = 10_000;
 const MAX_IN_PROGRESS = 10;
 
-const FINISHED = new Set(['completed', 'cancelled', 'interrupted']);
+const FINISHED = new Set(['completed', 'cancelled', 'interrupted', 'blocked']);
 
 // True once a download is done for good: its item has emitted 'done' (an
 // 'interrupted' update while the item is live can still resume).
@@ -63,18 +64,34 @@ function createDownloads({ onChange }) {
     item.cancel();
   }
 
+  // Stops a download over a limit, and says so in the list. Back-to-back
+  // blocked downloads share one entry, so a page can't flood the list.
+  function block(event, item) {
+    reject(event, item);
+    const filename = sanitizeFilename(item.getFilename());
+    const last = [...entries.values()].pop();
+    if (last?.state === 'blocked') {
+      last.count += 1;
+      last.filename = filename;
+    } else {
+      const entry = { id: `d${++seq}`, filename, path: null, state: 'blocked', receivedBytes: 0, totalBytes: 0, count: 1, item: null };
+      entries.set(entry.id, entry);
+    }
+    onChange();
+  }
+
   // True when this download may go ahead; otherwise cancels it.
   function admit(event, item, webContents) {
     if (inProgress >= MAX_IN_PROGRESS) {
       if (!capWarned) console.warn(`[browser] too many downloads in progress, cancelling new ones (limit ${MAX_IN_PROGRESS})`);
       capWarned = true;
-      reject(event, item);
+      block(event, item);
       return false;
     }
     const { ok, warn } = perTab.take(webContents?.id ?? 'unknown');
     if (!ok) {
       if (warn) console.warn(`[browser] a page started too many downloads, cancelling new ones (limit ${PER_TAB_MAX} per ${PER_TAB_WINDOW_MS / 1000}s)`);
-      reject(event, item);
+      block(event, item);
       return false;
     }
     capWarned = false;
@@ -125,7 +142,9 @@ function createDownloads({ onChange }) {
   }
 
   function list() {
-    return [...entries.values()].map(({ id, filename, state, receivedBytes, totalBytes }) => ({ id, filename, state, receivedBytes, totalBytes }));
+    return [...entries.values()].map(({ id, filename, state, receivedBytes, totalBytes, count }) => (
+      state === 'blocked' ? { id, filename, state, receivedBytes, totalBytes, count } : { id, filename, state, receivedBytes, totalBytes }
+    ));
   }
 
   // Drops completed, cancelled and interrupted downloads from the list.

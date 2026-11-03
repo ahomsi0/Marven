@@ -3,7 +3,7 @@
 // `key` is the typed character, so the physical key in `code` is used instead.
 
 const CODE_KEYS = {
-  KeyT: 't', KeyW: 'w', KeyL: 'l', KeyR: 'r', BracketLeft: '[', BracketRight: ']',
+  KeyT: 't', KeyW: 'w', KeyL: 'l', KeyR: 'r', KeyF: 'f', BracketLeft: '[', BracketRight: ']',
   Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4', Digit5: '5', Digit6: '6', Digit7: '7', Digit8: '8', Digit9: '9',
 };
 
@@ -23,6 +23,7 @@ function shortcutAction(input, platform = process.platform) {
     case 't': return input.isAutoRepeat === true ? null : { action: 'new-tab' };
     case 'w': return input.isAutoRepeat === true ? null : { action: 'close-tab' };
     case 'l': return { action: 'focus-address' };
+    case 'f': return { action: 'find' };
     case 'r': return { action: 'reload' };
     case '[': return { action: 'back' };
     case ']': return { action: 'forward' };

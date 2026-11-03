@@ -1,7 +1,9 @@
 // Where the active page's native view sits in Marven's window: at most one
 // view is attached, over the panel's viewport. Tracks whether the panel is
 // shown and whether a toolbar menu has the page frozen, keeps the attached
-// view's visibility in step, and mutes every view that isn't on screen.
+// view's visibility in step, and mutes every view that isn't on screen. While
+// a page is fullscreen (a video), its view covers the whole window instead
+// (Electron itself takes the window in and out of fullscreen).
 // Works with views only; the manager decides which view is active.
 
 const FREEZE_JPEG_QUALITY = 80;
@@ -24,10 +26,23 @@ function createViewHost({ getWindow, getPage }) {
   let frozen = false;
   let freezeToken = 0;
   let attached = null;
+  let fullscreen = false;
+  let onWindowResize = null;
 
   function liveWindow() {
     const win = getWindow();
     return win && !win.isDestroyed() ? win : null;
+  }
+
+  function wholeWindow(win) {
+    const [width, height] = win.getContentSize();
+    return { x: 0, y: 0, width, height };
+  }
+
+  // Where the attached view goes: the panel's viewport, or the whole window.
+  function placement() {
+    const win = liveWindow();
+    return fullscreen && win ? wholeWindow(win) : bounds;
   }
 
   function detach() {
@@ -47,7 +62,8 @@ function createViewHost({ getWindow, getPage }) {
     if (view) {
       if (!win.contentView.children.includes(view)) win.contentView.addChildView(view);
       attached = view;
-      if (bounds) view.setBounds(bounds);
+      const b = placement();
+      if (b) view.setBounds(b);
     }
     syncVisibility();
   }
@@ -72,7 +88,25 @@ function createViewHost({ getWindow, getPage }) {
 
   function setBounds(b) {
     bounds = b;
-    if (attached) attached.setBounds(b);
+    if (attached && !fullscreen) attached.setBounds(b);
+  }
+
+  function setFullscreen(on) {
+    const win = liveWindow();
+    if (!win || on === fullscreen) return;
+    fullscreen = on;
+    if (on) {
+      // The window grows while it animates into fullscreen.
+      onWindowResize = () => {
+        if (attached) attached.setBounds(wholeWindow(win));
+      };
+      win.on('resize', onWindowResize);
+    } else {
+      if (onWindowResize) win.off('resize', onWindowResize);
+      onWindowResize = null;
+    }
+    const b = placement();
+    if (attached && b) attached.setBounds(b);
   }
 
   function hide() {
@@ -120,12 +154,16 @@ function createViewHost({ getWindow, getPage }) {
   function windowClosed() {
     attached = null;
     shown = false;
+    fullscreen = false;
+    onWindowResize = null;
   }
 
   return {
     hasWindow: () => !!liveWindow(),
     isShown: () => shown,
     isAttached: (view) => !!attached && attached === view,
+    isFullscreen: () => fullscreen,
+    setFullscreen,
     detach,
     showActive,
     syncVisibility,

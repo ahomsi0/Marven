@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n";
 import {
   addMemoryEntry,
@@ -24,16 +24,30 @@ function folderName(root: string): string {
   return root.split(/[\\/]/).filter(Boolean).pop() ?? root;
 }
 
+// Projects opened in agent mode, newest first (kept by app/page.tsx).
+function recentWorkspaces(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem("marven-recent-workspaces") ?? "[]");
+    return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string" && p.length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
 const smallButton =
   "rounded-md border border-[var(--m-border)] px-2.5 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-40";
 const linkButton = "text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-text)]";
 
 /**
  * Settings → Memory: view, add, edit, delete, export and clear what Marven
- * remembers — globally, and for the open project when there is one.
+ * remembers — globally, and for the open project when there is one. Without
+ * one (chat mode), a recent project can be picked instead.
  */
-export function MemoryManager({ workspaceRoot }: { workspaceRoot: string | null }) {
+export function MemoryManager({ workspaceRoot: openRoot }: { workspaceRoot: string | null }) {
   const { t: tr } = useT();
+  const recents = useMemo(() => (openRoot ? [] : recentWorkspaces()), [openRoot]);
+  const [pickedRoot, setPickedRoot] = useState<string | null>(null);
+  const workspaceRoot = openRoot ?? pickedRoot;
   const [entries, setEntries] = useState<MemoryEntriesByScope | null>(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -74,6 +88,23 @@ export function MemoryManager({ workspaceRoot }: { workspaceRoot: string | null 
         workspaceRoot={workspaceRoot}
         onChanged={reload}
       />
+      {!openRoot && recents.length > 0 && (
+        <label className="flex items-center gap-2 text-[11px] text-[var(--m-text-muted)]">
+          {tr("settings.memory.pickProject")}
+          <select
+            value={pickedRoot ?? ""}
+            onChange={(e) => setPickedRoot(e.target.value || null)}
+            className="min-w-0 flex-1 rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1 text-[11px] text-[var(--m-text)]"
+          >
+            <option value="">{tr("settings.memory.globalOnly")}</option>
+            {recents.map((root) => (
+              <option key={root} value={root} title={root}>
+                {folderName(root)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {workspaceRoot ? (
         <MemorySection
           scope="project"
@@ -83,9 +114,9 @@ export function MemoryManager({ workspaceRoot }: { workspaceRoot: string | null 
           workspaceRoot={workspaceRoot}
           onChanged={reload}
         />
-      ) : (
+      ) : recents.length === 0 ? (
         <p className="text-[11px] text-[var(--m-text-faint)]">{tr("settings.memory.noProject")}</p>
-      )}
+      ) : null}
     </div>
   );
 }

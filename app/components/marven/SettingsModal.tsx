@@ -20,6 +20,7 @@ import {
   registerSettingsMount,
   takePendingSettingsRequest,
   type SettingsRequest,
+  type SettingsRequestPage,
 } from "@/lib/settingsNav";
 import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
@@ -76,19 +77,7 @@ interface SettingsModalProps {
   };
 }
 
-type SettingsPage =
-  | "general"
-  | "memory"
-  | "ai-backends"
-  | "keys-ai"
-  | "keys-voice"
-  | "connectors"
-  | "browser"
-  | "shortcuts"
-  | "keyboard"
-  | "templates"
-  | "commands"
-  | "about";
+type SettingsPage = SettingsRequestPage;
 
 interface EditState {
   index: number;

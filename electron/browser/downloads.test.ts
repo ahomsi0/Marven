@@ -12,8 +12,8 @@ describe("quarantineValue", () => {
 });
 
 describe("isFinished", () => {
-  it("is true for completed, cancelled and interrupted downloads that are done", () => {
-    for (const state of ["completed", "cancelled", "interrupted"]) {
+  it("is true for completed, cancelled, interrupted and blocked downloads that are done", () => {
+    for (const state of ["completed", "cancelled", "interrupted", "blocked"]) {
       expect(isFinished({ state, item: null })).toBe(true);
     }
   });

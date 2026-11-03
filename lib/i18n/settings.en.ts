@@ -338,6 +338,8 @@ const settingsEn = {
     project: "This project",
     projectHint: "Only used while {{name}} is open.",
     noProject: "Open a project in agent mode to manage its memory here. Only global memory is shown.",
+    pickProject: "Project memory:",
+    globalOnly: "None (global only)",
     empty: "Nothing remembered yet.",
     addPlaceholder: "Add something for Marven to remember…",
     add: "Add",

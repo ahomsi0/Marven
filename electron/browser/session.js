@@ -1,5 +1,5 @@
 // The browser's Electron session: its own persistent partition, no
-// permissions beyond clipboard writes, a plain Chrome user agent, downloads
+// permissions beyond clipboard writes and fullscreen, a plain Chrome user agent, downloads
 // routed to downloads.js and requests filtered by the ad blocker. The filter
 // lists are only fetched when loadBlocker() is first called.
 

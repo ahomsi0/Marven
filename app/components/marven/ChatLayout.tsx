@@ -37,9 +37,9 @@ import { generateMarkdown } from "@/lib/chatHelpers";
 import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/theme";
 import { useProviderModels } from "@/hooks/useProviderModels";
 import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
-import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { getBrowserBridge, hostOf, type Bookmark } from "@/lib/inAppBrowser";
 import { versionControls } from "@/lib/messageVersions";
-import { OPEN_SETTINGS_EVENT, openSettingsPage } from "@/lib/settingsNav";
+import { OPEN_SETTINGS_EVENT, SETTINGS_PAGES, openSettingsPage, type SettingsRequestPage } from "@/lib/settingsNav";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -288,6 +288,8 @@ export function ChatLayout({
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The in-app browser's bookmarks for the palette; null until first loaded.
+  const [paletteBookmarks, setPaletteBookmarks] = useState<Bookmark[] | null>(null);
   // In-app browser panel beside the chat (globe button in the header).
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserExpanded, setBrowserExpanded] = useState(false);
@@ -419,9 +421,16 @@ export function ChatLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Settings at a given page. In chat mode the listener above opens it too;
+  // the modal takes the pending page when it mounts.
+  function openSettingsAt(page: SettingsRequestPage) {
+    openSettingsPage({ page });
+    setSettingsOpen(true);
+  }
+
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
-      setSettingsOpen(true);
+      openSettingsAt("shortcuts");
       return;
     }
     onSlashCommand(cmd);
@@ -521,6 +530,22 @@ export function ChatLayout({
         keybinding: mode === "agent" ? formatBinding("open-settings", isMac) : undefined,
         action: () => setSettingsOpen(true),
       },
+      {
+        id: "settings-page",
+        group: general,
+        label: t("palette.commands.settingsPage"),
+        children: SETTINGS_PAGES.map((page) => ({
+          id: page,
+          label: t(`settings.pages.${page}.title`),
+          action: () => openSettingsAt(page),
+        })),
+      },
+      {
+        id: "keyboard-shortcuts",
+        group: general,
+        label: t("palette.commands.keyboardShortcuts"),
+        action: () => openSettingsAt("keyboard"),
+      },
       { id: "toggle-sidebar", group: general, label: t("palette.commands.toggleSidebar"), action: () => setSidebarOpen((v) => !v) },
     ];
 
@@ -545,6 +570,27 @@ export function ChatLayout({
             setBrowserExpanded(false);
             // Let the panel mount (and show its native view) before adding the tab.
             requestAnimationFrame(() => void bridge.newTab().catch(() => {}));
+          },
+        },
+        {
+          id: "bookmarks",
+          group: general,
+          label: t("palette.commands.bookmarks"),
+          children: (paletteBookmarks ?? []).map((b) => ({
+            id: b.id,
+            label: b.title || b.url,
+            hint: hostOf(b.url),
+            keywords: [b.url],
+            action: () => {
+              setBrowserOpen(true);
+              setBrowserExpanded(false);
+              requestAnimationFrame(() => void bridge.newTab(b.url).catch(() => {}));
+            },
+          })),
+          childrenLoading: paletteBookmarks === null,
+          emptyText: t("browser.noBookmarks"),
+          onEnter: () => {
+            void bridge.listBookmarks("").then(setPaletteBookmarks, () => setPaletteBookmarks([]));
           },
         },
       );

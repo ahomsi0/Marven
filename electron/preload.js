@@ -74,6 +74,10 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     command: (id, name) => ipcRenderer.send("browser-command", id, name),
     /** `{ url, title, selection, text }` of a tab (active one if no id), or null. */
     extractPage: (id) => ipcRenderer.invoke("browser-extract-page", id),
+    find: (id, text, options) => ipcRenderer.send("browser-find", id, text, options),
+    stopFind: (id) => ipcRenderer.send("browser-stop-find", id),
+    answerAuth: (id, username, password) => ipcRenderer.send("browser-auth", id, username, password),
+    setMenuLabels: (labels) => ipcRenderer.send("browser-menu-labels", labels),
     toggleBookmark: (url, title) => ipcRenderer.invoke("browser-toggle-bookmark", url, title),
     removeBookmark: (id) => ipcRenderer.invoke("browser-remove-bookmark", id),
     listBookmarks: (query) => ipcRenderer.invoke("browser-bookmarks", query),
@@ -92,6 +96,11 @@ contextBridge.exposeInMainWorld('marvenElectron', {
       const handler = () => cb();
       ipcRenderer.on("browser-focus-address", handler);
       return () => ipcRenderer.removeListener("browser-focus-address", handler);
+    },
+    onOpenFind: (cb) => {
+      const handler = () => cb();
+      ipcRenderer.on("browser-open-find", handler);
+      return () => ipcRenderer.removeListener("browser-open-find", handler);
     },
   },
 
