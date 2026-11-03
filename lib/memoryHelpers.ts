@@ -13,3 +13,14 @@ export function buildScopedMemoryBlock(scopes: Record<MemoryScope, string[]>): s
   }
   return sections.join("\n\n");
 }
+
+const REMEMBER_RE = /^(?:remember(?: that)?|don't forget(?: that)?)\s+(.+)$/i;
+
+/**
+ * "remember that I like tea" → "I like tea". Returns null when the text isn't
+ * a remember command.
+ */
+export function parseRememberCommand(text: string): string | null {
+  const memory = text.match(REMEMBER_RE)?.[1]?.trim();
+  return memory ? memory : null;
+}

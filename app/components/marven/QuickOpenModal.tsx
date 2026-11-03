@@ -109,9 +109,9 @@ export function QuickOpenModal({ files, onOpen, onClose }: QuickOpenModalProps) 
       <div className="absolute inset-0 bg-black/60" />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-xl rounded-md border border-[#333] bg-[#1a1a1a] shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-xl rounded-md border border-[var(--m-border)] bg-[#1a1a1a] shadow-2xl overflow-hidden">
         {/* Search input */}
-        <div className="flex items-center border-b border-[#333] bg-[#252525] px-3 py-2">
+        <div className="flex items-center border-b border-[var(--m-border)] bg-[#252525] px-3 py-2">
           <svg
             className="mr-2 h-4 w-4 shrink-0 text-[#555]"
             fill="none"

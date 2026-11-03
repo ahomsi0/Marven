@@ -1,7 +1,8 @@
 // Builds the "Report a glitch" issue. Nothing is sent from the app — the user
 // reviews the prefilled GitHub issue in their browser and submits it themselves.
 
-export const ISSUES_URL = "https://github.com/ahomsi0/Marven/issues/new";
+export const REPO_URL = "https://github.com/ahomsi0/Marven";
+export const ISSUES_URL = `${REPO_URL}/issues/new`;
 
 // GitHub rejects very long query strings; keep the whole URL comfortably short.
 const MAX_DESCRIPTION = 4000;

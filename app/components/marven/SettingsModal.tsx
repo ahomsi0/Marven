@@ -1,12 +1,27 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
-import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon } from "./Icons";
+import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
+import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
+import { useT } from "@/lib/i18n";
+import { useOverlayGuard } from "@/lib/overlays";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { SearchEnginePicker } from "./SearchEnginePicker";
+import { ReportProblemPanel } from "./ReportProblemPanel";
+import { MemoryManager } from "./MemoryManager";
+import {
+  OPEN_SETTINGS_EVENT,
+  clearPendingSettingsRequest,
+  registerSettingsMount,
+  takePendingSettingsRequest,
+  type SettingsRequest,
+} from "@/lib/settingsNav";
+import { Trans } from "react-i18next";
 import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
 import {
@@ -25,16 +40,16 @@ type ProviderId =
   | "groq" | "openai" | "anthropic" | "nim" | "openrouter"
   | "ollama" | "lmstudio" | "llamaserver";
 
-const LOCAL_MODEL_OPTIONS: Array<{ id: LocalModelId; label: string; hint: string }> = [
-  { id: "whisper-tiny", label: "Whisper Tiny.en",      hint: "Default • ~145 MB • Fastest download" },
-  { id: "whisper-base", label: "Whisper Base.en",      hint: "~290 MB • More accurate on accents / noise" },
-  { id: "distil-tiny",  label: "Distil-Whisper Small", hint: "~165 MB • Best speed/accuracy balance" },
-];
+const LOCAL_MODEL_OPTIONS = [
+  { id: "whisper-tiny", label: "Whisper Tiny.en",      hintKey: "whisperTiny" },
+  { id: "whisper-base", label: "Whisper Base.en",      hintKey: "whisperBase" },
+  { id: "distil-tiny",  label: "Distil-Whisper Small", hintKey: "distilTiny" },
+] as const satisfies ReadonlyArray<{ id: LocalModelId; label: string; hintKey: string }>;
 
-const TTS_PROVIDER_OPTIONS: Array<{ id: TtsProviderId; label: string; hint: string }> = [
-  { id: "system", label: "System", hint: "Built-in voices • Offline • Free" },
-  { id: "elevenlabs", label: "ElevenLabs", hint: "Realistic AI voices • Requires API key" },
-];
+const TTS_PROVIDER_OPTIONS = [
+  { id: "system", labelKey: "system", hintKey: "systemHint" },
+  { id: "elevenlabs", labelKey: null, hintKey: "elevenLabsHint" },
+] as const satisfies ReadonlyArray<{ id: TtsProviderId; labelKey: string | null; hintKey: string }>;
 
 interface SettingsModalProps {
   shortcuts: CustomShortcut[];
@@ -63,6 +78,7 @@ interface SettingsModalProps {
 
 type SettingsPage =
   | "general"
+  | "memory"
   | "ai-backends"
   | "keys-ai"
   | "keys-voice"
@@ -82,17 +98,17 @@ interface EditState {
 }
 
 const SLASH_REF = [
-  { command: "/clear", description: "Clear current conversation" },
-  { command: "/new", description: "New conversation" },
-  { command: "/shortcuts", description: "Open this panel" },
-  { command: "/help", description: "Show help in chat" },
-  { command: "/voice", description: "Toggle wake word" },
-  { command: "/speech", description: "Toggle TTS" },
-];
+  { command: "/clear", key: "clear" },
+  { command: "/new", key: "new" },
+  { command: "/shortcuts", key: "shortcuts" },
+  { command: "/help", key: "help" },
+  { command: "/voice", key: "voice" },
+  { command: "/speech", key: "speech" },
+] as const;
 
 const NATURAL_LANGUAGE_SECTIONS = [
   {
-    heading: "Web",
+    heading: "web" as const,
     items: [
       "open youtube",
       "open github",
@@ -101,7 +117,7 @@ const NATURAL_LANGUAGE_SECTIONS = [
     ],
   },
   {
-    heading: "Apps",
+    heading: "apps" as const,
     items: [
       "open Chrome",
       "open Terminal",
@@ -110,7 +126,7 @@ const NATURAL_LANGUAGE_SECTIONS = [
     ],
   },
   {
-    heading: "System",
+    heading: "system" as const,
     items: [
       "what's the time",
       "today's date",
@@ -121,7 +137,7 @@ const NATURAL_LANGUAGE_SECTIONS = [
     ],
   },
   {
-    heading: "Clipboard",
+    heading: "clipboard" as const,
     items: [
       "what's in my clipboard",
       "summarize clipboard",
@@ -129,101 +145,30 @@ const NATURAL_LANGUAGE_SECTIONS = [
     ],
   },
   {
-    heading: "Timers",
+    heading: "timers" as const,
     items: ["set a timer for 5 minutes", "timer 30 seconds"],
   },
 ];
 
+// Nav groups; headings and item labels are translation keys (settings.nav.*,
+// settings.pages.<id>.title).
 const SECTIONS: Array<{
-  heading: string;
-  items: Array<{ id: SettingsPage; label: string }>;
+  heading: "workspace" | "integrations" | "customization" | "help";
+  items: SettingsPage[];
 }> = [
-  {
-    heading: "Workspace",
-    items: [{ id: "general", label: "General" }],
-  },
-  {
-    heading: "Integrations",
-    items: [
-      { id: "ai-backends", label: "AI Backends" },
-      { id: "keys-ai", label: "Model APIs" },
-      { id: "keys-voice", label: "Speech APIs" },
-      { id: "connectors", label: "Connectors" },
-      { id: "browser", label: "Browser" },
-    ],
-  },
-  {
-    heading: "Customization",
-    items: [
-      { id: "shortcuts", label: "Shortcuts" },
-      { id: "keyboard", label: "Keyboard" },
-      { id: "templates", label: "Templates" },
-    ],
-  },
-  {
-    heading: "Help",
-    items: [
-      { id: "commands", label: "Commands" },
-      { id: "about", label: "About" },
-    ],
-  },
+  { heading: "workspace", items: ["general", "memory"] },
+  { heading: "integrations", items: ["ai-backends", "keys-ai", "keys-voice", "connectors", "browser"] },
+  { heading: "customization", items: ["shortcuts", "keyboard", "templates"] },
+  { heading: "help", items: ["commands", "about"] },
 ];
 
-const PAGE_META: Record<SettingsPage, { title: string; description: string }> = {
-  general: {
-    title: "General",
-    description: "Overview and basic preferences for Marven.",
-  },
-  "ai-backends": {
-    title: "AI Backends",
-    description: "Enable and configure AI providers and local model servers.",
-  },
-  "keys-ai": {
-    title: "Model APIs",
-    description:
-      "Secrets and base URLs for chat and agent models: Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM, and Ollama.",
-  },
-  "keys-voice": {
-    title: "Speech APIs",
-    description:
-      "Credentials for cloud speech (ElevenLabs). Groq Whisper uses the Groq credential on Model APIs when you pick Groq for recognition.",
-  },
-  connectors: {
-    title: "Connectors",
-    description:
-      "MCP servers provide extra tools to the agent (filesystem, GitHub, databases, etc.).",
-  },
-  browser: {
-    title: "Browser",
-    description: "Choose which browser opens links from AI responses.",
-  },
-  shortcuts: {
-    title: "Shortcuts",
-    description: "Custom trigger phrases that open URLs via voice or text.",
-  },
-  keyboard: {
-    title: "Keyboard",
-    description: "Keyboard shortcut reference and customization.",
-  },
-  templates: {
-    title: "Templates",
-    description: "Slash-command prompt templates available in the input bar.",
-  },
-  commands: {
-    title: "Commands",
-    description: "Reference for slash commands and natural language actions.",
-  },
-  about: {
-    title: "About",
-    description: "Version info, updates, and links.",
-  },
-};
 
 function VoiceDiagnosticsCard({
   d,
 }: {
   d: NonNullable<SettingsModalProps["voiceDiagnostics"]>;
 }) {
+  const { t: tr } = useT();
   const micOk = d.isVoiceSupported;
   const err = d.voiceError;
   const rows: Array<{
@@ -231,16 +176,16 @@ function VoiceDiagnosticsCard({
     v: string;
     tone?: "ok" | "warn" | "bad" | "neutral";
   }> = [
-    { k: "Microphone", v: micOk ? "Available" : "Unavailable", tone: micOk ? "ok" : "bad" },
-    { k: "Voice state", v: d.voiceState.replace(/-/g, " "), tone: "neutral" },
-    { k: "Wake word", v: d.wakeEnabled ? "On" : "Off", tone: d.wakeEnabled ? "ok" : "neutral" },
-    { k: "Speech (TTS)", v: d.speechEnabled ? "On" : "Off", tone: d.speechEnabled ? "ok" : "neutral" },
-    { k: "Transcription", v: d.sttProvider === "groq" ? "Groq cloud" : "Local", tone: "neutral" },
-    { k: "Speech engine", v: d.ttsProvider === "elevenlabs" ? "ElevenLabs" : "System", tone: "neutral" },
-    { k: "Audio out", v: d.isSpeakingNow ? "Playing" : "Idle", tone: d.isSpeakingNow ? "warn" : "neutral" },
+    { k: tr("settings.voice.microphone"), v: micOk ? tr("settings.voice.available") : tr("settings.voice.unavailable"), tone: micOk ? "ok" : "bad" },
+    { k: tr("settings.voice.voiceState"), v: d.voiceState.replace(/-/g, " "), tone: "neutral" },
+    { k: tr("settings.voice.wakeWord"), v: d.wakeEnabled ? tr("settings.voice.on") : tr("settings.voice.off"), tone: d.wakeEnabled ? "ok" : "neutral" },
+    { k: tr("settings.voice.speech"), v: d.speechEnabled ? tr("settings.voice.on") : tr("settings.voice.off"), tone: d.speechEnabled ? "ok" : "neutral" },
+    { k: tr("settings.voice.transcription"), v: d.sttProvider === "groq" ? tr("settings.voice.groqCloud") : tr("settings.voice.local"), tone: "neutral" },
+    { k: tr("settings.voice.speechEngine"), v: d.ttsProvider === "elevenlabs" ? "ElevenLabs" : tr("settings.voice.system"), tone: "neutral" },
+    { k: tr("settings.voice.audioOut"), v: d.isSpeakingNow ? tr("settings.voice.playing") : tr("settings.voice.idle"), tone: d.isSpeakingNow ? "warn" : "neutral" },
     {
-      k: "Last error",
-      v: err ?? "None",
+      k: tr("settings.voice.lastError"),
+      v: err ?? tr("settings.voice.none"),
       tone: err ? "bad" : "ok",
     },
   ];
@@ -271,9 +216,9 @@ function VoiceDiagnosticsCard({
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-medium text-[var(--m-text)]">Voice pipeline</p>
+          <p className="text-[12px] font-medium text-[var(--m-text)]">{tr("settings.voice.pipeline")}</p>
           <p className="truncate text-[10px] text-[var(--m-text-faint)]">
-            Live readout of mic, wake, STT/TTS, and playback state
+            {tr("settings.voice.pipelineHint")}
           </p>
         </div>
         <span
@@ -281,14 +226,14 @@ function VoiceDiagnosticsCard({
             err ? "bg-red-500/15 text-red-300" : micOk ? "bg-[var(--m-accent)]/15 text-[var(--m-accent)]" : "bg-[var(--m-surface-2)] text-[var(--m-text-faint)]"
           }`}
         >
-          {err ? "Issue" : micOk ? "Ready" : "Limited"}
+          {err ? tr("settings.voice.issue") : micOk ? tr("settings.voice.ready") : tr("settings.voice.limited")}
         </span>
       </div>
       <dl className="divide-y divide-[var(--m-border-subtle)] px-1">
         {rows.map(({ k, v, tone = "neutral" }) => (
           <div key={k} className="flex items-center justify-between gap-3 px-3 py-2">
             <dt className="shrink-0 text-[11px] text-[var(--m-text-faint)]">{k}</dt>
-            <dd className="min-w-0 text-right">
+            <dd className="min-w-0 text-end">
               <span className={`inline-block max-w-[min(200px,55vw)] truncate rounded-md px-2 py-0.5 text-[11px] font-medium ${toneClass(tone)}`}>
                 {v}
               </span>
@@ -298,7 +243,7 @@ function VoiceDiagnosticsCard({
       </dl>
       {d.lastHeard ? (
         <div className="border-t border-[var(--m-border-subtle)] bg-[var(--m-surface)]/60 px-3.5 py-2.5">
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">Last voice capture</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">{tr("settings.voice.lastCapture")}</p>
           <p className="mt-1 font-mono text-[11px] leading-snug text-[var(--m-text-muted)]">&ldquo;{d.lastHeard}&rdquo;</p>
         </div>
       ) : null}
@@ -340,7 +285,7 @@ function AboutLink({
         if (el?.openExternal) void el.openExternal(target, "default").catch(() => {});
         else window.open(target, "_blank", "noopener,noreferrer");
       }}
-      className="group flex items-start justify-between gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-3 text-left transition-all hover:border-[var(--m-accent)]/30 hover:bg-[var(--m-surface-2)]"
+      className="group flex items-start justify-between gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-3 text-start transition-all hover:border-[var(--m-accent)]/30 hover:bg-[var(--m-surface-2)]"
     >
       <div className="min-w-0">
         <div className="text-[12px] font-medium text-[var(--m-text)] group-hover:text-[var(--m-accent)]">
@@ -377,9 +322,52 @@ export function SettingsModal({
   workspaceRoot = null,
   voiceDiagnostics,
 }: SettingsModalProps) {
+  // The full-window overlay hides the in-app browser's native view while open.
+  useOverlayGuard(!inline);
   const { theme, setTheme } = useTheme();
+  // `tr`, not `t`: several loops in this file already use `t` as a variable.
+  const { t: tr } = useT();
+  // For keys built from runtime ids (keybindings) that the typed `tr` can't check.
+  const trAny = tr as unknown as (key: string, opts?: Record<string, unknown>) => string;
   const [activePage, setActivePage] = useState<SettingsPage>("general");
+  // "Report a problem" panel on the About page.
+  const [reportOpen, setReportOpen] = useState(false);
+  // Workspace passed along with a "Manage memory" request, for when this
+  // Settings view wasn't given one (chat mode).
+  const [memoryWorkspace, setMemoryWorkspace] = useState<string | null>(null);
+
+  // Jump to a page when asked from elsewhere (see lib/settingsNav.ts), both for
+  // a request made just before this view mounted and while it's open.
+  useEffect(() => {
+    const unregister = registerSettingsMount();
+    const apply = (req: SettingsRequest | null) => {
+      if (!req) return;
+      setActivePage(req.page);
+      if (req.page === "about" && req.reportProblem) setReportOpen(true);
+      if (req.page === "memory" && req.workspaceRoot) setMemoryWorkspace(req.workspaceRoot);
+    };
+    apply(takePendingSettingsRequest());
+    const onRequest = (e: Event) => {
+      clearPendingSettingsRequest();
+      apply((e as CustomEvent<SettingsRequest>).detail ?? null);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, onRequest);
+    return () => {
+      unregister();
+      window.removeEventListener(OPEN_SETTINGS_EVENT, onRequest);
+    };
+  }, []);
   const [formatOnSave, setFormatOnSaveState] = useState<boolean>(true);
+  // System prompt: edited as a draft, saved explicitly (button or ⌘↵).
+  const [systemPromptDraft, setSystemPromptDraft] = useState("");
+  const browserBridge = useMemo(getBrowserBridge, []);
+  const [browsingDataState, setBrowsingDataState] = useState<"idle" | "clearing" | "cleared">("idle");
+  const [savedSystemPrompt, setSavedSystemPrompt] = useState("");
+  const systemPromptDirty = systemPromptDraft !== savedSystemPrompt;
+  function saveSystemPrompt() {
+    setSystemPrompt(systemPromptDraft);
+    setSavedSystemPrompt(systemPromptDraft);
+  }
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
   const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
@@ -400,6 +388,9 @@ export function SettingsModal({
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
+    const prompt = getSystemPrompt();
+    setSystemPromptDraft(prompt);
+    setSavedSystemPrompt(prompt);
   }, []);
   const [items, setItems] = useState<CustomShortcut[]>(
     shortcuts.map((s) => ({ ...s }))
@@ -727,7 +718,7 @@ export function SettingsModal({
 
   async function handleTestVoice() {
     if (!electron) return;
-    setVoiceTestStatus("Preparing sample...");
+    setVoiceTestStatus(tr("settings.status.preparingSample"));
     try {
       const current = await electron.getSettings();
       await electron.saveSettings({
@@ -749,17 +740,17 @@ export function SettingsModal({
       const audio = new Audio(url);
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        setVoiceTestStatus("Sample played.");
+        setVoiceTestStatus(tr("settings.status.samplePlayed"));
         setTimeout(() => setVoiceTestStatus(null), 2500);
       };
       audio.onerror = () => {
         URL.revokeObjectURL(url);
-        setVoiceTestStatus("Could not play sample.");
+        setVoiceTestStatus(tr("settings.status.couldNotPlay"));
       };
       await audio.play();
-      setVoiceTestStatus("Playing sample...");
+      setVoiceTestStatus(tr("settings.status.playingSample"));
     } catch (err) {
-      setVoiceTestStatus(err instanceof Error ? err.message : "Voice test failed.");
+      setVoiceTestStatus(err instanceof Error ? err.message : tr("settings.status.voiceTestFailed"));
     }
   }
 
@@ -785,7 +776,7 @@ export function SettingsModal({
   async function handlePreloadModel() {
     if (modelLoading) return;
     setModelLoading(true);
-    setModelStatus("Preparing model…");
+    setModelStatus(tr("settings.status.preparingModel"));
     try {
       await getLocalSttPipeline((p: LocalSttProgress) => {
         if (p.status === "downloading" && p.total) {
@@ -793,18 +784,18 @@ export function SettingsModal({
           const mb  = ((p.loaded ?? 0) / 1024 / 1024).toFixed(1);
           const tot = (p.total / 1024 / 1024).toFixed(1);
           const file = p.file ? ` ${p.file}` : "";
-          setModelStatus(`Downloading${file}… ${pct}% (${mb}/${tot} MB)`);
+          setModelStatus(tr("settings.status.downloading", { file, pct, mb, total: tot }));
         } else if (p.status === "loading") {
-          setModelStatus(p.message ?? "Loading model…");
+          setModelStatus(p.message ?? tr("settings.status.loadingModel"));
         } else if (p.status === "ready") {
-          setModelStatus("Ready to use offline.");
+          setModelStatus(tr("settings.status.readyOffline"));
         } else if (p.status === "error") {
-          setModelStatus(p.message ? `Error: ${p.message}` : "Failed to load model.");
+          setModelStatus(p.message ? tr("settings.status.error", { message: p.message }) : tr("settings.status.failedModel"));
         }
       });
-      setModelStatus("Ready to use offline.");
+      setModelStatus(tr("settings.status.readyOffline"));
     } catch (err) {
-      setModelStatus(err instanceof Error ? `Error: ${err.message}` : "Failed to load model.");
+      setModelStatus(err instanceof Error ? tr("settings.status.error", { message: err.message }) : tr("settings.status.failedModel"));
     } finally {
       setModelLoading(false);
     }
@@ -854,12 +845,12 @@ export function SettingsModal({
     const url = addUrl.trim();
     const label = addLabel.trim();
     if (!trigger || !url) {
-      setAddError("Trigger and URL are required.");
+      setAddError(tr("settings.status.triggerUrlRequired"));
       return;
     }
     const normalized = validateUrl(url);
     if (!normalized) {
-      setAddError("Enter a valid URL.");
+      setAddError(tr("settings.status.invalidUrl"));
       return;
     }
     setAddError("");
@@ -896,12 +887,12 @@ export function SettingsModal({
     const url = editState.url.trim();
     const label = editState.label.trim();
     if (!trigger || !url) {
-      setEditError("Trigger and URL are required.");
+      setEditError(tr("settings.status.triggerUrlRequired"));
       return;
     }
     const normalized = validateUrl(url);
     if (!normalized) {
-      setEditError("Enter a valid URL.");
+      setEditError(tr("settings.status.invalidUrl"));
       return;
     }
     setEditError("");
@@ -933,15 +924,14 @@ export function SettingsModal({
   // ─── Page content renderer ───────────────────────────────────────────────
 
   function renderPageContent() {
-    const meta = PAGE_META[activePage];
 
     return (
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
         <div className="mb-6">
           <h2 className="text-[18px] font-semibold text-[var(--m-text)]">
-            {meta.title}
+            {tr(`settings.pages.${activePage}.title`)}
           </h2>
-          <p className="mt-1 text-[12px] text-[var(--m-text-muted)]">{meta.description}</p>
+          <p className="mt-1 text-[12px] text-[var(--m-text-muted)]">{tr(`settings.pages.${activePage}.description`)}</p>
         </div>
 
         {/* ── General ── */}
@@ -960,18 +950,76 @@ export function SettingsModal({
                     </span>
                   </div>
                   <p className="mt-0.5 text-[12px] text-[var(--m-text-muted)]">
-                    AI desktop assistant. Files, settings, and memory stay
-                    local. Prompts and audio go to the provider you pick (or
-                    fully local with Ollama).
+                    {tr("settings.general.aboutBlurb")}
                   </p>
                 </div>
               </div>
             </div>
 
+            {/* System prompt — added to every chat */}
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.systemPrompt")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
+                {tr("settings.general.systemPromptHint")}
+              </p>
+              <textarea
+                rows={4}
+                value={systemPromptDraft}
+                onChange={(e) => setSystemPromptDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    saveSystemPrompt();
+                  }
+                }}
+                placeholder={tr("settings.general.systemPromptPlaceholder")}
+                className="w-full resize-y rounded-lg border border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-2 text-[12px] leading-5 text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
+              />
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <span className="text-[10px] text-[var(--m-text-faint)]">{tr("settings.general.saveShortcut")}</span>
+                <button
+                  type="button"
+                  onClick={saveSystemPrompt}
+                  disabled={!systemPromptDirty}
+                  className={`rounded-md px-3 py-1 text-[11px] transition-colors ${
+                    systemPromptDirty
+                      ? "bg-[var(--m-accent)] text-[var(--m-bg)] hover:opacity-90"
+                      : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
+                  }`}
+                >
+                  {systemPromptDirty ? tr("settings.save") : tr("settings.saved")}
+                </button>
+              </div>
+            </div>
+
+            {/* In-app browser data */}
+            {browserBridge && (
+              <div>
+                <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.browsingData")}</h3>
+                <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.browsingDataHint")}</p>
+                <button
+                  type="button"
+                  disabled={browsingDataState === "clearing"}
+                  onClick={async () => {
+                    setBrowsingDataState("clearing");
+                    try {
+                      const ok = await browserBridge.clearBrowsingData();
+                      setBrowsingDataState(ok ? "cleared" : "idle");
+                    } catch {
+                      setBrowsingDataState("idle");
+                    }
+                  }}
+                  className="rounded-md border border-[var(--m-border)] px-3 py-1 text-[11px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-50"
+                >
+                  {browsingDataState === "cleared" ? tr("settings.general.browsingDataCleared") : tr("settings.general.clearBrowsingData")}
+                </button>
+              </div>
+            )}
+
             {/* Theme selector — visual preview tiles */}
             <div>
-              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Appearance</h3>
-              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">Choose how Marven looks.</p>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.appearance")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.appearanceHint")}</p>
               <div className="grid grid-cols-2 gap-3">
                 {([
                   {
@@ -1075,7 +1123,7 @@ export function SettingsModal({
                         }`}
                       >
                         <span className={`text-[11px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
-                          {t.label}
+                          {tr(`settings.general.theme_${t.id}`)}
                         </span>
                         {active && (
                           <svg className="h-2.5 w-2.5 text-[var(--m-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -1090,9 +1138,9 @@ export function SettingsModal({
             </div>
 
             <div>
-              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Speech output</h3>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.speechOutput")}</h3>
               <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
-                Choose the voice engine Marven uses when speech is enabled.
+                {tr("settings.general.speechOutputHint")}
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {TTS_PROVIDER_OPTIONS.map((opt) => {
@@ -1103,16 +1151,16 @@ export function SettingsModal({
                       type="button"
                       onClick={() => handleTtsProviderChange(opt.id)}
                       aria-pressed={active}
-                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-left transition-all ${
+                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-start transition-all ${
                         active
                           ? "border-[var(--m-accent)] bg-[var(--m-accent)]/5"
                           : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
                       }`}
                     >
                       <span className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
-                        {opt.label}
+                        {opt.labelKey ? tr(`settings.tts.${opt.labelKey}`) : "ElevenLabs"}
                       </span>
-                      <span className="text-[10px] text-[var(--m-text-faint)]">{opt.hint}</span>
+                      <span className="text-[10px] text-[var(--m-text-faint)]">{tr(`settings.tts.${opt.hintKey}`)}</span>
                     </button>
                   );
                 })}
@@ -1121,7 +1169,7 @@ export function SettingsModal({
                 <div className="mt-3 space-y-2 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-3">
                   <div>
                     <label className="mb-1 block text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                      Voice ID
+                      {tr("settings.general.voiceId")}
                     </label>
                     <input
                       type="text"
@@ -1135,7 +1183,7 @@ export function SettingsModal({
                   <div className="flex items-end gap-2">
                     <div className="min-w-0 flex-1">
                       <label className="mb-1 block text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                        Model
+                        {tr("settings.general.model")}
                       </label>
                       <input
                         type="text"
@@ -1153,7 +1201,7 @@ export function SettingsModal({
                         disabled={!electron}
                         className="rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Save voice
+                        {tr("settings.general.saveVoice")}
                       </button>
                       <button
                         type="button"
@@ -1161,12 +1209,12 @@ export function SettingsModal({
                         disabled={!electron}
                         className="rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2.5 py-1 text-[10px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Test
+                        {tr("settings.general.test")}
                       </button>
                     </div>
                   </div>
                   <p className="text-[10px] text-[var(--m-text-muted)]">
-                    Add your ElevenLabs key under Integrations → Speech APIs. If ElevenLabs is unavailable, Marven falls back to the system voice.
+                    {tr("settings.general.elevenLabsHint")}
                   </p>
                   {voiceTestStatus && (
                     <p className="text-[10px] text-[var(--m-accent)]">{voiceTestStatus}</p>
@@ -1179,16 +1227,16 @@ export function SettingsModal({
                 transcribed. Local uses Whisper-tiny.en in-browser via
                 transformers.js (no key required, model downloads once). */}
             <div>
-              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">Voice recognition</h3>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.voiceRecognition")}</h3>
               <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">
-                Where &quot;Hey Marven&quot; audio is transcribed.
+                {tr("settings.general.voiceRecognitionHint")}
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {([
                   {
                     id: "local" as const,
-                    label: "Local",
-                    hint: "On your machine • Free • Whisper-tiny",
+                    label: tr("settings.general.sttLocal"),
+                    hint: tr("settings.general.sttLocalHint"),
                     icon: (
                       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
                         <rect x="3" y="4" width="18" height="12" rx="2" />
@@ -1198,8 +1246,8 @@ export function SettingsModal({
                   },
                   {
                     id: "groq" as const,
-                    label: "Groq Cloud",
-                    hint: "Faster • Requires API key",
+                    label: tr("settings.general.sttGroq"),
+                    hint: tr("settings.general.sttGroqHint"),
                     icon: (
                       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 014-4 5 5 0 019.584-1A4.5 4.5 0 0119 19H7a4 4 0 01-4-4z" />
@@ -1214,7 +1262,7 @@ export function SettingsModal({
                       type="button"
                       onClick={() => handleSttProviderChange(opt.id)}
                       aria-pressed={active}
-                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-left transition-all ${
+                      className={`flex flex-col gap-1.5 rounded-lg border-2 p-3 text-start transition-all ${
                         active
                           ? "border-[var(--m-accent)] bg-[var(--m-accent)]/5"
                           : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
@@ -1233,7 +1281,7 @@ export function SettingsModal({
                 <>
                   <div className="mt-3">
                     <p className="mb-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                      Local model
+                      {tr("settings.general.localModel")}
                     </p>
                     <div className="space-y-1.5">
                       {LOCAL_MODEL_OPTIONS.map((opt) => {
@@ -1244,7 +1292,7 @@ export function SettingsModal({
                             type="button"
                             onClick={() => handleLocalModelChange(opt.id)}
                             aria-pressed={active}
-                            className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                            className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-start transition-colors ${
                               active
                                 ? "border-[var(--m-accent)] bg-[var(--m-accent)]/8"
                                 : "border-[var(--m-border-subtle)] hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)]"
@@ -1265,7 +1313,7 @@ export function SettingsModal({
                               <div className={`text-[12px] font-medium ${active ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
                                 {opt.label}
                               </div>
-                              <div className="text-[10px] text-[var(--m-text-faint)]">{opt.hint}</div>
+                              <div className="text-[10px] text-[var(--m-text-faint)]">{tr(`settings.localModels.${opt.hintKey}`)}</div>
                             </div>
                           </button>
                         );
@@ -1274,7 +1322,7 @@ export function SettingsModal({
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <p className="text-[10px] text-[var(--m-text-muted)]">
-                      {modelStatus ?? "Model downloads on first use, then runs offline."}
+                      {modelStatus ?? tr("settings.general.modelDownloads")}
                     </p>
                     <button
                       type="button"
@@ -1282,30 +1330,30 @@ export function SettingsModal({
                       disabled={modelLoading}
                       className="shrink-0 rounded-md border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2.5 py-1 text-[10px] text-[var(--m-accent)] transition-colors hover:bg-[var(--m-accent)]/15 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      {modelLoading ? "Loading…" : "Preload model"}
+                      {modelLoading ? tr("settings.general.loading") : tr("settings.general.preloadModel")}
                     </button>
                   </div>
                 </>
               )}
               {sttProvider === "groq" && (
                 <p className="mt-2 text-[10px] text-[var(--m-text-muted)]">
-                  Requires a Groq API key in Integrations → Model APIs. Audio is sent to Groq Whisper.
+                  {tr("settings.general.groqSttHint")}
                 </p>
               )}
               <div className="mt-4 flex items-center justify-between py-2">
                 <div>
-                  <p className="text-[12px] text-[var(--m-text)]">Custom wake word</p>
+                  <p className="text-[12px] text-[var(--m-text)]">{tr("settings.general.customWakeWord")}</p>
                   <p className="text-[11px] text-[var(--m-text-faint)]">
-                    Phrase to trigger voice in addition to &quot;Hey Marven&quot; (leave blank to use default only)
+                    {tr("settings.general.customWakeWordHint")}
                   </p>
                 </div>
-                <div className="ml-4 flex items-center gap-1.5">
+                <div className="ms-4 flex items-center gap-1.5">
                   <input
                     type="text"
                     value={customWakeWord}
                     onChange={(e) => { setCustomWakeWord(e.target.value); setCustomWakeWordSaved(false); }}
                     onKeyDown={(e) => { if (e.key === "Enter") handleSaveCustomWakeWord(); }}
-                    placeholder="e.g. Hey Assistant"
+                    placeholder={tr("settings.general.customWakeWordPlaceholder")}
                     className="w-36 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] px-2 py-1 text-[11px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-text-faint)]"
                   />
                   <button
@@ -1317,7 +1365,7 @@ export function SettingsModal({
                         : "bg-[var(--m-accent-soft)] text-[var(--m-accent)] hover:bg-[var(--m-accent)]/20"
                     }`}
                   >
-                    {customWakeWordSaved ? <span className="inline-flex items-center gap-1">Saved <CheckIcon className="h-3 w-3" /></span> : "Save"}
+                    {customWakeWordSaved ? <span className="inline-flex items-center gap-1">{tr("settings.saved")} <CheckIcon className="h-3 w-3" /></span> : tr("settings.save")}
                   </button>
                 </div>
               </div>
@@ -1328,10 +1376,9 @@ export function SettingsModal({
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Format on save</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.formatOnSave")}</h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    Run Prettier on JS/TS, CSS, JSON, Markdown, HTML, and YAML files when
-                    saving. Falls back to the original on syntax errors.
+                    {tr("settings.general.formatOnSaveHint")}
                   </p>
                 </div>
                 <button
@@ -1349,7 +1396,7 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      formatOnSave ? "translate-x-5" : "translate-x-1"
+                      formatOnSave ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
@@ -1360,9 +1407,9 @@ export function SettingsModal({
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Require approval before writing files</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.requireApproval")}</h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    Show a diff preview and ask before write_file or apply_patch execute. Adds a confirmation step for every agent write.
+                    {tr("settings.general.requireApprovalHint")}
                   </p>
                 </div>
                 <button
@@ -1380,7 +1427,7 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      requireWriteApproval ? "translate-x-5" : "translate-x-1"
+                      requireWriteApproval ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
@@ -1389,10 +1436,10 @@ export function SettingsModal({
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <label className="block text-[13px] font-medium text-[var(--m-text)]" htmlFor="agent-safety-profile">
-                Agent safety profile
+                {tr("settings.general.safetyProfile")}
               </label>
               <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                Controls whether this workspace may write files, run commands, or use MCP tools.
+                {tr("settings.general.safetyProfileHint")}
               </p>
               <select
                 id="agent-safety-profile"
@@ -1405,19 +1452,19 @@ export function SettingsModal({
                 }}
                 className="mt-3 w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] outline-none focus:border-[var(--m-accent)]/60"
               >
-                <option value="read-only">Read only — no writes, commands, Git, or MCP</option>
-                <option value="ask-before-write">Ask before writes — commands and Git remain approved</option>
-                <option value="ask-before-command">Ask before every write and command</option>
-                <option value="trusted">Trusted — no agent approval prompts</option>
+                <option value="read-only">{tr("settings.general.safetyReadOnly")}</option>
+                <option value="ask-before-write">{tr("settings.general.safetyAskBeforeWrite")}</option>
+                <option value="ask-before-command">{tr("settings.general.safetyAskBeforeCommand")}</option>
+                <option value="trusted">{tr("settings.general.safetyTrusted")}</option>
               </select>
             </div>
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Auto-verify agent changes</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.autoVerify")}</h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    After the agent edits files, automatically run verification commands in the workspace and show the results inline.
+                    {tr("settings.general.autoVerifyHint")}
                   </p>
                 </div>
                 <button
@@ -1436,14 +1483,14 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      agentAutoVerifyEnabled ? "translate-x-5" : "translate-x-1"
+                      agentAutoVerifyEnabled ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
               </div>
               <div className="mt-3">
                 <label className="mb-1 block text-[11px] text-[var(--m-text-muted)]">
-                  Verification commands
+                  {tr("settings.general.verifyCommands")}
                 </label>
                 <textarea
                   value={agentAutoVerifyCommands}
@@ -1453,23 +1500,23 @@ export function SettingsModal({
                     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                   }}
                   rows={3}
-                  placeholder={"Leave blank to auto-detect lint, test, and build scripts.\nOne command per line, for example:\nnpm test"}
+                  placeholder={tr("settings.general.verifyPlaceholder")}
                   className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
                 />
                 <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
-                  Blank means smart mode: Marven looks for `lint`, `test`, and `build` scripts in `package.json`.
+                  {tr("settings.general.verifyHint")}
                 </p>
               </div>
             </div>
 
             {/* Agent section */}
-            <h3 className="text-[13px] font-medium text-[var(--m-text)]">Agent</h3>
+            <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.agent")}</h3>
 
             {/* Model fallback chain */}
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
-              <h3 className="text-[13px] font-medium text-[var(--m-text)]">Model failover</h3>
+              <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.failover")}</h3>
               <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                When the selected model is rate-limited or unavailable, the agent automatically continues with the next model in this list instead of failing. Nothing happens if the list is empty.
+                {tr("settings.general.failoverHint")}
               </p>
               <div className="mt-3">
                 <textarea
@@ -1484,11 +1531,11 @@ export function SettingsModal({
                     window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                   }}
                   rows={3}
-                  placeholder={"One per line as provider:model — tried top to bottom, for example:\ngroq:llama-3.1-8b-instant\nopenai:gpt-4o-mini"}
+                  placeholder={tr("settings.general.failoverPlaceholder")}
                   className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
                 />
                 <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
-                  Providers: groq, openai, anthropic, openrouter, nim, ollama. Each target needs its API key set. Switching is announced inline in the conversation.
+                  {tr("settings.general.failoverProviders")}
                 </p>
               </div>
             </div>
@@ -1497,10 +1544,9 @@ export function SettingsModal({
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">Lite agent mode</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.liteMode")}</h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    Automatically uses a reduced tool set and shorter instructions.
-                    On by default for local models.
+                    {tr("settings.general.liteModeHint")}
                   </p>
                 </div>
                 <button
@@ -1519,7 +1565,7 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      liteAgentMode ? "translate-x-5" : "translate-x-1"
+                      liteAgentMode ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
@@ -1534,11 +1580,10 @@ export function SettingsModal({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h3 className="text-[13px] font-medium text-[var(--m-text)]">
-                    Codebase indexing
+                    {tr("settings.general.indexing")}
                   </h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    Lets the agent search your code semantically. Uses Ollama
-                    (nomic-embed-text). Index lives at ~/.marven/index/.
+                    {tr("settings.general.indexingHint")}
                   </p>
                 </div>
                 <button
@@ -1575,30 +1620,32 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      codebaseIndexEnabled ? "translate-x-5" : "translate-x-1"
+                      codebaseIndexEnabled ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
               </div>
               <div className="mt-3 text-[11px] text-[var(--m-text-faint)]">
-                Status:{" "}
+                {tr("settings.general.indexStatus")}{" "}
                 {indexStatus.running
-                  ? "Indexing…"
+                  ? tr("settings.general.indexRunning")
                   : indexStatus.stats
-                    ? "Ready"
-                    : "Idle"}
+                    ? tr("settings.general.indexReady")
+                    : tr("settings.general.indexIdle")}
                 {indexStatus.stats && (
                   <>
                     {" · "}
-                    {indexStatus.stats.fileCount} files ·{" "}
-                    {indexStatus.stats.chunkCount} chunks ·{" "}
-                    {(indexStatus.stats.dbSizeBytes / 1_000_000).toFixed(1)} MB
+                    {tr("settings.general.indexStats", {
+                      files: indexStatus.stats.fileCount,
+                      chunks: indexStatus.stats.chunkCount,
+                      mb: (indexStatus.stats.dbSizeBytes / 1_000_000).toFixed(1),
+                    })}
                   </>
                 )}
               </div>
               <div className="mt-3">
                 <label className="mb-1 block text-[11px] text-[var(--m-text-muted)]" htmlFor="index-exclude-patterns">
-                  Additional exclusions (one glob per line)
+                  {tr("settings.general.exclusions")}
                 </label>
                 <textarea
                   id="index-exclude-patterns"
@@ -1617,7 +1664,7 @@ export function SettingsModal({
                   placeholder={"coverage/\n*.generated.*\nlocal-notes/"}
                   className="w-full resize-none rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--m-text)] outline-none placeholder:text-[var(--m-text-faint)] focus:border-[var(--m-accent)]/60"
                 />
-                <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">Marven also honors .gitignore and always excludes common secret files.</p>
+                <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">{tr("settings.general.exclusionsHint")}</p>
               </div>
               <div className="mt-2 flex gap-2">
                 <button
@@ -1633,7 +1680,7 @@ export function SettingsModal({
                     }).catch(() => {});
                   }}
                 >
-                  Reindex now
+                  {tr("settings.general.reindex")}
                 </button>
                 <button
                   type="button"
@@ -1656,7 +1703,7 @@ export function SettingsModal({
                     });
                   }}
                 >
-                  Clear index
+                  {tr("settings.general.clearIndex")}
                 </button>
               </div>
             </div>
@@ -1669,10 +1716,10 @@ export function SettingsModal({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h3 className="text-[13px] font-medium text-[var(--m-text)]">
-                    Inline completions
+                    {tr("settings.general.inlineCompletions")}
                   </h3>
                   <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
-                    Ghost-text suggestions appear as you type in the editor. Tab to accept, Esc to dismiss.
+                    {tr("settings.general.inlineCompletionsHint")}
                   </p>
                 </div>
                 <button
@@ -1691,7 +1738,7 @@ export function SettingsModal({
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                      inlineCompletionsEnabled ? "translate-x-5" : "translate-x-1"
+                      inlineCompletionsEnabled ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
                     }`}
                   />
                 </button>
@@ -1700,7 +1747,7 @@ export function SettingsModal({
               {inlineCompletionsEnabled && (
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <div>
-                    <label className="block text-[11px] text-[var(--m-text-faint)]">Provider</label>
+                    <label className="block text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.provider")}</label>
                     <select
                       className="mt-1 w-full rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] px-2 py-1 text-[12px] text-[var(--m-text)]"
                       value={inlineCompletionProvider}
@@ -1711,9 +1758,9 @@ export function SettingsModal({
                         window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                       }}
                     >
-                      <option value="ollama">Ollama (local)</option>
-                      <option value="lmstudio">LM Studio (local)</option>
-                      <option value="llamaserver">llama-server (local)</option>
+                      <option value="ollama">{tr("settings.general.localSuffix", { name: "Ollama" })}</option>
+                      <option value="lmstudio">{tr("settings.general.localSuffix", { name: "LM Studio" })}</option>
+                      <option value="llamaserver">{tr("settings.general.localSuffix", { name: "llama-server" })}</option>
                       <option value="openai">OpenAI</option>
                       <option value="anthropic">Anthropic</option>
                       <option value="groq">Groq</option>
@@ -1724,11 +1771,11 @@ export function SettingsModal({
 
                   <div>
                     <label className="block text-[11px] text-[var(--m-text-faint)]">
-                      Model
+                      {tr("settings.general.model")}
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. qwen2.5-coder:1.5b"
+                      placeholder={tr("settings.general.modelPlaceholder")}
                       className="mt-1 w-full rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] px-2 py-1 text-[12px] text-[var(--m-text)]"
                       value={inlineCompletionModel}
                       onChange={(e) => setInlineCompletionModel(e.target.value)}
@@ -1738,13 +1785,13 @@ export function SettingsModal({
                       }}
                     />
                     <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">
-                      Tip: small, fast models work best. Qwen2.5-Coder and DeepSeek-Coder support FIM natively.
+                      {tr("settings.general.modelTip")}
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-[11px] text-[var(--m-text-faint)]">
-                      Trigger delay: {inlineCompletionDebounceMs} ms
+                      {tr("settings.general.triggerDelay", { ms: inlineCompletionDebounceMs })}
                     </label>
                     <input
                       type="range"
@@ -1772,8 +1819,7 @@ export function SettingsModal({
                       return (
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-[11px] text-[var(--m-text-faint)]">
-                            Stats this session: {s.accepts} accepted · {s.dismisses} dismissed ·{" "}
-                            {Math.round(s.rate * 100)}% accept rate
+                            {tr("settings.general.inlineStats", { accepts: s.accepts, dismisses: s.dismisses, rate: Math.round(s.rate * 100) })}
                           </div>
                           <button
                             type="button"
@@ -1783,7 +1829,7 @@ export function SettingsModal({
                               setInlineStatsTick((t) => t + 1);
                             }}
                           >
-                            Reset stats
+                            {tr("settings.general.resetStats")}
                           </button>
                         </div>
                       );
@@ -1799,16 +1845,19 @@ export function SettingsModal({
         {activePage === "ai-backends" && (
           <div className="flex flex-col gap-0">
             {/* Cloud providers */}
-            <div className="mb-1 px-1 pt-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
-              Cloud
+            <div className="mb-2 px-1 pt-1">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--m-cloud-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--m-cloud)]">
+                <CloudIcon className="h-3 w-3" />
+                {tr("settings.backends.cloud")}
+              </span>
             </div>
             {([
-              { id: "groq",       label: "Groq",       icon: <BoltIcon className="h-4 w-4" />,    meta: "5 models", badge: "cloud" },
-              { id: "openai",     label: "OpenAI",     icon: <span className="text-base">◈</span>, meta: "4 models", badge: "cloud" },
-              { id: "anthropic",  label: "Anthropic",  icon: <SparkleIcon className="h-4 w-4" />, meta: "3 models", badge: "cloud" },
-              { id: "nim",        label: "NIM",        icon: <span className="text-base">◈</span>, meta: "5 models", badge: "cloud" },
-              { id: "openrouter", label: "OpenRouter", icon: <span className="text-base">◉</span>, meta: "5 models", badge: "cloud" },
-            ] as const).map(({ id, label, icon, meta, badge }) => (
+              { id: "groq",       label: "Groq",       icon: <BoltIcon className="h-4 w-4" />,    models: 5, badge: "cloud" },
+              { id: "openai",     label: "OpenAI",     icon: <span className="text-base">◈</span>, models: 4, badge: "cloud" },
+              { id: "anthropic",  label: "Anthropic",  icon: <SparkleIcon className="h-4 w-4" />, models: 3, badge: "cloud" },
+              { id: "nim",        label: "NIM",        icon: <span className="text-base">◈</span>, models: 5, badge: "cloud" },
+              { id: "openrouter", label: "OpenRouter", icon: <span className="text-base">◉</span>, models: 5, badge: "cloud" },
+            ] as const).map(({ id, label, icon, models, badge }) => (
               <div
                 key={id}
                 className="flex items-center gap-3 border-b border-[var(--m-border-subtle)] py-2.5"
@@ -1819,11 +1868,11 @@ export function SettingsModal({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
-                    <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(97,175,239,0.1)] text-[#61afef]">
-                      {badge}
+                    <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[var(--m-cloud-soft)] text-[var(--m-cloud)]">
+                      {tr(`settings.backends.${badge}`)}
                     </span>
                   </div>
-                  <div className="text-[10px] text-[var(--m-text-faint)]">{meta}</div>
+                  <div className="text-[10px] text-[var(--m-text-faint)]">{tr("settings.backends.models", { count: models })}</div>
                 </div>
                 <button
                   type="button"
@@ -1839,7 +1888,7 @@ export function SettingsModal({
                 >
                   <span
                     className={`absolute top-[2px] h-[13px] w-[13px] rounded-full bg-white transition-all ${
-                      enabledProviders[id] ? "left-[17px]" : "left-[2px]"
+                      enabledProviders[id] ? "start-[17px]" : "start-[2px]"
                     }`}
                   />
                 </button>
@@ -1847,8 +1896,11 @@ export function SettingsModal({
             ))}
 
             {/* Local backends */}
-            <div className="mb-1 mt-4 px-1 text-[9px] font-bold uppercase tracking-widest text-[var(--m-text-faint)]">
-              Local
+            <div className="mb-2 mt-5 px-1">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--m-local-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--m-local)]">
+                <HexagonIcon className="h-3 w-3" />
+                {tr("settings.backends.local")}
+              </span>
             </div>
             {([
               { id: "ollama",      label: "Ollama",       icon: <CubeIcon className="h-4 w-4" />,    badge: "local", hasUrl: false },
@@ -1866,14 +1918,14 @@ export function SettingsModal({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[12px] font-semibold text-[var(--m-text)]">{label}</span>
-                      <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[rgba(152,195,121,0.1)] text-[#98c379]">
-                        {badge}
+                      <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-widest bg-[var(--m-local-soft)] text-[var(--m-local)]">
+                        {tr(`settings.backends.${badge}`)}
                       </span>
                     </div>
                     <div className="text-[10px] text-[var(--m-text-faint)]">
-                      {backendStatus[id] === "checking" && "Checking…"}
-                      {backendStatus[id] === "live"     && <span className="text-[#98c379]">● running</span>}
-                      {backendStatus[id] === "down"     && <span className="inline-flex items-center gap-1 text-[#555]"><CloseIcon className="h-2.5 w-2.5" /> not running</span>}
+                      {backendStatus[id] === "checking" && tr("settings.backends.checking")}
+                      {backendStatus[id] === "live"     && <span className="text-[var(--m-local)]">● {tr("settings.backends.running")}</span>}
+                      {backendStatus[id] === "down"     && <span className="inline-flex items-center gap-1 text-[#555]"><CloseIcon className="h-2.5 w-2.5" /> {tr("settings.backends.notRunning")}</span>}
                     </div>
                   </div>
                   <button
@@ -1890,7 +1942,7 @@ export function SettingsModal({
                   >
                     <span
                       className={`absolute top-[2px] h-[13px] w-[13px] rounded-full bg-white transition-all ${
-                        enabledProviders[id] ? "left-[17px]" : "left-[2px]"
+                        enabledProviders[id] ? "start-[17px]" : "start-[2px]"
                       }`}
                     />
                   </button>
@@ -1919,11 +1971,11 @@ export function SettingsModal({
                           else setLlamaServerUrl(persistedLlamaServerUrlRef.current);
                         }
                       }}
-                      className="ml-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
+                      className="ms-11 rounded border border-[var(--m-border)] bg-[var(--m-surface-raised)] px-2 py-1 font-mono text-[11px] text-[var(--m-text-muted)] focus:outline-none focus:border-[var(--m-accent)]"
                       spellCheck={false}
                     />
                     {urlError && (
-                      <p className="ml-11 mt-0.5 text-[10px] text-[#e06c75]">{urlError}</p>
+                      <p className="ms-11 mt-0.5 text-[10px] text-[#e06c75]">{urlError}</p>
                     )}
                   </>
                 )}
@@ -1938,7 +1990,7 @@ export function SettingsModal({
             {!electron && (
               <div className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] px-4 py-3">
                 <p className="text-[12px] text-[var(--m-text-muted)]">
-                  Key storage is only available in the packaged desktop app.
+                  {tr("settings.keys.desktopOnly")}
                 </p>
               </div>
             )}
@@ -1949,12 +2001,12 @@ export function SettingsModal({
                   Groq
                 </h3>
                 <p className="mt-1 text-[11px] text-[var(--m-text-muted)]">
-                  Cloud chat and tools; also used when Voice recognition is set to Groq Cloud (Whisper).
+                  {tr("settings.keys.groqHint")}
                 </p>
               </div>
               <div>
                 <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-groq">
-                  API key
+                  {tr("settings.keys.apiKey")}
                 </label>
                 <input
                   id="key-groq"
@@ -1973,7 +2025,7 @@ export function SettingsModal({
 
             <section className="space-y-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--m-text-faint)]">
-                Other model providers
+                {tr("settings.keys.otherProviders")}
               </h3>
 
               <div>
@@ -1989,7 +2041,7 @@ export function SettingsModal({
                   disabled={!electron}
                   className={inputClass}
                 />
-                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">build.nvidia.com — Llama 3.1 70B and more</p>
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">{tr("settings.keys.nimHint")}</p>
               </div>
 
               <div>
@@ -2042,7 +2094,7 @@ export function SettingsModal({
 
               <div>
                 <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-ollama-url">
-                  Ollama base URL
+                  {tr("settings.keys.ollamaUrl")}
                 </label>
                 <input
                   id="key-ollama-url"
@@ -2053,7 +2105,7 @@ export function SettingsModal({
                   disabled={!electron}
                   className={inputClass}
                 />
-                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">Change only if Ollama runs on another host</p>
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">{tr("settings.keys.ollamaUrlHint")}</p>
               </div>
             </section>
 
@@ -2065,10 +2117,10 @@ export function SettingsModal({
             >
               {keysSaved ? (
                 <span className="inline-flex items-center justify-center gap-1.5">
-                  Saved <CheckIcon className="h-3.5 w-3.5" />
+                  {tr("settings.saved")} <CheckIcon className="h-3.5 w-3.5" />
                 </span>
               ) : (
-                "Save credentials"
+                tr("settings.keys.saveCredentials")
               )}
             </button>
           </div>
@@ -2080,15 +2132,20 @@ export function SettingsModal({
             {!electron && (
               <div className="rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] px-4 py-3">
                 <p className="text-[12px] text-[var(--m-text-muted)]">
-                  Key storage is only available in the packaged desktop app.
+                  {tr("settings.keys.desktopOnly")}
                 </p>
               </div>
             )}
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)]/80 px-4 py-3">
               <p className="text-[11px] leading-relaxed text-[var(--m-text-muted)]">
-                <span className="font-medium text-[var(--m-text)]">Groq speech-to-text</span> uses the same Groq API key as chat. Configure it under{" "}
-                <span className="text-[var(--m-accent)]">Integrations → Model APIs</span> when Voice recognition is set to Groq Cloud.
+                <Trans
+                  i18nKey="settings.keys.groqStt"
+                  components={{
+                    strong: <span className="font-medium text-[var(--m-text)]" />,
+                    accent: <span className="text-[var(--m-accent)]" />,
+                  }}
+                />
               </p>
             </div>
 
@@ -2098,12 +2155,12 @@ export function SettingsModal({
                   ElevenLabs
                 </h3>
                 <p className="mt-1 text-[11px] text-[var(--m-text-muted)]">
-                  Required when Speech output is set to ElevenLabs in General. Voice ID and model stay on the General page with the other voice controls.
+                  {tr("settings.keys.elevenLabsRequired")}
                 </p>
               </div>
               <div>
                 <label className="mb-2 block text-[11px] font-medium text-[var(--m-text)]" htmlFor="key-elevenlabs">
-                  API key
+                  {tr("settings.keys.apiKey")}
                 </label>
                 <input
                   id="key-elevenlabs"
@@ -2114,7 +2171,7 @@ export function SettingsModal({
                   disabled={!electron}
                   className={inputClass}
                 />
-                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">elevenlabs.io — realistic cloud voices</p>
+                <p className="mt-1.5 text-[10px] text-[var(--m-text-faint)]">{tr("settings.keys.elevenLabsSite")}</p>
               </div>
             </section>
 
@@ -2126,10 +2183,10 @@ export function SettingsModal({
             >
               {keysSaved ? (
                 <span className="inline-flex items-center justify-center gap-1.5">
-                  Saved <CheckIcon className="h-3.5 w-3.5" />
+                  {tr("settings.saved")} <CheckIcon className="h-3.5 w-3.5" />
                 </span>
               ) : (
-                "Save credentials"
+                tr("settings.keys.saveCredentials")
               )}
             </button>
           </div>
@@ -2140,7 +2197,7 @@ export function SettingsModal({
           <div className="space-y-2">
             {mcpList.length === 0 && (
               <p className="px-1 text-[12px] text-[var(--m-text-faint)]">
-                No MCP servers configured.
+                {tr("settings.connectors.none")}
               </p>
             )}
             {mcpList.map((server) => (
@@ -2197,20 +2254,20 @@ export function SettingsModal({
                 onClick={() => setShowAddMCP(true)}
                 className="mt-2 w-full rounded-md border border-dashed border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               >
-                + Add server
+                {tr("settings.connectors.addServer")}
               </button>
             ) : (
               <div className="mt-2 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] p-3 space-y-2">
                 <input
                   value={newMcpName}
                   onChange={(e) => setNewMcpName(e.target.value)}
-                  placeholder="Name (e.g. filesystem)"
+                  placeholder={tr("settings.connectors.namePlaceholder")}
                   className="w-full rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
                 <input
                   value={newMcpCommand}
                   onChange={(e) => setNewMcpCommand(e.target.value)}
-                  placeholder="Command (e.g. npx @modelcontextprotocol/server-filesystem ~/)"
+                  placeholder={tr("settings.connectors.commandPlaceholder")}
                   className="w-full rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] font-mono text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
                 {mcpError && (
@@ -2227,17 +2284,17 @@ export function SettingsModal({
                     }}
                     className="text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] px-3 py-1"
                   >
-                    Cancel
+                    {tr("settings.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={async () => {
                       if (!newMcpName.trim()) {
-                        setMcpError("Name is required");
+                        setMcpError(tr("settings.connectors.nameRequired"));
                         return;
                       }
                       if (!newMcpCommand.trim()) {
-                        setMcpError("Command is required");
+                        setMcpError(tr("settings.connectors.commandRequired"));
                         return;
                       }
                       const newServer: MCPServer = {
@@ -2257,7 +2314,7 @@ export function SettingsModal({
                       });
                       const data = await res.json();
                       if (!data.ok) {
-                        setMcpError(data.error ?? "Failed to connect");
+                        setMcpError(data.error ?? tr("settings.connectors.failedConnect"));
                         setMcpLoading(null);
                         return;
                       }
@@ -2276,7 +2333,7 @@ export function SettingsModal({
                     }}
                     className="rounded border border-[#d19a66]/30 bg-[#d19a66]/10 px-3 py-1 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20"
                   >
-                    Save &amp; Connect
+                    {tr("settings.connectors.saveConnect")}
                   </button>
                 </div>
               </div>
@@ -2286,13 +2343,22 @@ export function SettingsModal({
 
         {/* ── Browser ── */}
         {activePage === "browser" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.searchEngine")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.searchEngineHint")}</p>
+              <SearchEnginePicker />
+            </div>
+            <div>
+              <h3 className="mb-1 text-[13px] font-medium text-[var(--m-text)]">{tr("settings.browser.openLinks")}</h3>
+              <p className="mb-3 text-[11px] text-[var(--m-text-faint)]">{tr("settings.browser.openLinksHint")}</p>
+              <div className="space-y-4">
             {(
               [
                 {
                   id: "default",
-                  label: "Default",
-                  description: "System default browser",
+                  label: tr("settings.browser.default"),
+                  description: tr("settings.browser.defaultHint"),
                 },
                 {
                   id: "chrome",
@@ -2307,7 +2373,7 @@ export function SettingsModal({
                 {
                   id: "safari",
                   label: "Safari",
-                  description: "Built-in macOS browser",
+                  description: tr("settings.browser.safariHint"),
                 },
                 {
                   id: "edge",
@@ -2323,7 +2389,7 @@ export function SettingsModal({
                   key={id}
                   type="button"
                   onClick={() => handleSaveBrowser(id)}
-                  className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 transition-all text-left ${
+                  className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 transition-all text-start ${
                     active
                       ? "border-[#d19a66]/50 bg-[#d19a66]/08"
                       : "border-[var(--m-border-subtle)] bg-[var(--m-surface)] hover:border-[var(--m-border)] hover:bg-[var(--m-surface-2)]"
@@ -2355,6 +2421,8 @@ export function SettingsModal({
                 </button>
               );
             })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2380,32 +2448,32 @@ export function SettingsModal({
                     d="M12 4.5v15m7.5-7.5h-15"
                   />
                 </svg>
-                Add New Shortcut
+                {tr("settings.shortcuts.addNew")}
               </button>
             ) : (
               <div className="mb-4 space-y-2.5 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4">
                 <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-muted)]">
-                  New Shortcut
+                  {tr("settings.shortcuts.newShortcut")}
                 </p>
                 <input
                   type="text"
                   value={addLabel}
                   onChange={(e) => setAddLabel(e.target.value)}
-                  placeholder="Label (optional, e.g. My Dashboard)"
+                  placeholder={tr("settings.shortcuts.labelPlaceholder")}
                   className={inputClass}
                 />
                 <input
                   type="text"
                   value={addTrigger}
                   onChange={(e) => setAddTrigger(e.target.value)}
-                  placeholder='Trigger phrase (e.g. "open work")'
+                  placeholder={tr("settings.shortcuts.triggerPlaceholder")}
                   className={inputClass}
                 />
                 <input
                   type="text"
                   value={addUrl}
                   onChange={(e) => setAddUrl(e.target.value)}
-                  placeholder="URL (e.g. https://example.com)"
+                  placeholder={tr("settings.shortcuts.urlPlaceholder")}
                   className={inputClass}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAdd();
@@ -2422,7 +2490,7 @@ export function SettingsModal({
                     onClick={handleAdd}
                     className="flex-1 rounded-lg bg-[#d19a66/12] border border-[#d19a66/35] py-2 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66/20]"
                   >
-                    Add
+                    {tr("settings.shortcuts.add")}
                   </button>
                   <button
                     type="button"
@@ -2435,7 +2503,7 @@ export function SettingsModal({
                     }}
                     className="rounded-lg px-4 py-2 font-mono text-[11px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
                   >
-                    Cancel
+                    {tr("settings.cancel")}
                   </button>
                 </div>
               </div>
@@ -2459,10 +2527,10 @@ export function SettingsModal({
                   </svg>
                 </div>
                 <p className="font-mono text-[11px] uppercase tracking-wider text-[var(--m-text-faint)]">
-                  No shortcuts yet.
+                  {tr("settings.shortcuts.empty")}
                 </p>
                 <p className="mt-1 font-mono text-[10px] text-[var(--m-text-faint)]">
-                  Add your first one above.
+                  {tr("settings.shortcuts.emptyHint")}
                 </p>
               </div>
             ) : (
@@ -2478,7 +2546,7 @@ export function SettingsModal({
                         className="space-y-2.5 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-4"
                       >
                         <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--m-text-muted)]">
-                          Edit Shortcut
+                          {tr("settings.shortcuts.edit")}
                         </p>
                         <input
                           type="text"
@@ -2486,7 +2554,7 @@ export function SettingsModal({
                           onChange={(e) =>
                             setEditState({ ...editState, label: e.target.value })
                           }
-                          placeholder="Label (optional)"
+                          placeholder={tr("settings.shortcuts.labelOptional")}
                           className={inputClass}
                         />
                         <input
@@ -2498,7 +2566,7 @@ export function SettingsModal({
                               trigger: e.target.value,
                             })
                           }
-                          placeholder="Trigger phrase"
+                          placeholder={tr("settings.shortcuts.trigger")}
                           className={inputClass}
                         />
                         <input
@@ -2507,7 +2575,7 @@ export function SettingsModal({
                           onChange={(e) =>
                             setEditState({ ...editState, url: e.target.value })
                           }
-                          placeholder="URL"
+                          placeholder={tr("settings.shortcuts.url")}
                           className={inputClass}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") handleEditSave();
@@ -2524,7 +2592,7 @@ export function SettingsModal({
                             onClick={handleEditSave}
                             className="flex-1 rounded-lg bg-[#d19a66/12] border border-[#d19a66/35] py-2 font-mono text-[11px] tracking-wider text-[#d19a66] uppercase transition-all hover:bg-[#d19a66/20]"
                           >
-                            Save
+                            {tr("settings.save")}
                           </button>
                           <button
                             type="button"
@@ -2534,7 +2602,7 @@ export function SettingsModal({
                             }}
                             className="rounded-lg px-4 py-2 font-mono text-[11px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
                           >
-                            Cancel
+                            {tr("settings.cancel")}
                           </button>
                         </div>
                       </div>
@@ -2546,7 +2614,7 @@ export function SettingsModal({
                       key={i}
                       className="flex items-center gap-3 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] px-4 py-3"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#383838] bg-[#d19a66]/10 font-mono text-[12px] font-medium text-[#d19a66]">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--m-border)] bg-[#d19a66]/10 font-mono text-[12px] font-medium text-[#d19a66]">
                         {avatarChar}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -2565,7 +2633,7 @@ export function SettingsModal({
                           type="button"
                           onClick={() => startEdit(i)}
                           className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-accent-soft)] hover:text-[var(--m-accent)]"
-                          aria-label="Edit shortcut"
+                          aria-label={tr("settings.shortcuts.editAria")}
                         >
                           <svg
                             className="h-3.5 w-3.5"
@@ -2585,7 +2653,7 @@ export function SettingsModal({
                           type="button"
                           onClick={() => handleDelete(i)}
                           className="rounded-lg p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-red-950/30 hover:text-red-500/80"
-                          aria-label="Delete shortcut"
+                          aria-label={tr("settings.shortcuts.deleteAria")}
                         >
                           <svg
                             className="h-3.5 w-3.5"
@@ -2630,13 +2698,13 @@ export function SettingsModal({
                   >
                     {/* Label */}
                     <span className="min-w-[160px] flex-1 text-[12px] text-[var(--m-text)]">
-                      {kb.label}
+                      {trAny(`settings.keyboard.actions.${kb.id}`, { defaultValue: kb.label })}
                     </span>
 
                     {/* Binding chip */}
                     <button
                       type="button"
-                      title={isCapturing ? "Press a key combo, or Escape to cancel" : "Click to reassign"}
+                      title={isCapturing ? tr("settings.keyboard.capturing") : tr("settings.keyboard.reassign")}
                       onClick={() => {
                         if (isCapturing) {
                           setCapturingId(null);
@@ -2670,7 +2738,7 @@ export function SettingsModal({
                           : "border-[var(--m-border)] bg-[var(--m-surface-2)] text-[var(--m-text)] hover:border-[#d19a66]/40 hover:bg-[#d19a66]/5"
                       }`}
                     >
-                      {isCapturing ? "Press key…" : current}
+                      {isCapturing ? tr("settings.keyboard.pressKey") : current}
                     </button>
 
                     {/* Reset button — only shown when overridden */}
@@ -2678,7 +2746,7 @@ export function SettingsModal({
                       {isOverridden && (
                         <button
                           type="button"
-                          title="Reset to default"
+                          title={tr("settings.keyboard.resetDefault")}
                           onClick={() => {
                             const next = { ...kbOverrides };
                             delete next[kb.id];
@@ -2688,7 +2756,7 @@ export function SettingsModal({
                           }}
                           className="rounded px-1.5 py-0.5 text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-accent)]"
                         >
-                          Reset
+                          {tr("settings.keyboard.reset")}
                         </button>
                       )}
                     </div>
@@ -2706,7 +2774,7 @@ export function SettingsModal({
               }}
               className="w-full rounded-lg border border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] transition-colors hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
             >
-              Reset all shortcuts
+              {tr("settings.keyboard.resetAll")}
             </button>
           </div>
         )}
@@ -2716,7 +2784,7 @@ export function SettingsModal({
           <div className="space-y-2">
             {templates.length === 0 && (
               <p className="px-1 text-[12px] text-[var(--m-text-faint)]">
-                No templates yet. Add one below.
+                {tr("settings.templates.empty")}
               </p>
             )}
             {templates.map((t) => (
@@ -2750,7 +2818,7 @@ export function SettingsModal({
                 onClick={() => setShowAddTemplate(true)}
                 className="mt-2 w-full rounded-md border border-dashed border-[var(--m-border)] py-2 text-[11px] text-[var(--m-text-faint)] hover:border-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
               >
-                + Add template
+                {tr("settings.templates.add")}
               </button>
             ) : (
               <div className="mt-2 rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] p-3 space-y-2">
@@ -2765,20 +2833,20 @@ export function SettingsModal({
                         e.target.value.replace(/\s/g, "").toLowerCase()
                       )
                     }
-                    placeholder="trigger"
+                    placeholder={tr("settings.templates.triggerPlaceholder")}
                     className="flex-1 rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                   />
                   <input
                     value={newTemplateLabel}
                     onChange={(e) => setNewTemplateLabel(e.target.value)}
-                    placeholder="Label (optional)"
+                    placeholder={tr("settings.shortcuts.labelOptional")}
                     className="flex-1 rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                   />
                 </div>
                 <textarea
                   value={newPrompt}
                   onChange={(e) => setNewPrompt(e.target.value)}
-                  placeholder="Prompt text…"
+                  placeholder={tr("settings.templates.promptPlaceholder")}
                   rows={3}
                   className="w-full resize-none rounded border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1.5 text-[11px] text-[var(--m-text)] outline-none focus:border-[var(--m-text-faint)]"
                 />
@@ -2797,23 +2865,23 @@ export function SettingsModal({
                     }}
                     className="text-[11px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)] px-3 py-1"
                   >
-                    Cancel
+                    {tr("settings.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       if (!newTrigger.trim()) {
-                        setTemplateError("Trigger is required");
+                        setTemplateError(tr("settings.templates.triggerRequired"));
                         return;
                       }
                       if (!newPrompt.trim()) {
-                        setTemplateError("Prompt is required");
+                        setTemplateError(tr("settings.templates.promptRequired"));
                         return;
                       }
                       if (
                         templates.some((t) => t.trigger === newTrigger.trim())
                       ) {
-                        setTemplateError("Trigger already exists");
+                        setTemplateError(tr("settings.templates.triggerExists"));
                         return;
                       }
                       const updated = [
@@ -2837,7 +2905,7 @@ export function SettingsModal({
                     }}
                     className="rounded border border-[#d19a66]/30 bg-[#d19a66]/10 px-3 py-1 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20"
                   >
-                    Save
+                    {tr("settings.save")}
                   </button>
                 </div>
               </div>
@@ -2850,7 +2918,7 @@ export function SettingsModal({
           <div className="space-y-6">
             <div>
               <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase">
-                Slash Commands
+                {tr("settings.commands.slash")}
               </h3>
               <div className="rounded-lg border border-[var(--m-border-subtle)] overflow-hidden">
                 {SLASH_REF.map((item, i) => (
@@ -2860,11 +2928,11 @@ export function SettingsModal({
                       i < SLASH_REF.length - 1 ? "border-b border-[var(--m-border-subtle)]" : ""
                     }`}
                   >
-                    <code className="min-w-[100px] font-mono text-[11px] text-[#d19a66]">
+                    <code dir="ltr" className="min-w-[100px] text-start font-mono text-[11px] text-[#d19a66]">
                       {item.command}
                     </code>
                     <span className="text-[12px] text-[var(--m-text-muted)]">
-                      {item.description}
+                      {tr(`settings.slash.${item.key}`)}
                     </span>
                   </div>
                 ))}
@@ -2873,13 +2941,13 @@ export function SettingsModal({
 
             <div>
               <h3 className="mb-2.5 font-mono text-[9px] tracking-[0.2em] text-[var(--m-text-faint)] uppercase">
-                Natural Language
+                {tr("settings.commands.natural")}
               </h3>
               <div className="space-y-3">
                 {NATURAL_LANGUAGE_SECTIONS.map((section) => (
                   <div key={section.heading}>
                     <p className="mb-1.5 font-mono text-[9px] tracking-[0.15em] text-[var(--m-text-faint)] uppercase">
-                      {section.heading}
+                      {tr(`settings.nl.${section.heading}`)}
                     </p>
                     <div className="rounded-lg border border-[var(--m-border-subtle)] overflow-hidden">
                       {section.items.map((item, i) => (
@@ -2891,7 +2959,7 @@ export function SettingsModal({
                               : ""
                           }`}
                         >
-                          <code className="font-mono text-[11px] text-[var(--m-text-muted)]">
+                          <code dir="ltr" lang="en" className="font-mono text-[11px] text-[var(--m-text-muted)]">
                             {item}
                           </code>
                         </div>
@@ -2905,6 +2973,10 @@ export function SettingsModal({
         )}
 
         {/* ── About ── */}
+        {activePage === "memory" && (
+          <MemoryManager workspaceRoot={workspaceRoot ?? memoryWorkspace} />
+        )}
+
         {activePage === "about" && (
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-xl border border-[var(--m-border-subtle)] bg-gradient-to-br from-[rgba(209,154,102,0.04)] to-transparent px-5 py-4">
@@ -2919,7 +2991,7 @@ export function SettingsModal({
                   </span>
                 </div>
                 <p className="mt-0.5 text-[12px] text-[var(--m-text-muted)]">
-                  Local AI desktop assistant
+                  {tr("settings.about.tagline")}
                 </p>
               </div>
             </div>
@@ -2941,7 +3013,7 @@ export function SettingsModal({
                     />
                   </svg>
                   <span className="text-[11px] font-medium text-[var(--m-text)]">
-                    Software updates
+                    {tr("settings.about.updates")}
                   </span>
                 </div>
                 {(updateStatus === "idle" ||
@@ -2953,29 +3025,29 @@ export function SettingsModal({
                     disabled={!electron}
                     className="rounded-md border border-[#d19a66]/25 bg-[#d19a66]/8 px-3 py-1 text-[10px] text-[#d19a66] transition-colors hover:bg-[#d19a66]/15 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Check now
+                    {tr("settings.about.checkNow")}
                   </button>
                 )}
               </div>
 
               {updateStatus === "idle" && (
                 <p className="text-[11px] text-[var(--m-text-muted)]">
-                  Marven checks for updates automatically when it starts.
+                  {tr("settings.about.autoCheck")}
                 </p>
               )}
               {updateStatus === "checking" && (
                 <p className="text-[11px] text-[var(--m-text-muted)]">
-                  Checking for updates…
+                  {tr("settings.about.checking")}
                 </p>
               )}
               {updateStatus === "up-to-date" && (
                 <p className="text-[11px] text-[var(--m-text-muted)]">
-                  You&apos;re up to date — running the latest version.
+                  {tr("settings.about.upToDate")}
                 </p>
               )}
               {updateStatus === "error" && (
                 <p className="text-[11px] text-red-400/80 break-all">
-                  {updateInfo?.message ?? "Update check failed."}
+                  {updateInfo?.message ?? tr("settings.about.failed")}
                 </p>
               )}
 
@@ -2984,8 +3056,8 @@ export function SettingsModal({
                   <div className="flex justify-between text-[10px] text-[var(--m-text-muted)]">
                     <span>
                       {updateStatus === "available"
-                        ? `v${updateInfo?.version} — starting download…`
-                        : `Downloading v${updateInfo?.version}`}
+                        ? tr("settings.about.starting", { version: updateInfo?.version })
+                        : tr("settings.about.downloading", { version: updateInfo?.version })}
                     </span>
                     {updateStatus === "progress" && (
                       <span className="font-mono">
@@ -3022,14 +3094,14 @@ export function SettingsModal({
               {updateStatus === "ready" && (
                 <div className="space-y-2">
                   <p className="text-[11px] text-[#d19a66]">
-                    v{updateInfo?.version} is ready to install.
+                    {tr("settings.about.ready", { version: updateInfo?.version })}
                   </p>
                   <button
                     type="button"
                     onClick={() => electron?.installUpdate()}
                     className="w-full rounded-md border border-[#d19a66]/30 bg-[#d19a66]/10 py-1.5 text-[11px] text-[#d19a66] transition-all hover:bg-[#d19a66]/20"
                   >
-                    Restart and install
+                    {tr("settings.about.restart")}
                   </button>
                 </div>
               )}
@@ -3037,12 +3109,12 @@ export function SettingsModal({
 
             <div className="grid grid-cols-2 gap-3">
               <AboutLink
-                label="Release notes"
-                hint="Changelog on GitHub"
+                label={tr("settings.about.releaseNotes")}
+                hint={tr("settings.about.changelog")}
                 href="https://github.com/ahomsi0/Marven/releases"
               />
               <AboutLink
-                label="Source code"
+                label={tr("settings.about.sourceCode")}
                 hint="github.com/ahomsi0/Marven"
                 href="https://github.com/ahomsi0/Marven"
               />
@@ -3051,17 +3123,40 @@ export function SettingsModal({
             <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-medium text-[var(--m-text)]">Privacy-safe diagnostics</p>
-                  <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">Exports versions, platform, provider availability, and index counts — never API keys or paths.</p>
+                  <p className="text-[11px] font-medium text-[var(--m-text)]">{tr("settings.report.title")}</p>
+                  <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">{tr("settings.report.hint")}</p>
+                </div>
+                {!reportOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setReportOpen(true)}
+                    className="shrink-0 rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[10px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                  >
+                    {tr("settings.report.open")}
+                  </button>
+                )}
+              </div>
+              {reportOpen && (
+                <div className="mt-3 border-t border-[var(--m-border-subtle)] pt-3">
+                  <ReportProblemPanel onClose={() => setReportOpen(false)} />
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-[var(--m-text)]">{tr("settings.about.diagnostics")}</p>
+                  <p className="mt-1 text-[10px] text-[var(--m-text-faint)]">{tr("settings.about.diagnosticsHint")}</p>
                 </div>
                 <button type="button" onClick={handleExportDiagnostics} className="shrink-0 rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[10px] text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]">
-                  Export JSON
+                  {tr("settings.about.exportJson")}
                 </button>
               </div>
             </div>
 
             <p className="pt-1 text-center text-[10px] text-[var(--m-text-faint)]">
-              Made by Ahmad Homsi · AGPLv3 licensed
+              {tr("settings.about.madeBy")}
             </p>
           </div>
         )}
@@ -3073,26 +3168,26 @@ export function SettingsModal({
 
   function renderSidebar() {
     return (
-      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-r border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-4">
+      <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-e border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {SECTIONS.map((section) => (
-          <div key={section.heading} className="mb-4">
-            <p className="px-4 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
-              {section.heading}
+          <div key={section.heading} className="mb-3 last:mb-0">
+            <p className="px-4 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
+              {tr(`settings.nav.${section.heading}`)}
             </p>
             {section.items.map((item) => {
-              const isActive = activePage === item.id;
+              const isActive = activePage === item;
               return (
                 <button
-                  key={item.id}
+                  key={item}
                   type="button"
-                  onClick={() => setActivePage(item.id)}
-                  className={`relative w-full px-4 py-2 text-left text-[13px] transition-colors ${
+                  onClick={() => setActivePage(item)}
+                  className={`relative w-full px-4 py-1.5 text-start text-[13px] transition-colors ${
                     isActive
                       ? "bg-[var(--m-surface-2)] text-[var(--m-text)]"
                       : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface)] hover:text-[var(--m-text)]"
                   }`}
                 >
-                  {item.label}
+                  {tr(`settings.pages.${item}.title`)}
                 </button>
               );
             })}
@@ -3139,7 +3234,7 @@ export function SettingsModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={tr("settings.close")}
             className="text-[var(--m-text-muted)] transition-colors hover:text-[var(--m-text)]"
           >
             <svg
@@ -3156,7 +3251,7 @@ export function SettingsModal({
               />
             </svg>
           </button>
-          <h1 className="text-[15px] font-semibold text-[var(--m-text)]">Settings</h1>
+          <h1 className="text-[15px] font-semibold text-[var(--m-text)]">{tr("settings.title")}</h1>
         </div>
         {innerLayout}
       </div>

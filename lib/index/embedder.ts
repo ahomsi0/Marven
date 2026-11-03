@@ -1,7 +1,14 @@
 export const EMBED_MODEL = "nomic-embed-text";
 export const EMBED_DIM = 768;
 
-const DEFAULT_OLLAMA = process.env.OLLAMA_URL ?? "http://localhost:11434";
+/**
+ * Read when each Embedder is constructed (not at module load): Electron's
+ * applySettings can change OLLAMA_URL while the server is running, and
+ * callers build a fresh Embedder per indexing/search run.
+ */
+function defaultOllamaUrl(): string {
+  return process.env.OLLAMA_URL || "http://localhost:11434";
+}
 
 export interface EmbedderOptions {
   ollamaUrl?: string;
@@ -15,7 +22,7 @@ export class Embedder {
   private readonly batchSize: number;
 
   constructor(opts: EmbedderOptions = {}) {
-    this.url = (opts.ollamaUrl ?? DEFAULT_OLLAMA).replace(/\/$/, "");
+    this.url = (opts.ollamaUrl ?? defaultOllamaUrl()).replace(/\/$/, "");
     this.model = opts.model ?? EMBED_MODEL;
     this.batchSize = Math.max(1, opts.batchSize ?? 8);
   }

@@ -11,9 +11,12 @@ import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
+import { DotsIcon, FolderIcon, SidebarIcon } from "./Icons";
+import { TerminalView } from "./TerminalView";
+import { useTheme } from "@/lib/theme";
+import { useT } from "@/lib/i18n";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
-import { CommandPalette } from "./CommandPalette";
 import type { PaletteCommand } from "./CommandPalette";
 import type { CodeEditorActions } from "./CodeEditor";
 import { useEditorShortcuts } from "@/hooks/useEditorShortcuts";
@@ -202,35 +205,45 @@ interface ViewMenuItem {
   badge?: boolean;
   onClick: () => void;
   disabled?: boolean;
+  /** Draw a separator above this item. */
+  dividerBefore?: boolean;
 }
 
 function ViewMenu({ anchor, items, onClose }: { anchor: HTMLElement | null; items: ViewMenuItem[]; onClose: () => void }) {
   const rect = anchor?.getBoundingClientRect();
   if (!rect) return null;
-  const width = 180;
-  const right = Math.max(8, window.innerWidth - rect.right);
-  const top = rect.bottom + 4;
+  const width = 236;
+  // Hang from the button's end edge (its right in LTR, its left in RTL).
+  const rtl = document.documentElement.dir === "rtl";
+  const position = rtl
+    ? { left: Math.max(8, rect.left) }
+    : { right: Math.max(8, window.innerWidth - rect.right) };
+  const top = rect.bottom + 6;
   return (
     <div
-      className="fixed z-[60] overflow-hidden rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] py-0.5 shadow-2xl"
-      style={{ right, top, width }}
+      role="menu"
+      className="fixed z-[60] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1.5 shadow-2xl"
+      style={{ ...position, top, width }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((it) => (
-        <button
-          key={it.key}
-          type="button"
-          disabled={it.disabled}
-          onClick={() => { it.onClick(); onClose(); }}
-          className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center text-[var(--m-text-muted)]">
-            {it.icon}
-            {it.badge && <span className="absolute -right-0.5 -top-0.5 h-1 w-1 rounded-full bg-[#5b9cf6]" />}
-          </span>
-          <span className="flex-1">{it.label}</span>
-          {it.hint && <span className="font-mono text-[8px] text-[var(--m-text-muted)]">{it.hint}</span>}
-        </button>
+        <div key={it.key}>
+          {it.dividerBefore && <div className="mx-2.5 my-1 h-px bg-[var(--m-border)]" />}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { it.onClick(); onClose(); }}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-start text-[13px] text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-3)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center text-[var(--m-text-muted)] [&_svg]:h-3.5 [&_svg]:w-3.5">
+              {it.icon}
+              {it.badge && <span className="absolute -end-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#5b9cf6]" />}
+            </span>
+            <span className="flex-1">{it.label}</span>
+            {it.hint && <span dir="ltr" className="font-mono text-[11px] text-[var(--m-text-muted)]">{it.hint}</span>}
+          </button>
+        </div>
       ))}
     </div>
   );
@@ -248,6 +261,9 @@ function formatRelativeTime(iso: string): string {
 }
 
 interface AgentWorkspaceProps {
+  /** When the app sidebar is hidden, this header shows the button that reopens it. */
+  sidebarOpen?: boolean;
+  onOpenSidebar?: () => void;
   messages: AgentMessage[];
   input: string;
   isRunning: boolean;
@@ -272,8 +288,7 @@ interface AgentWorkspaceProps {
   isFileLoading: boolean;
   isFileDirty: boolean;
   terminalOutput: string;
-  onProviderChange: (p: AIProvider) => void;
-  onModelChange: (m: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleSpeech: () => void;
   onToggleWakeWord: () => void;
   onInputChange: (value: string) => void;
@@ -324,9 +339,15 @@ interface AgentWorkspaceProps {
   onRunAgentPrompt?: (prompt: string) => void;
   workspaceTrusted?: boolean;
   onWorkspaceTrustChange?: (trusted: boolean) => void;
+  /** Opens the app-wide command palette (mounted by the layout). */
+  onOpenCommandPalette?: () => void;
+  /** The workspace's own palette commands are published here while mounted. */
+  paletteCommandsRef?: React.MutableRefObject<PaletteCommand[]>;
 }
 
 export function AgentWorkspace({
+  sidebarOpen = true,
+  onOpenSidebar,
   messages,
   input,
   isRunning,
@@ -351,8 +372,7 @@ export function AgentWorkspace({
   isFileLoading,
   isFileDirty,
   terminalOutput,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleSpeech,
   onToggleWakeWord,
   onInputChange,
@@ -401,7 +421,11 @@ export function AgentWorkspace({
   onRunAgentPrompt,
   workspaceTrusted = false,
   onWorkspaceTrustChange,
+  onOpenCommandPalette,
+  paletteCommandsRef,
 }: AgentWorkspaceProps) {
+  const { t } = useT();
+  const { theme } = useTheme();
   const [showExplorer, setShowExplorer] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-show-explorer") !== "false";
@@ -409,13 +433,25 @@ export function AgentWorkspace({
   const [showOutline, setShowOutline] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems">("terminal");
-  const [showRightPanel, setShowRightPanel] = useState(() => {
+  // Agent-first layout: the conversation is the page; files/editor/terminal and
+  // the diff live in a slide-in panel. `drawerOpen` is that panel, `drawerView`
+  // picks what it shows: Code (files + editor), Changes (diff) or Terminal.
+  const [drawerOpen, setDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
-    return localStorage.getItem("marven-show-right") !== "false";
+    return localStorage.getItem("marven-agent-drawer") === "true";
   });
-  const [showDiff, setShowDiff] = useState(false);
+  const [drawerView, setDrawerView] = useState<"code" | "diff" | "terminal">("code");
+  const showDiff = drawerView === "diff";
+  function openDrawer(view: "code" | "diff" | "terminal") {
+    setDrawerOpen(true);
+    setDrawerView(view);
+  }
+  // Terminal on its own — the same shell session as the editor's terminal.
+  function toggleTerminalView() {
+    if (drawerOpen && drawerView === "terminal") setDrawerOpen(false);
+    else openDrawer("terminal");
+  }
   const [quickOpen, setQuickOpen] = useState(false);
-  const [commandPalette, setCommandPalette] = useState(false);
   // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
   // useEditorShortcuts can drive it. EditorPanel reads the props and renders
   // the bar + highlight overlay; navigation/replace actions stay inside the
@@ -504,9 +540,9 @@ export function AgentWorkspace({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("marven-show-right", String(showRightPanel));
+      localStorage.setItem("marven-agent-drawer", String(drawerOpen));
     }
-  }, [showRightPanel]);
+  }, [drawerOpen]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -662,8 +698,8 @@ export function AgentWorkspace({
 
   // ── Right panel drag ──────────────────────────────────────────────────────
   const [rightWidth, setRightWidth] = useState(() => {
-    if (typeof window === "undefined") return 380;
-    return Math.min(700, Math.max(380, Number(localStorage.getItem("marven-right-width") ?? 380) || 380));
+    if (typeof window === "undefined") return 720;
+    return Math.min(1100, Math.max(480, Number(localStorage.getItem("marven-drawer-width") ?? 720) || 720));
   });
   const isRightDragging = useRef(false);
   const rightDragStartX = useRef(0);
@@ -672,8 +708,9 @@ export function AgentWorkspace({
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!isRightDragging.current) return;
-      const delta = rightDragStartX.current - e.clientX;
-      const next = Math.min(700, Math.max(380, rightDragStartWidth.current + delta));
+      const rtl = document.documentElement.dir === "rtl";
+      const delta = rtl ? e.clientX - rightDragStartX.current : rightDragStartX.current - e.clientX;
+      const next = Math.min(1100, Math.max(480, rightDragStartWidth.current + delta));
       setRightWidth(next);
     }
     function onMouseUp() {
@@ -681,7 +718,7 @@ export function AgentWorkspace({
       isRightDragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      localStorage.setItem("marven-right-width", String(rightWidth));
+      localStorage.setItem("marven-drawer-width", String(rightWidth));
     }
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -700,18 +737,33 @@ export function AgentWorkspace({
     document.body.style.userSelect = "none";
   }
 
+  // The panel never takes more than half of the space beside the app sidebar,
+  // so the conversation keeps at least an equal share.
+  const drawerWidth =
+    typeof window === "undefined"
+      ? rightWidth
+      : Math.min(rightWidth, Math.round((window.innerWidth - (sidebarOpen ? 260 : 0)) / 2));
+
+  // Open the workspace panel when a file gets opened — by you or by the agent —
+  // but not for the file restored on first render.
+  const lastSelectedRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastSelectedRef.current !== undefined && selectedFilePath && selectedFilePath !== lastSelectedRef.current) {
+      openDrawer("code");
+    }
+    lastSelectedRef.current = selectedFilePath ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFilePath]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEditorShortcuts({
     onSave: onSaveFile,
     onCloseTab: () => onCloseTab(activeTabIndex),
-    onToggleExplorer: () => setShowExplorer((v) => !v),
-    onToggleTerminal: () => {
-      setEditorBottomTab("terminal");
-      setShowTerminal((v) => !v);
-    },
-    onToggleChat: () => setShowRightPanel((v) => !v),
+    onToggleExplorer: () => { setShowExplorer((v) => !v); openDrawer("code"); },
+    onToggleTerminal: toggleTerminalView,
+    // The chat is always visible now; this shortcut toggles the workspace panel.
+    onToggleChat: () => setDrawerOpen((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
-    onCommandPalette: () => setCommandPalette(true),
     onOpenSettings: () => onOpenSettings?.(),
     onFind: () => {
       setFindOpen(true);
@@ -733,14 +785,14 @@ export function AgentWorkspace({
       // so the panel has somewhere to render.
       setGlobalSearchOpen((v) => {
         const next = !v;
-        if (next) setShowExplorer(true);
+        if (next) { setShowExplorer(true); openDrawer("code"); }
         return next;
       });
     },
     onGitPanel: () => {
       setShowGitPanel((v) => {
         const next = !v;
-        if (next) setShowExplorer(true);
+        if (next) { setShowExplorer(true); openDrawer("code"); }
         return next;
       });
     },
@@ -799,38 +851,55 @@ export function AgentWorkspace({
     return () => cancelAnimationFrame(id);
   }, [pendingJump, isPendingPathActive, isActiveBufferLoading]);
 
-  // ── Command Palette commands list ────────────────────────────────────────
+  // ── Command Palette commands (shown by the layout's palette in agent mode) ──
   const W = isWindows;
+  const revealPanel = (setter: React.Dispatch<React.SetStateAction<boolean>>) =>
+    setter((v) => {
+      const next = !v;
+      if (next) { setShowExplorer(true); openDrawer("code"); }
+      return next;
+    });
   const paletteCommands: PaletteCommand[] = [
-    { label: "Save File", keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
-    { label: "Close Tab", keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
-    { label: "Toggle Sidebar", keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
-    { label: "Toggle Terminal", keybinding: W ? "Ctrl+`" : "⌃`", action: () => {
-      setEditorBottomTab("terminal");
-      setShowTerminal((v) => !v);
-    } },
-    { label: "Problems panel", action: () => {
+    { id: "save-file", label: t("palette.agent.saveFile"), keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
+    { id: "close-tab", label: t("palette.agent.closeTab"), keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
+    { id: "toggle-explorer", label: t("palette.agent.toggleExplorer"), keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
+    { id: "toggle-terminal", label: t("palette.agent.toggleTerminal"), keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalView },
+    { id: "problems", label: t("palette.agent.problems"), action: () => {
       setEditorBottomTab("problems");
       setShowTerminal(true);
     } },
-    { label: "Rename symbol (LSP)", keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
-    { label: "Toggle Chat", keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setShowRightPanel((v) => !v) },
-    { label: "Open Quick File", keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
-    { label: "Find", keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Find and Replace", keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
-    { label: "Search files", keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
-    { label: "Inline AI Edit (selection)", keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
-    { label: "Git panel", keybinding: W ? "Alt+G" : "⌥G", action: () => { setShowGitPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
-    { label: "Workflow intelligence", action: () => { setShowWorkflowPanel((v) => { const next = !v; if (next) setShowExplorer(true); return next; }); } },
-    { label: "Open Settings", action: () => onOpenSettings?.() },
-    { label: "Open Folder", action: onOpenFolder },
-    { label: "Toggle Diff Panel", action: () => setShowDiff((v) => !v) },
-    { label: "New REST request", action: () => onOpenRestTab?.() },
+    { id: "rename-symbol", label: t("palette.agent.renameSymbol"), keybinding: "F2", action: () => void editorActionsRef.current?.renameSymbol?.() },
+    { id: "toggle-workspace-panel", label: t("palette.agent.toggleWorkspacePanel"), keybinding: W ? "Ctrl+Alt+I" : "⌃⌘I", action: () => setDrawerOpen((v) => !v) },
+    { id: "quick-open", label: t("palette.agent.quickOpen"), keybinding: W ? "Ctrl+P" : "⌘P", action: () => setQuickOpen(true) },
+    { id: "find", label: t("palette.agent.find"), keybinding: W ? "Ctrl+F" : "⌘F", action: () => { setFindOpen(true); setReplaceVisible(false); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { id: "find-replace", label: t("palette.agent.findReplace"), keybinding: W ? "Ctrl+Alt+F" : "⌘⌥F", action: () => { setFindOpen(true); setReplaceVisible(true); requestAnimationFrame(() => findActionsRef.current?.focus()); } },
+    { id: "search-files", label: t("palette.agent.searchFiles"), keybinding: W ? "Ctrl+Shift+F" : "⇧⌘F", action: () => { setGlobalSearchOpen(true); setShowExplorer(true); } },
+    { id: "inline-edit", label: t("palette.agent.inlineEdit"), keybinding: W ? "Ctrl+K" : "⌘K", action: () => findActionsRef.current?.triggerInlineEdit() },
+    { id: "vcs-panel", label: t("palette.agent.gitPanel"), keybinding: W ? "Alt+G" : "⌥G", action: () => revealPanel(setShowGitPanel) },
+    { id: "workflow", label: t("palette.agent.workflow"), action: () => revealPanel(setShowWorkflowPanel) },
+    { id: "open-folder", label: t("palette.agent.openFolder"), action: onOpenFolder },
+    { id: "toggle-diff", label: t("palette.agent.toggleDiff"), action: () => openDrawer(drawerOpen && showDiff ? "code" : "diff") },
+    { id: "new-rest-request", label: t("palette.agent.newRestRequest"), action: () => onOpenRestTab?.() },
   ];
 
   // Landing page when no workspace is open AND no settings tab is open
   const hasSettingsTab = openTabs.some((t) => t.kind === "settings");
-  if (!workspaceRoot && !hasSettingsTab) {
+  const onLanding = !workspaceRoot && !hasSettingsTab;
+
+  // Publish the commands to the layout's palette; the landing page only offers
+  // opening a folder. Runs every render so actions never go stale.
+  useEffect(() => {
+    if (!paletteCommandsRef) return;
+    paletteCommandsRef.current = onLanding
+      ? paletteCommands.filter((c) => c.id === "open-folder")
+      : paletteCommands;
+  });
+  useEffect(() => {
+    if (!paletteCommandsRef) return;
+    return () => { paletteCommandsRef.current = []; };
+  }, [paletteCommandsRef]);
+
+  if (onLanding) {
     return (
       <WorkspaceLanding
         recentWorkspaces={recentWorkspaces}
@@ -844,142 +913,90 @@ export function AgentWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--m-bg)]">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3 py-1">
-        {/* Panel toggles — VS Code style */}
+      {/* Header — the single top bar for the agent workspace */}
+      <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-3">
+        {!sidebarOpen && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            aria-label={t("sidebar.openSidebar")}
+            title={t("sidebar.openSidebar")}
+            className="shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+          >
+            <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+          </button>
+        )}
+
+        {/* Workspace — click to change folder */}
         <button
           type="button"
-          onClick={() => setShowExplorer((v) => !v)}
-          className={`rounded p-1 transition-colors ${
-            showExplorer ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showExplorer ? "Hide file explorer" : "Show file explorer"}
+          onClick={onOpenFolder}
+          title={workspaceRoot ? `${t("agent.changeFolder")} · ${workspaceRoot}` : t("agent.changeFolder")}
+          className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-[14px] font-medium text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]"
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1.5" y="2.5" width="4" height="11" fill="currentColor" />
-          </svg>
+          <FolderIcon className="h-4 w-4 text-[var(--m-accent)]" />
+          <span className="truncate">{workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? t("agent.noFolder")}</span>
         </button>
 
+        <div className="flex-1" />
+
+        {/* Workspace panel — files, changes, terminal */}
         <button
           type="button"
+          aria-pressed={drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen}
           onClick={() => {
-            setEditorBottomTab("terminal");
-            setShowTerminal((v) => !v);
+            if (drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen) setDrawerOpen(false);
+            else {
+              // Files means the file tree, not whichever panel last took the column.
+              setShowGitPanel(false);
+              setShowWorkflowPanel(false);
+              setGlobalSearchOpen(false);
+              setShowExplorer(true);
+              openDrawer("code");
+            }
           }}
-          className={`rounded p-1 transition-colors ${
-            showTerminal ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showTerminal ? "Hide terminal" : "Show terminal"}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" />
-          </svg>
+          <FolderIcon className="h-3.5 w-3.5" />
+          {t("agent.files")}
         </button>
-
         <button
           type="button"
-          onClick={() => setShowRightPanel((v) => !v)}
-          className={`rounded p-1 transition-colors ${
-            showRightPanel ? "text-[#d19a66]" : "text-[#555] hover:text-[#aaa]"
-          }`}
-          title={showRightPanel ? "Hide chat panel" : "Show chat panel"}
+          aria-pressed={drawerOpen && showDiff}
+          onClick={() => (drawerOpen && showDiff ? setDrawerOpen(false) : openDrawer("diff"))}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" />
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="M12 3v12M6 9h12M6 21h12" />
           </svg>
+          {t("agent.changes")}
+          {checkpoints.length > 0 && (
+            <span className="rounded-full bg-[var(--m-accent-soft)] px-1.5 text-[10px] font-medium text-[var(--m-accent)]">{checkpoints.length}</span>
+          )}
         </button>
-
-        {/* Git panel toggle */}
-        {workspaceRoot && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowGitPanel((v) => {
-                const next = !v;
-                if (next) setShowExplorer(true);
-                return next;
-              });
-            }}
-            className={`rounded p-1 transition-colors ${
-              showGitPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
-            }`}
-            title={showGitPanel ? "Hide git panel" : "Show git panel (⌥G)"}
-          >
-            {/* Git branch icon: two-path fork */}
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <circle cx="6" cy="5" r="2" />
-              <circle cx="18" cy="5" r="2" />
-              <circle cx="6" cy="19" r="2" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M6 7c0 4 12 5 12-2" />
-            </svg>
-          </button>
-        )}
-
-        {workspaceRoot && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowWorkflowPanel((v) => {
-                const next = !v;
-                if (next) setShowExplorer(true);
-                return next;
-              });
-            }}
-            className={`rounded p-1 transition-colors ${
-              showWorkflowPanel ? "text-[var(--m-accent)]" : "text-[#555] hover:text-[#aaa]"
-            }`}
-            title={showWorkflowPanel ? "Hide workflow panel" : "Show workflow intelligence"}
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
-              <circle cx="4" cy="7" r="2" />
-              <circle cx="4" cy="17" r="2" />
-              <circle cx="20" cy="10" r="2" />
-              <circle cx="20" cy="14" r="2" />
-            </svg>
-          </button>
-        )}
-
-        {/* REST client button */}
         <button
           type="button"
-          onClick={() => onOpenRestTab?.()}
-          className="rounded p-1 transition-colors text-[#555] hover:text-[#aaa]"
-          title="New REST request"
+          aria-pressed={drawerOpen && drawerView === "terminal"}
+          onClick={toggleTerminalView}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="m5 8 4 4-4 4M12 16h7" />
           </svg>
+          {t("agent.terminal")}
         </button>
 
-        {checkpoints.length > 0 && showRightPanel && (
-          <button
-            type="button"
-            onClick={() => setShowDiff((v) => !v)}
-            className={`ml-1 rounded px-2 py-0.5 text-[10px] transition-colors ${
-              showDiff ? "text-[#d19a66] bg-[#d19a66]/10" : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
-            }`}
-            title="Toggle diff panel"
-          >
-            Diff ({checkpoints.length})
-          </button>
-        )}
+        <div className="mx-1 h-5 w-px bg-[var(--m-border)]" />
 
-        {workspaceRoot && (
+        {/* Only shown when it needs attention; trusting / un-trusting lives in ⋯ */}
+        {workspaceRoot && !workspaceTrusted && (
           <button
             type="button"
-            onClick={() => onWorkspaceTrustChange?.(!workspaceTrusted)}
-            className={`rounded border px-2 py-1 text-[10px] transition-colors ${
-              workspaceTrusted
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-            }`}
-            title={workspaceTrusted ? "Workspace trusted — agent writes and approved commands are available" : "Workspace untrusted — agent is read-only until trusted"}
+            onClick={() => onWorkspaceTrustChange?.(true)}
+            className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[12px] text-amber-300 transition-colors hover:bg-amber-500/15"
+            title={t("agent.readOnlyHint")}
           >
-            {workspaceTrusted ? "Trusted" : "Read only"}
+            {t("agent.readOnly")}
           </button>
         )}
 
@@ -1031,23 +1048,20 @@ export function AgentWorkspace({
         )}
 
         {/* View menu — top-right kebab */}
-        <div ref={viewMenuRef} className="ml-auto">
+        <div ref={viewMenuRef}>
           <div ref={tasksRef}>
           <button
             type="button"
             onClick={() => setViewMenuOpen((v) => !v)}
-            title="View menu"
-            className={`flex h-7 items-center gap-0.5 rounded px-1.5 transition-colors ${
-              viewMenuOpen ? "bg-[var(--m-surface-2)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            aria-label={t("agent.more")}
+            aria-haspopup="menu"
+            aria-expanded={viewMenuOpen}
+            title={t("agent.more")}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              viewMenuOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
             }`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-              <line x1="5.5" y1="3.5" x2="5.5" y2="12.5" stroke="currentColor" strokeWidth="1.2" />
-            </svg>
-            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="4 6 8 10 12 6" />
-            </svg>
+            <DotsIcon className="h-4 w-4" />
           </button>
           {viewMenuOpen && (
             <ViewMenu
@@ -1056,7 +1070,7 @@ export function AgentWorkspace({
               items={[
                 {
                   key: "preview",
-                  label: "Preview",
+                  label: t("agent.menuPreview"),
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <polygon points="6 4 20 12 6 20 6 4" />
@@ -1097,7 +1111,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "diff",
-                  label: "Diff" + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
+                  label: t("agent.changes") + (checkpoints.length > 0 ? ` (${checkpoints.length})` : ""),
                   hint: W ? "Ctrl+Shift+D" : "⇧⌘D",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1105,23 +1119,22 @@ export function AgentWorkspace({
                       <rect x="14" y="4" width="7" height="16" rx="1" />
                     </svg>
                   ),
-                  disabled: !showRightPanel,
-                  onClick: () => { setShowDiff((v) => !v); if (!showRightPanel) setShowRightPanel(true); },
+                  onClick: () => openDrawer(drawerOpen && showDiff ? "code" : "diff"),
                 },
                 {
                   key: "terminal",
-                  label: "Terminal",
+                  label: t("agent.terminal"),
                   hint: W ? "Ctrl+`" : "⌃`",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l4 4-4 4M11 16h7" />
                     </svg>
                   ),
-                  onClick: () => setShowTerminal((v) => !v),
+                  onClick: toggleTerminalView,
                 },
                 {
                   key: "files",
-                  label: "Files",
+                  label: t("agent.files"),
                   hint: W ? "Ctrl+B" : "⌘B",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1132,7 +1145,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "search",
-                  label: "Search files",
+                  label: t("agent.menuSearch"),
                   hint: W ? "Ctrl+Shift+F" : "⇧⌘F",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1148,7 +1161,8 @@ export function AgentWorkspace({
                 },
                 {
                   key: "git",
-                  label: "Git panel",
+                  label: t("agent.menuGit"),
+                  dividerBefore: true,
                   hint: "⌥G",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1162,14 +1176,14 @@ export function AgentWorkspace({
                   onClick: () => {
                     setShowGitPanel((v) => {
                       const next = !v;
-                      if (next) setShowExplorer(true);
+                      if (next) { setShowExplorer(true); openDrawer("code"); }
                       return next;
                     });
                   },
                 },
                 {
                   key: "workflow",
-                  label: "Workflow",
+                  label: t("agent.menuWorkflow"),
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h5l2 3h9M4 17h5l2-3h9" />
@@ -1179,14 +1193,15 @@ export function AgentWorkspace({
                   onClick: () => {
                     setShowWorkflowPanel((v) => {
                       const next = !v;
-                      if (next) setShowExplorer(true);
+                      if (next) { setShowExplorer(true); openDrawer("code"); }
                       return next;
                     });
                   },
                 },
                 {
                   key: "tasks",
-                  label: "Background tasks",
+                  label: t("agent.menuTasks"),
+                  dividerBefore: true,
                   badge: isRunning,
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1203,7 +1218,7 @@ export function AgentWorkspace({
                 },
                 {
                   key: "rest",
-                  label: "New REST request",
+                  label: t("agent.menuRest"),
                   hint: "",
                   icon: (
                     <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1215,6 +1230,20 @@ export function AgentWorkspace({
                     onOpenRestTab?.();
                   },
                 },
+                ...(workspaceRoot
+                  ? [{
+                      key: "trust",
+                      label: workspaceTrusted ? t("agent.menuReadOnly") : t("agent.menuTrust"),
+                      dividerBefore: true,
+                      icon: (
+                        <svg fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                          <path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6Z" />
+                          {!workspaceTrusted && <path d="m9 12 2 2 4-4" />}
+                        </svg>
+                      ),
+                      onClick: () => onWorkspaceTrustChange?.(!workspaceTrusted),
+                    }]
+                  : []),
               ]}
             />
           )}
@@ -1234,6 +1263,99 @@ export function AgentWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Conversation — the page */}
+        <div className="min-h-0 min-w-0 flex-1">
+          <AgentPanel
+          messages={messages}
+          input={input}
+          isRunning={isRunning}
+          error={error}
+          provider={provider as import("@/types").AIProvider}
+          selectedModel={model}
+          tokenUsage={tokenUsage}
+          onModelSelect={onModelSelect}
+          onInputChange={onInputChange}
+          onSend={onSend}
+          onStop={onStop}
+          onSlashCommand={onSlashCommand}
+          onApproveToolCall={onApproveToolCall}
+          attachments={attachments}
+          onAttachmentsChange={onAttachmentsChange}
+          isVoiceSupported={isVoiceSupported}
+          voiceState={voiceState}
+          onVoiceClick={onAgentVoiceClick}
+          planMode={planMode}
+          onPlanModeChange={onPlanModeChange}
+          liteAgentMode={liteAgentMode}
+          workspaceFiles={files}
+          onEditUserMessage={onEditAgentUserMessage}
+                />
+                  </div>
+
+        {/* Workspace panel — slides in from the end side */}
+        {drawerOpen && (
+          <>
+            <div
+              onMouseDown={startRightDrag}
+              className="group relative z-10 -ms-px w-1 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
+              title={t("agent.resizePanel")}
+            />
+            <aside
+              className="flex min-h-0 flex-col border-s border-[var(--m-border)] bg-[var(--m-bg)]"
+              style={{ width: drawerWidth, minWidth: drawerWidth, flexShrink: 0 }}
+            >
+              <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
+                <button
+                  type="button"
+                  onClick={() => openDrawer("code")}
+                  aria-pressed={drawerView === "code"}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "code" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.code")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDrawer("diff")}
+                  aria-pressed={showDiff}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.changes")}
+                  {checkpoints.length > 0 && <span className="text-[10px] text-[var(--m-accent)]">{checkpoints.length}</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDrawer("terminal")}
+                  aria-pressed={drawerView === "terminal"}
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+                >
+                  {t("agent.terminal")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label={t("agent.closePanel")}
+                  title={t("agent.closePanel")}
+                  className="ms-auto flex h-7 w-7 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+              {drawerView === "diff" ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DiffPanel checkpoints={checkpoints} onClose={() => setDrawerView("code")} />
+                </div>
+              ) : drawerView === "terminal" ? (
+                <div className="min-h-0 flex-1 overflow-hidden px-2 py-1.5">
+                  {workspaceRoot ? (
+                    <TerminalView ptyId={`pty:${workspaceRoot}`} cwd={workspaceRoot} theme={theme} />
+                  ) : (
+                    <p className="px-2 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">{t("agent.noFolder")}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left — File Explorer OR Global Search (mutually exclusive in
             the explorer column). Search panel takes over when ⌘⇧F is
             active; closing it (Esc / ✕) restores the explorer. */}
@@ -1375,8 +1497,8 @@ export function AgentWorkspace({
               voiceError,
               lastHeard,
             }}
-            onToggleChat={() => setShowRightPanel((v) => !v)}
-            onCommandPalette={() => setCommandPalette(true)}
+            onToggleChat={() => setDrawerOpen(false)}
+            onCommandPalette={onOpenCommandPalette}
             findOpen={findOpen}
             replaceVisible={replaceVisible}
             onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
@@ -1389,70 +1511,9 @@ export function AgentWorkspace({
           />
         </div>
 
-        {/* Right — Chat or Diff */}
-        {showRightPanel && (
-          <>
-            {/* Drag handle 2 — between Editor and Right panel */}
-            <div
-              onMouseDown={startRightDrag}
-              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-              title="Drag to resize"
-            >
-              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-              </div>
-            </div>
-            <div
-              className="flex flex-col border-l border-[var(--m-border)]"
-              style={{ width: rightWidth, minWidth: rightWidth, flexShrink: 0 }}
-            >
-          {showDiff ? (
-            <DiffPanel checkpoints={checkpoints} onClose={() => setShowDiff(false)} />
-          ) : (
-            <>
-              <div className="flex items-center gap-2 border-b border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-3">
-                <span className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[9px] uppercase tracking-wider text-[var(--m-text-muted)]">
-                  {provider}
-                </span>
-                <span className="truncate text-[10px] text-[var(--m-text-muted)]">{model}</span>
-                <span
-                  title={ttsProvider === "elevenlabs" ? "Speech output uses ElevenLabs" : "Speech output uses the system voice"}
-                  className="ml-auto rounded border border-[var(--m-border-subtle)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--m-text-faint)]"
-                >
-                  TTS {ttsProvider === "elevenlabs" ? "11" : "SYS"}
-                </span>
-              </div>
-              <div className="min-h-0 flex-1">
-                <AgentPanel
-                  messages={messages}
-                  input={input}
-                  isRunning={isRunning}
-                  error={error}
-                  provider={provider as import("@/types").AIProvider}
-                  selectedModel={model}
-                  tokenUsage={tokenUsage}
-                  onProviderChange={onProviderChange}
-                  onModelChange={onModelChange}
-                  onInputChange={onInputChange}
-                  onSend={onSend}
-                  onStop={onStop}
-                  onSlashCommand={onSlashCommand}
-                  onApproveToolCall={onApproveToolCall}
-                  attachments={attachments}
-                  onAttachmentsChange={onAttachmentsChange}
-                  isVoiceSupported={isVoiceSupported}
-                  voiceState={voiceState}
-                  onVoiceClick={onAgentVoiceClick}
-                  planMode={planMode}
-                  onPlanModeChange={onPlanModeChange}
-                  liteAgentMode={liteAgentMode}
-                  workspaceFiles={files}
-                  onEditUserMessage={onEditAgentUserMessage}
-                />
-              </div>
-            </>
-          )}
-            </div>
+                </div>
+              )}
+            </aside>
           </>
         )}
       </div>
@@ -1463,14 +1524,6 @@ export function AgentWorkspace({
           files={files}
           onOpen={(path) => { onSelectFile(path); }}
           onClose={() => setQuickOpen(false)}
-        />
-      )}
-
-      {/* Command Palette modal */}
-      {commandPalette && (
-        <CommandPalette
-          commands={paletteCommands}
-          onClose={() => setCommandPalette(false)}
         />
       )}
     </div>

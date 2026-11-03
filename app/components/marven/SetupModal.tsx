@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { CheckIcon, CloseIcon, CubeIcon, CloudIcon } from "./Icons";
+import { Trans } from "react-i18next";
+import { useT } from "@/lib/i18n";
+import { SearchEnginePicker } from "./SearchEnginePicker";
 
 interface SetupModalProps {
   onSave: (name: string) => void;
 }
 
-type Step = "welcome" | "backend" | "model" | "done";
+type Step = "welcome" | "backend" | "search" | "model" | "done";
 
 interface BackendProbe {
   /** "live" once we've heard back from a local backend */
@@ -19,19 +22,22 @@ interface BackendProbe {
 const PROBE_TIMEOUT_MS = 1500;
 
 /**
- * First-run onboarding. Three steps so a brand-new user lands in a usable
+ * First-run onboarding. Four steps so a brand-new user lands in a usable
  * state without poking around in Settings:
  *
  *   1. Name (kept short — sets userProfile so the rest of the app boots).
  *   2. Backend detection (probes Ollama / LM Studio / llama-server in
  *      parallel; tells the user what's running on their machine + offers
  *      a cloud fallback link if nothing is).
- *   3. Model recommendation (suggests a known-good local 7B-coder model
+ *   3. Search engine for the in-app browser (saved straight to settings;
+ *      Brave is preselected).
+ *   4. Model recommendation (suggests a known-good local 7B-coder model
  *      if Ollama is up; otherwise explains how to add an API key for cloud).
  *
  * "Skip & explore" is always available — onboarding shouldn't gate use.
  */
 export function SetupModal({ onSave }: SetupModalProps) {
+  const { t } = useT();
   const [step, setStep] = useState<Step>("welcome");
   const [name, setName] = useState("");
   const [probes, setProbes] = useState<BackendProbe>({
@@ -93,10 +99,10 @@ export function SetupModal({ onSave }: SetupModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a1a1a]">
-      <div className="relative flex w-full max-w-[460px] flex-col gap-6 rounded-2xl border border-[#333] bg-[#1e1e1e] px-8 py-9 text-[#d4d4d4] mx-4">
+      <div className="relative flex w-full max-w-[460px] flex-col gap-6 rounded-2xl border border-[var(--m-border)] bg-[#1e1e1e] px-8 py-9 text-[#d4d4d4] mx-4">
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-1.5">
-          {(["welcome", "backend", "model"] as Step[]).map((s) => (
+          {(["welcome", "backend", "search", "model"] as Step[]).map((s) => (
             <span
               key={s}
               className={`h-[3px] w-6 rounded-full transition-colors ${
@@ -111,9 +117,9 @@ export function SetupModal({ onSave }: SetupModalProps) {
         {step === "welcome" && (
           <>
             <div className="text-center">
-              <h1 className="text-[20px] font-semibold">Welcome to Marven</h1>
+              <h1 className="text-[20px] font-semibold">{t("setup.welcomeTitle")}</h1>
               <p className="mt-2 text-[13px] text-[#888]">
-                A local-first AI coding assistant. Your code stays on your machine.
+                {t("setup.welcomeBody")}
               </p>
             </div>
             <div className="flex w-full flex-col gap-3">
@@ -123,8 +129,8 @@ export function SetupModal({ onSave }: SetupModalProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleNameSubmit()}
-                placeholder="What should I call you?"
-                className="border-b border-[#383838] bg-transparent pb-2 text-[15px] outline-none placeholder:text-[#555] focus:border-[#d19a66] transition-colors"
+                placeholder={t("setup.namePlaceholder")}
+                className="border-b border-[var(--m-border)] bg-transparent pb-2 text-[15px] outline-none placeholder:text-[#555] focus:border-[#d19a66] transition-colors"
               />
               <button
                 type="button"
@@ -132,7 +138,7 @@ export function SetupModal({ onSave }: SetupModalProps) {
                 disabled={!name.trim()}
                 className="w-full rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-6 py-2.5 text-[14px] text-[#d19a66] transition-all hover:bg-[#d19a66]/20 disabled:cursor-not-allowed disabled:opacity-30"
               >
-                Continue
+                {t("setup.continue")}
               </button>
             </div>
           </>
@@ -141,9 +147,9 @@ export function SetupModal({ onSave }: SetupModalProps) {
         {step === "backend" && (
           <>
             <div className="text-center">
-              <h1 className="text-[18px] font-semibold">Checking your AI backends</h1>
+              <h1 className="text-[18px] font-semibold">{t("setup.backendTitle")}</h1>
               <p className="mt-2 text-[13px] text-[#888]">
-                Marven looked for local model servers on your machine.
+                {t("setup.backendBody")}
               </p>
             </div>
 
@@ -154,17 +160,14 @@ export function SetupModal({ onSave }: SetupModalProps) {
             </div>
 
             {Object.values(probes).every((s) => s === "down") && (
-              <div className="rounded-lg border border-[#333] bg-[#262626] px-3 py-2.5 text-[11.5px] leading-relaxed text-[#aaa]">
-                No local backend detected. The easiest start is{" "}
-                <a
-                  className="text-[#d19a66] hover:underline"
-                  href="https://ollama.com"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Ollama
-                </a>{" "}
-                — install it, run <code className="text-[#d19a66]">ollama pull qwen2.5-coder:7b</code>, then come back. You can also use a cloud provider by adding an API key in Settings.
+              <div className="rounded-lg border border-[var(--m-border)] bg-[#262626] px-3 py-2.5 text-[11.5px] leading-relaxed text-[#aaa]">
+                <Trans
+                  i18nKey="setup.noBackend"
+                  components={{
+                    link: <a className="text-[#d19a66] hover:underline" href="https://ollama.com" target="_blank" rel="noreferrer" />,
+                    code: <code className="text-[#d19a66]" dir="ltr" />,
+                  }}
+                />
               </div>
             )}
 
@@ -172,16 +175,44 @@ export function SetupModal({ onSave }: SetupModalProps) {
               <button
                 type="button"
                 onClick={handleSkip}
-                className="flex-1 rounded-xl border border-[#333] bg-transparent px-4 py-2 text-[13px] text-[#888] hover:bg-[#262626]"
+                className="flex-1 rounded-xl border border-[var(--m-border)] bg-transparent px-4 py-2 text-[13px] text-[#888] hover:bg-[#262626]"
               >
-                Skip & explore
+                {t("setup.skip")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep("search")}
+                className="flex-1 rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-4 py-2 text-[13px] text-[#d19a66] hover:bg-[#d19a66]/20"
+              >
+                {t("setup.next")}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "search" && (
+          <>
+            <div className="text-center">
+              <h1 className="text-[18px] font-semibold">{t("setup.searchTitle")}</h1>
+              <p className="mt-2 text-[13px] text-[#888]">{t("setup.searchBody")}</p>
+            </div>
+
+            <SearchEnginePicker />
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="flex-1 rounded-xl border border-[var(--m-border)] bg-transparent px-4 py-2 text-[13px] text-[#888] hover:bg-[#262626]"
+              >
+                {t("setup.skip")}
               </button>
               <button
                 type="button"
                 onClick={() => setStep("model")}
                 className="flex-1 rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-4 py-2 text-[13px] text-[#d19a66] hover:bg-[#d19a66]/20"
               >
-                Next
+                {t("setup.next")}
               </button>
             </div>
           </>
@@ -190,9 +221,9 @@ export function SetupModal({ onSave }: SetupModalProps) {
         {step === "model" && (
           <>
             <div className="text-center">
-              <h1 className="text-[18px] font-semibold">Recommended setup</h1>
+              <h1 className="text-[18px] font-semibold">{t("setup.recommendedTitle")}</h1>
               <p className="mt-2 text-[13px] text-[#888]">
-                Based on what&apos;s running on your machine.
+                {t("setup.recommendedBody")}
               </p>
             </div>
 
@@ -200,19 +231,19 @@ export function SetupModal({ onSave }: SetupModalProps) {
               {probes.ollama === "live" ? (
                 <Recommendation
                   Icon={CubeIcon}
-                  title="You have Ollama — perfect."
+                  title={t("setup.ollamaTitle")}
                   body={
                     <>
-                      Try these models (pull from a terminal):
-                      <ul className="mt-1.5 list-disc pl-5 text-[#999]">
+                      {t("setup.ollamaTry")}
+                      <ul className="mt-1.5 list-disc ps-5 text-[#999]">
                         <li>
-                          <code className="text-[#d19a66]">qwen2.5-coder:7b</code> — fastest, good for editing & completions
+                          <code className="text-[#d19a66]" dir="ltr">qwen2.5-coder:7b</code> — {t("setup.modelFastest")}
                         </li>
                         <li>
-                          <code className="text-[#d19a66]">deepseek-coder-v2:16b</code> — better reasoning, needs more RAM
+                          <code className="text-[#d19a66]" dir="ltr">deepseek-coder-v2:16b</code> — {t("setup.modelReasoning")}
                         </li>
                         <li>
-                          <code className="text-[#d19a66]">nomic-embed-text</code> — required for codebase search
+                          <code className="text-[#d19a66]" dir="ltr">nomic-embed-text</code> — {t("setup.modelEmbeddings")}
                         </li>
                       </ul>
                     </>
@@ -221,17 +252,16 @@ export function SetupModal({ onSave }: SetupModalProps) {
               ) : (
                 <Recommendation
                   Icon={CloudIcon}
-                  title="Use a cloud provider for now"
+                  title={t("setup.cloudTitle")}
                   body={
                     <>
-                      Add a free API key in <strong>Settings → API Keys</strong>.
-                      Recommended starters:
-                      <ul className="mt-1.5 list-disc pl-5 text-[#999]">
+                      <Trans i18nKey="setup.cloudAddKey" components={{ strong: <strong /> }} />
+                      <ul className="mt-1.5 list-disc ps-5 text-[#999]">
                         <li>
-                          <strong>Groq</strong> — fast & free tier; pair with <em>Lite mode</em> for small models
+                          <Trans i18nKey="setup.cloudGroq" components={{ strong: <strong />, em: <em /> }} />
                         </li>
                         <li>
-                          <strong>Anthropic Claude</strong> — strongest agent quality
+                          <Trans i18nKey="setup.cloudClaude" components={{ strong: <strong /> }} />
                         </li>
                       </ul>
                     </>
@@ -239,9 +269,11 @@ export function SetupModal({ onSave }: SetupModalProps) {
                 />
               )}
 
-              <div className="rounded-lg border border-[#333] bg-[#262626] px-3 py-2.5">
-                <strong className="text-[#d4d4d4]">Tip:</strong> for small models (≤13B parameters), toggle{" "}
-                <strong>Lite Agent Mode</strong> in Settings → General → Agent. Marven adds extra guards that keep weak models from making destructive edits.
+              <div className="rounded-lg border border-[var(--m-border)] bg-[#262626] px-3 py-2.5">
+                <Trans
+                  i18nKey="setup.tip"
+                  components={{ strong: <strong className="text-[#d4d4d4]" />, em: <strong /> }}
+                />
               </div>
             </div>
 
@@ -250,7 +282,7 @@ export function SetupModal({ onSave }: SetupModalProps) {
               onClick={handleFinish}
               className="w-full rounded-xl border border-[#d19a66]/30 bg-[#d19a66]/10 px-6 py-2.5 text-[14px] text-[#d19a66] hover:bg-[#d19a66]/20"
             >
-              Got it — let me in
+              {t("setup.gotIt")}
             </button>
           </>
         )}
@@ -268,21 +300,22 @@ function BackendRow({
   hint: string;
   status: BackendProbe[keyof BackendProbe];
 }) {
+  const { t } = useT();
   return (
-    <div className="flex items-center justify-between rounded-lg border border-[#2d2d2d] bg-[#242424] px-3 py-2">
+    <div className="flex items-center justify-between rounded-lg border border-[var(--m-border-subtle)] bg-[#242424] px-3 py-2">
       <div>
         <div className="font-medium text-[#d4d4d4]">{name}</div>
         <div className="text-[11px] text-[#666]">{hint}</div>
       </div>
-      {status === "checking" && <span className="text-[11px] text-[#777]">checking…</span>}
+      {status === "checking" && <span className="text-[11px] text-[#777]">{t("setup.checking")}</span>}
       {status === "live" && (
         <span className="inline-flex items-center gap-1 text-[11px] text-[#98c379]">
-          <CheckIcon className="h-3 w-3" /> running
+          <CheckIcon className="h-3 w-3" /> {t("setup.running")}
         </span>
       )}
       {status === "down" && (
         <span className="inline-flex items-center gap-1 text-[11px] text-[#666]">
-          <CloseIcon className="h-3 w-3" /> not running
+          <CloseIcon className="h-3 w-3" /> {t("setup.notRunning")}
         </span>
       )}
     </div>
@@ -299,7 +332,7 @@ function Recommendation({
   body: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-[#333] bg-[#222] px-3 py-2.5">
+    <div className="rounded-lg border border-[var(--m-border)] bg-[#222] px-3 py-2.5">
       <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-[#d4d4d4]">
         <Icon className="h-3.5 w-3.5 text-[#d19a66]" />
         {title}

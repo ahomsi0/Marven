@@ -2,8 +2,7 @@ import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
 import { stripAttachments } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
-
-const OLLAMA_BASE = "http://localhost:11434";
+import { ollamaBaseUrl } from "@/lib/ollama";
 
 interface JsonToolCall { name: string; args: Record<string, unknown> }
 
@@ -157,9 +156,12 @@ export async function ollamaAgentStep(
     throw new OllamaToolsNotSupportedError(model);
   }
 
+  // Read per call: the user can point Marven at a non-default Ollama host in
+  // Settings, and Electron's applySettings updates OLLAMA_URL at runtime.
+  const base = ollamaBaseUrl().replace(/\/+$/, "");
   let res: Response;
   try {
-    res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+    res = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -170,7 +172,7 @@ export async function ollamaAgentStep(
       }),
     });
   } catch {
-    throw new Error("Could not connect to Ollama. Make sure it is running: ollama serve");
+    throw new Error(`Could not connect to Ollama at ${base}. Make sure it is running: ollama serve`);
   }
 
   if (!res.ok) {

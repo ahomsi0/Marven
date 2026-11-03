@@ -4,6 +4,11 @@ import {
   loadKeybindings,
   saveKeybindings,
   resetKeybindings,
+  parseCombo,
+  getBindingCombo,
+  eventMatchesCombo,
+  formatCombo,
+  formatBinding,
 } from "./keybindings";
 
 // ── localStorage mock ─────────────────────────────────────────────────────────
@@ -92,5 +97,67 @@ describe("resetKeybindings", () => {
     expect(loadKeybindings()).not.toEqual({});
     resetKeybindings();
     expect(loadKeybindings()).toEqual({});
+  });
+});
+
+// ── Combo parsing / matching ─────────────────────────────────────────────────
+
+function keyEvent(over: Partial<KeyboardEvent>) {
+  return { key: "", code: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...over } as KeyboardEvent;
+}
+
+describe("parseCombo", () => {
+  it("reads ⌘ in defaults as the platform modifier", () => {
+    expect(parseCombo("⌘⇧P", true, true)).toEqual({ key: "p", meta: true, ctrl: false, alt: false, shift: true });
+    expect(parseCombo("⌘⇧P", false, true)).toEqual({ key: "p", meta: false, ctrl: true, alt: false, shift: true });
+  });
+
+  it("reads recorded overrides literally", () => {
+    expect(parseCombo("⌃⌥K", true)).toEqual({ key: "k", meta: false, ctrl: true, alt: true, shift: false });
+    expect(parseCombo("Ctrl+Shift+Win+J", false)).toEqual({ key: "j", meta: true, ctrl: true, alt: false, shift: true });
+    expect(parseCombo("Ctrl+`", false, true)).toEqual({ key: "`", meta: false, ctrl: true, alt: false, shift: false });
+  });
+
+  it("handles named keys and rejects unfinished combos", () => {
+    expect(parseCombo("⇧Space", true)?.key).toBe(" ");
+    expect(parseCombo("⌘+", true)?.key).toBe("+");
+    expect(parseCombo("Ctrl+", false)).toBeNull();
+    expect(parseCombo("", false)).toBeNull();
+  });
+});
+
+describe("getBindingCombo / eventMatchesCombo", () => {
+  it("matches the default command palette binding", () => {
+    const combo = getBindingCombo("command-palette", true)!;
+    expect(eventMatchesCombo(keyEvent({ key: "p", code: "KeyP", metaKey: true, shiftKey: true }), combo)).toBe(true);
+    // Shift makes e.key upper-case on some layouts.
+    expect(eventMatchesCombo(keyEvent({ key: "P", code: "KeyP", metaKey: true, shiftKey: true }), combo)).toBe(true);
+    // Without shift it's Quick Open, not the palette.
+    expect(eventMatchesCombo(keyEvent({ key: "p", code: "KeyP", metaKey: true }), combo)).toBe(false);
+  });
+
+  it("uses Ctrl off macOS", () => {
+    const combo = getBindingCombo("command-palette", false)!;
+    expect(eventMatchesCombo(keyEvent({ key: "P", code: "KeyP", ctrlKey: true, shiftKey: true }), combo)).toBe(true);
+    expect(eventMatchesCombo(keyEvent({ key: "P", code: "KeyP", metaKey: true, shiftKey: true }), combo)).toBe(false);
+  });
+
+  it("honours a remapped binding", () => {
+    const combo = getBindingCombo("command-palette", true, { "command-palette": "⌥⌘K" })!;
+    expect(eventMatchesCombo(keyEvent({ key: "˚", code: "KeyK", metaKey: true, altKey: true }), combo)).toBe(true);
+    expect(eventMatchesCombo(keyEvent({ key: "p", code: "KeyP", metaKey: true, shiftKey: true }), combo)).toBe(false);
+  });
+
+  it("returns null for unknown ids", () => {
+    expect(getBindingCombo("nope", true)).toBeNull();
+  });
+});
+
+describe("formatCombo / formatBinding", () => {
+  it("formats per platform", () => {
+    expect(formatCombo(parseCombo("⌘⇧P", true, true)!, true)).toBe("⇧⌘P");
+    expect(formatBinding("command-palette", false)).toBe("Ctrl+Shift+P");
+    expect(formatBinding("command-palette", true, { "command-palette": "⌥⌘K" })).toBe("⌥⌘K");
+    expect(formatBinding("missing", true)).toBe("");
   });
 });

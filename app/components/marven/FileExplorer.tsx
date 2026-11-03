@@ -202,8 +202,14 @@ export function FileExplorer({
   onOpenFolder,
 }: FileExplorerProps) {
   const folderName = workspaceRoot?.split("/").filter(Boolean).pop() ?? null;
-  const tree = useMemo(() => buildTree(files), [files]);
-  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPaths(buildTree(files))));
+  // .git internals are never useful to browse (.github / .gitignore stay).
+  const visibleFiles = useMemo(
+    () => files.filter((f) => f.path !== ".git" && !f.path.startsWith(".git/")),
+    [files],
+  );
+  const tree = useMemo(() => buildTree(visibleFiles), [visibleFiles]);
+  // Folders start collapsed; ones created later still auto-open (below).
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set());
   const [creating, setCreating] = useState<"file" | "folder" | null>(null);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -315,9 +321,9 @@ export function FileExplorer({
     setOpenFolders((prev) => {
       const known = knownFolderPathsRef.current;
       if (!known) {
-        // First tree after mount: open everything (previous behavior).
+        // First tree after mount: start collapsed, remember what exists.
         knownFolderPathsRef.current = new Set(newPaths);
-        return new Set(newPaths);
+        return prev;
       }
       const added = newPaths.filter((p) => !known.has(p));
       for (const p of newPaths) known.add(p);
@@ -338,7 +344,9 @@ export function FileExplorer({
 
   return (
     <div className="flex h-full flex-col bg-[var(--m-bg)]">
-      {/* Open folder button (replaces Explorer header) */}
+      {/* Open folder button — only without a folder; once one is open, the
+          workspace header shows it (and changes it). */}
+      {!workspaceRoot && (
       <div className="border-b border-[var(--m-border-subtle)] px-3 py-3">
         <button
           type="button"
@@ -358,6 +366,7 @@ export function FileExplorer({
           )}
         </button>
       </div>
+      )}
 
       {/* Project root row */}
       <div className="group flex items-center gap-1 border-b border-[var(--m-border-subtle)] px-2 py-1.5">

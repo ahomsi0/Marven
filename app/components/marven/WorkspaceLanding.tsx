@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { MarvenLogo } from "./MarvenLogo";
+import { Trans } from "react-i18next";
+import { useT } from "@/lib/i18n";
 
 interface WorkspaceLandingProps {
   recentWorkspaces: string[];
@@ -31,6 +33,7 @@ export function WorkspaceLanding({
   onSelectRecent,
   onOpenSettings,
 }: WorkspaceLandingProps) {
+  const { t } = useT();
   const [showCloneForm, setShowCloneForm] = useState(false);
   const [cloneUrl, setCloneUrl] = useState("");
   const [cloning, setCloning] = useState(false);
@@ -50,7 +53,7 @@ export function WorkspaceLanding({
       });
       const data = await res.json();
       if (!res.ok || !data.path) {
-        setCloneError(data.error ?? "Clone failed");
+        setCloneError(data.error ?? t("landing.cloneFailed"));
         return;
       }
       setShowCloneForm(false);
@@ -73,7 +76,7 @@ export function WorkspaceLanding({
           <MarvenLogo size={48} />
           <span className="font-mono text-[28px] font-semibold tracking-wide text-[var(--m-text)]">MARVEN</span>
         </div>
-        <div className="mb-12 text-[13px] text-[var(--m-text-faint)]">Local AI Desktop</div>
+        <div className="mb-12 text-[13px] text-[var(--m-text-faint)]">{t("landing.tagline")}</div>
 
         {/* Action cards */}
         <div className="mb-10 grid grid-cols-3 gap-3">
@@ -83,7 +86,7 @@ export function WorkspaceLanding({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
               </svg>
             }
-            label="Open project"
+            label={t("landing.openProject")}
             onClick={onOpenFolder}
           />
           <ActionCard
@@ -92,7 +95,7 @@ export function WorkspaceLanding({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
               </svg>
             }
-            label="Clone repo"
+            label={t("landing.cloneRepo")}
             onClick={() => { setShowCloneForm(true); setCloneError(null); }}
           />
           <ActionCard
@@ -102,7 +105,7 @@ export function WorkspaceLanding({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             }
-            label="Settings"
+            label={t("common.settings")}
             onClick={onOpenSettings}
           />
         </div>
@@ -110,7 +113,7 @@ export function WorkspaceLanding({
         {/* Clone form */}
         {showCloneForm && (
           <div className="mb-10 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-3">
-            <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--m-text-faint)]">Clone repository</div>
+            <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--m-text-faint)]">{t("landing.cloneRepository")}</div>
             <div className="flex gap-2">
               <input
                 autoFocus
@@ -131,7 +134,7 @@ export function WorkspaceLanding({
                 disabled={cloning || !cloneUrl.trim()}
                 className="rounded-md border border-[#d19a66]/30 bg-[#d19a66]/10 px-4 py-2 text-[11px] text-[#d19a66] hover:bg-[#d19a66]/20 disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {cloning ? "Cloning…" : "Clone"}
+                {cloning ? t("landing.cloning") : t("landing.clone")}
               </button>
               <button
                 type="button"
@@ -139,14 +142,17 @@ export function WorkspaceLanding({
                 disabled={cloning}
                 className="rounded-md border border-[var(--m-border)] px-3 py-2 text-[11px] text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
             {cloneError && (
               <p className="mt-2 font-mono text-[10px] text-red-400">{cloneError}</p>
             )}
             <p className="mt-2 text-[10px] text-[var(--m-text-faint)]">
-              Clones into <code className="font-mono text-[10px] text-[var(--m-text-muted)]">~/Marven-Workspaces</code> by default.
+              <Trans
+                i18nKey="landing.clonesInto"
+                components={{ code: <code className="font-mono text-[10px] text-[var(--m-text-muted)]" dir="ltr" /> }}
+              />
             </p>
           </div>
         )}
@@ -154,19 +160,19 @@ export function WorkspaceLanding({
         {/* Recent projects */}
         <div>
           <div className="mb-3 flex items-baseline justify-between">
-            <span className="text-[13px] text-[var(--m-text-muted)]">Recent projects</span>
+            <span className="text-[13px] text-[var(--m-text-muted)]">{t("landing.recentProjects")}</span>
             {recentWorkspaces.length > 5 && (
               <button
                 type="button"
                 onClick={() => setExpandedRecents((v) => !v)}
                 className="text-[11px] text-[#d19a66] hover:text-[#e0b890]"
               >
-                {expandedRecents ? "Show less" : `View all (${recentWorkspaces.length})`}
+                {expandedRecents ? t("landing.showLess") : t("landing.viewAll", { count: recentWorkspaces.length })}
               </button>
             )}
           </div>
           {recentWorkspaces.length === 0 ? (
-            <p className="text-[12px] text-[var(--m-text-faint)]">No recent projects yet — open one to get started.</p>
+            <p className="text-[12px] text-[var(--m-text-faint)]">{t("landing.noRecent")}</p>
           ) : (
             <ul className="flex flex-col">
               {displayedRecents.map((p) => {
@@ -176,7 +182,7 @@ export function WorkspaceLanding({
                     <button
                       type="button"
                       onClick={() => onSelectRecent(p)}
-                      className="group flex w-full items-baseline justify-between gap-4 rounded-md px-3 py-2 text-left transition-colors hover:bg-[var(--m-surface-2)]"
+                      className="group flex w-full items-baseline justify-between gap-4 rounded-md px-3 py-2 text-start transition-colors hover:bg-[var(--m-surface-2)]"
                     >
                       <span className="truncate text-[13px] text-[var(--m-text)] group-hover:text-[#d19a66]">{name}</span>
                       <span className="truncate font-mono text-[11px] text-[var(--m-text-faint)]">{parent}</span>
@@ -197,7 +203,7 @@ function ActionCard({ icon, label, onClick }: { icon: React.ReactNode; label: st
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-start gap-3 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] px-4 py-4 text-left transition-colors hover:border-[#d19a66]/40 hover:bg-[var(--m-surface-2)]"
+      className="flex flex-col items-start gap-3 rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] px-4 py-4 text-start transition-colors hover:border-[#d19a66]/40 hover:bg-[var(--m-surface-2)]"
     >
       <span className="text-[#d19a66]">{icon}</span>
       <span className="text-[13px] text-[var(--m-text)]">{label}</span>

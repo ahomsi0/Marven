@@ -22,14 +22,24 @@ import type { VoiceState } from "@/hooks/useVoice";
 import { Message } from "@/app/components/marven/Message";
 import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
-import { PROVIDER_LABELS } from "@/app/components/marven/ModelSelector";
-import { SidebarIcon } from "@/app/components/marven/Icons";
+import { PROVIDER_LABELS, shortModelName } from "@/app/components/marven/ModelSelector";
+import { GlobeIcon, SidebarIcon } from "@/app/components/marven/Icons";
+import { BrowserPanel } from "@/app/components/marven/browser/BrowserPanel";
+import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
 import { TitleBar } from "@/app/components/marven/TitleBar";
 import { AgentWorkspace } from "@/app/components/marven/AgentWorkspace";
 import { ConversationSearchPalette } from "@/app/components/marven/ConversationSearchPalette";
+import { CommandPalette, type PaletteCommand } from "@/app/components/marven/CommandPalette";
+import { LanguageModal } from "@/app/components/marven/LanguageModal";
 import { generateMarkdown } from "@/lib/chatHelpers";
+import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/theme";
+import { useProviderModels } from "@/hooks/useProviderModels";
+import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { versionControls } from "@/lib/messageVersions";
+import { OPEN_SETTINGS_EVENT, openSettingsPage } from "@/lib/settingsNav";
 
 interface ChatLayoutProps {
   mode: ConversationMode;
@@ -81,9 +91,10 @@ interface ChatLayoutProps {
   onOpenFolder: () => void;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  /** Stop the chat reply streaming into the active conversation. */
+  onStop?: () => void;
   onVoiceClick: () => void;
-  onProviderChange: (provider: AIProvider) => void;
-  onModelChange: (model: string) => void;
+  onModelSelect: (provider: AIProvider, model: string) => void;
   onToggleWakeWord: () => void;
   onToggleSpeech: () => void;
   onNewChat: () => void;
@@ -91,8 +102,7 @@ interface ChatLayoutProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
-  conversationSystemPrompt: string;
-  onSystemPromptChange: (value: string) => void;
+  onRenameConversation: (id: string, name: string) => void;
   onSaveShortcuts: (shortcuts: CustomShortcut[]) => void;
   promptTemplates: PromptTemplate[];
   mcpServers: MCPServer[];
@@ -111,7 +121,10 @@ interface ChatLayoutProps {
   onCloseAgentFile?: () => void;
   onRefreshAgentFiles: () => void;
   onEditMessage: (id: string, newContent: string) => void;
-  onRetryMessage: (id: string) => void;
+  /** Regenerate a reply; `override` answers with another model for this reply only. */
+  onRetryMessage: (id: string, override?: { provider: AIProvider; model: string }) => void;
+  onSwitchVersion?: (userMessageId: string, version: number) => void;
+  onBranchFromMessage?: (messageId: string) => void;
   // Multi-tab props
   openTabs: EditorTab[];
   activeTabIndex: number;
@@ -141,10 +154,15 @@ interface ChatLayoutProps {
   onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
 }
 
+const BROWSER_WIDTH_KEY = "marven-browser-width";
+const THEMES: Theme[] = ["dark", "light", "midnight", "aurora"];
+// The browser panel's minimum width, and the space the chat always keeps.
+const BROWSER_MIN_WIDTH = 360;
+
 function TypingRow() {
   return (
     <div className="message-in flex justify-start">
-      <div className="border-l border-[var(--m-border)] pl-3 py-2">
+      <div className="border-s border-[var(--m-border)] ps-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--m-text-muted)]">
             Thinking
@@ -208,9 +226,9 @@ export function ChatLayout({
   onOpenFolder,
   onInputChange,
   onSend,
+  onStop,
   onVoiceClick,
-  onProviderChange,
-  onModelChange,
+  onModelSelect,
   onToggleWakeWord,
   onToggleSpeech,
   onNewChat,
@@ -218,8 +236,7 @@ export function ChatLayout({
   onSelectConversation,
   onDeleteConversation,
   onPinConversation,
-  conversationSystemPrompt,
-  onSystemPromptChange,
+  onRenameConversation,
   onSaveShortcuts,
   promptTemplates,
   mcpServers,
@@ -239,6 +256,8 @@ export function ChatLayout({
   onRefreshAgentFiles,
   onEditMessage,
   onRetryMessage,
+  onSwitchVersion,
+  onBranchFromMessage,
   openTabs,
   activeTabIndex,
   fileBuffers,
@@ -265,11 +284,126 @@ export function ChatLayout({
   onAgentEditorScroll,
   onEditAgentUserMessage,
 }: ChatLayoutProps) {
+  const { t } = useT();
   const messagesViewportRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
+  // In-app browser panel beside the chat (globe button in the header).
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserExpanded, setBrowserExpanded] = useState(false);
+  // Browser panel width in px, set by dragging its edge; null = half the row.
+  const [browserWidth, setBrowserWidth] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = Number(localStorage.getItem(BROWSER_WIDTH_KEY));
+      return saved >= BROWSER_MIN_WIDTH ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const [browserResizing, setBrowserResizing] = useState(false);
+  const browserRowRef = useRef<HTMLDivElement>(null);
+  const browserAsideRef = useRef<HTMLElement>(null);
+
+  // The chat keeps at least BROWSER_MIN_WIDTH next to the browser.
+  function clampBrowserWidth(width: number) {
+    const row = browserRowRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const max = Math.max(BROWSER_MIN_WIDTH, row - BROWSER_MIN_WIDTH);
+    return Math.round(Math.min(Math.max(width, BROWSER_MIN_WIDTH), max));
+  }
+
+  function saveBrowserWidth(width: number | null) {
+    setBrowserWidth(width);
+    try {
+      if (width === null) localStorage.removeItem(BROWSER_WIDTH_KEY);
+      else localStorage.setItem(BROWSER_WIDTH_KEY, String(width));
+    } catch { /* best effort */ }
+  }
+
+  function startBrowserResize(e: React.PointerEvent<HTMLDivElement>) {
+    const row = browserRowRef.current;
+    if (e.button !== 0 || !row) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const rtl = document.documentElement.dir === "rtl";
+    let latest: number | null = null;
+    setBrowserResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      const r = row.getBoundingClientRect();
+      latest = clampBrowserWidth(rtl ? ev.clientX - r.left : r.right - ev.clientX);
+      setBrowserWidth(latest);
+    };
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setBrowserResizing(false);
+      if (latest !== null) saveBrowserWidth(latest);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
+  function nudgeBrowserWidth(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const rtl = document.documentElement.dir === "rtl";
+    // The handle sits on the browser's start edge: moving it outward widens it.
+    const grow = (e.key === "ArrowLeft") !== rtl;
+    const current = browserWidth ?? browserAsideRef.current?.getBoundingClientRect().width ?? BROWSER_MIN_WIDTH;
+    saveBrowserWidth(clampBrowserWidth(current + (grow ? 24 : -24)));
+  }
   const [convSearchOpen, setConvSearchOpen] = useState(false);
+  // App-wide command palette (⌘⇧P by default, remappable in Settings → Keyboard).
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  // Agent mode publishes its workspace commands here for the palette.
+  const agentPaletteCommandsRef = useRef<PaletteCommand[]>([]);
+  const providerModels = useProviderModels();
+  const { enabledList: enabledProviderList, loadModels } = providerModels;
+  // Set once the palette's model list is first opened; loads every enabled provider.
+  const [paletteModelsWanted, setPaletteModelsWanted] = useState(false);
+  const enabledProvidersKey = enabledProviderList.join(",");
+  useEffect(() => {
+    if (!paletteModelsWanted) return;
+    for (const p of enabledProviderList) void loadModels(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteModelsWanted, enabledProvidersKey, loadModels]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) return;
+      const combo = getBindingCombo("command-palette", isMacPlatform(), loadKeybindings());
+      if (combo && eventMatchesCombo(e, combo)) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Picking another chat while the browser is expanded would leave the chat
+  // hidden behind it; collapse the browser back beside the chat instead.
+  useEffect(() => {
+    setBrowserExpanded(false);
+  }, [activeConversationId]);
+
+  // "Report a problem" / "Manage memory" from anywhere (palette, memory toast):
+  // open the real Settings window in chat mode; the modal picks up the pending
+  // page when it mounts (see lib/settingsNav.ts).
+  useEffect(() => {
+    if (mode !== "chat") return;
+    const onOpenSettings = () => setSettingsOpen(true);
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpenSettings);
+  }, [mode]);
 
   // ⌘⇧K — open cross-conversation search palette.
   useEffect(() => {
@@ -284,10 +418,6 @@ export function ChatLayout({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  useEffect(() => {
-    setSystemPromptOpen(false);
-  }, [activeConversationId]);
 
   function handleSlashCommand(cmd: string) {
     if (cmd === "/shortcuts") {
@@ -317,6 +447,142 @@ export function ChatLayout({
     URL.revokeObjectURL(url);
   }
 
+  function buildPaletteCommands(): PaletteCommand[] {
+    const isMac = isMacPlatform();
+    // Read when the palette renders: Settings changes the theme through its own hook.
+    const theme = getStoredTheme();
+    const general = t("palette.groups.general");
+    const bridge = getBrowserBridge();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+
+    // Models from every enabled provider, the one in use first.
+    const modelProviders = [provider, ...enabledProviderList.filter((p) => p !== provider)];
+    const modelItems: PaletteCommand[] = modelProviders.flatMap((p) =>
+      providerModels.models[p].map((m) => ({
+        id: `${p}:${m}`,
+        label: shortModelName(m),
+        hint: PROVIDER_LABELS[p],
+        keywords: [m],
+        active: p === provider && m === selectedModel,
+        action: () => onModelSelect(p, m),
+      })),
+    );
+
+    const commands: PaletteCommand[] = [
+      { id: "new-chat", group: general, label: t("palette.commands.newChat"), action: onNewChat },
+      { id: "new-agent", group: general, label: t("palette.commands.newAgent"), action: onNewAgent },
+      {
+        id: "search-conversations",
+        group: general,
+        label: t("palette.commands.searchConversations"),
+        keybinding: isMac ? "⇧⌘K" : "Ctrl+Shift+K",
+        action: () => setConvSearchOpen(true),
+      },
+      {
+        id: "switch-model",
+        group: general,
+        label: t("palette.commands.switchModel"),
+        hint: selectedModel ? shortModelName(selectedModel) : undefined,
+        children: modelItems,
+        childrenLoading:
+          modelProviders.some((p) => providerModels.loading.has(p)) || (!paletteModelsWanted && modelItems.length === 0),
+        emptyText: t("palette.commands.noModels"),
+        onEnter: () => {
+          providerModels.refreshEnabled();
+          setPaletteModelsWanted(true);
+          void loadModels(provider);
+        },
+      },
+      {
+        id: "toggle-theme",
+        group: general,
+        label: t("palette.commands.toggleTheme"),
+        action: () => setStoredTheme(isDarkTheme(theme) ? "light" : "dark"),
+      },
+      {
+        id: "pick-theme",
+        group: general,
+        label: t("palette.commands.pickTheme"),
+        hint: t(`settings.general.theme_${theme}`),
+        children: THEMES.map((id) => ({
+          id,
+          label: t(`settings.general.theme_${id}`),
+          active: theme === id,
+          action: () => setStoredTheme(id),
+        })),
+      },
+      { id: "language", group: general, label: t("palette.commands.language"), action: () => setLanguageOpen(true) },
+      {
+        id: "open-settings",
+        group: general,
+        label: t("palette.commands.openSettings"),
+        // ⌘, is only wired up inside the agent workspace.
+        keybinding: mode === "agent" ? formatBinding("open-settings", isMac) : undefined,
+        action: () => setSettingsOpen(true),
+      },
+      { id: "toggle-sidebar", group: general, label: t("palette.commands.toggleSidebar"), action: () => setSidebarOpen((v) => !v) },
+    ];
+
+    // The in-app browser lives beside the chat, and only in the desktop app.
+    if (mode === "chat" && bridge) {
+      commands.push(
+        {
+          id: "toggle-browser",
+          group: general,
+          label: browserOpen ? t("palette.commands.closeBrowser") : t("palette.commands.openBrowser"),
+          action: () => {
+            setBrowserOpen((v) => !v);
+            setBrowserExpanded(false);
+          },
+        },
+        {
+          id: "new-browser-tab",
+          group: general,
+          label: t("palette.commands.newBrowserTab"),
+          action: () => {
+            setBrowserOpen(true);
+            setBrowserExpanded(false);
+            // Let the panel mount (and show its native view) before adding the tab.
+            requestAnimationFrame(() => void bridge.newTab().catch(() => {}));
+          },
+        },
+      );
+    }
+
+    if (mode === "chat" && messages.length > 0) {
+      commands.push({ id: "export-chat", group: general, label: t("palette.commands.exportChat"), action: handleExport });
+    }
+    if (typeof electron?.checkForUpdates === "function") {
+      commands.push({
+        id: "check-updates",
+        group: general,
+        label: t("palette.commands.checkUpdates"),
+        action: () => void Promise.resolve(electron.checkForUpdates()).catch(() => {}),
+      });
+    }
+    commands.push({
+      id: "report-problem",
+      group: general,
+      label: t("palette.commands.reportProblem"),
+      action: () => window.dispatchEvent(new CustomEvent("marven:report-problem")),
+    });
+    commands.push({
+      id: "manage-memory",
+      group: general,
+      label: t("palette.commands.manageMemory"),
+      action: () => openSettingsPage({ page: "memory" }),
+    });
+
+    if (mode === "agent" && agentPaletteCommandsRef.current.length > 0) {
+      const workspace = t("palette.groups.workspace");
+      const agentCommands = agentPaletteCommandsRef.current.map((c) => ({ ...c, id: `agent:${c.id}`, group: workspace }));
+      // In the agent workspace its own commands come first.
+      return [...agentCommands, ...commands];
+    }
+    return commands;
+  }
+
   // Auto-scroll only when the user is already near the bottom — otherwise
   // streaming deltas yank the viewport down while they're scrolling up to
   // re-read earlier messages.
@@ -344,8 +610,11 @@ export function ChatLayout({
   }, [messages, isLoading]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
-  const chatTitle = activeConversation?.name?.trim() || "New chat";
-  const hasSystemPrompt = conversationSystemPrompt.trim().length > 0;
+  // Where to draw ‹ n/m › switchers for edited / retried messages.
+  const versionSwitchers = versionControls(messages);
+  const agentHasOwnHeader =
+    mode === "agent" && (!!workspaceRoot || openTabs.some((tab) => tab.kind === "settings"));
+  const chatTitle = activeConversation?.name?.trim() || t("sidebar.newChat");
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--m-bg)] text-[var(--m-text)]">
@@ -364,6 +633,7 @@ export function ChatLayout({
           onSelectConversation={onSelectConversation}
           onDeleteConversation={onDeleteConversation}
           onPinConversation={onPinConversation}
+          onRenameConversation={onRenameConversation}
           onOpenSettings={() => setSettingsOpen(true)}
           userName={userName}
           providerLabel={PROVIDER_LABELS[provider]}
@@ -373,62 +643,54 @@ export function ChatLayout({
           onRenameFolder={onRenameFolder}
           onDeleteFolder={onDeleteFolder}
           onMoveConversation={onMoveConversation}
+          onCloseSidebar={() => setSidebarOpen(false)}
         />
 
         {/* Main panel */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 py-2 sm:px-5">
-            <div className={`mx-auto w-full ${mode === "agent" ? "max-w-none" : "max-w-[820px]"}`}>
+          {/* In agent mode the workspace draws its own header (except on its
+              start screen), so the page has a single top bar. */}
+          {!agentHasOwnHeader && (
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 sm:px-5">
+            {/* The toggle lives in the sidebar; this copy only appears while
+                the sidebar is hidden, so it can be reopened. */}
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="shrink-0 rounded-md p-1.5 text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                aria-label={t("sidebar.openSidebar")}
+                title={t("sidebar.openSidebar")}
+              >
+                <SidebarIcon className="h-[18px] w-[18px] rtl:-scale-x-100" />
+              </button>
+            )}
+            {/* Full width: the chat name sits at the far left, actions at the far right. */}
+            <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  {/* Toggle sidebar */}
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen((v) => !v)}
-                    className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                    aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                    title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                  >
-                    <SidebarIcon className="h-[18px] w-[18px]" />
-                  </button>
-
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h1 className="truncate text-[14px] font-medium text-[var(--m-text)]">
-                        {mode === "agent" ? "Marven Agent" : chatTitle}
+                        {mode === "agent" ? t("header.marvenAgent") : chatTitle}
                       </h1>
                       <SpeakingWave active={isSpeakingNow} />
                     </div>
                     {mode === "agent" && (
-                      <span className="text-[11px] text-[var(--m-text-faint)]">File-aware workspace</span>
+                      <span className="block text-[11px] leading-tight text-[var(--m-text-faint)]">{t("header.fileAwareWorkspace")}</span>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {mode === "chat" && (
-                    <button
-                      type="button"
-                      onClick={() => setSystemPromptOpen((v) => !v)}
-                      title="Conversation system prompt"
-                      aria-label="Conversation system prompt"
-                      className={`rounded-md border px-2 py-1 text-[10px] transition-colors ${
-                        systemPromptOpen || hasSystemPrompt
-                          ? "border-[#d19a66]/40 bg-[#d19a66]/10 text-[#d19a66]"
-                          : "border-[var(--m-border-subtle)] text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                      }`}
-                    >
-                      System
-                    </button>
-                  )}
                   {/* Export button — only in chat mode, only when there are messages */}
                   {mode === "chat" && messages.length > 0 && (
                     <button
                       type="button"
                       onClick={handleExport}
-                      title="Export as Markdown"
-                      aria-label="Export conversation as Markdown"
+                      title={t("header.exportMarkdown")}
+                      aria-label={t("header.exportConversation")}
                       className="rounded-md p-1.5 text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -436,15 +698,36 @@ export function ChatLayout({
                       </svg>
                     </button>
                   )}
-
+                  {mode === "chat" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBrowserOpen((v) => !v);
+                        setBrowserExpanded(false);
+                      }}
+                      aria-pressed={browserOpen}
+                      title={t("browser.open")}
+                      aria-label={t("browser.open")}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        browserOpen
+                          ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
+                          : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                      }`}
+                    >
+                      <GlobeIcon className="h-[18px] w-[18px]" />
+                    </button>
+                  )}
                 </div>
               </div>
 
             </div>
           </header>
+          )}
 
           {mode === "agent" ? (
             <AgentWorkspace
+              sidebarOpen={sidebarOpen}
+              onOpenSidebar={() => setSidebarOpen(true)}
               messages={agentMessages}
               input={agentInput}
               isRunning={isAgentRunning}
@@ -478,8 +761,7 @@ export function ChatLayout({
               // not as an editor tab. Override the page.tsx-supplied handler.
               onOpenSettings={() => setSettingsOpen(true)}
               appVersion={appVersion}
-              onProviderChange={onProviderChange}
-              onModelChange={onModelChange}
+              onModelSelect={onModelSelect}
               onToggleSpeech={onToggleSpeech}
               onToggleWakeWord={onToggleWakeWord}
               onInputChange={onAgentInputChange}
@@ -520,30 +802,51 @@ export function ChatLayout({
               onOpenRestTab={onOpenRestTab}
               onEditorScroll={onAgentEditorScroll}
               onEditAgentUserMessage={onEditAgentUserMessage}
+              onOpenCommandPalette={() => setPaletteOpen(true)}
+              paletteCommandsRef={agentPaletteCommandsRef}
             />
           ) : (
-            <>
+            <div ref={browserRowRef} className="flex min-h-0 flex-1 overflow-hidden">
+            <div className={`flex min-w-0 flex-1 flex-col ${browserOpen && browserExpanded ? "hidden" : ""}`}>
               {/* Messages */}
               <main
                 ref={messagesViewportRef}
                 className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
               >
-                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
+                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
                   {messages.length === 0 && !isLoading && (
                     <div className="message-in py-12 text-center">
-                      <div className="text-[13px] text-[var(--m-text-muted)]">What are we working through?</div>
-                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">Ask, paste, attach, or use a saved prompt.</div>
+                      <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>
+                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
                     </div>
                   )}
-                  {messages.map((message) => (
-                    <Message
-                      key={message.id}
-                      message={message}
-                      disabled={isLoading}
-                      onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
-                      onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
-                    />
-                  ))}
+                  {messages.map((message) => {
+                    const switcher = versionSwitchers.get(message.id);
+                    return (
+                      <Message
+                        key={message.id}
+                        message={message}
+                        disabled={isLoading}
+                        onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
+                        onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                        onRetryWith={
+                          message.role === "assistant" ? (p, m) => onRetryMessage(message.id, { provider: p, model: m }) : undefined
+                        }
+                        currentProvider={provider}
+                        currentModel={selectedModel}
+                        onBranch={onBranchFromMessage && !message.isStreaming ? () => onBranchFromMessage(message.id) : undefined}
+                        version={
+                          switcher && onSwitchVersion
+                            ? {
+                                index: switcher.index,
+                                total: switcher.total,
+                                onSelect: (v) => onSwitchVersion(switcher.ownerId, v),
+                              }
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                   {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
                     <TypingRow />
                   )}
@@ -551,20 +854,8 @@ export function ChatLayout({
               </main>
 
               {/* Input bar */}
-              <footer className="mt-auto border-t border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
+              <footer className="mt-auto bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
                 <div className="mx-auto w-full max-w-[760px]">
-                  {/* Per-conversation system prompt — collapsible strip
-                      sitting directly above the input bar so the user is
-                      aware of (and can edit) what's currently active while
-                      typing. Toggle button on the right shows/hides. */}
-                  {(systemPromptOpen || hasSystemPrompt) && (
-                    <SystemPromptStrip
-                      open={systemPromptOpen}
-                      onToggle={() => setSystemPromptOpen((v) => !v)}
-                      value={conversationSystemPrompt}
-                      onCommit={onSystemPromptChange}
-                    />
-                  )}
                   <InputBar
                     value={input}
                     isLoading={isLoading}
@@ -586,16 +877,59 @@ export function ChatLayout({
                     promptTemplates={promptTemplates}
                     onChange={onInputChange}
                     onSend={onSend}
+                    onStop={onStop}
                     onVoiceClick={onVoiceClick}
                     onSlashCommand={handleSlashCommand}
-                    onProviderChange={onProviderChange}
-                    onModelChange={onModelChange}
+                    onModelSelect={onModelSelect}
                     onToggleSpeech={onToggleSpeech}
                     onToggleWakeWord={onToggleWakeWord}
                   />
                 </div>
               </footer>
-            </>
+            </div>
+            {browserOpen && !browserExpanded && (
+              // A sibling of the aside, not inside it: the native page covers
+              // the aside's interior and would take the pointer.
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t("browser.resize")}
+                aria-valuemin={BROWSER_MIN_WIDTH}
+                aria-valuenow={browserWidth ?? undefined}
+                title={t("browser.resize")}
+                tabIndex={0}
+                onPointerDown={startBrowserResize}
+                onDoubleClick={() => saveBrowserWidth(null)}
+                onKeyDown={nudgeBrowserWidth}
+                className="relative z-10 -me-px w-1 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
+              />
+            )}
+            {browserOpen && (
+              <aside
+                ref={browserAsideRef}
+                className={
+                  browserExpanded
+                    ? "flex min-w-0 flex-1 flex-col"
+                    : `flex min-w-[360px] flex-col border-s border-[var(--m-border)] ${browserWidth === null ? "w-1/2" : "shrink-0"}`
+                }
+                style={
+                  browserExpanded || browserWidth === null
+                    ? undefined
+                    : { width: browserWidth, maxWidth: `calc(100% - ${BROWSER_MIN_WIDTH}px)` }
+                }
+              >
+                <BrowserPanel
+                  expanded={browserExpanded}
+                  resizing={browserResizing}
+                  onToggleExpand={() => setBrowserExpanded((v) => !v)}
+                  onClose={() => {
+                    setBrowserOpen(false);
+                    setBrowserExpanded(false);
+                  }}
+                />
+              </aside>
+            )}
+            </div>
           )}
         </div>
       </div>
@@ -624,6 +958,13 @@ export function ChatLayout({
         />
       )}
 
+      {/* App-wide command palette (⌘⇧P) */}
+      {paletteOpen && (
+        <CommandPalette commands={buildPaletteCommands()} onClose={() => setPaletteOpen(false)} />
+      )}
+
+      {languageOpen && <LanguageModal onClose={() => setLanguageOpen(false)} />}
+
       {/* Cross-conversation search palette (⌘⇧K) */}
       {convSearchOpen && (
         <ConversationSearchPalette
@@ -639,124 +980,3 @@ export function ChatLayout({
   );
 }
 
-// Collapsible per-conversation system prompt strip — lives just above the
-// chat input bar so the user is aware of (and can edit) what's currently
-// active while messaging.
-//
-// Collapsed:  one row showing "System prompt" + a snippet of the saved value
-//             (or "Not set"), plus a chevron / "Edit" affordance.
-// Expanded:   the full textarea editor with explicit Save / Discard.
-//
-// The editor uses local-state draft + explicit commit (button, ⌘↵, or blur)
-// so the user can see WHEN their changes have actually been persisted —
-// previously each keystroke fired into the conversation state, which made
-// "did my prompt apply yet?" anxiety real.
-function SystemPromptStrip({
-  open,
-  onToggle,
-  value,
-  onCommit,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  value: string;
-  onCommit: (next: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Pull in external changes (e.g. switching conversations) without nuking
-  // an unsaved local edit the user is mid-way through.
-  useEffect(() => { setDraft(value); }, [value]);
-
-  // Auto-focus the textarea when the strip opens.
-  useEffect(() => {
-    if (open) requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [open]);
-
-  const dirty = draft !== value;
-
-  function save() {
-    if (!dirty) return;
-    onCommit(draft);
-  }
-
-  return (
-    <div className="mb-1.5 rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-bg)]">
-      {/* Header row — always visible. Click to expand/collapse. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--m-surface-2)]"
-      >
-        <svg
-          className="h-3 w-3 shrink-0 text-[var(--m-text-faint)]"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="shrink-0 text-[10px] uppercase tracking-[0.15em] text-[var(--m-text-faint)]">
-          System prompt
-        </span>
-        <span className={`flex-1 truncate text-[11px] ${value ? "text-[var(--m-text-muted)]" : "text-[var(--m-text-faint)] italic"}`}>
-          {value ? value.replace(/\s+/g, " ") : "Not set — click to add a persona or instructions for this conversation"}
-        </span>
-        {dirty && (
-          <span className="shrink-0 text-[9px] uppercase tracking-[0.15em] text-[#f59e0b]">
-            Unsaved
-          </span>
-        )}
-      </button>
-
-      {/* Editor body — only rendered when open. */}
-      {open && (
-        <div className="border-t border-[var(--m-border-subtle)] px-3 pb-2 pt-2">
-          <textarea
-            ref={textareaRef}
-            rows={3}
-            placeholder="Give this conversation a persona or set of instructions… (e.g. 'Answer only in French' or 'You are a Python expert'). ⌘↵ or click Save to apply."
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                save();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                if (dirty) setDraft(value);
-                else onToggle();
-              }
-            }}
-            className="w-full resize-none rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-2.5 py-1.5 text-[12px] text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none focus:border-[var(--m-border)]"
-          />
-          <div className="mt-1.5 flex items-center justify-end gap-2">
-            {dirty && (
-              <button
-                type="button"
-                onClick={() => setDraft(value)}
-                className="rounded px-2 py-0.5 text-[10px] text-[var(--m-text-faint)] transition-colors hover:text-[var(--m-text)]"
-              >
-                Discard
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={save}
-              disabled={!dirty}
-              className={`rounded px-2.5 py-0.5 text-[10px] transition-colors ${
-                dirty
-                  ? "bg-[var(--m-accent)] text-[var(--m-bg)] hover:opacity-90"
-                  : "border border-[var(--m-border-subtle)] text-[var(--m-text-faint)]"
-              }`}
-            >
-              {dirty ? "Save" : "Saved"}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

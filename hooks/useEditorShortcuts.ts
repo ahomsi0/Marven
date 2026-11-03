@@ -9,7 +9,8 @@ export interface EditorShortcutsOptions {
   onToggleTerminal: () => void;
   onToggleChat: () => void;
   onQuickOpen: () => void;
-  onCommandPalette: () => void;
+  /** Optional: the layout's palette listens for its own (remappable) binding. */
+  onCommandPalette?: () => void;
   onOpenSettings: () => void;
   onFind?: () => void;
   onFindAndReplace?: () => void;
@@ -73,7 +74,7 @@ export function useEditorShortcuts(opts: EditorShortcutsOptions): void {
       }
 
       // Cmd/Ctrl + Shift + P — Command Palette (always fires)
-      if (mod && shift && e.key === "p") {
+      if (onCommandPalette && mod && shift && e.key === "p") {
         e.preventDefault();
         onCommandPalette();
         return;

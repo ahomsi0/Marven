@@ -1,0 +1,205 @@
+// One browser tab: a native WebContentsView created the first time the tab is
+// shown (restored tabs stay unloaded until then), plus the page state the UI
+// draws. Security is the same for every tab: sandboxed, no Node, no preload,
+// http(s) only, window.open becomes a new tab, client certificates are never
+// handed out, and repeated dialogs can be suppressed by the user.
+
+const { WebContentsView } = require('electron');
+const { isWebUrl } = require('./validate');
+const { withoutFragment } = require('./history');
+
+const ERR_ABORTED = -3;
+const isCertificateError = (code) => code <= -200 && code > -300;
+
+class Tab {
+  /**
+   * @param {{ id: string, url: string, title: string, session: Electron.Session, hooks: {
+   *   onUpdate: (tab: Tab) => void,
+   *   onVisit: (url: string, title: string) => void,
+   *   onTitle: (url: string, title: string) => void,
+   *   onFavicon: (tab: Tab, iconUrl: string) => void,
+   *   onOpenTab: (tab: Tab, url: string, options: { background: boolean }) => void,
+   *   onShortcut: (input: Electron.Input) => boolean,
+   *   onView: (tab: Tab) => void,
+   * } }} options
+   */
+  constructor({ id, url, title, session, hooks }) {
+    this.id = id;
+    this.url = url;
+    this.title = title || '';
+    this.session = session;
+    this.hooks = hooks;
+    this.view = null;
+    this.webContentsId = null;
+    this.favicon = null;
+    this.loading = false;
+    this.error = null;
+    this.blocked = 0;
+    // Bumped on every cross-document main-frame commit, so async work started
+    // for one page (a favicon fetch) can tell the page has changed since.
+    this.navigation = 0;
+    // The `navigation` a favicon fetch is running for, or null.
+    this.faviconFetch = null;
+    // History bookkeeping, so anchor jumps and title churn don't spam it.
+    this.visitedUrl = null;
+    this.titleRecorded = false;
+  }
+
+  get webContents() {
+    return this.view && !this.view.webContents.isDestroyed() ? this.view.webContents : null;
+  }
+
+  ensureView() {
+    if (this.webContents) return this.view;
+    this.view = new WebContentsView({
+      webPreferences: {
+        session: this.session,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        safeDialogs: true,
+        autoplayPolicy: 'document-user-activation-required',
+      },
+    });
+    this.view.setVisible(false);
+    const wc = this.view.webContents;
+    this.webContentsId = wc.id;
+    this.wire(wc);
+    this.hooks.onView(this);
+    if (isWebUrl(this.url)) wc.loadURL(this.url).catch(() => {});
+    return this.view;
+  }
+
+  wire(wc) {
+    const update = () => this.hooks.onUpdate(this);
+
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (isWebUrl(url)) this.hooks.onOpenTab(this, url, { background: disposition === 'background-tab' });
+      return { action: 'deny' };
+    });
+    wc.on('select-client-certificate', (event, _url, _list, callback) => {
+      event.preventDefault();
+      callback();
+    });
+    const guard = (details) => {
+      if (!isWebUrl(details.url)) details.preventDefault();
+    };
+    wc.on('will-navigate', guard);
+    wc.on('will-redirect', guard);
+
+    // The old page stays on screen until the new one commits, so only the
+    // error is cleared when a navigation starts; the rest resets on commit.
+    // (Failed loads don't emit did-navigate.)
+    wc.on('did-start-navigation', (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return;
+      this.error = null;
+      update();
+    });
+    wc.on('did-navigate', (_e, url) => {
+      this.url = url;
+      this.favicon = null;
+      this.blocked = 0;
+      this.title = ''; // the page's own page-title-updated sets it
+      this.navigation += 1;
+      this.titleRecorded = false;
+      this.visitedUrl = url;
+      // Chromium's title at commit time is often just the URL, so the visit is
+      // recorded untitled (keeping any title saved before) and the page's own
+      // page-title-updated fills it in.
+      this.hooks.onVisit(url, '');
+      update();
+    });
+    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
+      if (!isMainFrame) return;
+      this.url = url;
+      // A new route in a single-page app (not an anchor jump) is its own
+      // history entry, and gets its own first title.
+      if (withoutFragment(url) !== withoutFragment(this.visitedUrl)) {
+        this.visitedUrl = url;
+        this.titleRecorded = false;
+        this.hooks.onVisit(url, wc.getTitle());
+      }
+      update();
+    });
+    // History keeps the first title a page sets after each commit; later
+    // changes (unread counters, tickers) only update the tab.
+    wc.on('page-title-updated', (_e, title) => {
+      this.title = title;
+      if (!this.titleRecorded) {
+        this.titleRecorded = true;
+        this.hooks.onTitle(this.url, title);
+      }
+      update();
+    });
+    wc.on('page-favicon-updated', (_e, favicons) => {
+      if (favicons[0]) this.hooks.onFavicon(this, favicons[0]);
+    });
+    wc.on('did-start-loading', () => {
+      this.loading = true;
+      update();
+    });
+    wc.on('did-stop-loading', () => {
+      this.loading = false;
+      update();
+    });
+    wc.on('did-fail-load', (_e, code, description, validatedURL, isMainFrame) => {
+      if (!isMainFrame || code === ERR_ABORTED) return;
+      if (isWebUrl(validatedURL)) this.url = validatedURL;
+      this.error = { kind: isCertificateError(code) ? 'certificate' : 'unreachable', description };
+      update();
+    });
+    wc.on('render-process-gone', (_e, details) => {
+      if (details.reason === 'clean-exit') return;
+      this.error = { kind: 'crashed', description: details.reason };
+      this.loading = false;
+      update();
+    });
+    wc.on('before-input-event', (event, input) => {
+      if (this.hooks.onShortcut(input)) event.preventDefault();
+    });
+  }
+
+  // With a view, `url` follows the page (did-navigate / did-fail-load set it);
+  // a tab with no view yet keeps the URL so ensureView loads it.
+  load(url) {
+    if (!isWebUrl(url)) return false;
+    this.error = null;
+    const wc = this.webContents;
+    if (wc) wc.loadURL(url).catch(() => {});
+    else this.url = url;
+    this.hooks.onUpdate(this);
+    return true;
+  }
+
+  canGoBack() {
+    return !!this.webContents?.navigationHistory.canGoBack();
+  }
+
+  canGoForward() {
+    return !!this.webContents?.navigationHistory.canGoForward();
+  }
+
+  command(name) {
+    const wc = this.webContents;
+    if (!wc) return;
+    if (name === 'back') wc.navigationHistory.goBack();
+    else if (name === 'forward') wc.navigationHistory.goForward();
+    else if (name === 'reload') wc.reload();
+    else if (name === 'stop') wc.stop();
+    else if (name === 'retry') {
+      this.error = null;
+      wc.loadURL(this.url).catch(() => {});
+      this.hooks.onUpdate(this);
+    }
+  }
+
+  destroyView() {
+    const wc = this.webContents;
+    this.view = null;
+    this.webContentsId = null;
+    if (wc) wc.close();
+  }
+}
+
+module.exports = { Tab };

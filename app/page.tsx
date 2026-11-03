@@ -7,7 +7,6 @@ import type {
   DocAttachment,
   Message,
   ChatRequest,
-  ChatResponse,
   OllamaModel,
   TokenUsage,
   Conversation,
@@ -34,6 +33,7 @@ import { getRequireWriteApproval, getPlanMode, setPlanMode } from "@/lib/agentSe
 import { ChatLayout } from "@/app/components/marven/ChatLayout";
 import { SetupModal } from "@/app/components/marven/SetupModal";
 import { WhatsNewCard } from "@/app/components/marven/WhatsNewCard";
+import { GlobalPanels } from "@/app/components/marven/GlobalPanels";
 import { parseCommand } from "@/lib/commandParser";
 import {
   loadConversations,
@@ -56,7 +56,16 @@ import {
   saveProfile,
   loadMemories,
 } from "@/lib/userProfile";
-import { buildScopedMemoryBlock } from "@/lib/memoryHelpers";
+import {
+  ChatStreamInterruptedError,
+  chatErrorMessage,
+  providerErrorMessage,
+  readChatReply,
+} from "@/lib/chatErrors";
+import { parseChatStream } from "@/lib/chatStream";
+import { getSystemPrompt } from "@/lib/systemPrompt";
+import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
+import { MEMORY_CHANGED_EVENT, MEMORY_SAVED_EVENT, dispatchMemorySaved } from "@/lib/memoryEvents";
 import {
   loadChatProvider,
   loadAgentProvider,
@@ -79,6 +88,25 @@ import {
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
+import {
+  attachPendingVersion,
+  beginNewVersion,
+  branchThread,
+  settlePendingVersion,
+  switchVersion,
+  userIndexBefore,
+  type PendingVersion,
+} from "@/lib/messageVersions";
+import i18n from "@/lib/i18n";
+
+/** Options for one chat send. Edit / retry pass the thread and the original turn's files. */
+interface ChatSendOptions {
+  messagesOverride?: Message[];
+  /** Answer this turn with another model, without changing the selected one. */
+  modelOverride?: { provider: AIProvider; model: string };
+  attachments?: ImageAttachment[];
+  docs?: DocAttachment[];
+}
 
 // ─── Open URL (bypasses popup-blocker by simulating a real anchor click) ──────
 function openUrl(url: string) {
@@ -212,9 +240,6 @@ const SCREEN_RE = /^(?:what(?:'s| is) on (?:my )?(?:screen|display)|analyze (?:m
 // ─── Weather detection regex ──────────────────────────────────────────────────
 const WEATHER_RE = /what(?:'s| is) the weather|how(?:'s| is) the weather|weather today/i;
 
-// ─── Memory detection regex ───────────────────────────────────────────────────
-const MEMORY_RE = /^(?:remember(?: that)?|don't forget(?: that)?)\s+(.+)$/i;
-
 export default function Home() {
   // Chat and agent each remember their OWN provider + per-provider model
   // independently. The user's mental model is "the agent's brain is separate
@@ -260,13 +285,20 @@ export default function Home() {
   useEffect(() => { saveAgentModelMap(agentModelByProvider); }, [agentModelByProvider]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  // Which provider `models` belongs to, and the route's ranked default for it.
+  const [modelsFor, setModelsFor] = useState<{ provider: AIProvider; defaultModel: string } | null>(null);
   // selectedModel is computed per active mode — declared after activeMode below.
 
   const [chatTokenUsage, setChatTokenUsage] = useState<TokenUsage>(zeroUsage("actual"));
   const [agentTokenUsage, setAgentTokenUsage] = useState<TokenUsage>(zeroUsage("estimated"));
 
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  // Chat sends in flight, by conversation id — a slow reply in one
+  // conversation mustn't lock the input in the others. The ref holds each
+  // send's AbortController (and doubles as a synchronous double-send guard);
+  // the state mirrors its keys for rendering.
+  const chatSendsRef = useRef<Map<string, AbortController>>(new Map());
+  const [loadingConvIds, setLoadingConvIds] = useState<ReadonlySet<string>>(() => new Set());
 
   // ─── Conversations ──────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -277,9 +309,8 @@ export default function Home() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
   const messages: Message[] = activeConversation?.messages ?? [];
   const activeMode: ConversationMode = activeConversation?.mode ?? "chat";
-  const conversationSystemPrompt = activeConversation?.systemPrompt ?? "";
+  const isLoading = activeConversationId !== null && loadingConvIds.has(activeConversationId);
   const provider = activeMode === "agent" ? agentProvider : chatProvider;
-  const setProvider = activeMode === "agent" ? setAgentProvider : setChatProvider;
   const selectedModel =
     activeMode === "agent"
       ? agentModelByProvider[provider]
@@ -559,6 +590,19 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Settings → Memory, the toast's Undo and the agent's remember tool change
+  // memory outside this component; bump a tick so the effect below refetches.
+  const [memoryRefreshTick, setMemoryRefreshTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setMemoryRefreshTick((n) => n + 1);
+    window.addEventListener(MEMORY_CHANGED_EVENT, bump);
+    window.addEventListener(MEMORY_SAVED_EVENT, bump);
+    return () => {
+      window.removeEventListener(MEMORY_CHANGED_EVENT, bump);
+      window.removeEventListener(MEMORY_SAVED_EVENT, bump);
+    };
+  }, []);
+
   useEffect(() => {
     // Sequence guard: if the deps change again before the fetch resolves, the
     // stale response must not overwrite the newer conversation's memories.
@@ -580,7 +624,7 @@ export default function Home() {
         }));
       })
       .catch(() => {});
-  }, [workspaceRoot, activeConversationId]);
+  }, [workspaceRoot, activeConversationId, memoryRefreshTick]);
 
   // ─── Persist conversations on change ───────────────────────────────────────
   useEffect(() => {
@@ -618,33 +662,32 @@ export default function Home() {
     setAgentTokenUsage(agentUsageByConvRef.current.get(activeConversationId) ?? zeroUsage("estimated"));
   }, [activeConversationId, activeMode, conversations]);
 
-  // Save the active conversation's agent messages whenever they change so we
-  // can restore them when the user switches between agent conversations.
+  // Save the agent stream's messages whenever they change so we can restore
+  // them when the user switches between agent conversations.
   //
-  // Guard against the switch race: when activeConversationId changes, React
-  // runs this effect BEFORE the switch effect below (effect order = declaration
-  // order). At that moment agentStreamMessages still holds the OUTGOING conv's
-  // messages, but activeConversationId is already the INCOMING id — so an
-  // unguarded save would clobber the incoming conv's stored messages with the
-  // outgoing one's, making every agent tab appear to share the same thread.
-  // Only persist when the stream state is in sync with the conv we last
-  // swapped to (lastAgentConvIdRef).
+  // The hook's thread (and the editor state) always belongs to the agent
+  // conversation last swapped in — lastAgentConvIdRef — NOT necessarily the
+  // active conversation: mid-switch, activeConversationId is already the
+  // incoming id while agentStreamMessages still holds the outgoing thread, and
+  // while a chat conversation is open the previous agent run keeps streaming.
+  // Keying the save on the owner (instead of activeConversationId + agent
+  // mode) keeps both cases correct.
   useEffect(() => {
-    if (activeMode !== "agent" || !activeConversationId) return;
-    if (activeConversationId !== lastAgentConvIdRef.current) return;
-    agentMessagesByConvRef.current.set(activeConversationId, agentStreamMessages);
-  }, [agentStreamMessages, activeConversationId, activeMode]);
+    const owner = lastAgentConvIdRef.current;
+    if (!owner) return;
+    agentMessagesByConvRef.current.set(owner, agentStreamMessages);
+  }, [agentStreamMessages]);
 
   // Persist agent thread + editor to localStorage (survives app restart).
   useEffect(() => {
-    if (activeMode !== "agent" || !activeConversationId) return;
-    if (activeConversationId !== lastAgentConvIdRef.current) return;
+    const owner = lastAgentConvIdRef.current;
+    if (!owner) return;
     if (persistAgentTimerRef.current) clearTimeout(persistAgentTimerRef.current);
     persistAgentTimerRef.current = setTimeout(() => {
       persistAgentTimerRef.current = null;
       const file = loadAgentSessionsFile();
       saveAgentSessionsFile(
-        upsertPersistedSession(file, activeConversationId, {
+        upsertPersistedSession(file, owner, {
           messages: agentStreamMessages,
           openTabs,
           activeTabIndex,
@@ -673,11 +716,28 @@ export default function Home() {
       });
     }
     lastAgentConvIdRef.current = activeConversationId;
-    // Load the incoming conversation's messages.
+    // Load the incoming conversation's messages. If this aborts a run that
+    // belonged to the outgoing conversation, loadMessages hands back that
+    // thread (in-flight tool calls marked cancelled).
     const savedMsgs = activeConversationId
       ? agentMessagesByConvRef.current.get(activeConversationId) ?? []
       : [];
-    agentStreamLoadMessages(savedMsgs);
+    const abortedOutgoing = agentStreamLoadMessages(savedMsgs);
+    // Snapshot the outgoing conversation now: its pending debounced persist
+    // was cancelled by the switch, and an aborted run's last output (and the
+    // cancelled tool-call states) would otherwise never be saved.
+    if (prevId && (abortedOutgoing || agentMessagesByConvRef.current.has(prevId))) {
+      const outgoingMsgs = abortedOutgoing ?? agentMessagesByConvRef.current.get(prevId) ?? [];
+      agentMessagesByConvRef.current.set(prevId, outgoingMsgs);
+      saveAgentSessionsFile(
+        upsertPersistedSession(loadAgentSessionsFile(), prevId, {
+          messages: outgoingMsgs,
+          openTabs,
+          activeTabIndex,
+          buffers: buffersToEntries(fileBuffers),
+        }),
+      );
+    }
     // Load the incoming conversation's editor state (or empty defaults).
     const savedEditor = activeConversationId
       ? agentEditorByConvRef.current.get(activeConversationId)
@@ -973,10 +1033,21 @@ export default function Home() {
     []
   );
 
+  // Edit / retry in progress, by conversation: the next user message added to
+  // that conversation becomes a new version of the message being replaced.
+  const pendingVersionsRef = useRef<Map<string, PendingVersion>>(new Map());
+
   function addMessageToConversation(convId: string, message: Message, stamped?: { provider: AIProvider; model: string }) {
+    // Read now, not inside the updater: the updater may run after the edit
+    // handler has already settled and cleared the pending version.
+    const pending = message.role === "user" ? pendingVersionsRef.current.get(convId) : undefined;
+    if (pending) pendingVersionsRef.current.delete(convId);
     upsertConversation(convId, (conv) => ({
       ...conv,
-      messages: [...conv.messages, message],
+      messages: [
+        ...conv.messages,
+        pending && conv.messages.length === pending.index ? attachPendingVersion(message, pending) : message,
+      ],
       updatedAt: new Date().toISOString(),
       ...(stamped ?? {}),
     }));
@@ -992,6 +1063,28 @@ export default function Home() {
         }
       }
       return { ...conv, messages: msgs, updatedAt: new Date().toISOString() };
+    });
+  }
+
+  function updateMessageContent(convId: string, messageId: string, content: string) {
+    upsertConversation(convId, (conv) => ({
+      ...conv,
+      messages: conv.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  // Stop a streaming message for good: keep it (no spinner) if it has text,
+  // drop it if it's still empty so no blank bubble gets saved.
+  function finalizeStreamingMessage(convId: string, messageId: string, content?: string) {
+    upsertConversation(convId, (conv) => {
+      const target = conv.messages.find((m) => m.id === messageId);
+      if (!target) return conv;
+      const text = content ?? target.content;
+      const messages = text.trim()
+        ? conv.messages.map((m) => (m.id === messageId ? { ...m, content: text, isStreaming: false } : m))
+        : conv.messages.filter((m) => m.id !== messageId);
+      return { ...conv, messages, updatedAt: new Date().toISOString() };
     });
   }
 
@@ -1426,23 +1519,12 @@ export default function Home() {
         if (cancelled) return;
         const nextModels: OllamaModel[] = data.models ?? [];
         setModels(nextModels);
+        setModelsFor({ provider, defaultModel: typeof data.defaultModel === "string" ? data.defaultModel : "" });
         if (data.error) setModelsError(data.error as string);
-        // Seed the ACTIVE mode's bucket only — the other mode keeps whatever
-        // pick the user made for it (or its own seeded default the first time
-        // its provider was visited). Cross-mode bleed was the root cause of
-        // "chat is always following agent."
-        const seed = (prev: Record<AIProvider, string>) => {
-          const current = prev[provider];
-          const stillAvailable = nextModels.some((m) => m.name === current);
-          if (stillAvailable) return prev;
-          const fallback = data.defaultModel ?? nextModels[0]?.name ?? "";
-          return { ...prev, [provider]: fallback };
-        };
-        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
-        setter(seed);
       } catch {
         if (!cancelled) {
           setModels([]);
+          setModelsFor(null);
           setModelsError(`Could not load ${provider} models`);
         }
       } finally {
@@ -1452,6 +1534,27 @@ export default function Home() {
     loadModels();
     return () => { cancelled = true; };
   }, [provider]);
+
+  // Keep the ACTIVE mode's pick on a model the provider actually offers. This
+  // re-checks whenever the list, the mode or the pick changes — not only when
+  // the provider changes — so a stale pick (a retired model, one saved from the
+  // offline fallback list, or one restored from an old conversation) gets
+  // replaced by the route's ranked default instead of failing every send. The
+  // other mode keeps its own pick until it's active.
+  useEffect(() => {
+    if (modelsLoading || !modelsFor || modelsFor.provider !== provider) return;
+    if (models.length === 0) {
+      if (!selectedModel && modelsFor.defaultModel) {
+        const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+        setter((prev) => ({ ...prev, [provider]: modelsFor.defaultModel }));
+      }
+      return;
+    }
+    if (models.some((m) => m.name === selectedModel)) return;
+    const fallback = models.some((m) => m.name === modelsFor.defaultModel) ? modelsFor.defaultModel : models[0].name;
+    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
+    setter((prev) => ({ ...prev, [provider]: fallback }));
+  }, [models, modelsFor, modelsLoading, provider, activeMode, selectedModel]);
 
   // ─── Voice ────────────────────────────────────────────────────────────────
   const sendVoiceCommandRef = useRef<(text: string) => void>(() => {});
@@ -1523,9 +1626,9 @@ export default function Home() {
     // We resume in the onEnd callback below.
     pauseVoiceCapture();
     setIsSpeakingNow(true);
-    // If the conversation's system prompt is in Arabic OR mentions "arabic",
-    // force Arabic voice even when the response text itself looks English.
-    const sp = (activeConversation?.systemPrompt ?? "").trim();
+    // If the system prompt is in Arabic OR mentions "arabic", force Arabic
+    // voice even when the response text itself looks English.
+    const sp = getSystemPrompt().trim();
     const forceLang: "ar" | undefined =
       sp && (/[؀-ۿ]/.test(sp) || /\barab(ic)?\b/i.test(sp)) ? "ar" : undefined;
     void speak(text, () => {
@@ -1549,11 +1652,49 @@ export default function Home() {
   }
 
   // ─── Core send logic ───────────────────────────────────────────────────────
-  async function sendMessage(text: string, opts?: { messagesOverride?: Message[] }) {
+  async function sendMessage(text: string, opts?: ChatSendOptions) {
     if (!text || isLoading) return;
     setInput("");
-    setIsLoading(true);
 
+    if (activeMode === "agent") {
+      if (!agentStreamIsRunning) {
+        await agentStreamSend(text);
+      }
+      return;
+    }
+
+    const convId = ensureActiveConversation(text);
+    if (chatSendsRef.current.has(convId)) return;
+
+    // Every chat path runs inside this try/finally so an unexpected throw can
+    // never leave the input disabled.
+    const controller = new AbortController();
+    chatSendsRef.current.set(convId, controller);
+    setLoadingConvIds((prev) => new Set(prev).add(convId));
+    try {
+      await sendChatMessage(convId, text, controller.signal, opts);
+    } finally {
+      if (chatSendsRef.current.get(convId) === controller) chatSendsRef.current.delete(convId);
+      setLoadingConvIds((prev) => {
+        const next = new Set(prev);
+        next.delete(convId);
+        return next;
+      });
+    }
+  }
+
+  /** Stop the reply streaming into the active conversation, keeping what arrived. */
+  function handleStopChat() {
+    if (!activeConversationId) return;
+    chatSendsRef.current.get(activeConversationId)?.abort();
+  }
+
+  async function sendChatMessage(
+    convId: string,
+    text: string,
+    signal: AbortSignal,
+    opts?: ChatSendOptions,
+  ) {
     // When the user has set a custom system prompt, ALL of the hardcoded
     // shortcut replies (weather/time/date/open-app/search/memory) are
     // disabled. Those paths return English literals that bypass the LLM and
@@ -1561,7 +1702,7 @@ export default function Home() {
     // Arabic" silently break for voice queries like "what time is it".
     // Routing through the LLM is slightly slower but preserves the user's
     // language/persona preference.
-    const customSystemPrompt = (activeConversation?.systemPrompt ?? "").trim();
+    const customSystemPrompt = getSystemPrompt().trim();
     const useShortcuts = !customSystemPrompt;
 
     // History source for API calls. Callers that truncate the thread first
@@ -1569,18 +1710,9 @@ export default function Home() {
     // upsertConversation state update hasn't re-rendered into `messages` yet.
     const threadSource = opts?.messagesOverride ?? messages;
 
-    if (activeMode === "agent") {
-      setIsLoading(false);
-      if (!agentStreamIsRunning) {
-        await agentStreamSend(text);
-      }
-      return;
-    }
-
     // 0. Memory detection (before everything else)
-    const memoryMatch = useShortcuts ? text.match(MEMORY_RE) : null;
-    if (memoryMatch) {
-      const memoryStr = memoryMatch[2].trim();
+    const memoryStr = useShortcuts ? parseRememberCommand(text) : null;
+    if (memoryStr) {
       const memoryScope = "global";
       try {
         const res = await fetch("/api/memory", {
@@ -1602,21 +1734,28 @@ export default function Home() {
             conversation: Array.isArray(data.scopes.conversation) ? data.scopes.conversation : prev.conversation,
           }));
         }
+        // "Remembered: …" toast with Undo / Manage (MemoryToast).
+        if (res.ok && typeof data?.entry?.id === "string") {
+          dispatchMemorySaved({
+            scope: memoryScope,
+            text: typeof data.entry.text === "string" ? data.entry.text : memoryStr,
+            id: data.entry.id,
+            workspaceRoot,
+            conversationId: activeConversationId,
+          });
+        }
       } catch {
         // non-fatal; still continue with the acknowledgement
       }
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const reply = `Got it. I'll remember that ${memoryStr} in ${memoryScope} memory.`;
       addMessageToConversation(convId, createMessage("assistant", reply));
       speakReply(reply);
-      setIsLoading(false);
       return;
     }
 
     // 0b. Weather detection
     if (useShortcuts && WEATHER_RE.test(text)) {
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       if (weather) {
         const reply = `It's currently ${weather.temp}°C and ${weather.description} in ${weather.city}.`;
@@ -1627,13 +1766,11 @@ export default function Home() {
         addMessageToConversation(convId, createMessage("assistant", reply));
         speakReply(reply);
       }
-      setIsLoading(false);
       return;
     }
 
     // 0c. Screen awareness detection
     if (useShortcuts && SCREEN_RE.test(text)) {
-      const convId = ensureActiveConversation(text);
       addMessageToConversation(convId, createMessage("user", text), { provider, model: selectedModel });
       const streamingMsg = createMessage("assistant", "Analyzing your screen...", false);
       addMessageToConversation(convId, streamingMsg);
@@ -1649,8 +1786,6 @@ export default function Home() {
         speakReply(reply);
       } catch {
         updateLastAssistantMessage(convId, (msg) => ({ ...msg, content: "Could not analyze screen.", isStreaming: false }));
-      } finally {
-        setIsLoading(false);
       }
       return;
     }
@@ -1677,18 +1812,17 @@ export default function Home() {
     // 2. Timer detection (client-side)
     const timerParsed = parseTimer(text);
     if (timerParsed) {
-      const convId = ensureActiveConversation(text);
       const userMsg = createMessage("user", text);
       addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
       const confirmMsg = createMessage("assistant", `Timer set for ${timerParsed.label}.`);
       addMessageToConversation(convId, confirmMsg);
       speakReply(confirmMsg.content);
-      setIsLoading(false);
 
-      // Request notification permission if needed
+      // Request notification permission if needed. Not awaited: the prompt can
+      // sit open indefinitely and the send shouldn't stay "loading" meanwhile.
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        await Notification.requestPermission();
+        void Notification.requestPermission().catch(() => {});
       }
 
       setTimeout(() => {
@@ -1710,25 +1844,32 @@ export default function Home() {
       ? parseCommand(text, customShortcuts)
       : ({ type: null, payload: "" } as const);
 
-    const convId = ensureActiveConversation(text);
     autoRenameConversation(convId, text);
+
+    // The model that answers this turn. "Retry with…" overrides it for one
+    // reply only; the selected chat model (and the conversation's) stay put.
+    const replyProvider = opts?.modelOverride?.provider ?? provider;
+    const replyModel = opts?.modelOverride?.model ?? selectedModel;
+    // Edit / retry resend the original turn's files, not whatever is staged.
+    const turnDocs = opts?.docs ?? chatDocs;
+    const turnAttachments = opts?.attachments ?? chatAttachments;
 
     // Build prompt with doc text appended (for API), but display original input
     const promptWithDocs =
-      chatDocs.length > 0
-        ? `${text}\n\n${chatDocs
+      turnDocs.length > 0
+        ? `${text}\n\n${turnDocs
             .map((d) => `---\n[Document: ${d.name}]\n${d.text}\n---`)
             .join("\n\n")}`
         : text;
 
     const userMsg = createMessage("user", text);
-    if (chatAttachments.length > 0) {
-      userMsg.attachments = [...chatAttachments];
-      setChatAttachments([]);
+    if (turnAttachments.length > 0) {
+      userMsg.attachments = [...turnAttachments];
+      if (!opts?.attachments) setChatAttachments([]);
     }
-    if (chatDocs.length > 0) {
-      userMsg.docs = [...chatDocs];
-      setChatDocs([]);
+    if (turnDocs.length > 0) {
+      userMsg.docs = [...turnDocs];
+      if (!opts?.docs) setChatDocs([]);
     }
     addMessageToConversation(convId, userMsg, { provider, model: selectedModel });
 
@@ -1744,7 +1885,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1755,7 +1895,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1764,7 +1903,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1773,7 +1911,6 @@ export default function Home() {
         const assistantMsg = createMessage("assistant", reply);
         addMessageToConversation(convId, assistantMsg);
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1789,7 +1926,6 @@ export default function Home() {
         const reply = `Opening ${appName}.`;
         addMessageToConversation(convId, createMessage("assistant", reply));
         speakReply(reply);
-        setIsLoading(false);
         return;
       }
 
@@ -1799,11 +1935,11 @@ export default function Home() {
         const history = buildHistory(historyMsgs);
         const body: ChatRequest = {
           messages: history,
-          model: selectedModel,
-          provider,
+          model: replyModel,
+          provider: replyProvider,
           systemPrompt: (() => {
             const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-            const extra = activeConversation?.systemPrompt?.trim();
+            const extra = getSystemPrompt().trim();
             return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
           })(),
         };
@@ -1811,9 +1947,10 @@ export default function Home() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         });
-        const data: ChatResponse = await res.json();
-        const assistantMsg = createMessage("assistant", data.reply);
+        const data = await readChatReply(res);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         speakReply(data.reply);
 
@@ -1821,25 +1958,27 @@ export default function Home() {
         if (clipAction === "fix-grammar") {
           await navigator.clipboard.writeText(data.reply).catch(() => {});
         }
-      } catch {
-        const err = createMessage("assistant", "Connection error. Please check that the app is running.");
+      } catch (error) {
+        if (signal.aborted) return; // stopped by the user
+        console.error("[Marven] chat request failed:", error);
+        const err = createMessage("assistant", chatErrorMessage(error));
         addMessageToConversation(convId, err);
-      } finally {
-        setIsLoading(false);
       }
       return;
     }
 
-    // 4. AI response (streaming for Groq, non-streaming for Ollama)
+    // 4. AI response (streamed for every provider; JSON for errors the route
+    // catches before streaming starts, e.g. a missing API key)
+    let streamingMsgId: string | null = null;
     try {
       const history = buildHistory([...threadSource, { ...userMsg, content: promptWithDocs }]);
       const body: ChatRequest = {
         messages: history,
-        model: selectedModel,
-        provider,
+        model: replyModel,
+        provider: replyProvider,
         systemPrompt: (() => {
           const base = buildSystemPrompt(userProfile?.name ?? null, memories);
-          const extra = activeConversation?.systemPrompt?.trim();
+          const extra = getSystemPrompt().trim();
           // User-supplied instructions go FIRST and are repeated at the END for
           // weaker models — small LLMs anchor on the start and end of context.
           return extra
@@ -1852,67 +1991,62 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal,
       });
 
       const contentType = res.headers.get("content-type") ?? "";
 
       if (contentType.includes("text/plain")) {
         // ── Streaming response ──
-        const streamingMsg = createMessage("assistant", "", true);
+        const streamingMsg = { ...createMessage("assistant", "", true), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, streamingMsg);
+        streamingMsgId = streamingMsg.id;
 
         const reader = res.body?.getReader();
-        if (!reader) throw new Error("No stream body");
+        if (!reader) throw new ChatStreamInterruptedError();
 
         const dec = new TextDecoder();
-        let fullText = "";
-        let usageRaw = "";
-        const USAGE_SENTINEL = "\n\n__USAGE__";
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = dec.decode(value, { stream: true });
-          const sentinelIdx = (fullText + chunk).indexOf(USAGE_SENTINEL);
-
-          if (sentinelIdx !== -1) {
-            // Split at sentinel
-            const combined = fullText + chunk;
-            fullText = combined.slice(0, sentinelIdx);
-            usageRaw = combined.slice(sentinelIdx + USAGE_SENTINEL.length);
-          } else {
-            fullText += chunk;
+        let raw = "";
+        let shownText = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            raw += dec.decode(value, { stream: true });
+            const { text: partial } = parseChatStream(raw);
+            if (partial !== shownText) {
+              shownText = partial;
+              updateMessageContent(convId, streamingMsg.id, partial);
+            }
           }
+        } catch (readErr) {
+          if (signal.aborted) throw readErr; // Stop — handled below
+          // The 200 had already arrived, so this is a dropped connection
+          // mid-reply, not "couldn't reach the server".
+          throw new ChatStreamInterruptedError(readErr);
+        }
+        raw += dec.decode();
 
-          // Update the streaming message in real-time
-          const currentText = fullText;
-          updateLastAssistantMessage(convId, (msg) => ({
-            ...msg,
-            content: currentText,
-            isStreaming: true,
-          }));
+        const { text: fullText, usage, error: streamError } = parseChatStream(raw, true);
+        finalizeStreamingMessage(convId, streamingMsg.id, fullText);
+        streamingMsgId = null;
+
+        if (usage) {
+          addChatTokens(convId, {
+            promptTokens: usage.prompt_tokens,
+            completionTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+            source: "actual",
+          });
         }
 
-        // Mark streaming complete
-        updateLastAssistantMessage(convId, (msg) => ({
-          ...msg,
-          content: fullText,
-          isStreaming: false,
-        }));
-
-        // Parse usage
-        if (usageRaw) {
-          try {
-            const usage = JSON.parse(usageRaw.trim());
-            addChatTokens(convId, {
-              promptTokens: usage.prompt_tokens ?? 0,
-              completionTokens: usage.completion_tokens ?? 0,
-              totalTokens: usage.total_tokens ?? 0,
-              source: "actual",
-            });
-          } catch { /* skip */ }
+        if (streamError) {
+          // The provider failed after the response started; any partial reply
+          // stays above, the explanation goes in its own message.
+          const errMsg = providerErrorMessage(streamError);
+          addMessageToConversation(convId, createMessage("assistant", errMsg));
+          speakReply(errMsg);
+          return;
         }
 
         // Auto-copy fixed grammar
@@ -1922,9 +2056,9 @@ export default function Home() {
 
         speakReply(fullText);
       } else {
-        // ── JSON response (Ollama / commands) ──
-        const data: ChatResponse = await res.json();
-        const assistantMsg = createMessage("assistant", data.reply);
+        // ── JSON response (route errors before streaming, e.g. missing key) ──
+        const data = await readChatReply(res);
+        const assistantMsg = { ...createMessage("assistant", data.reply), provider: replyProvider, model: replyModel };
         addMessageToConversation(convId, assistantMsg);
         addChatTokens(convId, data.usage ? { ...data.usage, source: "actual" } : undefined);
 
@@ -1933,13 +2067,15 @@ export default function Home() {
         }
         speakReply(data.reply);
       }
-    } catch {
-      const errMsg = "Connection error. Please check that the app is running.";
+    } catch (error) {
+      // Keep whatever had streamed in (or drop the empty bubble), no spinner.
+      if (streamingMsgId) finalizeStreamingMessage(convId, streamingMsgId);
+      if (signal.aborted) return; // stopped by the user — not an error
+      console.error("[Marven] chat request failed:", error);
+      const errMsg = chatErrorMessage(error);
       const err = createMessage("assistant", errMsg);
       addMessageToConversation(convId, err);
       speakReply(errMsg);
-    } finally {
-      setIsLoading(false);
     }
   }
 
@@ -1982,6 +2118,18 @@ export default function Home() {
   }
 
   function handleDeleteConversation(id: string) {
+    chatSendsRef.current.get(id)?.abort();
+    // If the agent stream's thread belongs to this conversation, stop it and
+    // drop ownership so the owner-keyed save/persist effects can't write the
+    // deleted conversation back.
+    if (lastAgentConvIdRef.current === id) {
+      agentStreamStop();
+      lastAgentConvIdRef.current = null;
+      if (persistAgentTimerRef.current) {
+        clearTimeout(persistAgentTimerRef.current);
+        persistAgentTimerRef.current = null;
+      }
+    }
     agentMessagesByConvRef.current.delete(id);
     agentEditorByConvRef.current.delete(id);
     saveAgentSessionsFile(removePersistedSession(loadAgentSessionsFile(), id));
@@ -1998,6 +2146,12 @@ export default function Home() {
 
   function handlePinConversation(id: string, pinned: boolean) {
     upsertConversation(id, (conv) => ({ ...conv, pinned }));
+  }
+
+  function handleRenameConversation(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return; // an empty name keeps the old one
+    upsertConversation(id, (conv) => ({ ...conv, name: trimmed }));
   }
 
   const handleCreateFolder = useCallback(() => {
@@ -2044,14 +2198,6 @@ export default function Home() {
     setPlanModeState(v);
   }, []);
 
-  function handleSystemPromptChange(value: string) {
-    if (!activeConversationId) return;
-    upsertConversation(activeConversationId, (conv) => ({
-      ...conv,
-      systemPrompt: value,
-    }));
-  }
-
   function handleSaveShortcuts(shortcuts: CustomShortcut[]) {
     setCustomShortcuts(shortcuts);
     saveCustomShortcuts(shortcuts);
@@ -2078,17 +2224,25 @@ export default function Home() {
     setChatTokenUsage(zeroUsage("actual"));
   }
 
-  async function handleEditMessage(messageId: string, newContent: string) {
-    if (!activeConversationId || isLoading || !activeConversation) return;
-    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx === -1) return;
+  /**
+   * Resend the user message at `userIndex` (edited text for an edit, the same
+   * text for a retry) as a new version: the old branch is kept on the message
+   * and can be switched back to.
+   */
+  async function resendAsNewVersion(userIndex: number, text: string, opts?: Pick<ChatSendOptions, "modelOverride">) {
+    if (!activeConversationId || !activeConversation) return;
+    const convId = activeConversationId;
+    const original = activeConversation.messages[userIndex];
+    if (!original || original.role !== "user") return;
+    const pending = beginNewVersion(activeConversation.messages, userIndex);
     // Snapshot the truncated thread BEFORE the upsert — sendMessage below
     // would otherwise still see the pre-truncation render's `messages`.
-    const truncated = activeConversation.messages.slice(0, idx);
-    upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
+    const truncated = activeConversation.messages.slice(0, userIndex);
+    if (pending) pendingVersionsRef.current.set(convId, pending);
+    upsertConversation(convId, (c) => {
+      const curIdx = c.messages.findIndex((m) => m.id === original.id);
       if (curIdx === -1) return c;
-      // Truncate: remove the edited message and everything after it
+      // Cut back to before the message; its branch lives on in `pending`.
       return {
         ...c,
         messages: c.messages.slice(0, curIdx),
@@ -2096,8 +2250,31 @@ export default function Home() {
         updatedAt: new Date().toISOString(),
       };
     });
-    // sendMessage will add the user message fresh and get the AI reply
-    await sendMessage(newContent, { messagesOverride: truncated });
+    try {
+      // sendMessage adds the user message fresh (as the new version) and gets the reply
+      await sendMessage(text, {
+        messagesOverride: truncated,
+        attachments: original.attachments ?? [],
+        docs: original.docs ?? [],
+        ...opts,
+      });
+    } finally {
+      if (pending) {
+        pendingVersionsRef.current.delete(convId);
+        // If the send bailed before adding the message, restore the old branch.
+        upsertConversation(convId, (c) => {
+          const messages = settlePendingVersion(c.messages, pending);
+          return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
+        });
+      }
+    }
+  }
+
+  async function handleEditMessage(messageId: string, newContent: string) {
+    if (!activeConversationId || isLoading || !activeConversation) return;
+    const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    await resendAsNewVersion(idx, newContent);
   }
 
   async function handleEditAgentUserMessage(messageId: string, newContent: string) {
@@ -2114,48 +2291,50 @@ export default function Home() {
     agentUsageByConvRef.current.set(activeConversationId, zeroUsage("estimated"));
     agentStreamLoadMessages(nextMessages);
     setAgentTokenUsage(zeroUsage("estimated"));
-    await agentStreamSend(trimmed, { attachments });
+    // Pass the truncated thread explicitly — the load above hasn't rendered
+    // yet, so send must not build (or condense) the turn from the old thread.
+    await agentStreamSend(trimmed, { attachments, baseMessages: nextMessages });
   }
 
-  async function handleRetryMessage(messageId: string) {
+  /** Regenerate a reply — with the selected model, or another one for this reply only. */
+  async function handleRetryMessage(messageId: string, override?: { provider: AIProvider; model: string }) {
     if (!activeConversationId || isLoading || !activeConversation) return;
-    let userContent = "";
-    let truncated: Message[] | null = null;
     const idx = activeConversation.messages.findIndex((m) => m.id === messageId);
-    if (idx !== -1) {
-      // Find the user message immediately before this assistant message
-      for (let i = idx - 1; i >= 0; i--) {
-        if (activeConversation.messages[i].role === "user") {
-          userContent = activeConversation.messages[i].content;
-          // Snapshot the truncated thread BEFORE the upsert — sendMessage
-          // below would otherwise see pre-truncation history.
-          truncated = activeConversation.messages.slice(0, i);
-          break;
-        }
-      }
-    }
-    if (!userContent || !truncated) return;
+    if (idx === -1) return;
+    // The user message this reply answers
+    const userIdx = userIndexBefore(activeConversation.messages, idx);
+    if (userIdx === -1) return;
+    const userContent = activeConversation.messages[userIdx].content;
+    if (!userContent) return;
+    await resendAsNewVersion(userIdx, userContent, override ? { modelOverride: override } : undefined);
+  }
+
+  /** Show another version of an edited / retried message. */
+  function handleSwitchVersion(userMessageId: string, target: number) {
+    if (!activeConversationId || isLoading) return;
     upsertConversation(activeConversationId, (c) => {
-      const curIdx = c.messages.findIndex((m) => m.id === messageId);
-      if (curIdx === -1) return c;
-      // Find the user message immediately before this assistant message
-      let userIdx = -1;
-      for (let i = curIdx - 1; i >= 0; i--) {
-        if (c.messages[i].role === "user") {
-          userIdx = i;
-          break;
-        }
-      }
-      if (userIdx === -1) return c;
-      // Truncate: remove from the user message onwards
-      return {
-        ...c,
-        messages: c.messages.slice(0, userIdx),
-        tokenUsage: zeroUsage("actual"),
-        updatedAt: new Date().toISOString(),
-      };
+      const messages = switchVersion(c.messages, userMessageId, target);
+      return messages === c.messages ? c : { ...c, messages, updatedAt: new Date().toISOString() };
     });
-    await sendMessage(userContent, { messagesOverride: truncated });
+  }
+
+  /** Start a new chat holding the visible thread up to and including `messageId`. */
+  function handleBranchFromMessage(messageId: string) {
+    if (!activeConversation || activeConversation.mode === "agent") return;
+    const thread = branchThread(activeConversation.messages, messageId, () => createMessage("user", "").id);
+    if (!thread) return;
+    const base = createConversation(activeConversation.name);
+    const conv: Conversation = {
+      ...base,
+      name: i18n.t("versions.branchName", { name: activeConversation.name || i18n.t("sidebar.untitled") }),
+      messages: thread,
+      provider: activeConversation.provider,
+      model: activeConversation.model,
+      systemPrompt: activeConversation.systemPrompt,
+      folderId: activeConversation.folderId ?? null,
+    };
+    setConversations((prev) => [...prev, conv]);
+    setActiveConversationId(conv.id);
   }
 
   async function handleSlashCommand(cmd: string) {
@@ -2205,11 +2384,18 @@ export default function Home() {
     }
   }
 
-  function handleModelChange(model: string) {
-    // Only update the bucket for the active mode — chat and agent are
-    // independent so picking a fast chat model doesn't pin the agent to it.
-    const setter = activeMode === "agent" ? setAgentModelByProvider : setChatModelByProvider;
-    setter((prev) => ({ ...prev, [provider]: model }));
+  function handleModelSelect(nextProvider: AIProvider, model: string) {
+    // Provider and model change together, into the active mode's buckets only
+    // — chat and agent are independent so picking a fast chat model doesn't
+    // pin the agent to it. (Setting them in two calls filed the model under
+    // the previous provider, read from a stale closure.)
+    if (activeMode === "agent") {
+      setAgentProvider(nextProvider);
+      setAgentModelByProvider((prev) => ({ ...prev, [nextProvider]: model }));
+    } else {
+      setChatProvider(nextProvider);
+      setChatModelByProvider((prev) => ({ ...prev, [nextProvider]: model }));
+    }
   }
 
   async function handleDiskConflictReload() {
@@ -2368,6 +2554,7 @@ export default function Home() {
         onOpenFolder={handleOpenFolder}
         onInputChange={setInput}
         onSend={() => sendMessage(input.trim())}
+        onStop={handleStopChat}
         onVoiceClick={startManualListen}
         onAgentVoiceClick={startManualListen}
         agentPlanMode={planMode}
@@ -2379,8 +2566,7 @@ export default function Home() {
           setWorkspaceTrusted(workspaceRoot, trusted);
           setWorkspaceTrustedState(trusted);
         }}
-        onProviderChange={setProvider}
-        onModelChange={handleModelChange}
+        onModelSelect={handleModelSelect}
         onToggleWakeWord={toggleWakeWord}
         onToggleSpeech={toggleSpeech}
         onNewChat={handleNewChat}
@@ -2388,10 +2574,11 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onPinConversation={handlePinConversation}
-        conversationSystemPrompt={conversationSystemPrompt}
-        onSystemPromptChange={handleSystemPromptChange}
+        onRenameConversation={handleRenameConversation}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
+        onSwitchVersion={handleSwitchVersion}
+        onBranchFromMessage={handleBranchFromMessage}
         onSaveShortcuts={handleSaveShortcuts}
         promptTemplates={promptTemplates}
         mcpServers={mcpServers}
@@ -2456,6 +2643,7 @@ export default function Home() {
         <SetupModal onSave={handleProfileSave} />
       )}
       <WhatsNewCard />
+      <GlobalPanels />
       {folderInputVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[480px] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface)] p-4 shadow-2xl">
