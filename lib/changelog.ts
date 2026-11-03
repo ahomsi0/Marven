@@ -12,6 +12,27 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.14.0",
+    items: [
+      { tag: "new", label: "In-app browser — open it from the globe in the chat header: tabs, bookmarks, history, downloads, find in page, a right-click menu, ad and tracker blocking, and a choice of search engine" },
+      { tag: "new", label: "Ask Marven about the page you're reading — the browser hands it the page's text or your selection" },
+      { tag: "new", label: "Arabic interface — switch the app language in Settings, with right-to-left layout throughout" },
+      { tag: "new", label: "Command palette in chat and agent mode — jump to any Settings page, open a bookmark, or see keyboard shortcuts" },
+      { tag: "new", label: "Edited and retried messages keep every version, and you can retry with a different model" },
+      { tag: "new", label: "Memory page in Settings — edit or delete what Marven remembers, with Undo when something new is saved" },
+      { tag: "new", label: "Report a problem from Settings, with app info and recent logs attached" },
+      { tag: "new", label: "Agent mode works with LM Studio and llama-server; local vision models receive images" },
+      { tag: "imp", label: "Redesigned agent workspace: the conversation comes first, with files, changes and the terminal in a slide-in panel" },
+      { tag: "imp", label: "Reworked model picker, resizable sidebar and browser panel, a new logo, and a chat list with a ⋯ menu for Rename, Pin and Delete" },
+      { tag: "imp", label: "The agent knows today's date, time and time zone" },
+      { tag: "fix", label: "Ollama chats now have memory, the system prompt and streaming; replies can be stopped and one slow reply no longer blocks the others" },
+      { tag: "fix", label: "Provider errors are shown as they are instead of \"couldn't reach the server\"" },
+      { tag: "fix", label: "Saved API keys are no longer wiped when secure storage is unavailable" },
+      { tag: "fix", label: "Quit works properly on macOS, only one copy of Marven runs, and deleted conversations stay deleted after a quick quit" },
+      { tag: "fix", label: "The agent can't write outside the workspace through symlinks, and stopping a script stops its whole process tree" },
+    ],
+  },
+  {
     version: "2.13.0",
     items: [
       { tag: "new", label: "Project rules file — drop a MARVEN.md (or .marven/rules.md) in your workspace and its conventions are injected into every agent run" },
