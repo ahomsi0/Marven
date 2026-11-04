@@ -1,6 +1,7 @@
 // Renderer side of the in-app browser (electron/browser/ does the work).
 
 import searchEngineList from "@/electron/browser/searchEngines.json";
+import type { BrowserAction, BrowserActionKind, BrowserResult } from "@/types";
 
 export interface BrowserError {
   kind: "unreachable" | "certificate" | "crashed";
@@ -22,6 +23,17 @@ export interface BrowserTab {
   find: { active: number; total: number } | null;
   /** A server asking for a username and password, or null. */
   auth: { host: string; realm: string; isProxy: boolean } | null;
+  /** Opened by Marven's agent (its own tab). */
+  agent: boolean;
+}
+
+/** What Marven's agent is doing in the browser (electron/browser/agent.js). */
+export interface AgentActivity {
+  tabId: string | null;
+  state: "acting" | "paused" | "waiting-user";
+  /** `target` is page text or a host: show it as plain text. */
+  action: { kind: BrowserActionKind; target: string } | null;
+  reason?: "user" | "sign-in" | "hidden";
 }
 
 export interface BrowserDownload {
@@ -50,6 +62,8 @@ export interface BrowserSnapshot {
   canReopen: boolean;
   downloads: BrowserDownload[];
   searchEngine: Pick<SearchEngine, "id" | "name" | "searchUrl">;
+  /** Null when no agent run is using the browser. */
+  agentActivity: AgentActivity | null;
 }
 
 export interface BrowserBounds {
@@ -118,6 +132,13 @@ export interface BrowserBridge {
   onSnapshot: (cb: (snapshot: BrowserSnapshot) => void) => () => void;
   onFocusAddress: (cb: () => void) => () => void;
   onOpenFind: (cb: () => void) => () => void;
+  /** Marven's agent driving its own tabs. `run` answers null if the window isn't Marven's. */
+  agent: {
+    run: (runId: string, conversationId: string, action: BrowserAction) => Promise<BrowserResult | null>;
+    resume: () => void;
+    takeOver: () => void;
+    end: (runId: string) => void;
+  };
 }
 
 /** The Electron bridge, or null outside the desktop app (e.g. `next dev` in a browser). */

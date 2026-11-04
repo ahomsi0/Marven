@@ -24,3 +24,16 @@ export function setPlanMode(value: boolean): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(PLAN_MODE_KEY, value ? "true" : "false");
 }
+
+const BROWSING_KEY = "agentBrowsing";
+
+/** Settings → General → "Let the agent use the browser". Off by default. */
+export function getAgentBrowsing(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(BROWSING_KEY) === "true";
+}
+
+export function setAgentBrowsing(value: boolean): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(BROWSING_KEY, value ? "true" : "false");
+}

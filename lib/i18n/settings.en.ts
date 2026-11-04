@@ -150,6 +150,9 @@ const settingsEn = {
     requireApproval: "Require approval before writing files",
     requireApprovalHint:
       "Show a diff preview and ask before write_file or apply_patch execute. Adds a confirmation step for every agent write.",
+    agentBrowsing: "Let the agent use the browser",
+    agentBrowsingHint:
+      "The agent can open pages in tabs of its own and read them. Clicking and typing on a site, and submitting forms, ask you first. It never fills in passwords or payment details.",
     safetyProfile: "Agent safety profile",
     safetyProfileHint: "Controls whether this workspace may write files, run commands, or use MCP tools.",
     safetyReadOnly: "Read only — no writes, commands, Git, or MCP",
