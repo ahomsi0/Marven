@@ -35,7 +35,9 @@ function agentInPage(req) {
   ].join(', ');
   const SKIP = /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|SVG|CANVAS|IFRAME|OBJECT|EMBED|HEAD|TITLE|META|LINK)$/;
   const BLOCK = /^(P|DIV|LI|UL|OL|DL|DT|DD|H[1-6]|SECTION|ARTICLE|MAIN|HEADER|FOOTER|NAV|ASIDE|BLOCKQUOTE|PRE|TABLE|TR|FORM|FIELDSET|FIGCAPTION|FIGURE|HR|ADDRESS|DETAILS|SUMMARY|BR)$/;
-  const SENSITIVE_NAME = /card.?(num|no)|cc.?(num|no)|\bcvc\b|\bcvv\b|\bcsc\b|security.?code|expir|\biban\b|\bssn\b|social.?security|national.?id|passport|\bpin\b|one.?time|\botp\b/i;
+  // Password fields can be plain text fields (a "show password" toggle), so
+  // their names count too. Bare "pass" only as a word: not "passenger".
+  const SENSITIVE_NAME = /card.?(num|no)|cc.?(num|no)|\bcvc\b|\bcvv\b|\bcsc\b|security.?code|expir|\biban\b|\bssn\b|social.?security|national.?id|passport|\bpin\b|one.?time|\botp\b|passw(or)?d|pass.?(code|phrase)|\bpass\b|pwd/i;
   const SENSITIVE_AUTOCOMPLETE = /^(current-password|new-password|one-time-code|cc-)/;
   const TEXT_TYPES = /^(|text|search|email|url|tel|number|password|date|datetime-local|month|week|time)$/;
 
@@ -173,13 +175,24 @@ function agentInPage(req) {
     }
   }
 
+  // A field the page masks like a password (-webkit-text-security: disc).
+  const masked = (el) => {
+    const security = styleOf(el).webkitTextSecurity;
+    return typeof security === 'string' && security !== '' && security !== 'none';
+  };
+
   function sensitive(el) {
     if (tag(el) === 'INPUT' && typeOf(el) === 'password') return true;
     if (!textInput(el) && !contentEditable(el)) return false;
+    if (masked(el)) return true;
     const tokens = (el.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/);
     if (tokens.some((t) => SENSITIVE_AUTOCOMPLETE.test(t))) return true;
     const labels = el.labels ? Array.from(el.labels).map((label) => label.textContent).join(' ') : '';
-    return SENSITIVE_NAME.test([el.getAttribute('name'), el.id, el.getAttribute('aria-label'), el.getAttribute('placeholder'), labels].join(' '));
+    const labelledBy = (el.getAttribute('aria-labelledby') || '').split(/\s+/).map((id) => {
+      const label = id ? document.getElementById(id) : null;
+      return label ? label.textContent : '';
+    }).join(' ');
+    return SENSITIVE_NAME.test([el.getAttribute('name'), el.id, el.getAttribute('aria-label'), el.getAttribute('placeholder'), labels, labelledBy].join(' '));
   }
 
   function submits(el) {

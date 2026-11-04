@@ -87,6 +87,34 @@ describe("agentInPage read", () => {
     expect(byName["Help"]).toMatchObject({ submits: false });
   });
 
+  it("treats password fields shown as text, passcodes and labelled card fields as sensitive", () => {
+    document.body.innerHTML = `
+      <form>
+        <input name="password" value="v1">
+        <input name="passcode" value="v2">
+        <span id="card-label">Card number</span><input aria-labelledby="card-label" value="v3">
+        <input name="user_pwd" value="v4">
+        <input name="pass" value="v5">
+        <input name="passwd" value="v6">
+        <input name="passenger" value="Ada">
+      </form>`;
+    expect(read().elements.map((e: Record<string, unknown>) => [e.name, e.sensitive, e.value])).toEqual([
+      ["password", true, ""], ["passcode", true, ""], ["Card number", true, ""], ["user_pwd", true, ""],
+      ["pass", true, ""], ["passwd", true, ""], ["passenger", false, "Ada"],
+    ]);
+  });
+
+  it("treats a field masked with -webkit-text-security as sensitive", () => {
+    document.body.innerHTML = `<input name="q" value="secret">`;
+    const real = window.getComputedStyle;
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element) => {
+      const style = real(el);
+      if (el.tagName !== "INPUT") return style;
+      return new Proxy(style, { get: (target, key) => (key === "webkitTextSecurity" ? "disc" : Reflect.get(target, key)) });
+    });
+    expect(read().elements[0]).toMatchObject({ sensitive: true, value: "" });
+  });
+
   it("puts elements in view first", () => {
     document.body.innerHTML = `<a href="/a" data-rect="10,2000,50,20">Far</a><a href="/b">Near</a>`;
     expect(read().elements.map((e: { name: string; inViewport: boolean }) => [e.name, e.inViewport])).toEqual([["Near", true], ["Far", false]]);
