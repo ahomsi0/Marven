@@ -194,7 +194,10 @@ function createBrowserManager({ dir, getWindow, appPort }) {
         scheduleSnapshot(BLOCKED_SNAPSHOT_DELAY_MS);
       },
       onDownloadsChange: scheduleSnapshot,
-      isAgentWebContents: (webContentsId) => !!byWebContents.get(webContentsId)?.agent,
+      isAgentActing: (webContentsId) => {
+        const tab = byWebContents.get(webContentsId);
+        return !!tab && agent.isActingTab(tab);
+      },
       refuseRequest: (details) => !!byWebContents.get(details.webContentsId)?.agent && addresses.refusesRequest(details),
       shouldBlockDownload: (webContents) => {
         const tab = webContents ? byWebContents.get(webContents.id) : null;
@@ -355,12 +358,13 @@ function createBrowserManager({ dir, getWindow, appPort }) {
     return ok;
   }
 
-  // A tab an agent tab opens (target=_blank, window.open) is the agent's
-  // too: its downloads and fullscreen are blocked the same way, and it shows
-  // the agent's badge. The page loads in a later task, so marking it right
-  // after creating it is in time.
+  // A tab an agent tab opens (target=_blank, window.open) while a run is
+  // using it is the agent's too: its downloads and fullscreen are blocked the
+  // same way, and it shows the agent's badge. Once the run is over, it's the
+  // user's. The page loads in a later task, so marking it right after
+  // creating it is in time.
   function inheritAgent(opener, tab) {
-    if (!tab || !opener.agent) return;
+    if (!tab || !agent.isActingTab(opener)) return;
     tab.agent = { ...opener.agent };
     scheduleSnapshot();
   }
@@ -459,10 +463,11 @@ function createBrowserManager({ dir, getWindow, appPort }) {
     Menu.buildFromTemplate(template).popup({ window: win });
   }
 
-  // Only the page on screen may go fullscreen; it then covers the window.
+  // Only the page on screen may go fullscreen; it then covers the window. Not
+  // while an agent run is using the tab (it would cover the strip's Stop).
   function onFullscreen(tab, on) {
     if (on) {
-      if (tab.agent) {
+      if (agent.isActingTab(tab)) {
         tab.exitFullscreen();
         return;
       }

@@ -676,6 +676,23 @@ describe("agent controller", () => {
     expect(agent.activity()).toMatchObject({ state: "acting" });
   });
 
+  it("says which tabs a run is using: its own, only while it lasts", async () => {
+    const { agent, tabs, makeTab } = setup(() => readResult());
+    makeTab("t1", "conv1");
+    makeTab("other", "conv2");
+    makeTab("users", null);
+    expect(agent.isActingTab(tabs.get("t1"))).toBe(false); // no run yet
+    await agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+    expect(agent.isActingTab(tabs.get("t1"))).toBe(true);
+    agent.takeOver(); // paused, but the run still owns it
+    expect(agent.isActingTab(tabs.get("t1"))).toBe(true);
+    expect(agent.isActingTab(tabs.get("other"))).toBe(false);
+    expect(agent.isActingTab(tabs.get("users"))).toBe(false);
+    expect(agent.isActingTab(null)).toBe(false);
+    agent.end("run1");
+    expect(agent.isActingTab(tabs.get("t1"))).toBe(false);
+  });
+
   it("blocks downloads only while acting on its own tab, and says so", async () => {
     const { agent, deps, tabs, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
     makeTab("t1", "conv1");

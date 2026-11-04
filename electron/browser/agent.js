@@ -599,6 +599,13 @@ function createAgentController(deps) {
         unpause('sign-in');
       }
     },
+    /**
+     * Whether a run is using `tab` (its own, while the run lasts, paused or
+     * not). The tab's agent mark outlives the run, so a later run of the
+     * conversation can use it again; what's held back only while the agent
+     * is at work (fullscreen, pop-ups becoming its tabs) asks this instead.
+     */
+    isActingTab: (tab) => !!run && owns(run, tab),
     blocksDownloadFrom: (tab) => {
       if (!run || run.state !== 'acting' || !owns(run, tab)) return false;
       run.downloadBlocked = true;

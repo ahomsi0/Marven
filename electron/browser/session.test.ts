@@ -138,8 +138,8 @@ describe("agent tabs", () => {
     expect(onBlocked).not.toHaveBeenCalled();
   });
 
-  it("denies fullscreen to agent tabs only", () => {
-    const { ses } = setup(undefined, { isAgentWebContents: (id: number) => id === 7 });
+  it("denies fullscreen only to tabs an agent run is using", () => {
+    const { ses } = setup(undefined, { isAgentActing: (id: number) => id === 7 });
     const answer = vi.fn();
     ses.onRequest!({ id: 7 }, "fullscreen", answer);
     expect(answer).toHaveBeenLastCalledWith(false);
