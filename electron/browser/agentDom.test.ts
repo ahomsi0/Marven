@@ -226,6 +226,55 @@ describe("agentInPage targets", () => {
     ]);
   });
 
+  it("knows a click submits through an odd button type, a child of the button or a label", () => {
+    document.body.innerHTML = `
+      <form>
+        <button type="x">Odd type</button>
+        <button type="button">Plain</button>
+        <button aria-label="Outer"><span role="button" tabindex="0">Inner</span></button>
+        <button type="button"><span role="button" tabindex="0">Inner plain</span></button>
+        <label for="go" tabindex="0">Label for go</label>
+        <input type="submit" id="go" value="Go" aria-label="Go">
+      </form>
+      <button>Formless</button>`;
+    const submits = Object.fromEntries(read().elements.map((e: { name: string; submits: boolean }) => [e.name, e.submits]));
+    expect(submits).toEqual({
+      "Odd type": true, Plain: false, Outer: true, Inner: true, "Inner plain": false, "Label for go": true, Go: true, Formless: false,
+    });
+  });
+
+  it("lists a form's fields even when a field is named like a form property", () => {
+    document.body.innerHTML = `<form><input name="elements" value="x"><input name="email" value="a@b.c"><button>Pay</button></form>`;
+    read();
+    document.elementFromPoint = vi.fn(() => document.querySelector("button"));
+    expect(inPage({ op: "target", nav: 1, ref: 3 }).fields).toEqual([
+      { name: "elements", value: "x" }, { name: "email", value: "a@b.c" },
+    ]);
+  });
+
+  it("keeps its numbering when the page has an element with the state's id", () => {
+    document.body.innerHTML = `<div id="__marvenAgentState"></div><div id="__marvenAgentState"></div><button>Go</button>`;
+    // jsdom doesn't expose elements by id on window; Chromium does, in every
+    // world: each read looks them up afresh, and assigning shadows them.
+    Object.defineProperty(window, "__marvenAgentState", {
+      configurable: true,
+      get: () => document.querySelectorAll("div"),
+      set: (value) => Object.defineProperty(window, "__marvenAgentState", { configurable: true, writable: true, value }),
+    });
+    read();
+    document.elementFromPoint = vi.fn(() => document.querySelector("button"));
+    expect(inPage({ op: "target", nav: 1, ref: 1 })).toMatchObject({ info: { name: "Go" } });
+  });
+
+  it("says when nothing is at the element's centre (off screen)", () => {
+    document.body.innerHTML = `<button>Go</button>`;
+    read();
+    document.elementFromPoint = vi.fn(() => null);
+    expect(inPage({ op: "target", nav: 1, ref: 1, scroll: false })).toMatchObject({ offscreen: true });
+    document.elementFromPoint = vi.fn(() => document.querySelector("button"));
+    expect(inPage({ op: "target", nav: 1, ref: 1, scroll: false })).toMatchObject({ offscreen: false });
+  });
+
   it("focuses and selects a field, chooses options, finds focus", () => {
     document.body.innerHTML = `<form><input name="q" value="old"></form><select name="size"><option value="s">Small</option><option value="l">Large</option></select>`;
     read();
@@ -258,6 +307,8 @@ describe("main-side helpers", () => {
   it("cleanTarget maps unknown errors to gone", () => {
     expect(cleanTarget({ error: "weird" })).toEqual({ error: "gone" });
     expect(cleanTarget(null)).toEqual({ error: "gone" });
+    expect(cleanTarget({ x: 1, y: 2, info: {}, offscreen: "yes" })).toMatchObject({ offscreen: false });
+    expect(cleanTarget({ x: 1, y: 2, info: {}, offscreen: true })).toMatchObject({ offscreen: true });
   });
 
   it("formats a read with continuation, quoting and the untrusted headers", () => {

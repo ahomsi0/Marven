@@ -43,7 +43,13 @@ function agentInPage(req) {
   const SENSITIVE_AUTOCOMPLETE = /^(current-password|new-password|one-time-code|cc-)/;
   const TEXT_TYPES = /^(|text|search|email|url|tel|number|password|date|datetime-local|month|week|time)$/;
 
-  const state = window.__marvenAgent || (window.__marvenAgent = { nav: null, refs: new Map() });
+  // Kept between calls in this world's globals. An element with this id shows
+  // up here too (named access on window works in every world), so anything
+  // that isn't our own state is replaced; ours then shadows it for good.
+  const saved = window.__marvenAgentState;
+  const state = saved && typeof saved === 'object' && saved.refs instanceof Map
+    ? saved
+    : (window.__marvenAgentState = { nav: null, refs: new Map() });
   const styles = new Map();
   const backgrounds = new Map();
   const textClips = new Map();
@@ -53,7 +59,9 @@ function agentInPage(req) {
     return s.length > max ? s.slice(0, max - 1) + '…' : s;
   };
   const tag = (el) => String(el.tagName || '').toUpperCase();
-  const typeOf = (el) => (el.getAttribute('type') || '').toLowerCase();
+  // Inputs and buttons by their `type` property, which the browser normalises
+  // (an unknown type on a button is "submit", on an input "text"), as it acts.
+  const typeOf = (el) => String((/^(INPUT|BUTTON)$/.test(tag(el)) ? el.type : el.getAttribute('type')) || '').toLowerCase();
   const parentOf = (el) => el.parentElement || (el.parentNode && el.parentNode.host) || null;
   const styleOf = (el) => {
     let s = styles.get(el);
@@ -292,20 +300,35 @@ function agentInPage(req) {
     return SENSITIVE_NAME.test([el.getAttribute('name'), el.id, el.getAttribute('aria-label'), el.getAttribute('placeholder'), labels, labelledBy].join(' '));
   }
 
-  function submits(el) {
-    if (tag(el) === 'BUTTON') return (typeOf(el) || 'submit') === 'submit' && !!formOf(el);
+  function submitControl(el) {
+    if (!el) return false;
+    if (tag(el) === 'BUTTON') return typeOf(el) === 'submit' && !!formOf(el);
     if (tag(el) === 'INPUT') return (typeOf(el) === 'submit' || typeOf(el) === 'image') && !!formOf(el);
     return false;
+  }
+
+  // A click submits through a submit control itself, anything inside a
+  // submit button, or a label whose control is one.
+  function submits(el) {
+    if (submitControl(el)) return true;
+    if (typeof el.closest !== 'function') return false;
+    if (submitControl(el.closest('button'))) return true;
+    const label = el.closest('label');
+    return !!label && submitControl(label.control);
   }
 
   // Enter in a single-line field submits its form.
   const entersSubmit = (el) => tag(el) === 'INPUT' && textInput(el) && !!formOf(el);
 
+  // A form's fields from the prototype's getter: `form.elements` is the
+  // field named "elements" when the page has one.
+  const ELEMENTS = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'elements').get;
+
   // What a form would send, for the approval card. Sensitive values never leave the page.
   function fieldsOf(form) {
     if (!form) return [];
     const out = [];
-    for (const el of Array.from(form.elements || [])) {
+    for (const el of Array.from(ELEMENTS.call(form))) {
       if (out.length >= MAX_FIELDS) break;
       const t = typeOf(el);
       if (/^(submit|button|reset|image|hidden|file)$/.test(t) || /^(BUTTON|FIELDSET|OUTPUT|OBJECT)$/.test(tag(el))) continue;
@@ -403,6 +426,8 @@ function agentInPage(req) {
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
     let top = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : el;
+    // Nothing at the centre: it's outside the viewport, where a click can't land.
+    const offscreen = !top;
     // elementFromPoint stops at shadow hosts; look inside them.
     while (top && top !== el && top.shadowRoot && typeof top.shadowRoot.elementFromPoint === 'function') {
       const inner = top.shadowRoot.elementFromPoint(x, y);
@@ -411,7 +436,7 @@ function agentInPage(req) {
     }
     const covered = top && top !== el && !el.contains(top) ? clip(nameOf(top) || tag(top).toLowerCase(), MAX_NAME) : '';
     const willSubmit = submits(el) || entersSubmit(el);
-    return { info: describe(el, req.ref, true), x, y, covered, entersSubmit: entersSubmit(el), fields: willSubmit ? fieldsOf(formOf(el)) : [] };
+    return { info: describe(el, req.ref, true), x, y, covered, offscreen, entersSubmit: entersSubmit(el), fields: willSubmit ? fieldsOf(formOf(el)) : [] };
   }
 
   function focus() {
@@ -560,6 +585,7 @@ function cleanTarget(raw) {
     x: raw.x,
     y: raw.y,
     covered: str(raw.covered, MAX_NAME),
+    offscreen: raw.offscreen === true,
     entersSubmit: raw.entersSubmit === true,
     fields: cleanFields(raw.fields),
   };
