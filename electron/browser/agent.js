@@ -187,7 +187,16 @@ function createAgentController(deps) {
     if (outcome === 'ended' || run !== r) return fail('Stopped.');
     const tab = ownedTab(r, r.tabId);
     if (!tab) return ok('The user took over and handed back. The agent tab is gone; use browser_tabs with action "list".');
-    return ok(`The user took over and handed back. The page may have changed; here it is now:\n${await readText(tab)}`);
+    // Outside the action's own time limit, so it needs one of its own: a
+    // page showing a dialog never answers.
+    let text;
+    try {
+      text = await withTimeout(readText(tab), ACTION_TIMEOUT_MS);
+    } catch (err) {
+      if (!(err instanceof ActionTimeout)) throw err;
+      return ok("The user took over and handed back. The page didn't respond in time; read it again before acting.");
+    }
+    return ok(`The user took over and handed back. The page may have changed; here it is now:\n${text}`);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────
@@ -314,7 +323,10 @@ function createAgentController(deps) {
     if (!action.canSeeImages) return ok(`${header(tab)}\nThis model can't see images; use browser_read instead.`);
     if (!deps.isShown()) return fail('The browser panel is closed, so there is nothing to capture. Ask the user to open it.');
     const image = await deps.capture(tab);
-    return image ? ok(`${header(tab)}\nScreenshot attached below.`, image) : fail('The screenshot failed.');
+    // Capturing gives nothing while the page is frozen behind a toolbar menu or a resize.
+    return image
+      ? ok(`${header(tab)}\nScreenshot attached below.`, image)
+      : fail('The screenshot failed; the browser may be covered by a menu. Try again in a moment.');
   }
 
   async function wait(r, tab, args) {

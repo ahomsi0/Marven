@@ -207,6 +207,25 @@ describe("agent controller", () => {
     expect(agent.activity()).toMatchObject({ state: "acting" });
   });
 
+  it("hands back without the read when the page doesn't answer in time", async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      const { agent, makeTab } = setup((req) => (req.op === "read" && reads++ > 0 ? new Promise(() => {}) : readResult()));
+      makeTab("t1", "conv1");
+      await agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+      agent.takeOver();
+      const waiting = agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+      agent.resume();
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(await waiting).toEqual({
+        kind: "ok", text: "The user took over and handed back. The page didn't respond in time; read it again before acting.",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops a paused action when the run ends", async () => {
     const { agent, makeTab } = setup(() => readResult());
     makeTab("t1", "conv1");
@@ -395,5 +414,14 @@ describe("agent controller", () => {
     expect(await agent.perform("run1", "conv1", act("browser_screenshot", { tab: "t1" }))).toMatchObject({ kind: "ok", text: expect.stringMatching(/can't see images/) });
     const shot = await agent.perform("run1", "conv1", act("browser_screenshot", { tab: "t1" }, { canSeeImages: true }));
     expect(shot).toMatchObject({ kind: "ok", image: { mimeType: "image/jpeg" } });
+  });
+
+  it("says a failed screenshot may be a menu covering the browser", async () => {
+    const { agent, deps, makeTab } = setup();
+    makeTab("t1", "conv1");
+    deps.capture.mockResolvedValueOnce(null as never);
+    expect(await agent.perform("run1", "conv1", act("browser_screenshot", { tab: "t1" }, { canSeeImages: true }))).toEqual({
+      kind: "error", text: "The screenshot failed; the browser may be covered by a menu. Try again in a moment.",
+    });
   });
 });
