@@ -12,10 +12,27 @@ import { getBrowserBridge } from "@/lib/inAppBrowser";
 
 const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
+const UNDELIVERED_NOTE = "The browser's answer couldn't be delivered. Read the page again.";
+
+// POSTs one result to the waiting loop; resolves to the HTTP status, or 0 when
+// the request itself failed.
+async function postBrowserResult(callId: string, runId: string, result: BrowserResult): Promise<number> {
+  try {
+    const res = await fetch("/api/agent/browser-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, runId, result }),
+    });
+    return res.status;
+  } catch {
+    return 0;
+  }
+}
+
 // Runs one browser action in the main process and hands the result back to
 // the waiting agent loop (POST /api/agent/browser-result). Never throws: the
 // loop always gets an answer, or it would wait for its 30-minute backstop.
-async function relayBrowserAction(event: Extract<AgentEvent, { type: "browser_action" }>, conversationId: string | undefined) {
+export async function relayBrowserAction(event: Extract<AgentEvent, { type: "browser_action" }>, conversationId: string | undefined) {
   let result: BrowserResult | null = null;
   try {
     const agent = getBrowserBridge()?.agent;
@@ -23,11 +40,13 @@ async function relayBrowserAction(event: Extract<AgentEvent, { type: "browser_ac
   } catch (err) {
     result = { kind: "error", text: `The browser action failed: ${err instanceof Error ? err.message : String(err)}` };
   }
-  await fetch("/api/agent/browser-result", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ callId: event.callId, runId: event.runId, result: result ?? { kind: "error", text: "The in-app browser isn't available." } }),
-  }).catch(() => {});
+  const status = await postBrowserResult(event.callId, event.runId, result ?? { kind: "error", text: "The in-app browser isn't available." });
+  // The server rejected the result (400) or never got it (0): without another
+  // answer the loop would wait out its backstop. A 404 means the run is gone
+  // (Stop), which is expected, so it stays silent.
+  if (status === 400 || status === 0) {
+    await postBrowserResult(event.callId, event.runId, { kind: "error", text: UNDELIVERED_NOTE });
+  }
 }
 
 interface UseAgentStreamOptions {
@@ -645,12 +664,31 @@ export function useAgentStream({
         ),
       }));
     }
-    const res = await fetch("/api/agent/approve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callId, accept, ...(scope ? { scope } : {}) }),
-    });
+    // The server didn't take the approval (e.g. it had already timed out), so
+    // the call isn't running on: put the card back so the result that follows
+    // is labelled for what happened. Only if no result has landed meanwhile.
+    const undoRunning = () => {
+      if (!accept) return;
+      updateLastAssistant((msg) => ({
+        ...msg,
+        toolCalls: (msg.toolCalls ?? []).map((tc) =>
+          tc.callId === callId && tc.status === "running" ? { ...tc, status: "awaiting_approval" as const } : tc
+        ),
+      }));
+    };
+    let res: Response;
+    try {
+      res = await fetch("/api/agent/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId, accept, ...(scope ? { scope } : {}) }),
+      });
+    } catch (err) {
+      undoRunning();
+      throw err;
+    }
     if (!res.ok) {
+      undoRunning();
       const data = await res.json().catch(() => ({}));
       console.error("[approve] failed:", res.status, data);
     }
