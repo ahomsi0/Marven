@@ -11,6 +11,9 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 
 const isDev = !app.isPackaged;
+// Where Marven's own UI and API are served (next dev in development, the
+// embedded standalone server otherwise).
+const APP_PORT = isDev ? 3000 : 47891;
 
 // ── Single instance ──────────────────────────────────────────────────────────
 // A second copy would share the same userData (settings.json, the Chromium
@@ -354,6 +357,7 @@ function applySettings(settings) {
 const inAppBrowser = createBrowserManager({
   dir: path.join(app.getPath('userData'), 'browser'),
   getWindow: () => mainWindow,
+  appPort: APP_PORT,
 });
 registerBrowserIpc(inAppBrowser, () => mainWindow);
 // Only a plain id is needed here, so read the file directly (no secret decryption before ready).
@@ -483,7 +487,7 @@ function createWindow() {
     if (entry) logCapture.push(entry.level, 'renderer', [entry.text]);
   });
 
-  const appPort = isDev ? 3000 : 47891;
+  const appPort = APP_PORT;
   mainWindow.loadURL(`http://localhost:${appPort}`);
 
   // Retry if server wasn't ready yet — capped, and never overlapping: an

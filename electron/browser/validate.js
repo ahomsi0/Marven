@@ -2,6 +2,7 @@
 // the renderer (IPC) or from saved files. Nothing here imports Electron.
 
 const { isAgentKey } = require('./agentKeys');
+const { isLoopbackHost, portOf } = require('./addresses');
 
 const MAX_URL_LENGTH = 8192;
 const MAX_BOUND = 100000;
@@ -66,6 +67,28 @@ function hostOf(url) {
   } catch {
     return '';
   }
+}
+
+// The site an agent approval is for: the hostname, and for this machine
+// (localhost and the like) the port too, since each port there is a
+// different server: approving one dev server mustn't approve another, or
+// Marven's own. Empty for a page without a host (about:blank, data:).
+function approvalHostOf(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return '';
+  }
+  if (!u.hostname) return '';
+  return isLoopbackHost(u.hostname) ? `${u.hostname}:${portOf(u)}` : u.hostname;
+}
+
+// A site as approvalHostOf names it: a host, or a loopback host with a port.
+function isApprovalHost(value) {
+  if (isHost(value)) return true;
+  const m = typeof value === 'string' ? /^(.+):([1-9]\d{0,4})$/.exec(value) : null;
+  return !!m && Number(m[2]) <= 65535 && isHost(m[1]) && isLoopbackHost(m[1]);
 }
 
 // A browser action from the agent (via the renderer): a known tool with its
@@ -149,7 +172,7 @@ function cleanAgentAction(raw) {
   return {
     tool: raw.tool,
     args,
-    approvedHosts: Array.isArray(raw.approvedHosts) ? raw.approvedHosts.filter(isHost).slice(0, 100) : [],
+    approvedHosts: Array.isArray(raw.approvedHosts) ? raw.approvedHosts.filter(isApprovalHost).slice(0, 100) : [],
     approvedSubmit: raw.approvedSubmit === true,
     // The element the user's last approval was for (agent.js compares it).
     ...(typeof raw.approvedTarget === 'string' && raw.approvedTarget.length <= 80 ? { approvedTarget: raw.approvedTarget } : {}),
@@ -157,4 +180,6 @@ function cleanAgentAction(raw) {
   };
 }
 
-module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission, cleanAgentAction };
+module.exports = {
+  isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, approvalHostOf, isApprovalHost, staysOnOrigin, isAllowedPermission, cleanAgentAction,
+};

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission, cleanAgentAction } from "./validate.js";
+import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, approvalHostOf, isApprovalHost, staysOnOrigin, isAllowedPermission, cleanAgentAction } from "./validate.js";
 
 describe("validate", () => {
   it("accepts only http(s) URLs", () => {
@@ -47,6 +47,25 @@ describe("validate", () => {
     expect(hostOf("garbage")).toBe("");
   });
 
+  it("names a loopback site by host and port for approvals, any other by host", () => {
+    expect(approvalHostOf("https://www.example.com:8080/a")).toBe("www.example.com");
+    expect(approvalHostOf("http://localhost:5173/app")).toBe("localhost:5173");
+    expect(approvalHostOf("http://127.0.0.1/")).toBe("127.0.0.1:80");
+    expect(approvalHostOf("https://localhost/")).toBe("localhost:443");
+    expect(approvalHostOf("http://[::1]:8080/")).toBe("[::1]:8080");
+    expect(approvalHostOf("http://dev.localhost:4000/")).toBe("dev.localhost:4000");
+    for (const url of ["about:blank", "data:text/html,hi", "garbage"]) expect(approvalHostOf(url)).toBe("");
+  });
+
+  it("accepts approval hosts with a port only for loopback", () => {
+    for (const good of ["example.com", "localhost:5173", "127.0.0.1:80", "[::1]:8080", "dev.localhost:65535"]) {
+      expect(isApprovalHost(good), good).toBe(true);
+    }
+    for (const bad of ["example.com:443", "localhost:0", "localhost:65536", "localhost:05173", "localhost:", ":80", "localhost:80:80", "a b:80", "", null]) {
+      expect(isApprovalHost(bad), String(bad)).toBe(false);
+    }
+  });
+
   it("staysOnOrigin compares a navigation target with the current page's origin", () => {
     expect(staysOnOrigin("http://localhost:3000/chat", "http://localhost:3000/")).toBe(true);
     expect(staysOnOrigin("http://localhost:3001/", "http://localhost:3000/")).toBe(false);
@@ -80,6 +99,11 @@ describe("cleanAgentAction", () => {
     expect(cleanAgentAction({ ...base, tool: "browser_wait", args: { tab: "t", for: "load", timeoutMs: 99999 } })?.args)
       .toEqual({ tab: "t", for: "load", text: "", timeoutMs: 15000 });
     expect(cleanAgentAction({ ...base, tool: "browser_read", args: { tab: "t" } })?.args).toEqual({ tab: "t", offset: 0, find: "" });
+  });
+
+  it("keeps approved loopback hosts with their port", () => {
+    const action = cleanAgentAction({ ...base, approvedHosts: ["localhost:5173", "localhost", "example.com:443", "127.0.0.1:3000"], tool: "browser_tabs", args: { action: "list" } });
+    expect(action?.approvedHosts).toEqual(["localhost:5173", "localhost", "127.0.0.1:3000"]);
   });
 
   it("keeps the approved target only as a short string", () => {

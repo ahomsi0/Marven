@@ -16,7 +16,7 @@
 
 const { MAX_ELEMENTS, cleanRead, cleanTarget, cleanFocused, cleanOutcome, formatRead } = require('./agentDom');
 const { clickEvents, keyEvents } = require('./agentKeys');
-const { hostOf, isWebUrl } = require('./validate');
+const { approvalHostOf, hostOf, isWebUrl } = require('./validate');
 
 const ACTION_TIMEOUT_MS = 20000;
 // How long a load has to start after an action before we stop waiting for one.
@@ -78,6 +78,7 @@ function targetError(code, ref) {
  *   sendInput: (tab: any, events: object[]) => void | Promise<void>,
  *   insertText: (tab: any, text: string) => void | Promise<void>,
  *   capture: (tab: any) => Promise<{ base64: string, mimeType: string, name: string } | null>,
+ *   refuseUrl?: (url: string) => string | null,
  *   sleep?: (ms: number) => Promise<void>,
  *   now?: () => number,
  * }} deps
@@ -85,6 +86,8 @@ function targetError(code, ref) {
 function createAgentController(deps) {
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? Date.now;
+  // Why the agent may not open an address (Marven's own), or null.
+  const refuseUrl = deps.refuseUrl ?? (() => null);
   // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, reasons, signIns, tabId, action, gate,
   //   downloadBlocked, current }
   // `reasons` holds every reason the run waits for (PAUSE_REASONS), `signIns`
@@ -251,6 +254,10 @@ function createAgentController(deps) {
     if (tool === 'browser_tabs') return tabsAction(r, t, args);
     const tab = ownedTab(r, args.tab);
     if (!tab) return fail(NO_TAB);
+    // The tab's requests there are cancelled (manager.js), so it can't be
+    // showing such a page; this keeps the agent off one even so.
+    const refused = refuseUrl(tab.url);
+    if (refused) return fail(refused);
     r.tabId = tab.id;
     deps.tabs.activate(tab.id);
     tab.ensureView();
@@ -276,6 +283,8 @@ function createAgentController(deps) {
   }
 
   async function open(r, t, args) {
+    const refused = refuseUrl(args.url);
+    if (refused) return fail(refused);
     const stop = halted(r, t);
     if (stop) return stop;
     let tab;
@@ -355,7 +364,7 @@ function createAgentController(deps) {
   // A form submission always needs its own approval, given for this very
   // element (`approvedTarget` is the target of the approval the user saw);
   // anything else needs the site approved. Approving a submit approves the
-  // site for that call too.
+  // site for that call too. `host` is the site as approvalHostOf names it.
   function approvalFor(action, host, kind, target, submitting, fields) {
     if (submitting && !(action.approvedSubmit && action.approvedHosts.includes(host) && action.approvedTarget === target)) {
       return { kind: 'needs_approval', approval: { kind: 'submit', host, action: kind, target, fields } };
@@ -385,7 +394,8 @@ function createAgentController(deps) {
     const { tool, args } = action;
     const kind = KIND[tool];
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
-    if (!hostOf(tab.url)) return fail(NO_HOST);
+    const host = approvalHostOf(tab.url);
+    if (!host) return fail(NO_HOST);
     const first = cleanTarget(await deps.runInPage(tab, { op: 'target', nav: tab.navigation, ref: args.ref, scroll: true }));
     if (first.error) return fail(targetError(first.error, args.ref));
     const { info } = first;
@@ -393,7 +403,7 @@ function createAgentController(deps) {
     if (refused) return refused;
     const submitting = tool === 'browser_click' ? info.submits : tool === 'browser_type' && args.submit && first.entersSubmit;
     const target = info.name || info.role;
-    const approval = approvalFor(action, hostOf(tab.url), kind, target, submitting, first.fields);
+    const approval = approvalFor(action, host, kind, target, submitting, first.fields);
     if (approval) return approval;
 
     let stop = halted(r, t);
@@ -418,7 +428,7 @@ function createAgentController(deps) {
       if (again.error) return fail(targetError(again.error, args.ref));
       const refusedNow = refusal(again, tool, args.ref);
       if (refusedNow) return refusedNow;
-      const now = approvalFor(action, hostOf(tab.url), kind, again.info.name || again.info.role, again.info.submits, again.fields);
+      const now = approvalFor(action, approvalHostOf(tab.url), kind, again.info.name || again.info.role, again.info.submits, again.fields);
       if (now) return now;
       if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, clickEvents(again.x, again.y));
@@ -443,10 +453,11 @@ function createAgentController(deps) {
   async function press(r, t, tab, action) {
     const { key } = action.args;
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
-    if (!hostOf(tab.url)) return fail(NO_HOST);
+    const host = approvalHostOf(tab.url);
+    if (!host) return fail(NO_HOST);
     const focused = cleanFocused(await deps.runInPage(tab, { op: 'focused' }));
     if (focused.sensitive) return fail('The focus is in a sensitive field (a password, payment detail or one-time code). Ask the user to finish it.');
-    const approval = approvalFor(action, hostOf(tab.url), 'press', key, key === 'Enter' && focused.entersSubmit, focused.fields);
+    const approval = approvalFor(action, host, 'press', key, key === 'Enter' && focused.entersSubmit, focused.fields);
     if (approval) return approval;
     const stop = halted(r, t);
     if (stop) return stop;

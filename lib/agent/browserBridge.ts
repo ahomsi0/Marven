@@ -67,6 +67,8 @@ export function cancelBrowserCalls(runId: string): void {
 const MAX_TEXT = 20_000;
 const MAX_ERROR = 2_000;
 const MAX_LABEL = 80;
+// A host (253) and, for a loopback site, ":" and a port.
+const MAX_HOST = 259;
 const MAX_FIELDS = 30;
 const MAX_IMAGE = 5_000_000;
 const ACTION_KINDS = new Set<BrowserActionKind>(["open", "history", "read", "screenshot", "tabs", "wait", "scroll", "click", "type", "press", "select"]);
@@ -96,7 +98,7 @@ function cleanApproval(raw: unknown): BrowserApprovalPreview | null {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   if (a.kind !== "site" && a.kind !== "submit") return null;
-  const host = label(a.host, 253);
+  const host = label(a.host, MAX_HOST);
   if (!host || !ACTION_KINDS.has(a.action as BrowserActionKind)) return null;
   const approval: BrowserApprovalPreview = { kind: a.kind, host, action: a.action as BrowserActionKind, target: label(a.target, MAX_LABEL) };
   if (Array.isArray(a.fields)) {

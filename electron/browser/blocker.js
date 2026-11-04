@@ -4,7 +4,8 @@
 //
 // Electron allows only one onBeforeRequest listener per session (a second
 // call replaces the first), so `attach` owns that slot for the browser
-// partition; anything else that needs it must go through here.
+// partition; anything else that needs it must go through here (as the agent
+// tabs' refused addresses do, through `refuseRequest`).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,7 +39,13 @@ function decide(engine, details, pageUrl, disabledHere) {
   return null;
 }
 
-function createBlocker({ dir, isDisabledFor, onBlocked }) {
+/**
+ * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void,
+ *   refuseRequest?: (details: Electron.OnBeforeRequestListenerDetails) => boolean }} options
+ *   `refuseRequest` cancels a request whatever the filter lists say (the
+ *   agent's tabs may not reach Marven's own origin).
+ */
+function createBlocker({ dir, isDisabledFor, onBlocked, refuseRequest = () => false }) {
   const cacheFile = path.join(dir, 'adblock.bin');
   let engine = null;
 
@@ -82,6 +89,10 @@ function createBlocker({ dir, isDisabledFor, onBlocked }) {
 
   function attach(ses) {
     ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+      if (refuseRequest(details)) {
+        callback({ cancel: true });
+        return;
+      }
       const wc = details.webContents;
       // The top-level page URL, not the frame's: the per-site allowlist is
       // about the site the user is on, so it covers its iframes too.

@@ -50,11 +50,11 @@ function writeFilterCache(rules: string) {
   fs.writeFileSync(path.join(dir, "adblock.bin"), Buffer.from(engine.serialize()));
 }
 
-function request(ses: FakeSession, url: string) {
+function request(ses: FakeSession, url: string, resourceType = "script") {
   const callback = vi.fn();
   const pageUrl = "https://news.com/";
   const webContents = { isDestroyed: () => false, getURL: () => pageUrl };
-  ses.beforeRequest!({ id: 1, url, resourceType: "script", referrer: pageUrl, webContentsId: 7, webContents }, callback);
+  ses.beforeRequest!({ id: 1, url, resourceType, referrer: pageUrl, webContentsId: 7, webContents }, callback);
   return callback.mock.calls[0][0];
 }
 
@@ -128,6 +128,16 @@ describe("setupSession", () => {
 });
 
 describe("agent tabs", () => {
+  it("cancels the requests the agent's tabs may not make, filter lists or not", () => {
+    const refuseRequest = vi.fn((details: { url: string; webContentsId: number }) => details.url.startsWith("http://localhost:3000"));
+    const { ses, onBlocked } = setup(undefined, { refuseRequest, isDisabledFor: () => true });
+    expect(request(ses, "http://localhost:3000/", "mainFrame")).toEqual({ cancel: true });
+    expect(refuseRequest).toHaveBeenLastCalledWith(expect.objectContaining({ url: "http://localhost:3000/", resourceType: "mainFrame", webContentsId: 7 }));
+    expect(request(ses, "http://localhost:3000/api/agent/approve", "xhr")).toEqual({ cancel: true });
+    expect(request(ses, "http://localhost:5173/", "mainFrame")).toEqual({});
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
   it("denies fullscreen to agent tabs only", () => {
     const { ses } = setup(undefined, { isAgentWebContents: (id: number) => id === 7 });
     const answer = vi.fn();

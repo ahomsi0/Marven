@@ -100,6 +100,13 @@ describe("cleanBrowserResult", () => {
     expect(result).toMatchObject({ approval: { fields: [{ name: "Email", value: "a" }] } });
   });
 
+  it("keeps a loopback approval host with its port, however long the host", () => {
+    const host = `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(51)}.localhost:65535`;
+    expect(host.length).toBe(259);
+    const result = cleanBrowserResult({ kind: "needs_approval", approval: { kind: "site", host, action: "click", target: "Go" } });
+    expect(result).toEqual({ kind: "needs_approval", approval: { kind: "site", host, action: "click", target: "Go" } });
+  });
+
   it("rejects unknown kinds and bad approvals", () => {
     expect(cleanBrowserResult(null)).toBeNull();
     expect(cleanBrowserResult({ kind: "weird" })).toBeNull();

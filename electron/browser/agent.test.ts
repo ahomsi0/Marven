@@ -37,6 +37,7 @@ function setup(page: (req: Req) => unknown = () => null) {
     capture: vi.fn(async () => ({ base64: "data:image/jpeg;base64,AA", mimeType: "image/jpeg", name: "screenshot.jpg" })),
     sleep: vi.fn(async (ms: number) => { clock += ms; }),
     now: () => clock,
+    refuseUrl: vi.fn((url: string) => (url.startsWith("http://localhost:3000") ? "That address is Marven itself; the agent can't open it." : null)),
   };
   const agent = createAgentController(deps);
   return { agent, deps, tabs, makeTab };
@@ -61,6 +62,30 @@ describe("agent controller", () => {
     for (let i = 0; i < 9; i++) await agent.perform("run1", "conv1", act("browser_open", { url: "https://shop.test/" }));
     expect(await agent.perform("run1", "conv1", act("browser_open", { url: "https://shop.test/" }))).toMatchObject({ kind: "error" });
     expect(deps.tabs.open).toHaveBeenCalledTimes(10);
+  });
+
+  it("refuses to open Marven's own address, in a new tab or an old one", async () => {
+    const { agent, deps, makeTab } = setup();
+    makeTab("t1", "conv1");
+    for (const args of [{ url: "http://localhost:3000/" }, { url: "http://localhost:3000/settings", tab: "t1" }]) {
+      expect(await agent.perform("run1", "conv1", act("browser_open", args)))
+        .toEqual({ kind: "error", text: "That address is Marven itself; the agent can't open it." });
+    }
+    expect(deps.tabs.open).not.toHaveBeenCalled();
+  });
+
+  it("won't act on a tab that is showing a refused address", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult() : req.op === "read" ? readResult() : { ok: true }));
+    makeTab("t1", "conv1", "http://localhost:3000/");
+    for (const action of [
+      act("browser_read", { tab: "t1" }),
+      act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["localhost:3000"] }),
+      act("browser_press", { tab: "t1", key: "Enter" }, { approvedHosts: ["localhost:3000"] }),
+    ]) {
+      expect(await agent.perform("run1", "conv1", action)).toEqual({ kind: "error", text: "That address is Marven itself; the agent can't open it." });
+    }
+    expect(deps.runInPage).not.toHaveBeenCalled();
+    expect(deps.sendInput).not.toHaveBeenCalled();
   });
 
   it("only uses the conversation's own tabs", async () => {
@@ -93,6 +118,24 @@ describe("agent controller", () => {
     expect(done.kind).toBe("ok");
     expect(deps.runInPage.mock.calls.map(([, req]) => (req as Req).op)).toContain("highlight");
     expect(deps.sendInput).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([expect.objectContaining({ type: "mouseDown", x: 50, y: 20 })]));
+  });
+
+  it("approves a loopback site by host and port, so one dev server doesn't approve another", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
+    makeTab("t1", "conv1", "http://localhost:5173/");
+    makeTab("t2", "conv1", "http://localhost:8080/admin");
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }))).toMatchObject({
+      kind: "needs_approval", approval: { kind: "site", host: "localhost:5173" },
+    });
+    const approved = { approvedHosts: ["localhost:5173"] };
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, approved))).toMatchObject({ kind: "ok" });
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t2", ref: 1 }, approved))).toMatchObject({
+      kind: "needs_approval", approval: { kind: "site", host: "localhost:8080" },
+    });
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t2", ref: 1 }, { approvedHosts: ["localhost"] }))).toMatchObject({
+      kind: "needs_approval",
+    });
+    expect(deps.sendInput).toHaveBeenCalledTimes(1);
   });
 
   it("always asks before submitting a form, with its fields", async () => {

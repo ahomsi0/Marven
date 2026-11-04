@@ -5,6 +5,8 @@
 // can be suppressed by the user. Links and window.open() become new tabs; a
 // pop-up window (window.open with features, as sign-in flows use) becomes a
 // tab that keeps its opener, so it can post back and close itself.
+// An agent tab also never leaves for an address the agent may not open
+// (Marven's own UI); its requests there are cancelled in the session too.
 
 const { WebContentsView } = require('electron');
 const { isWebUrl } = require('./validate');
@@ -48,6 +50,7 @@ class Tab {
    *   onShortcut: (input: Electron.Input) => boolean,
    *   onView: (tab: Tab) => void,
    *   onUserInput: (tab: Tab) => void,
+   *   refuseAgentUrl: (url: string) => boolean,
    * } }} options
    */
   constructor({ id, url, title, session, hooks }) {
@@ -118,8 +121,12 @@ class Tab {
   wire(wc) {
     const update = () => this.hooks.onUpdate(this);
 
+    // Whether this tab may not go to `url`: it's the agent's, and `url` is
+    // somewhere the agent may not open.
+    const refused = (url) => !isWebUrl(url) || (!!this.agent && this.hooks.refuseAgentUrl(url));
+
     wc.setWindowOpenHandler(({ url, disposition }) => {
-      if (!isWebUrl(url)) return { action: 'deny' };
+      if (refused(url)) return { action: 'deny' };
       if (disposition === 'new-window') {
         if (!this.hooks.allowPopup(this)) return { action: 'deny' };
         return {
@@ -167,7 +174,7 @@ class Tab {
       callback();
     });
     const guard = (details) => {
-      if (!isWebUrl(details.url)) details.preventDefault();
+      if (refused(details.url)) details.preventDefault();
     };
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);

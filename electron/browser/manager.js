@@ -18,6 +18,7 @@ const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 const { EXTRACT_SCRIPT, cleanExtract } = require('./pageText');
 const { cleanLabels, contextMenuTemplate } = require('./contextMenu');
 const { createAgentController } = require('./agent');
+const { createAddressPolicy } = require('./addresses');
 const { AGENT_WORLD_ID, script: agentScript } = require('./agentDom');
 
 // Snapshots are coalesced: structural changes go out within a frame, while
@@ -39,9 +40,10 @@ const OWN_INPUT_GRACE_MS = 150;
 const newId = () => crypto.randomUUID();
 
 /**
- * @param {{ dir: string, getWindow: () => Electron.BrowserWindow | null }} options
+ * @param {{ dir: string, getWindow: () => Electron.BrowserWindow | null, appPort: number }} options
+ *   `appPort` is the port Marven's own UI and API are served on.
  */
-function createBrowserManager({ dir, getWindow }) {
+function createBrowserManager({ dir, getWindow, appPort }) {
   let ses = null;
   let library = null;
   let downloads = null;
@@ -59,6 +61,19 @@ function createBrowserManager({ dir, getWindow }) {
   // The tab whose page is fullscreen, if any (it's always the active one).
   let fullscreenTab = null;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
+  // Where the agent's tabs may not go: Marven itself, wherever its window is.
+  const addresses = createAddressPolicy({
+    appPorts: [appPort],
+    appOrigins: () => {
+      const win = getWindow();
+      if (!win || win.isDestroyed()) return [];
+      try {
+        return [new URL(win.webContents.getURL()).origin];
+      } catch {
+        return [];
+      }
+    },
+  });
   const host = createViewHost({
     getWindow,
     getPage: () => {
@@ -103,6 +118,7 @@ function createBrowserManager({ dir, getWindow }) {
       }
     },
     capture: captureForAgent,
+    refuseUrl: addresses.refusal,
   });
 
   // The agent's in-page script (agentDom.js), in its own isolated world.
@@ -173,6 +189,7 @@ function createBrowserManager({ dir, getWindow }) {
       },
       onDownloadsChange: scheduleSnapshot,
       isAgentWebContents: (webContentsId) => !!byWebContents.get(webContentsId)?.agent,
+      refuseRequest: (details) => !!byWebContents.get(details.webContentsId)?.agent && addresses.refusesRequest(details),
       shouldBlockDownload: (webContents) => {
         const tab = webContents ? byWebContents.get(webContents.id) : null;
         return !!tab && agent.blocksDownloadFrom(tab);
@@ -275,6 +292,7 @@ function createBrowserManager({ dir, getWindow }) {
         onShortcut: handleShortcut,
         onView: (t) => byWebContents.set(t.webContentsId, t),
         onUserInput: (t) => agent.onUserInput(t),
+        refuseAgentUrl: (url) => addresses.refusal(url) !== null,
       },
     });
     tabs.set(entry.id, tab);
