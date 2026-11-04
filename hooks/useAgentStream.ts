@@ -283,8 +283,13 @@ export function useAgentStream({
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
     planModeOverrideRef.current = null;
     const callIdToTool = new Map<string, string>();
-    // Runs that used the browser, ended in main when this stream ends.
+    // Runs that used the browser, ended in main when the agent stream ends
+    // (or this turn fails or stops first).
     const browserRunIds = new Set<string>();
+    const endBrowserRuns = () => {
+      for (const runId of browserRunIds) getBrowserBridge()?.agent.end(runId);
+      browserRunIds.clear();
+    };
     const browsing = getAgentBrowsing() && !!getBrowserBridge()?.agent;
     const rememberTextByCallId = new Map<string, string>();
     let wroteFiles = false;
@@ -447,6 +452,10 @@ export function useAgentStream({
         }
       });
 
+      // The agent is done with the browser: its strip and its hold on the
+      // agent tabs mustn't last through auto-verify.
+      endBrowserRuns();
+
       const verifyCommands = parseCommandList(autoVerifyCommands);
       if (
         !staleStream() &&
@@ -559,7 +568,7 @@ export function useAgentStream({
       }
     } finally {
       // Done, failed or stopped: the main process drops the run (and its strip).
-      for (const runId of browserRunIds) getBrowserBridge()?.agent.end(runId);
+      endBrowserRuns();
       // Only the current stream owns the running flags: a superseded one
       // (stop / conversation switch already reset them) must not clear the
       // flags of a newer run that started meanwhile.
