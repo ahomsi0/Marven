@@ -110,7 +110,7 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
             )}
             <span className="min-w-0 flex-1 truncate">{label}</span>
             {tab.agent && (
-              <span className="shrink-0" aria-label={t("browser.agent.badge")}>
+              <span className="shrink-0" role="img" aria-label={t("browser.agent.badge")}>
                 <MarvenLogo size={11} />
               </span>
             )}
