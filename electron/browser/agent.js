@@ -6,8 +6,10 @@
 // events. Any input of the user's in the run's tab or switching tabs pauses
 // the run until Resume; hiding the panel (closing it, or an overlay such as
 // Settings covering it) pauses it until the panel shows again. Either way the
-// next action returns a fresh read instead of running. Works only through `deps` (the manager
-// passes real tabs), so it can be tested with fakes.
+// next action returns a fresh read instead of running. Stop, a time-out or a
+// newer run cancel the action in flight: it checks before every side effect,
+// since the page can hold it up (a dialog) for as long as it likes. Works only
+// through `deps` (the manager passes real tabs), so it can be tested with fakes.
 
 const { MAX_ELEMENTS, cleanRead, cleanTarget, cleanFocused, cleanOutcome, formatRead } = require('./agentDom');
 const { clickEvents, keyEvents } = require('./agentKeys');
@@ -78,7 +80,8 @@ function targetError(code, ref) {
 function createAgentController(deps) {
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? Date.now;
-  // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, tabId, action, gate, downloadBlocked }
+  // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, tabId, action, gate, downloadBlocked, current }
+  // `current` is the token of the action in flight (see perform).
   let run = null;
 
   const header = (tab) => `[tab ${tab.id}] ${tab.title || '(untitled)'} — ${tab.url}`;
@@ -150,6 +153,7 @@ function createAgentController(deps) {
 
   function end(runId) {
     if (!run || run.id !== runId) return;
+    if (run.current) run.current.cancelled = true;
     run.gate?.release('ended');
     run = null;
     deps.onChange();
@@ -165,16 +169,27 @@ function createAgentController(deps) {
 
   // ── Actions ────────────────────────────────────────────────────────────
 
+  // Whether the action holding token `t` may not go on: Stop, a newer run or
+  // its own time-out cancelled it, or the user took over. Every await before a
+  // side effect may have taken that long, so each side effect checks first.
+  function halted(r, t) {
+    if (t.cancelled || run !== r) return fail('Stopped.');
+    if (r.gate) return PAUSED;
+    return null;
+  }
+
   async function perform(runId, conversationId, action) {
     if (!run || run.id !== runId) {
       if (run) end(run.id);
-      run = { id: runId, conversationId, state: 'acting', reason: null, tabId: null, action: null, gate: null, downloadBlocked: false };
+      run = { id: runId, conversationId, state: 'acting', reason: null, tabId: null, action: null, gate: null, downloadBlocked: false, current: null };
     }
     const r = run;
     if (r.gate) return waitAndHandBack(r);
     r.downloadBlocked = false;
+    const t = { cancelled: false };
+    r.current = t;
     try {
-      const result = await withTimeout(dispatch(r, action), ACTION_TIMEOUT_MS);
+      const result = await withTimeout(dispatch(r, t, action), ACTION_TIMEOUT_MS);
       if (result === PAUSED) return await waitAndHandBack(r);
       if (r.downloadBlocked && result.kind === 'ok') {
         result.text += '\nA download started and was blocked: the agent may not download files. Ask the user to download it.';
@@ -184,6 +199,10 @@ function createAgentController(deps) {
       if (err instanceof ActionTimeout) return fail("The page didn't respond in time. It may be showing a dialog; ask the user to look at the browser.");
       return fail(`The browser action failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      // Whatever the action still has pending (after a time-out, the page
+      // may answer later) must not act any more.
+      t.cancelled = true;
+      if (r.current === t) r.current = null;
       if (run === r) {
         r.action = null;
         deps.onChange();
@@ -191,10 +210,10 @@ function createAgentController(deps) {
     }
   }
 
-  async function dispatch(r, action) {
+  async function dispatch(r, t, action) {
     const { tool, args } = action;
-    if (tool === 'browser_open') return open(r, args);
-    if (tool === 'browser_tabs') return tabsAction(r, args);
+    if (tool === 'browser_open') return open(r, t, args);
+    if (tool === 'browser_tabs') return tabsAction(r, t, args);
     const tab = ownedTab(r, args.tab);
     if (!tab) return fail(NO_TAB);
     r.tabId = tab.id;
@@ -202,6 +221,8 @@ function createAgentController(deps) {
     tab.ensureView();
     if (tool === 'browser_history') {
       setAction(r, 'history', args.action);
+      const stop = halted(r, t);
+      if (stop) return stop;
       tab.command(args.action);
       await waitForLoad(tab, LOAD_TIMEOUT_MS);
       return tab.error ? loadError(tab) : ok(`${header(tab)}\nDone.`);
@@ -214,12 +235,14 @@ function createAgentController(deps) {
       case 'browser_screenshot': return screenshot(r, tab, action);
       case 'browser_wait': return wait(r, tab, args);
       case 'browser_scroll': return scroll(r, tab, args);
-      case 'browser_press': return press(r, tab, action);
-      default: return actOnElement(r, tab, action);
+      case 'browser_press': return press(r, t, tab, action);
+      default: return actOnElement(r, t, tab, action);
     }
   }
 
-  async function open(r, args) {
+  async function open(r, t, args) {
+    const stop = halted(r, t);
+    if (stop) return stop;
     let tab;
     if (args.tab) {
       tab = ownedTab(r, args.tab);
@@ -239,7 +262,7 @@ function createAgentController(deps) {
     return ok(`${header(tab)}\n${loaded ? 'Loaded.' : 'Still loading.'} Use browser_read to see the page.`);
   }
 
-  function tabsAction(r, args) {
+  function tabsAction(r, t, args) {
     setAction(r, 'tabs', args.action);
     if (args.action === 'list') {
       const owned = deps.tabs.owned(r.conversationId);
@@ -253,6 +276,8 @@ function createAgentController(deps) {
       deps.tabs.activate(tab.id);
       return ok(`${header(tab)}\nSwitched.`);
     }
+    const stop = halted(r, t);
+    if (stop) return stop;
     deps.tabs.close(tab.id);
     if (r.tabId === tab.id) r.tabId = null;
     return ok(`Closed tab ${tab.id}.`);
@@ -301,7 +326,7 @@ function createAgentController(deps) {
     return null;
   }
 
-  async function actOnElement(r, tab, action) {
+  async function actOnElement(r, t, tab, action) {
     const { tool, args } = action;
     const kind = KIND[tool];
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
@@ -318,13 +343,15 @@ function createAgentController(deps) {
     const approval = approvalFor(action, hostOf(tab.url), kind, target, submitting, first.fields);
     if (approval) return approval;
 
+    let stop = halted(r, t);
+    if (stop) return stop;
     setAction(r, kind, target);
     await deps.runInPage(tab, { op: 'highlight', nav: tab.navigation, ref: args.ref, ms: HIGHLIGHT_MS });
     await sleep(HIGHLIGHT_MS);
-    if (r.gate) return PAUSED;
     const navigation = tab.navigation;
 
     if (tool === 'browser_select') {
+      if ((stop = halted(r, t))) return stop;
       const chosen = cleanOutcome(await deps.runInPage(tab, { op: 'select', nav: tab.navigation, ref: args.ref, option: args.option }));
       if (chosen.error === 'no-option') return fail(`No option ${JSON.stringify(args.option)}. Options: ${chosen.options.map((o) => JSON.stringify(o)).join(', ')}`);
       if (chosen.error) return fail(targetError(chosen.error, args.ref));
@@ -335,24 +362,32 @@ function createAgentController(deps) {
       const again = cleanTarget(await deps.runInPage(tab, { op: 'target', nav: tab.navigation, ref: args.ref, scroll: false }));
       if (again.error) return fail(targetError(again.error, args.ref));
       if (again.covered) return fail(`Element ${args.ref} is covered by ${JSON.stringify(again.covered)}. Close it or scroll first.`);
+      if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, clickEvents(again.x, again.y));
       return ok(`${header(tab)}\nClicked ${JSON.stringify(target)}. ${await settle(tab, navigation)}`);
     }
+    if ((stop = halted(r, t))) return stop;
     const focused = cleanOutcome(await deps.runInPage(tab, { op: 'focus', nav: tab.navigation, ref: args.ref }));
     if (focused.error) return fail(targetError(focused.error, args.ref));
     if (!focused.ok) return fail(`Element ${args.ref} didn't take the focus.`);
+    if ((stop = halted(r, t))) return stop;
     await deps.insertText(tab, args.text);
-    if (args.submit) await deps.sendInput(tab, keyEvents('Enter'));
+    if (args.submit) {
+      if ((stop = halted(r, t))) return stop;
+      await deps.sendInput(tab, keyEvents('Enter'));
+    }
     return ok(`${header(tab)}\nTyped ${args.text.length} characters into ${JSON.stringify(target)}. ${await settle(tab, navigation)}`);
   }
 
-  async function press(r, tab, action) {
+  async function press(r, t, tab, action) {
     const { key } = action.args;
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
     const focused = cleanFocused(await deps.runInPage(tab, { op: 'focused' }));
     if (focused.sensitive) return fail('The focus is in a sensitive field (a password, payment detail or one-time code). Ask the user to finish it.');
     const approval = approvalFor(action, hostOf(tab.url), 'press', key, key === 'Enter' && focused.entersSubmit, focused.fields);
     if (approval) return approval;
+    const stop = halted(r, t);
+    if (stop) return stop;
     setAction(r, 'press', key);
     const navigation = tab.navigation;
     await deps.sendInput(tab, keyEvents(key));

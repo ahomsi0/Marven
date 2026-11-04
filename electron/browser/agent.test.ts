@@ -192,6 +192,73 @@ describe("agent controller", () => {
     expect(deps.sendInput).not.toHaveBeenCalled();
   });
 
+  it("doesn't click when the run ends during the highlight", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
+    makeTab("t1", "conv1");
+    deps.sleep.mockImplementationOnce(async () => { agent.end("run1"); });
+    const result = await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }));
+    expect(result).toEqual({ kind: "error", text: "Stopped." });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
+  it("doesn't click when a newer run replaces the old one during the highlight", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
+    makeTab("t1", "conv1");
+    deps.sleep.mockImplementationOnce(async () => { void agent.perform("run2", "conv1", act("browser_tabs", { action: "list" })); });
+    const result = await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }));
+    expect(result).toEqual({ kind: "error", text: "Stopped." });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
+  it("never acts after an action timed out, even when the page wakes up", async () => {
+    vi.useFakeTimers();
+    try {
+      let wake: (value: unknown) => void = () => {};
+      let targets = 0;
+      const { agent, deps, makeTab } = setup((req) => {
+        if (req.op === "target" && targets++ === 0) return new Promise((resolve) => { wake = resolve; });
+        return req.op === "target" ? targetResult() : { ok: true };
+      });
+      makeTab("t1", "conv1");
+      const result = agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }));
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(await result).toMatchObject({ kind: "error", text: expect.stringMatching(/didn't respond in time/) });
+      wake(targetResult()); // the page's dialog was dismissed
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(deps.sendInput).not.toHaveBeenCalled();
+      expect(deps.runInPage.mock.calls.map(([, req]) => (req as Req).op)).not.toContain("highlight");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("doesn't type when the user takes over just before", async () => {
+    const { agent, deps, makeTab } = setup((req) => {
+      if (req.op === "target") return targetResult(element({ role: "textbox", name: "Search", editable: true }));
+      if (req.op === "focus") {
+        agent.takeOver();
+        return { ok: true };
+      }
+      return req.op === "read" ? readResult() : { ok: true };
+    });
+    makeTab("t1", "conv1");
+    const waiting = agent.perform("run1", "conv1", act("browser_type", { tab: "t1", ref: 1, text: "shoes", submit: false }, { approvedHosts: ["shop.test"] }));
+    await new Promise((r) => setTimeout(r, 0));
+    agent.resume();
+    expect((await waiting).text).toMatch(/took over/);
+    expect(deps.insertText).not.toHaveBeenCalled();
+  });
+
+  it("doesn't press Enter after typing when the run ends meanwhile", async () => {
+    const { agent, deps, makeTab } = setup((req) =>
+      req.op === "target" ? targetResult(element({ role: "textbox", name: "Search", editable: true })) : { ok: true });
+    makeTab("t1", "conv1");
+    deps.insertText.mockImplementationOnce(() => { agent.end("run1"); });
+    const result = await agent.perform("run1", "conv1", act("browser_type", { tab: "t1", ref: 1, text: "shoes", submit: true }, { approvedHosts: ["shop.test"] }));
+    expect(result).toEqual({ kind: "error", text: "Stopped." });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
   it("waits for the user to sign in", async () => {
     const { agent, tabs, makeTab } = setup(() => readResult());
     const tab = makeTab("t1", "conv1");
