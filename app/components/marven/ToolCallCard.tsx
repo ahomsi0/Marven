@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { ApprovalScope, ToolCallState } from "@/types";
+import type { ApprovalScope, BrowserActionKind, ToolCallState } from "@/types";
+import { useT } from "@/lib/i18n";
+import { hostOf } from "@/lib/inAppBrowser";
 import { BrowserApprovalCard } from "./browser/BrowserApprovalCard";
+import { isolate, marked } from "./browser/isolate";
 
 const APPROVAL_TIMEOUT_SECONDS = 60;
 
@@ -115,8 +118,38 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
 }
 
 
+const BROWSER_KINDS: readonly BrowserActionKind[] = [
+  "open", "history", "read", "screenshot", "tabs", "wait", "scroll", "click", "type", "press", "select",
+];
+
+function browserKind(tool: string): BrowserActionKind | null {
+  const kind = tool.startsWith("browser_") ? tool.slice("browser_".length) : "";
+  return BROWSER_KINDS.find((k) => k === kind) ?? null;
+}
+
+// What a browser call acts on, from the model's own arguments: shown as plain
+// text, and kept short.
+function browserTarget(kind: BrowserActionKind, args: Record<string, unknown> | null): string {
+  const a = args ?? {};
+  const text = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v).slice(0, 80) : "");
+  if (kind === "open") return hostOf(text(a.url)) || text(a.url);
+  if (kind === "history" || kind === "tabs") return text(a.action);
+  if (kind === "press") return text(a.key);
+  if (kind === "select") return text(a.option) || (a.ref !== undefined ? `#${text(a.ref)}` : "");
+  if (kind === "click" || kind === "type") return a.ref !== undefined ? `#${text(a.ref)}` : "";
+  return "";
+}
+
+/** "opening example.com", "clicking “#12”": the card's title for a browser tool, in the app language. */
+function BrowserCallLabel({ kind, args }: { kind: BrowserActionKind; args: Record<string, unknown> | null }) {
+  const { t } = useT();
+  const target = browserTarget(kind, args);
+  return <>{isolate(t(`browser.agent.actions.${kind}`, marked({ target })), { target })}</>;
+}
+
 export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
+  const browserCallKind = browserKind(tool);
 
   const isActive = status === "running";
   const isDone = status === "done";
@@ -167,14 +200,15 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       >
         <ToolGlyph tool={tool} />
         <span
-          className={`text-[11px] shrink-0 tracking-tight ${
+          className={`text-[11px] tracking-tight ${browserCallKind ? "min-w-0 truncate first-letter:uppercase" : "shrink-0"} ${
             isActive ? "text-[#d19a66]" : isDone ? "text-[var(--m-text-muted)]" : isError ? "text-red-400" : "text-[var(--m-text-muted)]"
           }`}
+          title={browserCallKind ? tool : undefined}
         >
-          {tool === "__plan__" ? "Plan" : tool}
+          {browserCallKind ? <BrowserCallLabel kind={browserCallKind} args={args} /> : tool === "__plan__" ? "Plan" : tool}
         </span>
         <span className="min-w-0 flex-1 truncate">
-          <ArgSummary tool={tool} args={args} />
+          {!browserCallKind && <ArgSummary tool={tool} args={args} />}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {isActive && (
