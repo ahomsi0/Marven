@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/agent/loop";
 import { defaultAgentModel, makeAgentProviderStep } from "@/lib/agent/providerRouting";
@@ -14,6 +15,9 @@ import type { AgentSafetyProfile } from "@/lib/agent/safety";
 import { effectiveAgentSafetyProfile } from "@/lib/agent/serverSafetyProfile";
 import { readPersistedFallbackChain } from "@/lib/serverSettings";
 import { resolveRequestRoot } from "@/lib/workspaceState";
+import { BROWSER_PROMPT_SECTION, BROWSER_TOOL_DEFINITIONS } from "@/lib/agent/browserTools";
+import { canSeeImages, secretValuesFromEnv } from "@/lib/agent/browserGate";
+import { cancelBrowserCalls } from "@/lib/agent/browserBridge";
 
 const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
@@ -33,6 +37,7 @@ interface StreamRequestBody {
   liteAgentMode?: boolean; // true = force lite, false = force standard, undefined = auto
   mentions?: Mention[];
   safetyProfile?: AgentSafetyProfile;
+  browsing?: boolean; // Settings → General → "Let the agent use the browser"; only sent from the desktop app
 }
 
 export async function POST(req: NextRequest) {
@@ -128,6 +133,13 @@ export async function POST(req: NextRequest) {
       "\n\nIMAGE INPUT: One or more user turns include images attached via the API (as image parts in those messages). Inspect them when relevant. Do not claim you cannot view images — they are included in the conversation payload.";
   }
 
+  // Browser tools, never in the lite tier (small local models get the four
+  // file tools only).
+  const browsing = body.browsing === true && tier === "standard";
+  if (browsing) systemPrompt += `\n\n${BROWSER_PROMPT_SECTION}`;
+  // Identifies this request's browser calls, so Stop can end exactly them.
+  const runId = randomUUID();
+
   // ── Expand @-mentions into a <context> block prepended to the prompt ─────
   if (body.mentions && body.mentions.length > 0) {
     try {
@@ -176,7 +188,7 @@ export async function POST(req: NextRequest) {
     tier === "simple"
       ? TOOL_DEFINITIONS.filter((t) => (SIMPLE_TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
       : [...TOOL_DEFINITIONS];
-  const allTools = [...baseToolDefs];
+  const allTools = [...baseToolDefs, ...(browsing ? BROWSER_TOOL_DEFINITIONS : [])];
   const mcpToolOwners = new Map<string, string>(); // namespaced tool name → server id
 
   for (const server of safeMcpServers) {
@@ -217,7 +229,10 @@ export async function POST(req: NextRequest) {
         emit("tool_progress", { type: "tool_progress", callId, chunk });
       };
 
-      const onDisconnect = () => { consumerGone = true; };
+      const onDisconnect = () => {
+        consumerGone = true;
+        cancelBrowserCalls(runId);
+      };
       req.signal.addEventListener("abort", onDisconnect, { once: true });
 
       try {
@@ -234,6 +249,9 @@ export async function POST(req: NextRequest) {
           safetyProfile,
           failoverPlan,
           primaryLabel: primaryLabelStr,
+          browser: browsing
+            ? { runId, canSeeImages: canSeeImages(provider, model), secrets: secretValuesFromEnv(process.env) }
+            : undefined,
           executeToolFn: async (name, args, root, onProgressCb, recentReads) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);
@@ -261,12 +279,14 @@ export async function POST(req: NextRequest) {
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
+        cancelBrowserCalls(runId);
         req.signal.removeEventListener("abort", onDisconnect);
         try { controller.close(); } catch { /* already closed/cancelled */ }
       }
     },
     cancel() {
       consumerGone = true;
+      cancelBrowserCalls(runId);
     },
   });
 
