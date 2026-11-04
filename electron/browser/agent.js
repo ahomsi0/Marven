@@ -297,15 +297,26 @@ function createAgentController(deps) {
   }
 
   async function perform(runId, conversationId, action) {
+    let fresh = false;
     if (!run || run.id !== runId) {
       if (run) end(run.id);
       run = {
         id: runId, conversationId, state: 'acting', reason: null, reasons: new Set(), signIns: new Set(),
         tabId: null, action: null, gate: null, downloadBlocked: false, current: null, stopWatching: null,
       };
+      fresh = true;
+      // The panel opens with the run's first action, so it is usually still
+      // hidden here: the run waits for it like any other.
+      if (!deps.isShown()) pause('hidden');
     }
     const r = run;
-    if (r.gate) return waitAndHandBack(r);
+    if (r.gate) {
+      // Nothing has happened yet that the agent should hear about: once the
+      // run may act, its first action just goes ahead.
+      if (!fresh) return waitAndHandBack(r);
+      const outcome = await r.gate.promise;
+      if (outcome === 'ended' || run !== r) return fail('Stopped.');
+    }
     r.downloadBlocked = false;
     const t = { cancelled: false };
     r.current = t;

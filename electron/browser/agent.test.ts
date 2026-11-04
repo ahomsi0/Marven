@@ -391,6 +391,33 @@ describe("agent controller", () => {
     expect(agent.activity()).toMatchObject({ state: "paused", reason: "user" });
   });
 
+  it("starts a run with the panel hidden waiting for it, then runs the first action as usual", async () => {
+    const { agent, deps, makeTab } = setup(() => readResult());
+    makeTab("t1", "conv1");
+    deps.isShown.mockReturnValue(false);
+    let settled = false;
+    const waiting = agent.perform("run1", "conv1", act("browser_read", { tab: "t1" })).then((r) => { settled = true; return r; });
+    await flush();
+    expect(agent.activity()).toMatchObject({ state: "paused", reason: "hidden" });
+    expect(settled).toBe(false);
+    expect(deps.runInPage).not.toHaveBeenCalled();
+    deps.isShown.mockReturnValue(true);
+    agent.onShow();
+    const result = await waiting;
+    expect(result.text).toMatch(/^\[tab t1\] page title "Shop"[\s\S]*Hello shop/);
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+  });
+
+  it("stops a first action that waits for the panel when the run ends", async () => {
+    const { agent, deps, makeTab } = setup(() => readResult());
+    makeTab("t1", "conv1");
+    deps.isShown.mockReturnValue(false);
+    const waiting = agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+    agent.end("run1");
+    expect(await waiting).toEqual({ kind: "error", text: "Stopped." });
+    expect(deps.runInPage).not.toHaveBeenCalled();
+  });
+
   it("pauses instead of clicking while the page isn't on screen, and carries on once it is", async () => {
     let shown = true;
     const { agent, deps, makeTab, timers, runTimers } = setup((req) => {
