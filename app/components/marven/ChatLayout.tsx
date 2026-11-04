@@ -707,192 +707,184 @@ export function ChatLayout({
           </header>
           )}
 
-          {mode === "agent" ? (
-            <BrowserSplit
-              open={browserOpen}
-              expanded={browserExpanded}
-              onToggleExpand={() => setBrowserExpanded((v) => !v)}
-              onClose={() => {
-                setBrowserOpen(false);
-                setBrowserExpanded(false);
-              }}
-            >
-            <AgentWorkspace
-              browserOpen={browserOpen}
-              onToggleBrowser={() => {
-                setBrowserOpen((v) => !v);
-                setBrowserExpanded(false);
-              }}
-              sidebarOpen={sidebarOpen}
-              onOpenSidebar={() => setSidebarOpen(true)}
-              messages={agentMessages}
-              input={agentInput}
-              isRunning={isAgentRunning}
-              error={agentError}
-              provider={provider}
-              model={selectedModel}
-              tokenUsage={tokenUsage}
-              speechEnabled={speechEnabled}
-              wakeEnabled={wakeEnabled}
-              voiceState={voiceState}
-              isVoiceSupported={isVoiceSupported}
-              voiceError={voiceError}
-              sttProvider={sttProvider ?? "local"}
-              ttsProvider={ttsProvider}
-              isSpeakingNow={isSpeakingNow}
-              lastHeard={lastHeard}
-              workspaceRoot={workspaceRoot}
-              files={agentFiles}
-              selectedFilePath={selectedAgentFilePath ?? null}
-              fileContent={selectedAgentFileContent ?? ""}
-              fileError={selectedAgentFileError ?? null}
-              isFileLoading={isAgentFileLoading ?? false}
-              isFileDirty={isAgentFileDirty ?? false}
-              terminalOutput={agentTerminalOutput}
-              liveTerminalOutput={liveTerminalOutput}
-              checkpoints={checkpoints}
-              onApproveToolCall={onApproveToolCall}
-              recentWorkspaces={recentWorkspaces}
-              onSelectRecent={onSelectRecent}
-              // Agent mode now opens Settings as a full-page overlay (same as chat),
-              // not as an editor tab. Override the page.tsx-supplied handler.
-              onOpenSettings={() => setSettingsOpen(true)}
-              appVersion={appVersion}
-              onModelSelect={onModelSelect}
-              onToggleSpeech={onToggleSpeech}
-              onToggleWakeWord={onToggleWakeWord}
-              onInputChange={onAgentInputChange}
-              onSend={onAgentSend}
-              onRunAgentPrompt={onAgentRunPrompt}
-              onStop={onAgentStop}
-              onSlashCommand={onAgentSlashCommand}
-              onOpenFolder={onOpenFolder}
-              onSelectFile={onSelectAgentFile}
-              onFileContentChange={onAgentFileContentChange}
-              onSaveFile={onSaveAgentFile}
-              onCloseFile={onCloseAgentFile}
-              onRefreshFiles={onRefreshAgentFiles}
-              openTabs={openTabs}
-              activeTabIndex={activeTabIndex}
-              fileBuffers={fileBuffers}
-              onApplyWorkspaceEdit={onApplyWorkspaceEdit}
-              inlineCompletions={inlineCompletions}
-              onSelectTab={onSelectTab}
-              onCloseTab={onCloseTab}
-              onReorderTabs={onReorderTabs}
-              shortcuts={customShortcuts}
-              promptTemplates={promptTemplates}
-              mcpServers={mcpServers}
-              onSaveShortcuts={onSaveShortcuts}
-              onSaveTemplates={onSaveTemplates}
-              onSaveMCPServers={onSaveMCPServers}
-              attachments={agentAttachments}
-              onAttachmentsChange={onAgentAttachmentsChange}
-              onAgentVoiceClick={onAgentVoiceClick}
-              planMode={agentPlanMode}
-              onPlanModeChange={onAgentPlanModeChange}
-              liteAgentMode={liteAgentMode}
-              workspaceTrusted={workspaceTrusted}
-              onWorkspaceTrustChange={onWorkspaceTrustChange}
-              conversationId={conversationId}
-              onOpenPreviewTab={onOpenPreviewTab}
-              onOpenRestTab={onOpenRestTab}
-              onEditorScroll={onAgentEditorScroll}
-              onEditAgentUserMessage={onEditAgentUserMessage}
-              onOpenCommandPalette={() => setPaletteOpen(true)}
-              paletteCommandsRef={agentPaletteCommandsRef}
-            />
-            </BrowserSplit>
-          ) : (
-            <BrowserSplit
-              open={browserOpen}
-              expanded={browserExpanded}
-              onToggleExpand={() => setBrowserExpanded((v) => !v)}
-              onClose={() => {
-                setBrowserOpen(false);
-                setBrowserExpanded(false);
-              }}
-            >
-              {/* Messages */}
-              <main
-                ref={messagesViewportRef}
-                className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
-              >
-                <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
-                  {messages.length === 0 && !isLoading && (
-                    <div className="message-in py-12 text-center">
-                      <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>
-                      <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
-                    </div>
-                  )}
-                  {messages.map((message) => {
-                    const switcher = versionSwitchers.get(message.id);
-                    return (
-                      <Message
-                        key={message.id}
-                        message={message}
-                        disabled={isLoading}
-                        onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
-                        onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
-                        onRetryWith={
-                          message.role === "assistant" ? (p, m) => onRetryMessage(message.id, { provider: p, model: m }) : undefined
-                        }
-                        currentProvider={provider}
-                        currentModel={selectedModel}
-                        onBranch={onBranchFromMessage && !message.isStreaming ? () => onBranchFromMessage(message.id) : undefined}
-                        version={
-                          switcher && onSwitchVersion
-                            ? {
-                                index: switcher.index,
-                                total: switcher.total,
-                                onSelect: (v) => onSwitchVersion(switcher.ownerId, v),
-                              }
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
-                  {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
-                    <TypingRow />
-                  )}
-                </div>
-              </main>
+          <BrowserSplit
+            open={browserOpen}
+            expanded={browserExpanded}
+            onToggleExpand={() => setBrowserExpanded((v) => !v)}
+            onClose={() => {
+              setBrowserOpen(false);
+              setBrowserExpanded(false);
+            }}
+          >
+            {mode === "agent" ? (
+              <AgentWorkspace
+                browserOpen={browserOpen}
+                onToggleBrowser={() => {
+                  setBrowserOpen((v) => !v);
+                  setBrowserExpanded(false);
+                }}
+                sidebarOpen={sidebarOpen}
+                onOpenSidebar={() => setSidebarOpen(true)}
+                messages={agentMessages}
+                input={agentInput}
+                isRunning={isAgentRunning}
+                error={agentError}
+                provider={provider}
+                model={selectedModel}
+                tokenUsage={tokenUsage}
+                speechEnabled={speechEnabled}
+                wakeEnabled={wakeEnabled}
+                voiceState={voiceState}
+                isVoiceSupported={isVoiceSupported}
+                voiceError={voiceError}
+                sttProvider={sttProvider ?? "local"}
+                ttsProvider={ttsProvider}
+                isSpeakingNow={isSpeakingNow}
+                lastHeard={lastHeard}
+                workspaceRoot={workspaceRoot}
+                files={agentFiles}
+                selectedFilePath={selectedAgentFilePath ?? null}
+                fileContent={selectedAgentFileContent ?? ""}
+                fileError={selectedAgentFileError ?? null}
+                isFileLoading={isAgentFileLoading ?? false}
+                isFileDirty={isAgentFileDirty ?? false}
+                terminalOutput={agentTerminalOutput}
+                liveTerminalOutput={liveTerminalOutput}
+                checkpoints={checkpoints}
+                onApproveToolCall={onApproveToolCall}
+                recentWorkspaces={recentWorkspaces}
+                onSelectRecent={onSelectRecent}
+                // Agent mode now opens Settings as a full-page overlay (same as chat),
+                // not as an editor tab. Override the page.tsx-supplied handler.
+                onOpenSettings={() => setSettingsOpen(true)}
+                appVersion={appVersion}
+                onModelSelect={onModelSelect}
+                onToggleSpeech={onToggleSpeech}
+                onToggleWakeWord={onToggleWakeWord}
+                onInputChange={onAgentInputChange}
+                onSend={onAgentSend}
+                onRunAgentPrompt={onAgentRunPrompt}
+                onStop={onAgentStop}
+                onSlashCommand={onAgentSlashCommand}
+                onOpenFolder={onOpenFolder}
+                onSelectFile={onSelectAgentFile}
+                onFileContentChange={onAgentFileContentChange}
+                onSaveFile={onSaveAgentFile}
+                onCloseFile={onCloseAgentFile}
+                onRefreshFiles={onRefreshAgentFiles}
+                openTabs={openTabs}
+                activeTabIndex={activeTabIndex}
+                fileBuffers={fileBuffers}
+                onApplyWorkspaceEdit={onApplyWorkspaceEdit}
+                inlineCompletions={inlineCompletions}
+                onSelectTab={onSelectTab}
+                onCloseTab={onCloseTab}
+                onReorderTabs={onReorderTabs}
+                shortcuts={customShortcuts}
+                promptTemplates={promptTemplates}
+                mcpServers={mcpServers}
+                onSaveShortcuts={onSaveShortcuts}
+                onSaveTemplates={onSaveTemplates}
+                onSaveMCPServers={onSaveMCPServers}
+                attachments={agentAttachments}
+                onAttachmentsChange={onAgentAttachmentsChange}
+                onAgentVoiceClick={onAgentVoiceClick}
+                planMode={agentPlanMode}
+                onPlanModeChange={onAgentPlanModeChange}
+                liteAgentMode={liteAgentMode}
+                workspaceTrusted={workspaceTrusted}
+                onWorkspaceTrustChange={onWorkspaceTrustChange}
+                conversationId={conversationId}
+                onOpenPreviewTab={onOpenPreviewTab}
+                onOpenRestTab={onOpenRestTab}
+                onEditorScroll={onAgentEditorScroll}
+                onEditAgentUserMessage={onEditAgentUserMessage}
+                onOpenCommandPalette={() => setPaletteOpen(true)}
+                paletteCommandsRef={agentPaletteCommandsRef}
+              />
+            ) : (
+              <>
+                {/* Messages */}
+                <main
+                  ref={messagesViewportRef}
+                  className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
+                >
+                  <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
+                    {messages.length === 0 && !isLoading && (
+                      <div className="message-in py-12 text-center">
+                        <div className="text-[13px] text-[var(--m-text-muted)]">{t("chat.emptyTitle")}</div>
+                        <div className="mt-1 text-[11px] text-[var(--m-text-faint)]">{t("chat.emptyHint")}</div>
+                      </div>
+                    )}
+                    {messages.map((message) => {
+                      const switcher = versionSwitchers.get(message.id);
+                      return (
+                        <Message
+                          key={message.id}
+                          message={message}
+                          disabled={isLoading}
+                          onEdit={message.role === "user" ? (content) => onEditMessage(message.id, content) : undefined}
+                          onRetry={message.role === "assistant" ? () => onRetryMessage(message.id) : undefined}
+                          onRetryWith={
+                            message.role === "assistant" ? (p, m) => onRetryMessage(message.id, { provider: p, model: m }) : undefined
+                          }
+                          currentProvider={provider}
+                          currentModel={selectedModel}
+                          onBranch={onBranchFromMessage && !message.isStreaming ? () => onBranchFromMessage(message.id) : undefined}
+                          version={
+                            switcher && onSwitchVersion
+                              ? {
+                                  index: switcher.index,
+                                  total: switcher.total,
+                                  onSelect: (v) => onSwitchVersion(switcher.ownerId, v),
+                                }
+                              : undefined
+                          }
+                        />
+                      );
+                    })}
+                    {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
+                      <TypingRow />
+                    )}
+                  </div>
+                </main>
 
-              {/* Input bar */}
-              <footer className="mt-auto bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
-                <div className="mx-auto w-full max-w-[760px]">
-                  <InputBar
-                    value={input}
-                    isLoading={isLoading}
-                    isVoiceSupported={isVoiceSupported}
-                    voiceState={voiceState}
-                    provider={provider}
-                    selectedModel={selectedModel}
-                    speechEnabled={speechEnabled}
-                    wakeEnabled={wakeEnabled}
-                    sttProvider={sttProvider}
-                    ttsProvider={ttsProvider}
-                    tokenUsage={tokenUsage}
-                    voiceError={voiceError}
-                    lastHeard={lastHeard}
-                    attachments={chatAttachments}
-                    onAttachmentsChange={onAttachmentsChange}
-                    docs={chatDocs}
-                    onDocsChange={onChatDocsChange}
-                    promptTemplates={promptTemplates}
-                    onChange={onInputChange}
-                    onSend={onSend}
-                    onStop={onStop}
-                    onVoiceClick={onVoiceClick}
-                    onSlashCommand={handleSlashCommand}
-                    onModelSelect={onModelSelect}
-                    onToggleSpeech={onToggleSpeech}
-                    onToggleWakeWord={onToggleWakeWord}
-                  />
-                </div>
-              </footer>
-            </BrowserSplit>
-          )}
+                {/* Input bar */}
+                <footer className="mt-auto bg-[var(--m-bg)] px-4 pb-4 pt-2 sm:px-6">
+                  <div className="mx-auto w-full max-w-[760px]">
+                    <InputBar
+                      value={input}
+                      isLoading={isLoading}
+                      isVoiceSupported={isVoiceSupported}
+                      voiceState={voiceState}
+                      provider={provider}
+                      selectedModel={selectedModel}
+                      speechEnabled={speechEnabled}
+                      wakeEnabled={wakeEnabled}
+                      sttProvider={sttProvider}
+                      ttsProvider={ttsProvider}
+                      tokenUsage={tokenUsage}
+                      voiceError={voiceError}
+                      lastHeard={lastHeard}
+                      attachments={chatAttachments}
+                      onAttachmentsChange={onAttachmentsChange}
+                      docs={chatDocs}
+                      onDocsChange={onChatDocsChange}
+                      promptTemplates={promptTemplates}
+                      onChange={onInputChange}
+                      onSend={onSend}
+                      onStop={onStop}
+                      onVoiceClick={onVoiceClick}
+                      onSlashCommand={handleSlashCommand}
+                      onModelSelect={onModelSelect}
+                      onToggleSpeech={onToggleSpeech}
+                      onToggleWakeWord={onToggleWakeWord}
+                    />
+                  </div>
+                </footer>
+              </>
+            )}
+          </BrowserSplit>
         </div>
       </div>
 
