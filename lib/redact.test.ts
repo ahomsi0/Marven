@@ -83,6 +83,7 @@ describe("containsSecret", () => {
     expect(containsSecret("ghp_abcdefghijklmnopqrstuvwxyz0123456789")).toBe(true);
     expect(containsSecret("github_pat_11ABCDEFG0123456789_abcdefghij")).toBe(true);
     expect(containsSecret("AKIAABCDEFGHIJKLMNOP")).toBe(true);
+    expect(containsSecret("sk-proj-abc-defghijklmnopqrstuvwx")).toBe(true);
   });
 
   it("finds known secret values anywhere in the text", () => {
@@ -94,6 +95,9 @@ describe("containsSecret", () => {
     expect(containsSecret("Search for running shoes size 42")).toBe(false);
     expect(containsSecret("https://example.com/products/0f8fad5b-d9cb-469f-a165-70867728950e")).toBe(false);
     expect(containsSecret("ada@example.com")).toBe(false);
+    expect(containsSecret("bearer authentication tutorial")).toBe(false);
+    expect(containsSecret("ring bearer accessories")).toBe(false);
+    expect(containsSecret("https://shop.test/sk-ii-facial-treatment-essence")).toBe(false);
     expect(containsSecret("")).toBe(false);
   });
 });

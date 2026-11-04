@@ -66,10 +66,11 @@ export function redactLines(lines: readonly string[], options: RedactOptions = {
 // opens. Unlike redactText, emails and long ids are fine here: filling in an
 // email or following a link with a UUID is ordinary browsing.
 const SECRET_PATTERNS: readonly RegExp[] = [
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
+  /\bBearer\s+(?=\S*[\d.])[A-Za-z0-9._~+/=-]{8,}/i, // the token has a digit or a dot
   /\bsk-ant-[A-Za-z0-9_-]{8,}/,
   /\bsk-or-[A-Za-z0-9_-]{8,}/,
-  /\bsk-[A-Za-z0-9_-]{16,}/,
+  /\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}/, // these bodies can contain hyphens
+  /\bsk-[A-Za-z0-9_]{20,}/, // a long run without hyphens, not a slug
   /\bgsk_[A-Za-z0-9]{16,}/,
   /\bnvapi-[A-Za-z0-9_-]{16,}/,
   /\bgh[pousr]_[A-Za-z0-9]{30,}/,
