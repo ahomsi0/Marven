@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runAgentLoop } from "./loop";
+import { cancelBrowserCalls, resolveBrowserCall } from "./browserBridge";
 import type { AgentEvent, ToolDefinition, InternalMessage, BrowserAction, BrowserResult } from "@/types";
 
 const echoTool: ToolDefinition = {
@@ -512,7 +513,10 @@ describe("runAgentLoop browser tools", () => {
 
   async function run(opts: {
     steps: unknown[];
-    call: (callId: string, action: BrowserAction) => Promise<BrowserResult>;
+    /** Omit to exercise the real relay path (browser_action event + registry). */
+    call?: (callId: string, action: BrowserAction) => Promise<BrowserResult>;
+    /** Called for each event as the loop yields it. */
+    onEvent?: (event: AgentEvent) => void;
     approve?: boolean;
     scope?: "once" | "site";
     safetyProfile?: "read-only" | "ask-before-write" | "trusted";
@@ -531,7 +535,10 @@ describe("runAgentLoop browser tools", () => {
       browser: { runId: "run1", canSeeImages: opts.canSeeImages ?? false, secrets: [], call: opts.call },
       _testApprovalResult: opts.approve,
       _testApprovalScope: opts.scope,
-    })) events.push(event);
+    })) {
+      events.push(event);
+      opts.onEvent?.(event);
+    }
     const lastMessages = providerStep.mock.calls.at(-1)![0] as InternalMessage[];
     return { events, lastMessages };
   }
@@ -544,6 +551,32 @@ describe("runAgentLoop browser tools", () => {
   it("passes an ok result through as the tool result", async () => {
     const { events } = await run({ steps: [click("c1")], call: async () => ({ kind: "ok", text: "page" }) });
     expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "page", truncated: false });
+  });
+
+  it("relays an action through the registry and resolves it synchronously", async () => {
+    let seen: AgentEvent | undefined;
+    const { events } = await run({
+      steps: [click("c1")],
+      onEvent: (event) => {
+        if (event.type !== "browser_action") return;
+        seen = event;
+        // Resolving while handling the event only works if the call was registered before it was yielded.
+        expect(resolveBrowserCall(event.callId, "run1", { kind: "ok", text: "relayed" })).toBe(true);
+      },
+    });
+    expect(seen).toMatchObject({ type: "browser_action", callId: "c1", runId: "run1", action: { tool: "browser_click", args: { tab: "t1", ref: 1 } } });
+    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "relayed", truncated: false });
+  });
+
+  it("ends a relayed action as Stopped when its run is cancelled", async () => {
+    const { events } = await run({
+      steps: [click("c1")],
+      onEvent: (event) => {
+        if (event.type === "browser_action") cancelBrowserCalls("run1");
+      },
+    });
+    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "Stopped.", truncated: false });
+    expect(events.at(-1)).toMatchObject({ type: "done" });
   });
 
   it("asks again next time after a one-off approval", async () => {

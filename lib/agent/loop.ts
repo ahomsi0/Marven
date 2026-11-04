@@ -163,8 +163,8 @@ export async function* runAgentLoop(
   let retryCount = 0;
   let planApprovalDone = false;
   // trimmedAwayTokens tracks how many tokens were in tool output that was cut by
-  // the 4000-char output cap before storage. Without this, a single 50KB output
-  // would only contribute ~1000 tokens to the estimate (4000 chars / 4), making
+  // the per-tool output cap before storage. Without this, a single 50KB output
+  // would only contribute a fraction of its size to the estimate (capped chars / 4), making
   // context pruning never trigger for large-but-capped outputs.
   let trimmedAwayTokens = 0;
 
@@ -194,8 +194,11 @@ export async function* runAgentLoop(
       if (browser.call) {
         result = await browser.call(actionId, action);
       } else {
+        // Register before yielding so a consumer that answers while handling
+        // the event (even synchronously) finds the call waiting.
+        const pending = registerBrowserCall(actionId, browser.runId);
         yield { type: "browser_action", callId: actionId, runId: browser.runId, action };
-        result = await registerBrowserCall(actionId, browser.runId);
+        result = await pending;
       }
       if (result.kind === "ok") return { output: result.text, image: browser.canSeeImages ? result.image : undefined };
       if (result.kind === "error") return { output: result.text };

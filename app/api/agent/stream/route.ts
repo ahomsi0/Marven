@@ -222,6 +222,7 @@ export async function POST(req: NextRequest) {
         } catch {
           // Enqueue after cancel throws — treat as disconnect.
           consumerGone = true;
+          cancelBrowserCalls(runId);
         }
       };
 
