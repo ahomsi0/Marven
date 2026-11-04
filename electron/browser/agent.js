@@ -14,7 +14,7 @@
 // since the page can hold it up (a dialog) for as long as it likes. Works only
 // through `deps` (the manager passes real tabs), so it can be tested with fakes.
 
-const { MAX_ELEMENTS, cleanRead, cleanTarget, cleanFocused, cleanOutcome, formatRead } = require('./agentDom');
+const { MAX_ELEMENTS, cleanRead, cleanTarget, cleanFocused, cleanOutcome, formatRead, pageLine } = require('./agentDom');
 const { clickEvents, keyEvents } = require('./agentKeys');
 const { approvalHostOf, hostOf, isWebUrl } = require('./validate');
 
@@ -27,6 +27,7 @@ const POLL_MS = 100;
 const TEXT_POLL_MS = 250;
 const HIGHLIGHT_MS = 600;
 const MAX_AGENT_TABS = 10;
+const MAX_TITLE = 120;
 
 const KIND = {
   browser_open: 'open', browser_history: 'history', browser_read: 'read', browser_screenshot: 'screenshot',
@@ -95,7 +96,9 @@ function createAgentController(deps) {
   // the action in flight (see perform).
   let run = null;
 
-  const header = (tab) => `[tab ${tab.id}] ${tab.title || '(untitled)'} — ${tab.url}`;
+  // Every result starts with this. The title is the page's own text, so it
+  // is labelled, quoted, kept to one short line and cleaned like the rest.
+  const header = (tab) => `[tab ${tab.id}] page title ${JSON.stringify(pageLine(tab.title, MAX_TITLE))} — ${tab.url}`;
   const owns = (r, tab) => !!tab && tab.agent?.conversationId === r.conversationId;
   const ownedTab = (r, id) => {
     const tab = id ? deps.tabs.get(id) : null;

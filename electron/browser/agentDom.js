@@ -541,6 +541,16 @@ function script(request) {
 
 // \u0085 (next line) isn't \s, but may read as a line break.
 const str = (v, max) => (typeof v === 'string' ? v.replace(/[\s\u0085]+/g, ' ').trim().slice(0, max) : '');
+
+// Characters that could disguise page text where it is shown to the model or
+// the user: controls, and bidirectional marks, embeddings and overrides.
+const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+
+/** Page text as one line of at most `max` characters, without unsafe characters. */
+function pageLine(v, max) {
+  if (typeof v !== 'string') return '';
+  return v.replace(/[\s\u0085]+/g, ' ').replace(UNSAFE_TEXT, '').replace(/ {2,}/g, ' ').trim().slice(0, max).trim();
+}
 const num = (v) => (Number.isFinite(v) ? Math.round(v) : 0);
 const TARGET_ERRORS = new Set(['stale', 'unknown', 'gone', 'not-select', 'no-option']);
 // The page sets roles (role="…"), and they go into the read unquoted, so only
@@ -699,6 +709,7 @@ module.exports = {
   cleanTarget,
   cleanFocused,
   cleanOutcome,
+  pageLine,
   findSnippets,
   formatRead,
   describeElement,
