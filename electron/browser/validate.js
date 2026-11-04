@@ -93,7 +93,8 @@ function isApprovalHost(value) {
 
 // A browser action from the agent (via the renderer): a known tool with its
 // arguments checked and capped. The model wrote these arguments, so nothing
-// is trusted; null means the action is refused.
+// is trusted; null means the action is refused. The tools are the ones
+// lib/agent/browserTools.ts defines (its test checks).
 const AGENT_TOOLS = new Set([
   'browser_open', 'browser_history', 'browser_read', 'browser_screenshot', 'browser_tabs',
   'browser_wait', 'browser_scroll', 'browser_click', 'browser_type', 'browser_press', 'browser_select',
@@ -181,5 +182,6 @@ function cleanAgentAction(raw) {
 }
 
 module.exports = {
-  isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, approvalHostOf, isApprovalHost, staysOnOrigin, isAllowedPermission, cleanAgentAction,
+  AGENT_TOOLS, isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, approvalHostOf, isApprovalHost, staysOnOrigin, isAllowedPermission,
+  cleanAgentAction,
 };

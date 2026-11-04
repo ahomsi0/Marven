@@ -3,7 +3,8 @@
 // CSS pixels; the manager scales them by the page's zoom. Nothing here imports
 // Electron.
 
-// Tool key name → Electron accelerator key code.
+// Tool key name → Electron accelerator key code. The names are browser_press's
+// key enum in lib/agent/browserTools.ts (its test checks).
 const KEYS = new Map([
   ['Enter', 'Enter'], ['Tab', 'Tab'], ['Escape', 'Escape'], ['Backspace', 'Backspace'],
   ['ArrowUp', 'Up'], ['ArrowDown', 'Down'], ['ArrowLeft', 'Left'], ['ArrowRight', 'Right'],
@@ -35,4 +36,6 @@ function clickEvents(x, y) {
   ];
 }
 
-module.exports = { isAgentKey, keyEvents, clickEvents };
+const AGENT_KEYS = [...KEYS.keys()];
+
+module.exports = { AGENT_KEYS, isAgentKey, keyEvents, clickEvents };
