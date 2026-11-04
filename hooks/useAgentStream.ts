@@ -9,6 +9,7 @@ import {
 import { dispatchMemorySaved, parseRememberToolResult } from "@/lib/memoryEvents";
 import { getAgentBrowsing } from "@/lib/agentSettings";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
+import { setBrowserApprovalWaiting } from "@/lib/browserApprovalWait";
 
 const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
@@ -289,6 +290,7 @@ export function useAgentStream({
     const endBrowserRuns = () => {
       for (const runId of browserRunIds) getBrowserBridge()?.agent.end(runId);
       browserRunIds.clear();
+      setBrowserApprovalWaiting(false);
     };
     const browsing = getAgentBrowsing() && !!getBrowserBridge()?.agent;
     const rememberTextByCallId = new Map<string, string>();
@@ -313,6 +315,10 @@ export function useAgentStream({
       }
       await consumeSse(res, async (event) => {
         if (staleStream()) return;
+        // A browser approval card waits from its pending_approval until the
+        // action goes out again or the call ends (the agent strip says so).
+        if (event.type === "browser_action" || event.type === "tool_result") setBrowserApprovalWaiting(false);
+        if (event.type === "pending_approval" && event.browser) setBrowserApprovalWaiting(true);
         if (event.type === "browser_action") {
           // The first browser action of a stream opens the panel so the user can watch.
           if (browserRunIds.size === 0) window.dispatchEvent(new Event("marven:browser-open"));

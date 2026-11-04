@@ -375,6 +375,7 @@ const ar: Shape<typeof en> = {
       acting: "يتصفّح Marven — {{action}}",
       paused: "متوقف مؤقتًا — التحكم بيدك",
       waitingSignIn: "بانتظار تسجيل دخولك",
+      waitingApproval: "بانتظار موافقتك",
       hidden: "متوقف مؤقتًا ما دام المتصفح مخفيًا",
       background: "متوقف مؤقتًا ما دام Marven في الخلفية",
       takeOver: "تولَّ التحكم",

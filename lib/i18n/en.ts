@@ -369,6 +369,7 @@ const en = {
       acting: "Marven is browsing — {{action}}",
       paused: "Paused — you're in control",
       waitingSignIn: "Waiting for you to sign in",
+      waitingApproval: "Waiting for your approval",
       hidden: "Paused while the browser is hidden",
       background: "Paused while Marven is in the background",
       takeOver: "Take over",

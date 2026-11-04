@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "@/types";
+import { isBrowserApprovalWaiting, onBrowserApprovalWaiting } from "@/lib/browserApprovalWait";
 import { useAgentStream } from "./useAgentStream";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,6 +53,31 @@ describe("useAgentStream with the browser", () => {
     vi.unstubAllGlobals();
     localStorage.clear();
     delete (window as unknown as { marvenElectron?: unknown }).marvenElectron;
+  });
+
+  it("tells the agent strip while a browser approval waits for the user", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/api/agent/stream"
+      ? sse([
+        browserAction,
+        { type: "pending_approval", callId: "b1", tool: "browser_click", args: { tab: "t1", ref: 1 }, browser: { kind: "site", host: "shop.test", action: "click", target: "Buy" } },
+        { ...browserAction, callId: "b1:1" } as AgentEvent,
+        { type: "tool_result", callId: "b1", output: "Clicked", truncated: false },
+        { type: "pending_approval", callId: "b2", tool: "browser_click", args: { tab: "t1", ref: 2 }, browser: { kind: "submit", host: "shop.test", action: "click", target: "Pay" } },
+      ])
+      : new Response("{}", { status: 200 }))));
+    const seen: boolean[] = [];
+    const off = onBrowserApprovalWaiting(() => seen.push(isBrowserApprovalWaiting()));
+    let send: ((prompt: string) => Promise<void>) | null = null;
+    function Harness() {
+      send = useAgentStream({ provider: "groq", model: "m", workspaceRoot: "/tmp/ws", conversationId: "c1" }).send;
+      return null;
+    }
+    await act(async () => root.render(createElement(Harness)));
+    await act(async () => { await send!("go"); });
+    off();
+    // Waiting, answered (the action went out again), waiting again, and the stream's end clears it.
+    expect(seen).toEqual([true, false, true, false]);
+    expect(isBrowserApprovalWaiting()).toBe(false);
   });
 
   it("ends the browser run as soon as the agent stream finishes, before auto-verify", async () => {
