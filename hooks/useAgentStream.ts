@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { AgentEvent, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage, AgentSafetyProfile } from "@/types";
+import type { AgentEvent, ApprovalScope, BrowserResult, ToolCallState, AIProvider, AgentMessage, MCPServer, ImageAttachment, Mention, TokenUsage, AgentSafetyProfile } from "@/types";
 import {
   buildWireHistory,
   cancelInFlightToolCalls,
@@ -7,8 +7,28 @@ import {
   SWITCH_CANCEL_NOTE,
 } from "@/lib/agent/thread";
 import { dispatchMemorySaved, parseRememberToolResult } from "@/lib/memoryEvents";
+import { getAgentBrowsing } from "@/lib/agentSettings";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
 
 const STOP_CANCEL_NOTE = "Stopped before this finished.";
+
+// Runs one browser action in the main process and hands the result back to
+// the waiting agent loop (POST /api/agent/browser-result). Never throws: the
+// loop always gets an answer, or it would wait for its 30-minute backstop.
+async function relayBrowserAction(event: Extract<AgentEvent, { type: "browser_action" }>, conversationId: string | undefined) {
+  let result: BrowserResult | null = null;
+  try {
+    const agent = getBrowserBridge()?.agent;
+    result = agent ? await agent.run(event.runId, conversationId ?? "agent", event.action) : null;
+  } catch (err) {
+    result = { kind: "error", text: `The browser action failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  await fetch("/api/agent/browser-result", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callId: event.callId, runId: event.runId, result: result ?? { kind: "error", text: "The in-app browser isn't available." } }),
+  }).catch(() => {});
+}
 
 interface UseAgentStreamOptions {
   provider: AIProvider;
@@ -244,6 +264,9 @@ export function useAgentStream({
     const effectivePlanMode = planModeOverrideRef.current !== null ? planModeOverrideRef.current : (planMode ?? false);
     planModeOverrideRef.current = null;
     const callIdToTool = new Map<string, string>();
+    // Runs that used the browser, ended in main when this stream ends.
+    const browserRunIds = new Set<string>();
+    const browsing = getAgentBrowsing() && !!getBrowserBridge()?.agent;
     const rememberTextByCallId = new Map<string, string>();
     let wroteFiles = false;
     let streamHadError = false;
@@ -258,7 +281,7 @@ export function useAgentStream({
       const res = await fetch("/api/agent/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, conversationId, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, safetyProfile, mentions: mentions ?? [] }),
+        body: JSON.stringify({ prompt, history, provider, model, workspaceRoot, conversationId, memory, mcpServers: (mcpServers ?? []).filter((s) => s.enabled), requireWriteApproval: requireWriteApproval ?? false, planMode: effectivePlanMode, attachments: attachments ?? [], liteAgentMode, safetyProfile, mentions: mentions ?? [], browsing }),
         signal: abort.signal,
       });
       if (!res.ok) {
@@ -266,6 +289,13 @@ export function useAgentStream({
       }
       await consumeSse(res, async (event) => {
         if (staleStream()) return;
+        if (event.type === "browser_action") {
+          // The first browser action of a stream opens the panel so the user can watch.
+          if (browserRunIds.size === 0) window.dispatchEvent(new Event("marven:browser-open"));
+          browserRunIds.add(event.runId);
+          void relayBrowserAction(event, conversationId ?? undefined);
+          return;
+        }
         if (event.type === "tool_call") {
           callIdToTool.set(event.callId, event.tool);
           if (event.tool === "remember" && typeof event.args?.content === "string") {
@@ -349,7 +379,12 @@ export function useAgentStream({
               ...msg,
               toolCalls: (msg.toolCalls ?? []).map((tc) =>
                 tc.callId === event.callId
-                  ? { ...tc, status: "awaiting_approval" as const, ...(event.preview ? { preview: event.preview } : {}) }
+                  ? {
+                      ...tc,
+                      status: "awaiting_approval" as const,
+                      ...(event.preview ? { preview: event.preview } : {}),
+                      ...(event.browser ? { browserApproval: event.browser } : {}),
+                    }
                   : tc
               ),
             }));
@@ -504,6 +539,8 @@ export function useAgentStream({
         setError(err.message);
       }
     } finally {
+      // Done, failed or stopped: the main process drops the run (and its strip).
+      for (const runId of browserRunIds) getBrowserBridge()?.agent.end(runId);
       // Only the current stream owns the running flags: a superseded one
       // (stop / conversation switch already reset them) must not clear the
       // flags of a newer run that started meanwhile.
@@ -526,6 +563,13 @@ export function useAgentStream({
       setMessages((prev) => cancelInFlightToolCalls(prev, STOP_CANCEL_NOTE));
     }
   }, []);
+
+  // The browser strip's Stop button (AgentBrowserBar) stops the agent like the input bar's.
+  useEffect(() => {
+    const onStop = () => stop();
+    window.addEventListener("marven:agent-stop", onStop);
+    return () => window.removeEventListener("marven:agent-stop", onStop);
+  }, [stop]);
 
   // Abort any in-flight stream if the consuming component unmounts, so the
   // fetch/SSE reader doesn't keep running and calling setState after teardown.
@@ -572,7 +616,7 @@ export function useAgentStream({
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  const approve = useCallback(async (callId: string, accept: boolean) => {
+  const approve = useCallback(async (callId: string, accept: boolean, scope?: ApprovalScope) => {
     // Plan approvals are handled client-side — no HTTP round-trip needed
     if (planPendingCallIdRef.current === callId) {
       planPendingCallIdRef.current = null;
@@ -591,10 +635,20 @@ export function useAgentStream({
       return;
     }
 
+    // An accepted call runs on; without this its result would find it still
+    // awaiting approval and show it as rejected.
+    if (accept) {
+      updateLastAssistant((msg) => ({
+        ...msg,
+        toolCalls: (msg.toolCalls ?? []).map((tc) =>
+          tc.callId === callId && tc.status === "awaiting_approval" ? { ...tc, status: "running" as const } : tc
+        ),
+      }));
+    }
     const res = await fetch("/api/agent/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callId, accept }),
+      body: JSON.stringify({ callId, accept, ...(scope ? { scope } : {}) }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
