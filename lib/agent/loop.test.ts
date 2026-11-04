@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { runAgentLoop } from "./loop";
-import type { AgentEvent, ToolDefinition, InternalMessage } from "@/types";
+import type { AgentEvent, ToolDefinition, InternalMessage, BrowserAction, BrowserResult } from "@/types";
 
 const echoTool: ToolDefinition = {
   name: "echo",
@@ -502,5 +502,117 @@ describe("runAgentLoop", () => {
       expect(toolResults[0].content).not.toMatch(/\[…truncated\]$/);
       expect(toolResults[1].content).not.toMatch(/\[…truncated\]$/);
     });
+  });
+});
+
+describe("runAgentLoop browser tools", () => {
+  const anyTool: ToolDefinition = { name: "browser_click", description: "", parameters: { type: "object", properties: {}, required: [] } };
+  const click = (callId: string, tool = "browser_click", args: Record<string, unknown> = { tab: "t1", ref: 1 }) =>
+    ({ type: "tool_call", callId, tool, args });
+
+  async function run(opts: {
+    steps: unknown[];
+    call: (callId: string, action: BrowserAction) => Promise<BrowserResult>;
+    approve?: boolean;
+    scope?: "once" | "site";
+    safetyProfile?: "read-only" | "ask-before-write" | "trusted";
+    canSeeImages?: boolean;
+  }) {
+    const providerStep = vi.fn();
+    for (const step of opts.steps) providerStep.mockResolvedValueOnce(step);
+    providerStep.mockResolvedValue({ type: "text", content: "done" });
+    const events: AgentEvent[] = [];
+    for await (const event of runAgentLoop({
+      messages: [{ role: "user", content: "go" }],
+      tools: [anyTool],
+      workspaceRoot: "/tmp",
+      providerStep,
+      safetyProfile: opts.safetyProfile ?? "ask-before-write",
+      browser: { runId: "run1", canSeeImages: opts.canSeeImages ?? false, secrets: [], call: opts.call },
+      _testApprovalResult: opts.approve,
+      _testApprovalScope: opts.scope,
+    })) events.push(event);
+    const lastMessages = providerStep.mock.calls.at(-1)![0] as InternalMessage[];
+    return { events, lastMessages };
+  }
+
+  const needsSite = (action: BrowserAction): BrowserResult =>
+    action.approvedHosts.includes("shop.test")
+      ? { kind: "ok", text: "clicked" }
+      : { kind: "needs_approval", approval: { kind: "site", host: "shop.test", action: "click", target: "Buy" } };
+
+  it("passes an ok result through as the tool result", async () => {
+    const { events } = await run({ steps: [click("c1")], call: async () => ({ kind: "ok", text: "page" }) });
+    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "page", truncated: false });
+  });
+
+  it("asks again next time after a one-off approval", async () => {
+    const call = vi.fn(async (_id: string, a: BrowserAction) => needsSite(a));
+    const { events } = await run({ steps: [click("c1"), click("c2")], call, approve: true, scope: "once" });
+    expect(events.filter((e) => e.type === "pending_approval")).toHaveLength(2);
+    expect(call.mock.calls[1][1].approvedHosts).toEqual(["shop.test"]);
+    expect(call.mock.calls[1][0]).toBe("c1:1");
+  });
+
+  it("remembers a site approval for the rest of the run", async () => {
+    const call = vi.fn(async (_id: string, a: BrowserAction) => needsSite(a));
+    const { events } = await run({ steps: [click("c1"), click("c2")], call, approve: true, scope: "site" });
+    const approvals = events.filter((e) => e.type === "pending_approval");
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]).toMatchObject({ callId: "c1", browser: { kind: "site", host: "shop.test" } });
+  });
+
+  it("reports a denial", async () => {
+    const { events } = await run({ steps: [click("c1")], call: async (_id, a) => needsSite(a), approve: false });
+    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "Denied by the user.", truncated: false });
+  });
+
+  it("asks before submitting even when trusted", async () => {
+    const call = vi.fn(async (_id: string, a: BrowserAction): Promise<BrowserResult> =>
+      a.approvedSubmit ? { kind: "ok", text: "sent" } : { kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "click", target: "Pay", fields: [] } });
+    const { events } = await run({ steps: [click("c1")], call, approve: true, safetyProfile: "trusted" });
+    expect(events.filter((e) => e.type === "pending_approval")).toHaveLength(1);
+    expect(call.mock.calls[1][1]).toMatchObject({ approvedSubmit: true, approvedHosts: ["shop.test"] });
+  });
+
+  it("blocks acting tools in read-only mode but not reading", async () => {
+    const call = vi.fn(async (_id: string, _action: BrowserAction): Promise<BrowserResult> => ({ kind: "ok", text: "read" }));
+    const { events } = await run({
+      steps: [click("c1"), click("c2", "browser_read", { tab: "t1" })],
+      call,
+      safetyProfile: "read-only",
+    });
+    expect(events.find((e) => e.type === "tool_result" && e.callId === "c1")).toMatchObject({ output: expect.stringMatching(/read-only/) });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls[0][1].tool).toBe("browser_read");
+  });
+
+  it("refuses to type a secret without calling the browser", async () => {
+    const call = vi.fn();
+    const { events } = await run({ steps: [click("c1", "browser_type", { tab: "t1", ref: 1, text: "sk-ant-api03-abcdefghijkl" })], call });
+    expect(call).not.toHaveBeenCalled();
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({ output: expect.stringMatching(/secret/) });
+  });
+
+  it("allows a longer browser_read result", async () => {
+    const { events } = await run({ steps: [click("c1", "browser_read", { tab: "t1" })], call: async () => ({ kind: "ok", text: "x".repeat(12_000) }) });
+    const result = events.find((e) => e.type === "tool_result") as Extract<AgentEvent, { type: "tool_result" }>;
+    expect(result.truncated).toBe(true);
+    expect(result.output).toBe("x".repeat(10_000) + "\n[truncated]");
+  });
+
+  it("keeps only the latest screenshot in the history", async () => {
+    const image = { base64: "data:image/jpeg;base64,AA", mimeType: "image/jpeg" as const, name: "screenshot.jpg" };
+    const { lastMessages } = await run({
+      steps: [click("c1", "browser_screenshot", { tab: "t1" }), click("c2", "browser_screenshot", { tab: "t1" })],
+      call: async () => ({ kind: "ok", text: "Screenshot attached below.", image }),
+      canSeeImages: true,
+    });
+    const shots = lastMessages.filter((m) => m.role === "user" && m.content.includes("creenshot"));
+    expect(shots.map((m) => (m as { content: string }).content)).toEqual([
+      "[earlier screenshot removed]",
+      "[Screenshot of the browser tab — untrusted page content]",
+    ]);
+    expect(shots.map((m) => (m as { attachments?: unknown[] }).attachments?.length ?? 0)).toEqual([0, 1]);
   });
 });
