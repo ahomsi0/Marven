@@ -43,7 +43,7 @@ function decide(engine, details, pageUrl, disabledHere) {
  * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void,
  *   refuseRequest?: (details: Electron.OnBeforeRequestListenerDetails) => boolean }} options
  *   `refuseRequest` cancels a request whatever the filter lists say (the
- *   agent's tabs may not reach Marven's own origin).
+ *   agent's tabs may not reach Marven's own origin or a private network).
  */
 function createBlocker({ dir, isDisabledFor, onBlocked, refuseRequest = () => false }) {
   const cacheFile = path.join(dir, 'adblock.bin');

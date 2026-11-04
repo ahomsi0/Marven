@@ -6,7 +6,8 @@
 // pop-up window (window.open with features, as sign-in flows use) becomes a
 // tab that keeps its opener, so it can post back and close itself.
 // An agent tab also never leaves for an address the agent may not open
-// (Marven's own UI); its requests there are cancelled in the session too.
+// (Marven's own UI, a private network); the session cancels its requests
+// there too.
 
 const { WebContentsView } = require('electron');
 const { isWebUrl } = require('./validate');

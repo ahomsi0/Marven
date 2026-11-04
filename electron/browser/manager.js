@@ -61,7 +61,8 @@ function createBrowserManager({ dir, getWindow, appPort }) {
   // The tab whose page is fullscreen, if any (it's always the active one).
   let fullscreenTab = null;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
-  // Where the agent's tabs may not go: Marven itself, wherever its window is.
+  // Where the agent's tabs may not go: Marven itself (wherever its window
+  // is) and private networks.
   const addresses = createAddressPolicy({
     appPorts: [appPort],
     appOrigins: () => {

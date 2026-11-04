@@ -86,7 +86,7 @@ function targetError(code, ref) {
 function createAgentController(deps) {
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? Date.now;
-  // Why the agent may not open an address (Marven's own), or null.
+  // Why the agent may not open an address (Marven's own, a private network), or null.
   const refuseUrl = deps.refuseUrl ?? (() => null);
   // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, reasons, signIns, tabId, action, gate,
   //   downloadBlocked, current }
