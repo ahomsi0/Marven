@@ -608,6 +608,18 @@ describe("runAgentLoop browser tools", () => {
     expect(call.mock.calls[1][1]).toMatchObject({ approvedSubmit: true, approvedHosts: ["shop.test"] });
   });
 
+  it("sends back the element each approval was given for", async () => {
+    const call = vi.fn(async (_id: string, a: BrowserAction): Promise<BrowserResult> => {
+      if (!a.approvedHosts.includes("shop.test")) return { kind: "needs_approval", approval: { kind: "site", host: "shop.test", action: "click", target: "Buy" } };
+      if (!a.approvedSubmit) return { kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "click", target: "Pay", fields: [] } };
+      return { kind: "ok", text: "sent" };
+    });
+    await run({ steps: [click("c1")], call, approve: true });
+    expect(call.mock.calls[0][1].approvedTarget).toBeUndefined();
+    expect(call.mock.calls[1][1].approvedTarget).toBe("Buy");
+    expect(call.mock.calls[2][1]).toMatchObject({ approvedSubmit: true, approvedTarget: "Pay" });
+  });
+
   it("blocks acting tools in read-only mode but not reading", async () => {
     const call = vi.fn(async (_id: string, _action: BrowserAction): Promise<BrowserResult> => ({ kind: "ok", text: "read" }));
     const { events } = await run({

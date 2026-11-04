@@ -219,6 +219,8 @@ export interface BrowserAction {
   approvedHosts: string[];
   /** The user approved submitting the form this action submits. */
   approvedSubmit: boolean;
+  /** The target of the last approval the user gave for this call; a submit approval counts only for that element. */
+  approvedTarget?: string;
   canSeeImages: boolean;
 }
 

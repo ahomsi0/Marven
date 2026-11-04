@@ -82,6 +82,14 @@ describe("cleanAgentAction", () => {
     expect(cleanAgentAction({ ...base, tool: "browser_read", args: { tab: "t" } })?.args).toEqual({ tab: "t", offset: 0, find: "" });
   });
 
+  it("keeps the approved target only as a short string", () => {
+    const click = { ...base, tool: "browser_click", args: { tab: "t", ref: 1 } };
+    expect(cleanAgentAction({ ...click, approvedTarget: "Pay" })?.approvedTarget).toBe("Pay");
+    expect(cleanAgentAction({ ...click, approvedTarget: "x".repeat(81) })).not.toHaveProperty("approvedTarget");
+    expect(cleanAgentAction({ ...click, approvedTarget: 3 })).not.toHaveProperty("approvedTarget");
+    expect(cleanAgentAction(click)).not.toHaveProperty("approvedTarget");
+  });
+
   it("refuses unknown tools and bad arguments", () => {
     expect(cleanAgentAction(null)).toBeNull();
     expect(cleanAgentAction({ ...base, tool: "browser_fly", args: {} })).toBeNull();

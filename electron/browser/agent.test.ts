@@ -102,8 +102,60 @@ describe("agent controller", () => {
     expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }))).toEqual({
       kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "click", target: "Pay", fields },
     });
-    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"], approvedSubmit: true })))
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"], approvedSubmit: true, approvedTarget: "Pay" })))
       .toMatchObject({ kind: "ok" });
+  });
+
+  it("counts a submit approval only for the element it was given for", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult(element({ name: "Delete account", submits: true })) : { ok: true }));
+    makeTab("t1", "conv1");
+    const approved = { approvedHosts: ["shop.test"], approvedSubmit: true, approvedTarget: "Pay" };
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, approved))).toMatchObject({
+      kind: "needs_approval", approval: { kind: "submit", target: "Delete account" },
+    });
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { ...approved, approvedSubmit: undefined, approvedTarget: "Delete account" })))
+      .toMatchObject({ kind: "needs_approval", approval: { kind: "submit" } });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { ...approved, approvedTarget: "Delete account" })))
+      .toMatchObject({ kind: "ok" });
+  });
+
+  it("checks the element again right before clicking", async () => {
+    const cases: Array<[unknown, unknown]> = [
+      [targetResult(element({ sensitive: true, editable: true })), { kind: "error", text: expect.stringMatching(/sensitive field/) }],
+      [targetResult(element({ disabled: true })), { kind: "error", text: expect.stringMatching(/disabled/) }],
+      [targetResult(element(), { offscreen: true }), { kind: "error", text: expect.stringMatching(/off screen; scroll to it first/) }],
+      [targetResult(element({ submits: true }), { fields: [{ name: "Email", value: "a@b.c" }] }),
+        { kind: "needs_approval", approval: { kind: "submit", target: "Buy", fields: [{ name: "Email", value: "a@b.c" }] } }],
+      [targetResult(element({ name: "Pay", submits: true })), { kind: "needs_approval", approval: { kind: "submit", target: "Pay" } }],
+    ];
+    for (const [second, expected] of cases) {
+      let targets = 0;
+      const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? (targets++ === 0 ? targetResult() : second) : { ok: true }));
+      makeTab("t1", "conv1");
+      expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }))).toMatchObject(expected as object);
+      expect(deps.sendInput).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses to click what is off screen", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult(element(), { offscreen: true }) : { ok: true }));
+    makeTab("t1", "conv1");
+    expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] })))
+      .toEqual({ kind: "error", text: "Element 1 is off screen; scroll to it first." });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
+  it("refuses to act on a page without a web address", async () => {
+    for (const url of ["about:blank", "data:text/html,<button>Hi</button>"]) {
+      const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
+      makeTab("t1", "conv1", url);
+      for (const action of [act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: [""] }), act("browser_press", { tab: "t1", key: "Enter" })]) {
+        expect(await agent.perform("run1", "conv1", action))
+          .toEqual({ kind: "error", text: "This page has no web address to approve; open a web page first." });
+      }
+      expect(deps.sendInput).not.toHaveBeenCalled();
+    }
   });
 
   it("refuses sensitive fields, file inputs and covered elements", async () => {

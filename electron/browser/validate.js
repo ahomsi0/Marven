@@ -151,6 +151,8 @@ function cleanAgentAction(raw) {
     args,
     approvedHosts: Array.isArray(raw.approvedHosts) ? raw.approvedHosts.filter(isHost).slice(0, 100) : [],
     approvedSubmit: raw.approvedSubmit === true,
+    // The element the user's last approval was for (agent.js compares it).
+    ...(typeof raw.approvedTarget === 'string' && raw.approvedTarget.length <= 80 ? { approvedTarget: raw.approvedTarget } : {}),
     canSeeImages: raw.canSeeImages === true,
   };
 }

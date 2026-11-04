@@ -340,10 +340,12 @@ function createAgentController(deps) {
     return ok(`${header(tab)}\nScrolled to ${out.scrollY}px of ${Math.max(0, out.scrollHeight - out.viewportHeight)}px.`);
   }
 
-  // A form submission always needs its own approval; anything else needs the
-  // site approved. Approving a submit approves the site for that call too.
+  // A form submission always needs its own approval, given for this very
+  // element (`approvedTarget` is the target of the approval the user saw);
+  // anything else needs the site approved. Approving a submit approves the
+  // site for that call too.
   function approvalFor(action, host, kind, target, submitting, fields) {
-    if (submitting && !(action.approvedSubmit && action.approvedHosts.includes(host))) {
+    if (submitting && !(action.approvedSubmit && action.approvedHosts.includes(host) && action.approvedTarget === target)) {
       return { kind: 'needs_approval', approval: { kind: 'submit', host, action: kind, target, fields } };
     }
     if (!action.approvedHosts.includes(host)) {
@@ -352,18 +354,31 @@ function createAgentController(deps) {
     return null;
   }
 
+  // Approvals name a host, so a page without one (about:blank, data:) can't be acted on.
+  const NO_HOST = 'This page has no web address to approve; open a web page first.';
+
+  // Why the agent may not use an element (null if it may), from what the page reported.
+  function refusal(found, tool, ref) {
+    const { info } = found;
+    if (info.sensitive) return fail(`Element ${ref} is a sensitive field (a password, payment detail or one-time code). Ask the user to fill it in.`);
+    if (info.file) return fail(`Element ${ref} is a file upload. Ask the user to choose the file.`);
+    if (info.disabled) return fail(`Element ${ref} is disabled.`);
+    if (tool === 'browser_type' && !info.editable) return fail(`Element ${ref} isn't a text field.`);
+    if (tool === 'browser_click' && found.offscreen) return fail(`Element ${ref} is off screen; scroll to it first.`);
+    if (found.covered) return fail(`Element ${ref} is covered by ${JSON.stringify(found.covered)}. Close it or scroll first.`);
+    return null;
+  }
+
   async function actOnElement(r, t, tab, action) {
     const { tool, args } = action;
     const kind = KIND[tool];
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
+    if (!hostOf(tab.url)) return fail(NO_HOST);
     const first = cleanTarget(await deps.runInPage(tab, { op: 'target', nav: tab.navigation, ref: args.ref, scroll: true }));
     if (first.error) return fail(targetError(first.error, args.ref));
     const { info } = first;
-    if (info.sensitive) return fail(`Element ${args.ref} is a sensitive field (a password, payment detail or one-time code). Ask the user to fill it in.`);
-    if (info.file) return fail(`Element ${args.ref} is a file upload. Ask the user to choose the file.`);
-    if (info.disabled) return fail(`Element ${args.ref} is disabled.`);
-    if (tool === 'browser_type' && !info.editable) return fail(`Element ${args.ref} isn't a text field.`);
-    if (first.covered) return fail(`Element ${args.ref} is covered by ${JSON.stringify(first.covered)}. Close it or scroll first.`);
+    const refused = refusal(first, tool, args.ref);
+    if (refused) return refused;
     const submitting = tool === 'browser_click' ? info.submits : tool === 'browser_type' && args.submit && first.entersSubmit;
     const target = info.name || info.role;
     const approval = approvalFor(action, hostOf(tab.url), kind, target, submitting, first.fields);
@@ -384,10 +399,15 @@ function createAgentController(deps) {
       return ok(`${header(tab)}\nSelected ${JSON.stringify(chosen.selected)}.`);
     }
     if (tool === 'browser_click') {
-      // The page may have moved during the outline: find the centre again.
+      // The page may have moved or changed the element during the outline:
+      // find the centre again and check it all again, approval included (a
+      // button that now submits, or under another name, needs its own).
       const again = cleanTarget(await deps.runInPage(tab, { op: 'target', nav: tab.navigation, ref: args.ref, scroll: false }));
       if (again.error) return fail(targetError(again.error, args.ref));
-      if (again.covered) return fail(`Element ${args.ref} is covered by ${JSON.stringify(again.covered)}. Close it or scroll first.`);
+      const refusedNow = refusal(again, tool, args.ref);
+      if (refusedNow) return refusedNow;
+      const now = approvalFor(action, hostOf(tab.url), kind, again.info.name || again.info.role, again.info.submits, again.fields);
+      if (now) return now;
       if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, clickEvents(again.x, again.y));
       return ok(`${header(tab)}\nClicked ${JSON.stringify(target)}. ${await settle(tab, navigation)}`);
@@ -408,6 +428,7 @@ function createAgentController(deps) {
   async function press(r, t, tab, action) {
     const { key } = action.args;
     if (tab.auth) return fail('A sign-in prompt is open on this tab; the user has to answer it.');
+    if (!hostOf(tab.url)) return fail(NO_HOST);
     const focused = cleanFocused(await deps.runInPage(tab, { op: 'focused' }));
     if (focused.sensitive) return fail('The focus is in a sensitive field (a password, payment detail or one-time code). Ask the user to finish it.');
     const approval = approvalFor(action, hostOf(tab.url), 'press', key, key === 'Enter' && focused.entersSubmit, focused.fields);

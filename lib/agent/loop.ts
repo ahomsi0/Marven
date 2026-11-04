@@ -187,8 +187,14 @@ export async function* runAgentLoop(
 
     const approvedHosts = [...siteApprovals];
     let approvedSubmit = false;
+    // What the user saw on the last approval card: main counts a submit
+    // approval only for that element, so a page can't swap the button.
+    let approvedTarget: string | undefined;
     for (let attempt = 0; attempt < MAX_BROWSER_APPROVALS; attempt++) {
-      const action: BrowserAction = { tool, args, approvedHosts: [...approvedHosts], approvedSubmit, canSeeImages: browser.canSeeImages };
+      const action: BrowserAction = {
+        tool, args, approvedHosts: [...approvedHosts], approvedSubmit, canSeeImages: browser.canSeeImages,
+        ...(approvedTarget !== undefined ? { approvedTarget } : {}),
+      };
       const actionId = attempt === 0 ? callId : `${callId}:${attempt}`;
       let result: BrowserResult;
       if (browser.call) {
@@ -213,6 +219,7 @@ export async function* runAgentLoop(
       if (!approvedHosts.includes(approval.host)) approvedHosts.push(approval.host);
       if (approval.kind === "site" && answer.scope === "site") siteApprovals.add(approval.host);
       if (approval.kind === "submit") approvedSubmit = true;
+      approvedTarget = approval.target;
     }
     return { output: "The page kept changing while waiting for approval; read it again." };
   }
