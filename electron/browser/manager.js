@@ -104,6 +104,11 @@ function createBrowserManager({ dir, getWindow, appPort }) {
       close: (id) => closeTab(id),
     },
     isShown: () => host.isShown(),
+    // Input reaches only a page on screen; Chromium queues it otherwise.
+    isVisible: (tab) => {
+      const win = getWindow();
+      return !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && host.isOnScreen(tab.view);
+    },
     onChange: () => scheduleSnapshot(),
     runInPage: runAgentScript,
     sendInput: sendAgentInput,
@@ -589,6 +594,9 @@ function createBrowserManager({ dir, getWindow, appPort }) {
       if (staysOnOrigin(details.url, win.webContents.getURL())) hideForReload();
     });
     win.webContents.on('render-process-gone', hideForReload);
+    // Back on screen: an agent run waiting for the page to be visible again
+    // checks now rather than at its next poll.
+    for (const event of ['show', 'restore', 'focus']) win.on(event, () => agent.checkBackground());
     // The window left fullscreen on its own (green button, Mission Control):
     // the page leaves too, or it would keep covering the whole window.
     win.on('leave-full-screen', () => {
@@ -635,7 +643,10 @@ function createBrowserManager({ dir, getWindow, appPort }) {
       hide();
     }),
     freeze: ready(host.freeze),
-    unfreeze: ready(host.unfreeze),
+    unfreeze: ready(() => {
+      host.unfreeze();
+      agent.checkBackground();
+    }),
     setPanelFocused: (focused) => { panelFocused = focused; },
     setMenuLabels: (labels) => { menuLabels = cleanLabels(labels); },
     setSearchEngine: (id) => {

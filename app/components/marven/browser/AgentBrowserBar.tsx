@@ -22,6 +22,7 @@ export function AgentBrowserBar({ bridge, activity }: { bridge: BrowserBridge; a
     activity.state === "acting" ? isolate(t("browser.agent.acting", { action: doing }), { target })
     : activity.reason === "sign-in" ? t("browser.agent.waitingSignIn")
     : activity.reason === "hidden" ? t("browser.agent.hidden")
+    : activity.reason === "background" ? t("browser.agent.background")
     : t("browser.agent.paused");
 
   return (

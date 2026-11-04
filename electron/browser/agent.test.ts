@@ -31,7 +31,8 @@ function setup(page: (req: Req) => unknown = () => null) {
       activate: vi.fn(),
       close: vi.fn((id: string) => tabs.delete(id)),
     },
-    isShown: () => true,
+    isShown: vi.fn(() => true),
+    isVisible: vi.fn((_tab: unknown) => true),
     onChange: vi.fn(),
     runInPage: vi.fn(async (_tab: unknown, req: object) => page(req as Req)),
     sendInput: vi.fn(),
@@ -40,10 +41,24 @@ function setup(page: (req: Req) => unknown = () => null) {
     sleep: vi.fn(async (ms: number) => { clock += ms; }),
     now: () => clock,
     refuseUrl: vi.fn((url: string) => (url.startsWith("http://localhost:3000") ? "That address is Marven itself; the agent can't open it." : null)),
+    setTimer: vi.fn((fn: () => void, _ms: number) => {
+      timers.add(fn);
+      return () => { timers.delete(fn); };
+    }),
+  };
+  // Timers the controller set (the background check); runTimers fires them once.
+  const timers = new Set<() => void>();
+  const runTimers = async () => {
+    const due = [...timers];
+    timers.clear();
+    for (const fn of due) fn();
+    await flush();
   };
   const agent = createAgentController(deps);
-  return { agent, deps, tabs, makeTab };
+  return { agent, deps, tabs, makeTab, timers, runTimers };
 }
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const act = (tool: string, args: Record<string, unknown>, over: Record<string, unknown> = {}) =>
   ({ tool, args, approvedHosts: [], approvedSubmit: false, canSeeImages: false, ...over });
@@ -370,10 +385,123 @@ describe("agent controller", () => {
     expect(agent.activity()).toMatchObject({ state: "paused", reason: "hidden" });
     const waiting = agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
     agent.onShow();
-    expect((await waiting).text).toMatch(/took over and handed back/);
+    expect((await waiting).text).toMatch(/^The browser was hidden or in the background, so the agent waited for it to be back on screen\. The page may have changed; here it is now:\n[\s\S]*Hello shop/);
     agent.takeOver();
     agent.onShow(); // a pause of the user's own isn't ended by showing the panel
     expect(agent.activity()).toMatchObject({ state: "paused", reason: "user" });
+  });
+
+  it("pauses instead of clicking while the page isn't on screen, and carries on once it is", async () => {
+    let shown = true;
+    const { agent, deps, makeTab, timers, runTimers } = setup((req) => {
+      if (req.op === "target") return targetResult(element(), { visible: shown });
+      if (req.op === "visibility") return { visible: shown };
+      return req.op === "read" ? readResult() : { ok: true };
+    });
+    makeTab("t1", "conv1");
+    // Marven's window is covered between the outline and the click.
+    deps.sleep.mockImplementationOnce(async () => { shown = false; });
+    let settled = false;
+    const waiting = agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { approvedHosts: ["shop.test"] }))
+      .then((r) => { settled = true; return r; });
+    await flush();
+    expect(agent.activity()).toMatchObject({ state: "paused", reason: "background" });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+    await runTimers(); // still covered: it keeps checking
+    expect(settled).toBe(false);
+    expect(timers.size).toBe(1);
+    shown = true;
+    await runTimers();
+    expect((await waiting).text).toMatch(/^The browser was hidden or in the background[\s\S]*Hello shop/);
+    expect(deps.sendInput).not.toHaveBeenCalled();
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+    expect(timers.size).toBe(0);
+  });
+
+  it("checks the window too before typing and pressing keys", async () => {
+    for (const [tool, args] of [
+      ["browser_type", { ref: 1, text: "socks" }],
+      ["browser_press", { key: "Tab" }],
+    ] as const) {
+      const { agent, deps, makeTab, runTimers } = setup((req) =>
+        req.op === "target" ? targetResult(element({ role: "textbox", name: "Search", editable: true })) : req.op === "read" ? readResult() : { ok: true });
+      makeTab("t1", "conv1");
+      deps.isVisible.mockReturnValue(false); // minimized
+      const waiting = agent.perform("run1", "conv1", act(tool, { tab: "t1", ...args }, { approvedHosts: ["shop.test"] }));
+      await flush();
+      expect(agent.activity()).toMatchObject({ reason: "background" });
+      expect(deps.insertText).not.toHaveBeenCalled();
+      expect(deps.sendInput).not.toHaveBeenCalled();
+      deps.isVisible.mockReturnValue(true);
+      await runTimers();
+      expect((await waiting).text).toMatch(/back on screen/);
+    }
+  });
+
+  it("doesn't press Enter after typing once the page has gone to the background", async () => {
+    let shown = true;
+    const { agent, deps, makeTab, runTimers } = setup((req) => {
+      if (req.op === "target") return targetResult(element({ role: "textbox", name: "Search", editable: true }));
+      if (req.op === "visibility") return { visible: shown };
+      return req.op === "read" ? readResult() : { ok: true };
+    });
+    makeTab("t1", "conv1");
+    deps.insertText.mockImplementationOnce(() => { shown = false; });
+    const waiting = agent.perform("run1", "conv1", act("browser_type", { tab: "t1", ref: 1, text: "socks", submit: true }, { approvedHosts: ["shop.test"], approvedSubmit: true, approvedTarget: "Search" }));
+    await flush();
+    expect(agent.activity()).toMatchObject({ reason: "background" });
+    expect(deps.sendInput).not.toHaveBeenCalled();
+    shown = true;
+    await runTimers();
+    expect((await waiting).kind).toBe("ok");
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
+  it("checks right away when the window comes back, and keeps the user's own pause", async () => {
+    let shown = false;
+    const { agent, deps, makeTab, timers } = setup((req) => {
+      if (req.op === "focused") return { name: "", sensitive: false, entersSubmit: false, submits: false, fields: [], visible: shown };
+      if (req.op === "visibility") return { visible: shown };
+      return req.op === "read" ? readResult() : { ok: true };
+    });
+    makeTab("t1", "conv1");
+    const waiting = agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Tab" }, { approvedHosts: ["shop.test"] }));
+    await flush();
+    expect(agent.activity()).toMatchObject({ reason: "background" });
+    agent.takeOver();
+    shown = true;
+    agent.checkBackground();
+    await flush();
+    expect(agent.activity()).toMatchObject({ state: "paused", reason: "user" });
+    expect(timers.size).toBe(0);
+    agent.resume();
+    expect((await waiting).text).toMatch(/took over and handed back/);
+    expect(deps.sendInput).not.toHaveBeenCalled();
+  });
+
+  it("lets Resume end a background pause too (the user is looking at the window)", async () => {
+    const { agent, deps, makeTab } = setup((req) => (req.op === "read" ? readResult() : { ok: true }));
+    makeTab("t1", "conv1");
+    deps.isVisible.mockReturnValue(false);
+    const waiting = agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Tab" }, { approvedHosts: ["shop.test"] }));
+    await flush();
+    agent.onUserActivate("other-tab");
+    expect(agent.activity()).toMatchObject({ reason: "user" });
+    agent.resume();
+    expect((await waiting).text).toMatch(/handed back/);
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+  });
+
+  it("stops checking when the run ends", async () => {
+    const { agent, deps, makeTab, timers } = setup((req) => (req.op === "read" ? readResult() : { ok: true }));
+    makeTab("t1", "conv1");
+    deps.isVisible.mockReturnValue(false);
+    const waiting = agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Tab" }, { approvedHosts: ["shop.test"] }));
+    await flush();
+    expect(timers.size).toBe(1);
+    agent.end("run1");
+    expect(await waiting).toEqual({ kind: "error", text: "Stopped." });
+    expect(timers.size).toBe(0);
   });
 
   it("pauses during the highlight instead of clicking", async () => {

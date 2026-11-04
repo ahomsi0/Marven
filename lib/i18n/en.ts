@@ -370,6 +370,7 @@ const en = {
       paused: "Paused — you're in control",
       waitingSignIn: "Waiting for you to sign in",
       hidden: "Paused while the browser is hidden",
+      background: "Paused while Marven is in the background",
       takeOver: "Take over",
       resume: "Resume",
       stop: "Stop",

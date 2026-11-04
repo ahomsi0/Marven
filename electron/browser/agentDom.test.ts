@@ -289,7 +289,7 @@ describe("agentInPage targets", () => {
   it("focuses and selects a field, chooses options, finds focus", () => {
     document.body.innerHTML = `<form><input name="q" value="old"></form><select name="size"><option value="s">Small</option><option value="l">Large</option></select>`;
     read();
-    expect(inPage({ op: "focus", nav: 1, ref: 1 })).toEqual({ ok: true });
+    expect(inPage({ op: "focus", nav: 1, ref: 1 })).toEqual({ ok: true, visible: true });
     expect(inPage({ op: "focused" })).toMatchObject({ name: "q", entersSubmit: true, sensitive: false });
     const changed = vi.fn();
     document.querySelector("select")!.addEventListener("change", changed);
@@ -306,6 +306,19 @@ describe("agentInPage targets", () => {
     expect(inPage({ op: "focused" })).toMatchObject({ entersSubmit: false, submits: false, fields: [] });
     document.body.innerHTML = "";
     expect(inPage({ op: "focused" })).toMatchObject({ name: "", submits: false, fields: [] });
+  });
+
+  it("says whether the page is on screen wherever input follows", () => {
+    document.body.innerHTML = `<form><input name="q"><button>Go</button></form>`;
+    read();
+    document.elementFromPoint = vi.fn(() => document.querySelector("button"));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    expect(inPage({ op: "visibility" })).toEqual({ visible: false });
+    expect(inPage({ op: "target", nav: 1, ref: 2 })).toMatchObject({ visible: false });
+    expect(inPage({ op: "focus", nav: 1, ref: 1 })).toMatchObject({ visible: false });
+    expect(inPage({ op: "focused" })).toMatchObject({ visible: false });
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    expect(inPage({ op: "visibility" })).toEqual({ visible: true });
   });
 
   it("serializes with its request as a JSON literal", () => {
@@ -338,6 +351,13 @@ describe("main-side helpers", () => {
   it("keeps a clean name within its cap and without spaces at the ends", () => {
     const r = cleanRead({ url: "https://a.test/", text: "", elements: [{ ref: 1, role: "button", name: `${"a".repeat(79)} b` }] }, isWebUrl)!;
     expect(r.elements[0].name).toBe("a".repeat(79));
+  });
+
+  it("takes a page as on screen unless it says otherwise", () => {
+    expect(cleanTarget({ x: 1, y: 2, info: {}, visible: false })).toMatchObject({ visible: false });
+    expect(cleanTarget({ x: 1, y: 2, info: {} })).toMatchObject({ visible: true });
+    expect(cleanFocused({ visible: false })).toMatchObject({ visible: false });
+    expect(cleanFocused(null)).toMatchObject({ visible: true });
   });
 
   it("cleanTarget maps unknown errors to gone", () => {

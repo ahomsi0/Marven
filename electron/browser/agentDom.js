@@ -438,8 +438,14 @@ function agentInPage(req) {
     }
     const covered = top && top !== el && !el.contains(top) ? clip(nameOf(top) || tag(top).toLowerCase(), MAX_NAME) : '';
     const willSubmit = submits(el) || entersSubmit(el);
-    return { info: describe(el, req.ref, true), x, y, covered, offscreen, entersSubmit: entersSubmit(el), fields: willSubmit ? fieldsOf(formOf(el)) : [] };
+    return {
+      info: describe(el, req.ref, true), x, y, covered, offscreen, entersSubmit: entersSubmit(el),
+      fields: willSubmit ? fieldsOf(formOf(el)) : [], visible: shown(),
+    };
   }
+
+  // Whether the page is on screen. Input sent while it isn't waits until it is.
+  const shown = () => document.visibilityState === 'visible';
 
   function focus() {
     const found = lookup();
@@ -455,7 +461,7 @@ function agentInPage(req) {
       selection.removeAllRanges();
       selection.addRange(range);
     }
-    return { ok: deepActive() === el };
+    return { ok: deepActive() === el, visible: shown() };
   }
 
   function choose() {
@@ -508,7 +514,7 @@ function agentInPage(req) {
   function focused() {
     const el = deepActive();
     if (!el || el === document.body || el === document.documentElement) {
-      return { name: '', sensitive: false, entersSubmit: false, submits: false, fields: [] };
+      return { name: '', sensitive: false, entersSubmit: false, submits: false, fields: [], visible: shown() };
     }
     const enters = entersSubmit(el);
     const clicks = submits(el);
@@ -518,6 +524,7 @@ function agentInPage(req) {
       entersSubmit: enters,
       submits: clicks,
       fields: enters || clicks ? fieldsOf(formOf(el)) : [],
+      visible: shown(),
     };
   }
 
@@ -530,6 +537,7 @@ function agentInPage(req) {
     case 'highlight': return highlight();
     case 'hasText': return { found: pageText().toLowerCase().includes(String(req.text).toLowerCase()) };
     case 'focused': return focused();
+    case 'visibility': return { visible: shown() };
     default: return { error: 'unknown-op' };
   }
 }
@@ -617,6 +625,8 @@ function cleanTarget(raw) {
     offscreen: raw.offscreen === true,
     entersSubmit: raw.entersSubmit === true,
     fields: cleanFields(raw.fields),
+    // Only an explicit "not visible" counts: see cleanOutcome.
+    visible: raw.visible !== false,
   };
 }
 
@@ -628,10 +638,15 @@ function cleanFocused(raw) {
     entersSubmit: f.entersSubmit === true,
     submits: f.submits === true,
     fields: cleanFields(f.fields),
+    visible: f.visible !== false,
   };
 }
 
-/** Results of the smaller operations (focus, select, scroll, hasText). */
+/**
+ * Results of the smaller operations (focus, select, scroll, hasText,
+ * visibility). `visible` is false only when the page said so: a page that
+ * didn't answer at all is no reason to wait for it to be on screen.
+ */
 function cleanOutcome(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   return {
@@ -643,6 +658,7 @@ function cleanOutcome(raw) {
     scrollY: num(r.scrollY),
     scrollHeight: num(r.scrollHeight),
     viewportHeight: num(r.viewportHeight),
+    visible: r.visible !== false,
   };
 }
 

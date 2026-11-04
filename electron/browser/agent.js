@@ -6,10 +6,13 @@
 // events. Any input of the user's in the run's tab or switching tabs pauses
 // the run until Resume; hiding the panel (closing it, or an overlay such as
 // Settings covering it) pauses it until the panel shows again; a sign-in
-// prompt on one of its tabs pauses it until the user answers. Each of these
-// is a separate reason, and the run acts again only once none is left, so
-// one ending never cancels another. Either way the next action returns a
-// fresh read instead of running. Stop, a time-out or a
+// prompt on one of its tabs pauses it until the user answers; and a page
+// that isn't on screen when the agent is about to click or type (Marven's
+// window covered or minimized, the view frozen behind a toolbar menu), where
+// Chromium would queue the input until it is, pauses it until it is back.
+// Each of these is a separate reason, and the run acts again only once none
+// is left, so one ending never cancels another. Either way the next action
+// returns a fresh read instead of running. Stop, a time-out or a
 // newer run cancel the action in flight: it checks before every side effect,
 // since the page can hold it up (a dialog) for as long as it likes. Works only
 // through `deps` (the manager passes real tabs), so it can be tested with fakes.
@@ -25,6 +28,9 @@ const LOAD_TIMEOUT_MS = 15000;
 const SETTLE_MS = 3000;
 const POLL_MS = 100;
 const TEXT_POLL_MS = 250;
+// How often a run paused for `background` checks whether the page is back on screen.
+const VISIBILITY_POLL_MS = 500;
+const VISIBILITY_CHECK_MS = 2000;
 const HIGHLIGHT_MS = 600;
 const MAX_AGENT_TABS = 10;
 const MAX_TITLE = 120;
@@ -37,7 +43,7 @@ const KIND = {
 
 const NO_TAB = 'No such agent tab. Use browser_tabs with action "list".';
 // Why a run waits, most important first (what activity() reports).
-const PAUSE_REASONS = ['sign-in', 'user', 'hidden'];
+const PAUSE_REASONS = ['sign-in', 'user', 'hidden', 'background'];
 // Returned from inside an action when the user took over mid-way; the caller
 // waits for Resume outside the action's time limit.
 const PAUSED = Symbol('paused');
@@ -80,20 +86,32 @@ function targetError(code, ref) {
  *   insertText: (tab: any, text: string) => void | Promise<void>,
  *   capture: (tab: any) => Promise<{ base64: string, mimeType: string, name: string } | null>,
  *   refuseUrl?: (url: string) => string | null,
+ *   isVisible?: (tab: any) => boolean,
  *   sleep?: (ms: number) => Promise<void>,
  *   now?: () => number,
- * }} deps
+ *   setTimer?: (fn: () => void, ms: number) => () => void,
+ * }} deps `isVisible` says whether input sent to the tab now would reach
+ *   it on screen, as far as the main process can tell (the window shown and
+ *   not minimized, the tab's view attached and not frozen); the page itself
+ *   says whether it's covered.
  */
 function createAgentController(deps) {
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? Date.now;
   // Why the agent may not open an address (Marven's own, a private network), or null.
   const refuseUrl = deps.refuseUrl ?? (() => null);
+  const isVisible = deps.isVisible ?? (() => true);
+  const setTimer = deps.setTimer ?? ((fn, ms) => {
+    const timer = setTimeout(fn, ms);
+    return () => clearTimeout(timer);
+  });
   // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, reasons, signIns, tabId, action, gate,
-  //   downloadBlocked, current }
+  //   downloadBlocked, current, stopWatching }
   // `reasons` holds every reason the run waits for (PAUSE_REASONS), `signIns`
-  // the ids of its tabs showing a sign-in prompt, and `current` the token of
-  // the action in flight (see perform).
+  // the ids of its tabs showing a sign-in prompt, `current` the token of the
+  // action in flight (see perform), and `stopWatching` cancels the next
+  // background check. `gate.reasons` collects every reason since the run
+  // stopped, for the hand-back.
   let run = null;
 
   // Every result starts with this. The title is the page's own text, so it
@@ -155,13 +173,15 @@ function createAgentController(deps) {
     if (!run.gate) {
       let release;
       const promise = new Promise((resolve) => { release = resolve; });
-      run.gate = { promise, release };
+      run.gate = { promise, release, reasons: new Set() };
     }
+    run.gate.reasons.add(reason);
     deps.onChange();
   }
 
   function unpause(reason) {
     if (!run || !run.reasons.delete(reason)) return;
+    if (reason === 'background') stopWatching(run);
     updateState(run);
     if (run.reasons.size === 0 && run.gate) {
       const gate = run.gate;
@@ -173,26 +193,86 @@ function createAgentController(deps) {
 
   // Resume (the strip's button) ends the user's own pause. A sign-in prompt
   // whose tab has gone (closed meanwhile) no longer holds the run up either.
+  // Nor does the background: the user is looking at the window, and the next
+  // click checks again anyway.
   function resume() {
     if (!run) return;
     for (const id of run.signIns) if (!deps.tabs.get(id)?.auth) run.signIns.delete(id);
     if (run.signIns.size === 0) unpause('sign-in');
+    unpause('background');
     unpause('user');
   }
 
   function end(runId) {
     if (!run || run.id !== runId) return;
     if (run.current) run.current.cancelled = true;
+    stopWatching(run);
     run.gate?.release('ended');
     run = null;
     deps.onChange();
   }
 
-  async function waitAndHandBack(r) {
-    const outcome = await r.gate.promise;
-    if (outcome === 'ended' || run !== r) return fail('Stopped.');
+  // ── The page off screen ────────────────────────────────────────────────
+
+  // Whether the page is on screen, by what it said (`report.visible`) and
+  // what the main process knows.
+  const onScreen = (tab, report) => report.visible && isVisible(tab);
+
+  // Whether the run's page is back on screen. A tab that is gone or failed
+  // has nothing to wait for; a page that doesn't answer is taken at the
+  // main process's word.
+  async function backOnScreen(r) {
     const tab = ownedTab(r, r.tabId);
-    if (!tab) return ok('The user took over and handed back. The agent tab is gone; use browser_tabs with action "list".');
+    if (!tab || tab.error) return true;
+    if (!isVisible(tab)) return false;
+    try {
+      return cleanOutcome(await withTimeout(deps.runInPage(tab, { op: 'visibility' }), VISIBILITY_CHECK_MS)).visible;
+    } catch (err) {
+      if (err instanceof ActionTimeout) return true;
+      throw err;
+    }
+  }
+
+  async function checkBackground(r) {
+    if (run !== r || !r.reasons.has('background')) return;
+    let back;
+    try {
+      back = await backOnScreen(r);
+    } catch {
+      back = false;
+    }
+    if (back && run === r) unpause('background');
+  }
+
+  // Pauses the run until its page is on screen again, checking every
+  // VISIBILITY_POLL_MS (and when the window comes back, see checkBackground).
+  function toBackground(r) {
+    pause('background');
+    if (!r.stopWatching) {
+      const tick = async () => {
+        r.stopWatching = null;
+        await checkBackground(r);
+        if (run === r && r.reasons.has('background') && !r.stopWatching) r.stopWatching = setTimer(tick, VISIBILITY_POLL_MS);
+      };
+      r.stopWatching = setTimer(tick, VISIBILITY_POLL_MS);
+    }
+    return PAUSED;
+  }
+
+  function stopWatching(r) {
+    r.stopWatching?.();
+    r.stopWatching = null;
+  }
+
+  async function waitAndHandBack(r) {
+    const gate = r.gate;
+    const outcome = await gate.promise;
+    if (outcome === 'ended' || run !== r) return fail('Stopped.');
+    const why = gate.reasons.has('user') || gate.reasons.has('sign-in')
+      ? 'The user took over and handed back.'
+      : 'The browser was hidden or in the background, so the agent waited for it to be back on screen.';
+    const tab = ownedTab(r, r.tabId);
+    if (!tab) return ok(`${why} The agent tab is gone; use browser_tabs with action "list".`);
     // Outside the action's own time limit, so it needs one of its own: a
     // page showing a dialog never answers.
     let text;
@@ -200,9 +280,9 @@ function createAgentController(deps) {
       text = await withTimeout(readText(tab), ACTION_TIMEOUT_MS);
     } catch (err) {
       if (!(err instanceof ActionTimeout)) throw err;
-      return ok("The user took over and handed back. The page didn't respond in time; read it again before acting.");
+      return ok(`${why} The page didn't respond in time; read it again before acting.`);
     }
-    return ok(`The user took over and handed back. The page may have changed; here it is now:\n${text}`);
+    return ok(`${why} The page may have changed; here it is now:\n${text}`);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────
@@ -221,7 +301,7 @@ function createAgentController(deps) {
       if (run) end(run.id);
       run = {
         id: runId, conversationId, state: 'acting', reason: null, reasons: new Set(), signIns: new Set(),
-        tabId: null, action: null, gate: null, downloadBlocked: false, current: null,
+        tabId: null, action: null, gate: null, downloadBlocked: false, current: null, stopWatching: null,
       };
     }
     const r = run;
@@ -434,6 +514,7 @@ function createAgentController(deps) {
       const now = approvalFor(action, approvalHostOf(tab.url), kind, again.info.name || again.info.role, again.info.submits, again.fields);
       if (now) return now;
       if ((stop = halted(r, t))) return stop;
+      if (!onScreen(tab, again)) return toBackground(r);
       await deps.sendInput(tab, clickEvents(again.x, again.y));
       // Settled first, so the header names the page the click landed on.
       const outcome = await settle(tab, navigation);
@@ -444,8 +525,11 @@ function createAgentController(deps) {
     if (focused.error) return fail(targetError(focused.error, args.ref));
     if (!focused.ok) return fail(`Element ${args.ref} didn't take the focus.`);
     if ((stop = halted(r, t))) return stop;
+    if (!onScreen(tab, focused)) return toBackground(r);
     await deps.insertText(tab, args.text);
     if (args.submit) {
+      if ((stop = halted(r, t))) return stop;
+      if (!onScreen(tab, cleanOutcome(await deps.runInPage(tab, { op: 'visibility' })))) return toBackground(r);
       if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, keyEvents('Enter'));
     }
@@ -466,6 +550,7 @@ function createAgentController(deps) {
     if (approval) return approval;
     const stop = halted(r, t);
     if (stop) return stop;
+    if (!onScreen(tab, focused)) return toBackground(r);
     setAction(r, 'press', key);
     const navigation = tab.navigation;
     await deps.sendInput(tab, keyEvents(key));
@@ -488,7 +573,12 @@ function createAgentController(deps) {
     // A hidden page can't take input reliably, so the run waits while the
     // panel is closed or covered, and carries on when it shows again.
     onHide: () => pause('hidden'),
-    onShow: () => unpause('hidden'),
+    onShow: () => {
+      unpause('hidden');
+      if (run) void checkBackground(run);
+    },
+    /** Marven's window or the page may be back on screen (the window was shown, restored, focused). */
+    checkBackground: () => { if (run) void checkBackground(run); },
     onTabUpdate: (tab) => {
       if (!run || !owns(run, tab)) return;
       if (tab.auth) {

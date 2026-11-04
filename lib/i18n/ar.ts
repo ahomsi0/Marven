@@ -376,6 +376,7 @@ const ar: Shape<typeof en> = {
       paused: "متوقف مؤقتًا — التحكم بيدك",
       waitingSignIn: "بانتظار تسجيل دخولك",
       hidden: "متوقف مؤقتًا ما دام المتصفح مخفيًا",
+      background: "متوقف مؤقتًا ما دام Marven في الخلفية",
       takeOver: "تولَّ التحكم",
       resume: "استئناف",
       stop: "إيقاف",

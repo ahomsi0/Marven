@@ -33,7 +33,8 @@ export interface AgentActivity {
   state: "acting" | "paused" | "waiting-user";
   /** `target` is page text or a host: show it as plain text. */
   action: { kind: BrowserActionKind; target: string } | null;
-  reason?: "user" | "sign-in" | "hidden";
+  /** Why a paused run waits: the user took over, a sign-in prompt, the panel hidden, or Marven's window in the background. */
+  reason?: "user" | "sign-in" | "hidden" | "background";
 }
 
 export interface BrowserDownload {
