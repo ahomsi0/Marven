@@ -208,6 +208,8 @@ export async function* runAgentLoop(
       }
       if (result.kind === "ok") return { output: result.text, image: browser.canSeeImages ? result.image : undefined };
       if (result.kind === "error") return { output: result.text };
+      // An answer to a last approval would never be used: there is no attempt left to send it with.
+      if (attempt === MAX_BROWSER_APPROVALS - 1) break;
 
       const { approval } = result;
       yield { type: "pending_approval", callId, tool, args, browser: approval };

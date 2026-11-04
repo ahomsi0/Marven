@@ -620,6 +620,15 @@ describe("runAgentLoop browser tools", () => {
     expect(call.mock.calls[2][1]).toMatchObject({ approvedSubmit: true, approvedTarget: "Pay" });
   });
 
+  it("doesn't ask a third time when the page keeps changing", async () => {
+    let n = 0;
+    const call = vi.fn(async (): Promise<BrowserResult> => ({ kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "click", target: `Pay ${++n}`, fields: [] } }));
+    const { events } = await run({ steps: [click("c1")], call, approve: true });
+    expect(events.filter((e) => e.type === "pending_approval")).toHaveLength(2);
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "The page kept changing while waiting for approval; read it again.", truncated: false });
+  });
+
   it("blocks acting tools in read-only mode but not reading", async () => {
     const call = vi.fn(async (_id: string, _action: BrowserAction): Promise<BrowserResult> => ({ kind: "ok", text: "read" }));
     const { events } = await run({
