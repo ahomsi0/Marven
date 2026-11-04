@@ -38,9 +38,10 @@ export function registerBrowserCall(callId: string, runId: string, timeoutMs = B
   });
 }
 
-export function resolveBrowserCall(callId: string, result: BrowserResult): boolean {
+/** Resolves a call, but only for the run that owns it; false if there's no such call. */
+export function resolveBrowserCall(callId: string, runId: string, result: BrowserResult): boolean {
   const entry = calls.get(callId);
-  if (!entry) return false;
+  if (!entry || entry.runId !== runId) return false;
   clearTimeout(entry.timer);
   calls.delete(callId);
   entry.resolve(result);
@@ -76,12 +77,17 @@ const IMAGE_PREFIX: Record<string, ImageAttachment["mimeType"]> = {
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
+// Page-controlled text shown in approval cards must not carry control or
+// bidirectional-override characters that could disguise what is being approved.
+const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+const label = (v: unknown, max: number) => str(v, max).replace(UNSAFE_TEXT, "").trim();
+
 function cleanImage(raw: unknown): ImageAttachment | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const base64 = (raw as { base64?: unknown }).base64;
   if (typeof base64 !== "string" || base64.length > MAX_IMAGE) return undefined;
   const prefix = Object.keys(IMAGE_PREFIX).find((p) => base64.startsWith(p));
-  if (!prefix || !/^[A-Za-z0-9+/=]*$/.test(base64.slice(prefix.length))) return undefined;
+  if (!prefix || !/^[A-Za-z0-9+/=]+$/.test(base64.slice(prefix.length))) return undefined;
   const mimeType = IMAGE_PREFIX[prefix];
   return { base64, mimeType, name: mimeType === "image/png" ? "screenshot.png" : "screenshot.jpg" };
 }
@@ -90,14 +96,17 @@ function cleanApproval(raw: unknown): BrowserApprovalPreview | null {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   if (a.kind !== "site" && a.kind !== "submit") return null;
-  const host = str(a.host, 253);
+  const host = label(a.host, 253);
   if (!host || !ACTION_KINDS.has(a.action as BrowserActionKind)) return null;
-  const approval: BrowserApprovalPreview = { kind: a.kind, host, action: a.action as BrowserActionKind, target: str(a.target, MAX_LABEL) };
+  const approval: BrowserApprovalPreview = { kind: a.kind, host, action: a.action as BrowserActionKind, target: label(a.target, MAX_LABEL) };
   if (Array.isArray(a.fields)) {
-    approval.fields = a.fields.slice(0, MAX_FIELDS).map((f) => ({
-      name: str((f as Record<string, unknown>)?.name, MAX_LABEL),
-      value: str((f as Record<string, unknown>)?.value, MAX_LABEL),
-    }));
+    approval.fields = a.fields
+      .slice(0, MAX_FIELDS)
+      .map((f) => ({
+        name: label((f as Record<string, unknown> | null)?.name, MAX_LABEL),
+        value: label((f as Record<string, unknown> | null)?.value, MAX_LABEL),
+      }))
+      .filter((f) => f.name || f.value);
   }
   return approval;
 }
