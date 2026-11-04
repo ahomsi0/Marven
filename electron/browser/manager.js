@@ -91,12 +91,16 @@ function createBrowserManager({ dir, getWindow }) {
     onChange: () => scheduleSnapshot(),
     runInPage: runAgentScript,
     sendInput: sendAgentInput,
-    insertText: (tab, text) => {
+    insertText: async (tab, text) => {
       const wc = tab.webContents;
       if (!wc) return;
       tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
-      wc.focus();
-      return wc.insertText(text);
+      const giveBack = focusPage(wc);
+      try {
+        await wc.insertText(text);
+      } finally {
+        giveBack();
+      }
     },
     capture: captureForAgent,
   });
@@ -110,16 +114,34 @@ function createBrowserManager({ dir, getWindow }) {
     return wc.executeJavaScriptInIsolatedWorld(AGENT_WORLD_ID, [{ code: agentScript(request) }], false).catch(() => null);
   }
 
-  // Real input events at CSS-pixel points, scaled to the page's zoom. Keyboard
-  // events go to the focused webContents, so the page takes the focus first.
+  // Keyboard input (sendInputEvent, insertText) reaches only the focused
+  // webContents, so the page takes the focus for it. If Marven's own UI had
+  // it (the user typing in the composer or the address bar), it gets it back
+  // straight after, or the agent's typing would take the user's keyboard.
+  // Giving it back isn't input to the page, so it needs no grace window.
+  function focusPage(wc) {
+    const had = wc.isFocused();
+    wc.focus();
+    return () => {
+      if (had) return;
+      const win = getWindow();
+      if (win && !win.isDestroyed()) win.webContents.focus();
+    };
+  }
+
+  // Real input events at CSS-pixel points, scaled to the page's zoom.
   function sendAgentInput(tab, events) {
     const wc = tab.webContents;
     if (!wc) return;
     const zoom = wc.getZoomFactor();
     tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
-    if (events.some((e) => e.type.startsWith('key') || e.type === 'char')) wc.focus();
-    for (const event of events) {
-      wc.sendInputEvent('x' in event ? { ...event, x: Math.round(event.x * zoom), y: Math.round(event.y * zoom) } : event);
+    const giveBack = events.some((e) => e.type.startsWith('key') || e.type === 'char') ? focusPage(wc) : null;
+    try {
+      for (const event of events) {
+        wc.sendInputEvent('x' in event ? { ...event, x: Math.round(event.x * zoom), y: Math.round(event.y * zoom) } : event);
+      }
+    } finally {
+      giveBack?.();
     }
   }
 
@@ -309,16 +331,31 @@ function createBrowserManager({ dir, getWindow }) {
     return ok;
   }
 
+  // A tab an agent tab opens (target=_blank, window.open) is the agent's
+  // too: its downloads and fullscreen are blocked the same way, and it shows
+  // the agent's badge. The page loads in a later task, so marking it right
+  // after creating it is in time.
+  function inheritAgent(opener, tab) {
+    if (!tab || !opener.agent) return;
+    tab.agent = { ...opener.agent };
+    scheduleSnapshot();
+  }
+
   function openPopup(opener, url, { background = false } = {}) {
-    if (allowPopup(opener)) newTab(url, { afterId: opener.id, activate: !background });
+    if (!allowPopup(opener)) return;
+    const id = newTab(url, { afterId: opener.id, activate: !background });
+    inheritAgent(opener, id ? existingTab(id) : null);
   }
 
   // A pop-up window that keeps its opener (allowPopup already ran): a new tab
-  // next to the opener, around the webContents Chromium is creating.
+  // next to the opener, around the webContents Chromium is creating. Marked
+  // before it adopts that webContents, so it is the agent's from the start.
   function openPopupWindow(opener, url, options) {
     const entry = { id: newId(), url, title: '' };
     commit(model.addTab(state, entry, { afterId: opener.id, activate: true }));
-    const webContents = tabFor(entry).adoptPopup(options);
+    const tab = tabFor(entry);
+    inheritAgent(opener, tab);
+    const webContents = tab.adoptPopup(options);
     showActive();
     return webContents;
   }
