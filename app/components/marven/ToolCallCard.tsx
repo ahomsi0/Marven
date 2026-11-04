@@ -5,6 +5,7 @@ import type { ApprovalScope, BrowserActionKind, ToolCallState } from "@/types";
 import { useT } from "@/lib/i18n";
 import { hostOf } from "@/lib/inAppBrowser";
 import { BrowserApprovalCard } from "./browser/BrowserApprovalCard";
+import { actionKey } from "./browser/actionText";
 import { isolate, marked } from "./browser/isolate";
 
 const APPROVAL_TIMEOUT_SECONDS = 60;
@@ -144,7 +145,7 @@ function browserTarget(kind: BrowserActionKind, args: Record<string, unknown> | 
 function BrowserCallLabel({ kind, args }: { kind: BrowserActionKind; args: Record<string, unknown> | null }) {
   const { t } = useT();
   const target = browserTarget(kind, args);
-  return <>{isolate(t(`browser.agent.actions.${kind}`, marked({ target })), { target })}</>;
+  return <>{isolate(t(actionKey(kind, target), marked({ target })), { target })}</>;
 }
 
 export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {

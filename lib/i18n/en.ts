@@ -388,6 +388,11 @@ const en = {
         select: "choosing in “{{target}}”",
         idle: "thinking",
       },
+      history: {
+        back: "going back",
+        forward: "going forward",
+        reload: "reloading the page",
+      },
       approval: {
         siteTitle: "Let Marven act on {{host}}?",
         submitTitle: "Let Marven submit this form on {{host}}?",

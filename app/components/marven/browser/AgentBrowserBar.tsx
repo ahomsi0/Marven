@@ -3,6 +3,7 @@
 import { useT } from "@/lib/i18n";
 import type { AgentActivity, BrowserBridge } from "@/lib/inAppBrowser";
 import { MarvenLogo } from "../MarvenLogo";
+import { actionKey } from "./actionText";
 import { isolate, marked } from "./isolate";
 
 const BUTTON = "shrink-0 rounded-md border border-[var(--m-border)] px-2 py-0.5 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-2)]";
@@ -16,7 +17,7 @@ export function AgentBrowserBar({ bridge, activity }: { bridge: BrowserBridge; a
   const { t } = useT();
   const target = activity.action?.target ?? "";
   const doing = activity.action
-    ? t(`browser.agent.actions.${activity.action.kind}`, marked({ target }))
+    ? t(actionKey(activity.action.kind, target), marked({ target }))
     : t("browser.agent.actions.idle");
   const line =
     activity.state === "acting" ? isolate(t("browser.agent.acting", { action: doing }), { target })

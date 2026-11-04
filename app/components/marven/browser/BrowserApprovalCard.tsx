@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { useT } from "@/lib/i18n";
+import { actionKey } from "./actionText";
 import { isolate, marked } from "./isolate";
 import type { ApprovalScope, BrowserApprovalPreview } from "@/types";
 
@@ -28,7 +29,7 @@ export function BrowserApprovalCard({ callId, approval, secondsLeft, onApprove }
   const shown = (value: string) => (value === "(hidden)" ? t("browser.agent.approval.hidden") : value);
   const values = { host: approval.host, target: approval.target };
   const m = marked(values);
-  const action = t(`browser.agent.actions.${approval.action}`, m);
+  const action = t(actionKey(approval.action, approval.target), m);
   const title = approval.kind === "submit" ? "browser.agent.approval.submitTitle" : "browser.agent.approval.siteTitle";
 
   return (

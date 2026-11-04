@@ -394,6 +394,11 @@ const ar: Shape<typeof en> = {
         select: "يختار في «{{target}}»",
         idle: "يفكّر",
       },
+      history: {
+        back: "يعود إلى الصفحة السابقة",
+        forward: "ينتقل إلى الصفحة التالية",
+        reload: "يعيد تحميل الصفحة",
+      },
       approval: {
         siteTitle: "هل تسمح لـ Marven بالتصرف على {{host}}؟",
         submitTitle: "هل تسمح لـ Marven بإرسال هذا النموذج على {{host}}؟",
