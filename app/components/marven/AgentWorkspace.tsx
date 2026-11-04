@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment, EditorProblem } from "@/types";
+import type { AIProvider, ApprovalScope, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment, EditorProblem } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
@@ -303,7 +303,7 @@ interface AgentWorkspaceProps {
   onRefreshFiles: () => void;
   checkpoints?: string[];
   liveTerminalOutput?: string;
-  onApproveToolCall?: (callId: string, accept: boolean) => void;
+  onApproveToolCall?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
   recentWorkspaces?: string[];
   onSelectRecent?: (path: string) => void;
   onOpenSettings?: () => void;

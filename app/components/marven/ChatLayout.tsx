@@ -17,6 +17,7 @@ import type {
   PromptTemplate,
   ImageAttachment,
   EditorTab,
+  ApprovalScope,
 } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { Message } from "@/app/components/marven/Message";
@@ -78,7 +79,7 @@ interface ChatLayoutProps {
   agentTerminalOutput: string;
   liveTerminalOutput?: string;
   checkpoints?: string[];
-  onApproveToolCall?: (callId: string, accept: boolean) => void;
+  onApproveToolCall?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
   recentWorkspaces?: string[];
   onSelectRecent?: (path: string) => void;
   appVersion?: string;

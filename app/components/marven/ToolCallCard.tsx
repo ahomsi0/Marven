@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { ToolCallState } from "@/types";
+import type { ApprovalScope, ToolCallState } from "@/types";
+import { BrowserApprovalCard } from "./browser/BrowserApprovalCard";
 
 const APPROVAL_TIMEOUT_SECONDS = 60;
 
@@ -66,6 +67,9 @@ function ToolGlyph({ tool }: { tool: string }) {
     case "remember":
       return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>;
     default:
+      if (tool.startsWith("browser_")) {
+        return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>;
+      }
       if (tool.startsWith("git_")) {
         return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="6" cy="18" r="2" /><path d="M6 8v8M8 18h8M18 16V8a2 2 0 00-2-2H8" /></svg>;
       }
@@ -75,7 +79,7 @@ function ToolGlyph({ tool }: { tool: string }) {
 
 interface ToolCallCardProps {
   toolCall: ToolCallState;
-  onApprove?: (callId: string, accept: boolean) => void;
+  onApprove?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
 }
 
 function basename(p: string): string {
@@ -245,7 +249,16 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         </div>
       )}
 
-      {toolCall.tool !== "__plan__" && toolCall.status === "awaiting_approval" && (
+      {toolCall.status === "awaiting_approval" && toolCall.browserApproval && (
+        <BrowserApprovalCard
+          callId={toolCall.callId}
+          approval={toolCall.browserApproval}
+          secondsLeft={approvalSecondsLeft}
+          onApprove={onApprove}
+        />
+      )}
+
+      {toolCall.tool !== "__plan__" && toolCall.status === "awaiting_approval" && !toolCall.browserApproval && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
           <span className="text-[10px] text-[#d19a66]">
             {approvalSecondsLeft > 0
