@@ -25,7 +25,7 @@ import { InputBar } from "@/app/components/marven/InputBar";
 import { Sidebar } from "@/app/components/marven/Sidebar";
 import { PROVIDER_LABELS, shortModelName } from "@/app/components/marven/ModelSelector";
 import { GlobeIcon, SidebarIcon } from "@/app/components/marven/Icons";
-import { BrowserPanel } from "@/app/components/marven/browser/BrowserPanel";
+import { BrowserSplit } from "@/app/components/marven/browser/BrowserSplit";
 import { useT } from "@/lib/i18n";
 import { SettingsModal } from "@/app/components/marven/SettingsModal";
 import { SpeakingWave } from "@/app/components/marven/SpeakingWave";
@@ -155,10 +155,7 @@ interface ChatLayoutProps {
   onEditAgentUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
 }
 
-const BROWSER_WIDTH_KEY = "marven-browser-width";
 const THEMES: Theme[] = ["dark", "light", "midnight", "aurora"];
-// The browser panel's minimum width, and the space the chat always keeps.
-const BROWSER_MIN_WIDTH = 360;
 
 function TypingRow() {
   return (
@@ -294,74 +291,6 @@ export function ChatLayout({
   // In-app browser panel beside the chat (globe button in the header).
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserExpanded, setBrowserExpanded] = useState(false);
-  // Browser panel width in px, set by dragging its edge; null = half the row.
-  const [browserWidth, setBrowserWidth] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const saved = Number(localStorage.getItem(BROWSER_WIDTH_KEY));
-      return saved >= BROWSER_MIN_WIDTH ? saved : null;
-    } catch {
-      return null;
-    }
-  });
-  const [browserResizing, setBrowserResizing] = useState(false);
-  const browserRowRef = useRef<HTMLDivElement>(null);
-  const browserAsideRef = useRef<HTMLElement>(null);
-
-  // The chat keeps at least BROWSER_MIN_WIDTH next to the browser.
-  function clampBrowserWidth(width: number) {
-    const row = browserRowRef.current?.getBoundingClientRect().width ?? window.innerWidth;
-    const max = Math.max(BROWSER_MIN_WIDTH, row - BROWSER_MIN_WIDTH);
-    return Math.round(Math.min(Math.max(width, BROWSER_MIN_WIDTH), max));
-  }
-
-  function saveBrowserWidth(width: number | null) {
-    setBrowserWidth(width);
-    try {
-      if (width === null) localStorage.removeItem(BROWSER_WIDTH_KEY);
-      else localStorage.setItem(BROWSER_WIDTH_KEY, String(width));
-    } catch { /* best effort */ }
-  }
-
-  function startBrowserResize(e: React.PointerEvent<HTMLDivElement>) {
-    const row = browserRowRef.current;
-    if (e.button !== 0 || !row) return;
-    e.preventDefault();
-    const handle = e.currentTarget;
-    handle.setPointerCapture(e.pointerId);
-    const rtl = document.documentElement.dir === "rtl";
-    let latest: number | null = null;
-    setBrowserResizing(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    const onMove = (ev: PointerEvent) => {
-      const r = row.getBoundingClientRect();
-      latest = clampBrowserWidth(rtl ? ev.clientX - r.left : r.right - ev.clientX);
-      setBrowserWidth(latest);
-    };
-    const onUp = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onUp);
-      handle.removeEventListener("pointercancel", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      setBrowserResizing(false);
-      if (latest !== null) saveBrowserWidth(latest);
-    };
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onUp);
-    handle.addEventListener("pointercancel", onUp);
-  }
-
-  function nudgeBrowserWidth(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const rtl = document.documentElement.dir === "rtl";
-    // The handle sits on the browser's start edge: moving it outward widens it.
-    const grow = (e.key === "ArrowLeft") !== rtl;
-    const current = browserWidth ?? browserAsideRef.current?.getBoundingClientRect().width ?? BROWSER_MIN_WIDTH;
-    saveBrowserWidth(clampBrowserWidth(current + (grow ? 24 : -24)));
-  }
   const [convSearchOpen, setConvSearchOpen] = useState(false);
   // App-wide command palette (⌘⇧P by default, remappable in Settings → Keyboard).
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -397,6 +326,13 @@ export function ChatLayout({
   useEffect(() => {
     setBrowserExpanded(false);
   }, [activeConversationId]);
+
+  // The agent's first browser action of a run opens the panel (useAgentStream).
+  useEffect(() => {
+    const open = () => setBrowserOpen(true);
+    window.addEventListener("marven:browser-open", open);
+    return () => window.removeEventListener("marven:browser-open", open);
+  }, []);
 
   // "Report a problem" / "Manage memory" from anywhere (palette, memory toast):
   // open the real Settings window in chat mode; the modal picks up the pending
@@ -550,8 +486,8 @@ export function ChatLayout({
       { id: "toggle-sidebar", group: general, label: t("palette.commands.toggleSidebar"), action: () => setSidebarOpen((v) => !v) },
     ];
 
-    // The in-app browser lives beside the chat, and only in the desktop app.
-    if (mode === "chat" && bridge) {
+    // The in-app browser lives beside the chat or the agent workspace, and only in the desktop app.
+    if (bridge) {
       commands.push(
         {
           id: "toggle-browser",
@@ -772,7 +708,21 @@ export function ChatLayout({
           )}
 
           {mode === "agent" ? (
+            <BrowserSplit
+              open={browserOpen}
+              expanded={browserExpanded}
+              onToggleExpand={() => setBrowserExpanded((v) => !v)}
+              onClose={() => {
+                setBrowserOpen(false);
+                setBrowserExpanded(false);
+              }}
+            >
             <AgentWorkspace
+              browserOpen={browserOpen}
+              onToggleBrowser={() => {
+                setBrowserOpen((v) => !v);
+                setBrowserExpanded(false);
+              }}
               sidebarOpen={sidebarOpen}
               onOpenSidebar={() => setSidebarOpen(true)}
               messages={agentMessages}
@@ -852,9 +802,17 @@ export function ChatLayout({
               onOpenCommandPalette={() => setPaletteOpen(true)}
               paletteCommandsRef={agentPaletteCommandsRef}
             />
+            </BrowserSplit>
           ) : (
-            <div ref={browserRowRef} className="flex min-h-0 flex-1 overflow-hidden">
-            <div className={`flex min-w-0 flex-1 flex-col ${browserOpen && browserExpanded ? "hidden" : ""}`}>
+            <BrowserSplit
+              open={browserOpen}
+              expanded={browserExpanded}
+              onToggleExpand={() => setBrowserExpanded((v) => !v)}
+              onClose={() => {
+                setBrowserOpen(false);
+                setBrowserExpanded(false);
+              }}
+            >
               {/* Messages */}
               <main
                 ref={messagesViewportRef}
@@ -933,50 +891,7 @@ export function ChatLayout({
                   />
                 </div>
               </footer>
-            </div>
-            {browserOpen && !browserExpanded && (
-              // A sibling of the aside, not inside it: the native page covers
-              // the aside's interior and would take the pointer.
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("browser.resize")}
-                aria-valuemin={BROWSER_MIN_WIDTH}
-                aria-valuenow={browserWidth ?? undefined}
-                title={t("browser.resize")}
-                tabIndex={0}
-                onPointerDown={startBrowserResize}
-                onDoubleClick={() => saveBrowserWidth(null)}
-                onKeyDown={nudgeBrowserWidth}
-                className="relative z-10 -me-px w-1 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
-              />
-            )}
-            {browserOpen && (
-              <aside
-                ref={browserAsideRef}
-                className={
-                  browserExpanded
-                    ? "flex min-w-0 flex-1 flex-col"
-                    : `flex min-w-[360px] flex-col border-s border-[var(--m-border)] ${browserWidth === null ? "w-1/2" : "shrink-0"}`
-                }
-                style={
-                  browserExpanded || browserWidth === null
-                    ? undefined
-                    : { width: browserWidth, maxWidth: `calc(100% - ${BROWSER_MIN_WIDTH}px)` }
-                }
-              >
-                <BrowserPanel
-                  expanded={browserExpanded}
-                  resizing={browserResizing}
-                  onToggleExpand={() => setBrowserExpanded((v) => !v)}
-                  onClose={() => {
-                    setBrowserOpen(false);
-                    setBrowserExpanded(false);
-                  }}
-                />
-              </aside>
-            )}
-            </div>
+            </BrowserSplit>
           )}
         </div>
       </div>
