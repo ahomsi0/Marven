@@ -61,3 +61,27 @@ export function redactText(input: string, options: RedactOptions = {}): string {
 export function redactLines(lines: readonly string[], options: RedactOptions = {}): string[] {
   return lines.map((line) => redactText(line, options));
 }
+
+// Credentials the agent must never type into a page or put in a URL it
+// opens. Unlike redactText, emails and long ids are fine here: filling in an
+// email or following a link with a UUID is ordinary browsing.
+const SECRET_PATTERNS: readonly RegExp[] = [
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
+  /\bsk-ant-[A-Za-z0-9_-]{8,}/,
+  /\bsk-or-[A-Za-z0-9_-]{8,}/,
+  /\bsk-[A-Za-z0-9_-]{16,}/,
+  /\bgsk_[A-Za-z0-9]{16,}/,
+  /\bnvapi-[A-Za-z0-9_-]{16,}/,
+  /\bgh[pousr]_[A-Za-z0-9]{30,}/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+];
+
+/** Known values shorter than this are too likely to appear by chance. */
+const MIN_KNOWN_SECRET = 12;
+
+export function containsSecret(text: string, knownSecrets: readonly string[] = []): boolean {
+  if (!text) return false;
+  if (SECRET_PATTERNS.some((re) => re.test(text))) return true;
+  return knownSecrets.some((secret) => secret.length >= MIN_KNOWN_SECRET && text.includes(secret));
+}
