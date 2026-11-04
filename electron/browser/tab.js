@@ -5,6 +5,9 @@
 // can be suppressed by the user. Links and window.open() become new tabs; a
 // pop-up window (window.open with features, as sign-in flows use) becomes a
 // tab that keeps its opener, so it can post back and close itself.
+// An agent tab also never leaves for an address the agent may not open
+// (Marven's own UI, a private network); the session cancels its requests
+// there too.
 
 const { WebContentsView } = require('electron');
 const { isWebUrl } = require('./validate');
@@ -15,6 +18,9 @@ const isCertificateError = (code) => code <= -200 && code > -300;
 // Leaving fullscreen runs in its own isolated world (not the page's, not 999
 // for preloads, not 1001 for page extraction).
 const FULLSCREEN_WORLD_ID = 1002;
+// Input that is the user's own: a click, a key or a tap. Mouse moves and
+// scrolling (looking around while the agent works) don't count.
+const USER_INPUT_TYPES = new Set(['mouseDown', 'keyDown', 'rawKeyDown', 'touchStart']);
 const EXIT_FULLSCREEN = 'if (document.fullscreenElement) document.exitFullscreen().catch(() => {});';
 
 function securePreferences(session) {
@@ -44,6 +50,8 @@ class Tab {
    *   onFullscreen: (tab: Tab, on: boolean) => void,
    *   onShortcut: (input: Electron.Input) => boolean,
    *   onView: (tab: Tab) => void,
+   *   onUserInput: (tab: Tab) => void,
+   *   refuseAgentUrl: (url: string) => boolean,
    * } }} options
    */
   constructor({ id, url, title, session, hooks }) {
@@ -71,6 +79,11 @@ class Tab {
     // A pending HTTP sign-in request from the server: { host, realm, isProxy, callback }.
     this.auth = null;
     this.fullscreen = false;
+    // Set when Marven's agent opened this tab: { conversationId }. Not saved.
+    this.agent = null;
+    // Input sent before this time (ms) is the agent's own; later input is the
+    // user's and pauses the agent.
+    this.agentInputUntil = 0;
   }
 
   // A view's webContents can be gone (not just destroyed) once a pop-up has
@@ -109,8 +122,12 @@ class Tab {
   wire(wc) {
     const update = () => this.hooks.onUpdate(this);
 
+    // Whether this tab may not go to `url`: it's the agent's, and `url` is
+    // somewhere the agent may not open.
+    const refused = (url) => !isWebUrl(url) || (!!this.agent && this.hooks.refuseAgentUrl(url));
+
     wc.setWindowOpenHandler(({ url, disposition }) => {
-      if (!isWebUrl(url)) return { action: 'deny' };
+      if (refused(url)) return { action: 'deny' };
       if (disposition === 'new-window') {
         if (!this.hooks.allowPopup(this)) return { action: 'deny' };
         return {
@@ -158,7 +175,7 @@ class Tab {
       callback();
     });
     const guard = (details) => {
-      if (!isWebUrl(details.url)) details.preventDefault();
+      if (refused(details.url)) details.preventDefault();
     };
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
@@ -230,6 +247,9 @@ class Tab {
       this.error = { kind: 'crashed', description: details.reason };
       this.loading = false;
       update();
+    });
+    wc.on('input-event', (_e, input) => {
+      if (USER_INPUT_TYPES.has(input.type) && Date.now() > this.agentInputUntil) this.hooks.onUserInput(this);
     });
     wc.on('before-input-event', (event, input) => {
       if (this.hooks.onShortcut(input)) event.preventDefault();

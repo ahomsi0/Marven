@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_SEARCH_ENGINE, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBrowser";
 
-const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, canReopen: false, downloads: [], searchEngine: DEFAULT_SEARCH_ENGINE };
+const EMPTY: BrowserSnapshot = { tabs: [], activeId: null, canReopen: false, downloads: [], searchEngine: DEFAULT_SEARCH_ENGINE, agentActivity: null };
 
 /** The latest browser snapshot pushed by the main process. */
 export function useBrowserSnapshot(bridge: BrowserBridge | null): BrowserSnapshot {

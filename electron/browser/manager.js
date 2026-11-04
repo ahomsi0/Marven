@@ -17,6 +17,9 @@ const { searchEngine, DEFAULT_ENGINE_ID } = require('./searchEngines');
 const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 const { EXTRACT_SCRIPT, cleanExtract } = require('./pageText');
 const { cleanLabels, contextMenuTemplate } = require('./contextMenu');
+const { createAgentController } = require('./agent');
+const { createAddressPolicy } = require('./addresses');
+const { AGENT_WORLD_ID, script: agentScript } = require('./agentDom');
 
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
@@ -29,12 +32,18 @@ const POPUPS_PER_SECOND = 2;
 // and not 999, which Electron uses for preloads) and gives up after this long.
 const EXTRACT_WORLD_ID = 1001;
 const EXTRACT_TIMEOUT_MS = 5000;
+// Screenshots for the agent: at most this wide, as JPEG.
+const SCREENSHOT_MAX_WIDTH = 1280;
+const SCREENSHOT_JPEG_QUALITY = 70;
+// Input the agent sends counts as its own for this long; later input is the user's.
+const OWN_INPUT_GRACE_MS = 150;
 const newId = () => crypto.randomUUID();
 
 /**
- * @param {{ dir: string, getWindow: () => Electron.BrowserWindow | null }} options
+ * @param {{ dir: string, getWindow: () => Electron.BrowserWindow | null, appPort: number }} options
+ *   `appPort` is the port Marven's own UI and API are served on.
  */
-function createBrowserManager({ dir, getWindow }) {
+function createBrowserManager({ dir, getWindow, appPort }) {
   let ses = null;
   let library = null;
   let downloads = null;
@@ -52,6 +61,20 @@ function createBrowserManager({ dir, getWindow }) {
   // The tab whose page is fullscreen, if any (it's always the active one).
   let fullscreenTab = null;
   const popupLimiter = createRateLimiter({ max: POPUPS_PER_SECOND, windowMs: 1000 });
+  // Where the agent's tabs may not go: Marven itself (wherever its window
+  // is) and private networks.
+  const addresses = createAddressPolicy({
+    appPorts: [appPort],
+    appOrigins: () => {
+      const win = getWindow();
+      if (!win || win.isDestroyed()) return [];
+      try {
+        return [new URL(win.webContents.getURL()).origin];
+      } catch {
+        return [];
+      }
+    },
+  });
   const host = createViewHost({
     getWindow,
     getPage: () => {
@@ -60,6 +83,102 @@ function createBrowserManager({ dir, getWindow }) {
       return { showable: !!tab && !tab.error && !tab.auth, views: [...tabs.values()].map((t) => t.view) };
     },
   });
+
+  const agent = createAgentController({
+    tabs: {
+      get: (id) => existingTab(id),
+      open: (conversationId, url) => {
+        const id = newTab(url);
+        const tab = id ? existingTab(id) : null;
+        if (!tab) return null;
+        tab.agent = { conversationId };
+        tab.ensureView();
+        scheduleSnapshot();
+        return tab;
+      },
+      owned: (conversationId) => state.tabs
+        .map((entry) => tabs.get(entry.id))
+        .filter((tab) => tab?.agent?.conversationId === conversationId),
+      // The agent's own switching: not a user action, so it doesn't pause the run.
+      activate: (id) => { if (state.activeId !== id) activateTab(id); },
+      close: (id) => closeTab(id),
+    },
+    isShown: () => host.isShown(),
+    // Input reaches only a page on screen; Chromium queues it otherwise.
+    isVisible: (tab) => {
+      const win = getWindow();
+      return !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && host.isOnScreen(tab.view);
+    },
+    onChange: () => scheduleSnapshot(),
+    runInPage: runAgentScript,
+    sendInput: sendAgentInput,
+    insertText: async (tab, text) => {
+      const wc = tab.webContents;
+      if (!wc) return;
+      tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
+      const giveBack = focusPage(wc);
+      try {
+        await wc.insertText(text);
+      } finally {
+        giveBack();
+      }
+    },
+    capture: captureForAgent,
+    refuseUrl: addresses.refusal,
+  });
+
+  // The agent's in-page script (agentDom.js), in its own isolated world.
+  // A page that throws or isn't ready answers null.
+  async function runAgentScript(tab, request) {
+    tab.ensureView();
+    const wc = tab.webContents;
+    if (!wc) return null;
+    return wc.executeJavaScriptInIsolatedWorld(AGENT_WORLD_ID, [{ code: agentScript(request) }], false).catch(() => null);
+  }
+
+  // Keyboard input (sendInputEvent, insertText) reaches only the focused
+  // webContents, so the page takes the focus for it. If Marven's own UI had
+  // it (the user typing in the composer or the address bar), it gets it back
+  // straight after, or the agent's typing would take the user's keyboard.
+  // Giving it back isn't input to the page, so it needs no grace window.
+  function focusPage(wc) {
+    const had = wc.isFocused();
+    wc.focus();
+    return () => {
+      if (had) return;
+      const win = getWindow();
+      if (win && !win.isDestroyed()) win.webContents.focus();
+    };
+  }
+
+  // Real input events at CSS-pixel points, scaled to the page's zoom.
+  function sendAgentInput(tab, events) {
+    const wc = tab.webContents;
+    if (!wc) return;
+    const zoom = wc.getZoomFactor();
+    tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
+    const giveBack = events.some((e) => e.type.startsWith('key') || e.type === 'char') ? focusPage(wc) : null;
+    try {
+      for (const event of events) {
+        wc.sendInputEvent('x' in event ? { ...event, x: Math.round(event.x * zoom), y: Math.round(event.y * zoom) } : event);
+      }
+    } finally {
+      giveBack?.();
+    }
+  }
+
+  async function captureForAgent(tab) {
+    const wc = tab.webContents;
+    if (!wc) return null;
+    let image = await wc.capturePage();
+    if (image.isEmpty()) return null;
+    if (image.getSize().width > SCREENSHOT_MAX_WIDTH) image = image.resize({ width: SCREENSHOT_MAX_WIDTH, quality: 'good' });
+    return {
+      base64: `data:image/jpeg;base64,${image.toJPEG(SCREENSHOT_JPEG_QUALITY).toString('base64')}`,
+      mimeType: 'image/jpeg',
+      name: 'screenshot.jpg',
+    };
+  }
 
   function init() {
     if (ses) return;
@@ -75,6 +194,15 @@ function createBrowserManager({ dir, getWindow }) {
         scheduleSnapshot(BLOCKED_SNAPSHOT_DELAY_MS);
       },
       onDownloadsChange: scheduleSnapshot,
+      isAgentActing: (webContentsId) => {
+        const tab = byWebContents.get(webContentsId);
+        return !!tab && agent.isActingTab(tab);
+      },
+      refuseRequest: (details) => !!byWebContents.get(details.webContentsId)?.agent && addresses.refusesRequest(details),
+      shouldBlockDownload: (webContents) => {
+        const tab = webContents ? byWebContents.get(webContents.id) : null;
+        return !!tab && agent.blocksDownloadFrom(tab);
+      },
     }));
     // The filter lists are downloaded on the first show(), not here, so a call
     // from Settings (clearing browsing data) never starts that download.
@@ -107,9 +235,11 @@ function createBrowserManager({ dir, getWindow }) {
           error: tab?.error ?? null,
           find: tab?.find ?? null,
           auth: tab?.auth ? { host: tab.auth.host, realm: tab.auth.realm, isProxy: tab.auth.isProxy } : null,
+          agent: !!tab?.agent,
         };
       }),
       activeId: state.activeId,
+      agentActivity: agent.activity(),
       canReopen: state.closed.length > 0,
       downloads: downloads.list(),
       searchEngine: { id: engine.id, name: engine.name, searchUrl: engine.searchUrl },
@@ -170,6 +300,8 @@ function createBrowserManager({ dir, getWindow }) {
         onFullscreen,
         onShortcut: handleShortcut,
         onView: (t) => byWebContents.set(t.webContentsId, t),
+        onUserInput: (t) => agent.onUserInput(t),
+        refuseAgentUrl: (url) => addresses.refusal(url) !== null,
       },
     });
     tabs.set(entry.id, tab);
@@ -184,6 +316,7 @@ function createBrowserManager({ dir, getWindow }) {
       scheduleSnapshot();
     }
     if (tab.id === state.activeId) host.syncVisibility();
+    agent.onTabUpdate(tab);
   }
 
   function activeTab() {
@@ -225,16 +358,32 @@ function createBrowserManager({ dir, getWindow }) {
     return ok;
   }
 
+  // A tab an agent tab opens (target=_blank, window.open) while a run is
+  // using it is the agent's too: its downloads and fullscreen are blocked the
+  // same way, and it shows the agent's badge. Once the run is over, it's the
+  // user's. The page loads in a later task, so marking it right after
+  // creating it is in time.
+  function inheritAgent(opener, tab) {
+    if (!tab || !agent.isActingTab(opener)) return;
+    tab.agent = { ...opener.agent };
+    scheduleSnapshot();
+  }
+
   function openPopup(opener, url, { background = false } = {}) {
-    if (allowPopup(opener)) newTab(url, { afterId: opener.id, activate: !background });
+    if (!allowPopup(opener)) return;
+    const id = newTab(url, { afterId: opener.id, activate: !background });
+    inheritAgent(opener, id ? existingTab(id) : null);
   }
 
   // A pop-up window that keeps its opener (allowPopup already ran): a new tab
-  // next to the opener, around the webContents Chromium is creating.
+  // next to the opener, around the webContents Chromium is creating. Marked
+  // before it adopts that webContents, so it is the agent's from the start.
   function openPopupWindow(opener, url, options) {
     const entry = { id: newId(), url, title: '' };
     commit(model.addTab(state, entry, { afterId: opener.id, activate: true }));
-    const webContents = tabFor(entry).adoptPopup(options);
+    const tab = tabFor(entry);
+    inheritAgent(opener, tab);
+    const webContents = tab.adoptPopup(options);
     showActive();
     return webContents;
   }
@@ -314,9 +463,14 @@ function createBrowserManager({ dir, getWindow }) {
     Menu.buildFromTemplate(template).popup({ window: win });
   }
 
-  // Only the page on screen may go fullscreen; it then covers the window.
+  // Only the page on screen may go fullscreen; it then covers the window. Not
+  // while an agent run is using the tab (it would cover the strip's Stop).
   function onFullscreen(tab, on) {
     if (on) {
+      if (agent.isActingTab(tab)) {
+        tab.exitFullscreen();
+        return;
+      }
       if (tab.id !== state.activeId || !host.isShown()) {
         tab.exitFullscreen();
         return;
@@ -384,6 +538,8 @@ function createBrowserManager({ dir, getWindow }) {
   function handleShortcut(input) {
     const shortcut = shortcutAction(input);
     if (!shortcut) return false;
+    // A browser shortcut is the user taking control.
+    agent.takeOver();
     const active = state.activeId;
     switch (shortcut.action) {
       case 'new-tab': newTab(engine.homeUrl); break;
@@ -434,6 +590,7 @@ function createBrowserManager({ dir, getWindow }) {
     // A renderer reload (HMR, crash recovery) must not leave a page floating
     // over a UI that no longer has a browser panel.
     const hideForReload = () => {
+      agent.reset();
       panelFocused = false;
       if (ses) hide();
     };
@@ -442,6 +599,9 @@ function createBrowserManager({ dir, getWindow }) {
       if (staysOnOrigin(details.url, win.webContents.getURL())) hideForReload();
     });
     win.webContents.on('render-process-gone', hideForReload);
+    // Back on screen: an agent run waiting for the page to be visible again
+    // checks now rather than at its next poll.
+    for (const event of ['show', 'restore', 'focus']) win.on(event, () => agent.checkBackground());
     // The window left fullscreen on its own (green button, Mission Control):
     // the page leaves too, or it would keep covering the whole window.
     win.on('leave-full-screen', () => {
@@ -478,11 +638,20 @@ function createBrowserManager({ dir, getWindow }) {
   return {
     attachWindow,
     flush,
-    show: ready(show),
+    show: ready((b) => {
+      show(b);
+      agent.onShow();
+    }),
     setBounds: ready(host.setBounds),
-    hide: ready(hide),
+    hide: ready(() => {
+      agent.onHide();
+      hide();
+    }),
     freeze: ready(host.freeze),
-    unfreeze: ready(host.unfreeze),
+    unfreeze: ready(() => {
+      host.unfreeze();
+      agent.checkBackground();
+    }),
     setPanelFocused: (focused) => { panelFocused = focused; },
     setMenuLabels: (labels) => { menuLabels = cleanLabels(labels); },
     setSearchEngine: (id) => {
@@ -490,11 +659,25 @@ function createBrowserManager({ dir, getWindow }) {
       if (ses) scheduleSnapshot();
     },
     snapshot: ready(snapshot),
-    newTab: ready((url) => newTab(url)),
-    closeTab: ready(closeTab),
-    activateTab: ready(activateTab),
+    // The user opening a tab is taking control: the agent's next action would
+    // otherwise pull the view back to its own tab.
+    newTab: ready((url) => {
+      agent.takeOver();
+      return newTab(url);
+    }),
+    closeTab: ready((id) => {
+      agent.onUserClose(id);
+      closeTab(id);
+    }),
+    activateTab: ready((id) => {
+      agent.onUserActivate(id);
+      activateTab(id);
+    }),
     moveTab: ready(moveTab),
-    reopenClosedTab: ready(reopenClosedTab),
+    reopenClosedTab: ready(() => {
+      agent.takeOver();
+      reopenClosedTab();
+    }),
     navigate: ready(navigate),
     command: ready(command),
     find: ready(find),
@@ -510,6 +693,10 @@ function createBrowserManager({ dir, getWindow }) {
     cancelDownload: ready((id) => downloads.cancel(id)),
     showDownload: ready((id) => downloads.show(id)),
     clearBrowsingData: ready(clearBrowsingData),
+    agentRun: ready((runId, conversationId, action) => agent.perform(runId, conversationId, action)),
+    agentResume: ready(() => agent.resume()),
+    agentTakeOver: ready(() => agent.takeOver()),
+    agentEnd: ready((runId) => agent.end(runId)),
   };
 }
 

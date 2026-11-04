@@ -23,7 +23,7 @@ import {
   type SettingsRequestPage,
 } from "@/lib/settingsNav";
 import { Trans } from "react-i18next";
-import { getRequireWriteApproval, setRequireWriteApproval } from "@/lib/agentSettings";
+import { getAgentBrowsing, getRequireWriteApproval, setAgentBrowsing, setRequireWriteApproval } from "@/lib/agentSettings";
 import { getLocalSttPipeline, type LocalSttProgress } from "@/lib/localStt";
 import {
   DEFAULT_KEYBINDINGS,
@@ -358,6 +358,7 @@ export function SettingsModal({
     setSavedSystemPrompt(systemPromptDraft);
   }
   const [requireWriteApproval, setRequireWriteApprovalState] = useState<boolean>(false);
+  const [agentBrowsing, setAgentBrowsingState] = useState<boolean>(false);
   const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
   const [agentAutoVerifyEnabled, setAgentAutoVerifyEnabled] = useState<boolean>(false);
   const [agentAutoVerifyCommands, setAgentAutoVerifyCommands] = useState<string>("");
@@ -377,6 +378,7 @@ export function SettingsModal({
   useEffect(() => {
     setFormatOnSaveState(getFormatOnSave());
     setRequireWriteApprovalState(getRequireWriteApproval());
+    setAgentBrowsingState(getAgentBrowsing());
     const prompt = getSystemPrompt();
     setSystemPromptDraft(prompt);
     setSavedSystemPrompt(prompt);
@@ -1422,6 +1424,40 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
+
+            {/* Let the agent use the browser toggle (desktop app only) */}
+            {browserBridge && (
+              <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 id="agent-browsing-label" className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.agentBrowsing")}</h3>
+                    <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
+                      {tr("settings.general.agentBrowsingHint")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-labelledby="agent-browsing-label"
+                    aria-checked={agentBrowsing}
+                    onClick={() => {
+                      const next = !agentBrowsing;
+                      setAgentBrowsingState(next);
+                      setAgentBrowsing(next);
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                      agentBrowsing ? "bg-[var(--m-accent)]" : "bg-[var(--m-border)]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                        agentBrowsing ? "translate-x-5 rtl:-translate-x-5" : "translate-x-1 rtl:-translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
               <label className="block text-[13px] font-medium text-[var(--m-text)]" htmlFor="agent-safety-profile">

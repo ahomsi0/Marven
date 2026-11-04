@@ -7,6 +7,7 @@ import { useAnyOverlayOpen } from "@/lib/overlays";
 import { getBrowserBridge, type BrowserBounds } from "@/lib/inAppBrowser";
 import { useBrowserSnapshot } from "./useBrowserSnapshot";
 import { TabStrip } from "./TabStrip";
+import { AgentBrowserBar } from "./AgentBrowserBar";
 import { Toolbar } from "./Toolbar";
 import { ErrorState } from "./ErrorState";
 import { FindBar } from "./FindBar";
@@ -162,6 +163,7 @@ export function BrowserPanel({ expanded, resizing = false, onToggleExpand, onClo
         onClose={onClose}
         onMenuChange={setMenuOpen}
       />
+      {bridge && snapshot.agentActivity && <AgentBrowserBar bridge={bridge} activity={snapshot.agentActivity} />}
       {bridge && active && findOpen && (
         <FindBar key={active.id} bridge={bridge} tab={active} focusRequest={findRequest} onClose={() => setFindOpen(false)} />
       )}

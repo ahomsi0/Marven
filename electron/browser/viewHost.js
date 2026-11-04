@@ -161,6 +161,8 @@ function createViewHost({ getWindow, getPage }) {
   return {
     hasWindow: () => !!liveWindow(),
     isShown: () => shown,
+    /** Whether `view` is the page on screen (attached, the panel shown, not frozen behind a menu). */
+    isOnScreen: (view) => !!view && attached === view && shown && !frozen && getPage().showable,
     isAttached: (view) => !!attached && attached === view,
     isFullscreen: () => fullscreen,
     setFullscreen,

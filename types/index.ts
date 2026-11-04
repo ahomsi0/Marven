@@ -177,6 +177,7 @@ export interface ConversationFolder {
 export interface ToolPropertyDef {
   type: "string" | "number" | "boolean" | "array" | "object";
   description?: string;
+  enum?: string[];
   items?: ToolPropertyDef | { type: "object"; properties: Record<string, ToolPropertyDef>; required?: string[] };
   properties?: Record<string, ToolPropertyDef>;
   required?: string[];
@@ -200,11 +201,51 @@ export type InternalMessage =
   | { role: "assistant_tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { role: "tool_result"; callId: string; content: string };
 
+// ─── Agent browsing ───────────────────────────────────────────────────────────
+
+export type BrowserToolName =
+  | "browser_open" | "browser_history" | "browser_read" | "browser_screenshot" | "browser_tabs"
+  | "browser_wait" | "browser_scroll" | "browser_click" | "browser_type" | "browser_press" | "browser_select";
+
+export type BrowserActionKind =
+  | "open" | "history" | "read" | "screenshot" | "tabs" | "wait" | "scroll" | "click" | "type" | "press" | "select";
+
+/** One browser tool call on its way from the loop to the main process. */
+export interface BrowserAction {
+  tool: BrowserToolName;
+  /** The model's arguments, unchecked (main validates them). */
+  args: Record<string, unknown>;
+  /** Hosts the user let the agent act on, for this call. */
+  approvedHosts: string[];
+  /** The user approved submitting the form this action submits. */
+  approvedSubmit: boolean;
+  /** The target of the last approval the user gave for this call; a submit approval counts only for that element. */
+  approvedTarget?: string;
+  canSeeImages: boolean;
+}
+
+/** What an approval card shows for a browser action. `target` and `fields` come from the page. */
+export interface BrowserApprovalPreview {
+  kind: "site" | "submit";
+  host: string;
+  action: BrowserActionKind;
+  target: string;
+  fields?: Array<{ name: string; value: string }>;
+}
+
+export type BrowserResult =
+  | { kind: "ok"; text: string; image?: ImageAttachment }
+  | { kind: "needs_approval"; approval: BrowserApprovalPreview }
+  | { kind: "error"; text: string };
+
+export type ApprovalScope = "once" | "site";
+
 export type AgentEventType =
   | "tool_call"
   | "tool_result"
   | "tool_progress"
   | "pending_approval"
+  | "browser_action"
   | "checkpoint"
   | "text_delta"
   | "model_fallback"
@@ -215,7 +256,8 @@ export type AgentEvent =
   | { type: "tool_call"; callId: string; tool: string; args: Record<string, unknown> }
   | { type: "tool_result"; callId: string; output: string; truncated: boolean }
   | { type: "tool_progress"; callId: string; chunk: string }
-  | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown>; preview?: WritePreview }
+  | { type: "pending_approval"; callId: string; tool: string; args: Record<string, unknown>; preview?: WritePreview; browser?: BrowserApprovalPreview }
+  | { type: "browser_action"; callId: string; runId: string; action: BrowserAction }
   | { type: "checkpoint"; path: string }
   | { type: "text_delta"; delta: string }
   | { type: "model_fallback"; from: string; to: string; reason: string }
@@ -246,6 +288,7 @@ export interface ToolCallState {
   output?: string;
   liveOutput?: string;
   preview?: WritePreview;
+  browserApproval?: BrowserApprovalPreview;
 }
 
 export interface DiffEntry {

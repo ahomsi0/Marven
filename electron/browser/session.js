@@ -14,16 +14,18 @@ const PARTITION = 'persist:marven-browser';
  * Sets up `ses` for browsing. Split from createBrowserSession so tests can
  * pass a fake session.
  * @param {Electron.Session} ses
- * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void, onDownloadsChange: () => void }} options
+ * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void, onDownloadsChange: () => void, isAgentActing?: (webContentsId: number) => boolean, shouldBlockDownload?: (webContents: Electron.WebContents) => boolean, refuseRequest?: (details: Electron.OnBeforeRequestListenerDetails) => boolean }} options
  */
-function setupSession(ses, { dir, isDisabledFor, onBlocked, onDownloadsChange }) {
+function setupSession(ses, { dir, isDisabledFor, onBlocked, onDownloadsChange, isAgentActing = () => false, shouldBlockDownload = () => false, refuseRequest = () => false }) {
   // Drop the app-name and Electron tokens so sites see a plain Chrome UA.
   ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|marven)\/\S+/gi, ''));
-  ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isAllowedPermission(permission)));
-  ses.setPermissionCheckHandler((_wc, permission) => isAllowedPermission(permission));
-  const downloads = createDownloads({ onChange: onDownloadsChange });
+  // A tab an agent run is using never goes fullscreen: the page would cover the activity strip and its Stop button.
+  const allowed = (wc, permission) => isAllowedPermission(permission) && !(permission === 'fullscreen' && !!wc && isAgentActing(wc.id));
+  ses.setPermissionRequestHandler((wc, permission, callback) => callback(allowed(wc, permission)));
+  ses.setPermissionCheckHandler((wc, permission) => allowed(wc, permission));
+  const downloads = createDownloads({ onChange: onDownloadsChange, shouldBlock: shouldBlockDownload });
   ses.on('will-download', (event, item, webContents) => downloads.handle(event, item, webContents));
-  const blocker = createBlocker({ dir, isDisabledFor, onBlocked });
+  const blocker = createBlocker({ dir, isDisabledFor, onBlocked, refuseRequest });
   blocker.attach(ses);
 
   let blockerLoading = false;
@@ -37,7 +39,7 @@ function setupSession(ses, { dir, isDisabledFor, onBlocked, onDownloadsChange })
 }
 
 /**
- * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void, onDownloadsChange: () => void }} options
+ * @param {{ dir: string, isDisabledFor: (host: string) => boolean, onBlocked: (webContentsId: number) => void, onDownloadsChange: () => void, isAgentActing?: (webContentsId: number) => boolean, shouldBlockDownload?: (webContents: Electron.WebContents) => boolean, refuseRequest?: (details: Electron.OnBeforeRequestListenerDetails) => boolean }} options
  */
 function createBrowserSession(options) {
   return setupSession(session.fromPartition(PARTITION), options);

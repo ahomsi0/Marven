@@ -8,7 +8,7 @@ import { SlashMenu, AGENT_SLASH_COMMANDS } from "./SlashMenu";
 import { ModelSelector } from "./ModelSelector";
 import { useT } from "@/lib/i18n";
 import { UsageIndicator } from "./UsageIndicator";
-import type { AgentMessage, AIProvider, TokenUsage, ImageAttachment, Mention, WorkspaceFile } from "@/types";
+import type { ApprovalScope, AgentMessage, AIProvider, TokenUsage, ImageAttachment, Mention, WorkspaceFile } from "@/types";
 import { getActiveTrigger } from "@/lib/mentions/parser";
 import { MentionPopup } from "./MentionPopup";
 import { MentionChip } from "./MentionChip";
@@ -27,7 +27,7 @@ interface AgentPanelProps {
   onStop: () => void;
   onSlashCommand: (cmd: string) => void;
   workspaceFiles?: WorkspaceFile[];
-  onApproveToolCall?: (callId: string, accept: boolean) => void;
+  onApproveToolCall?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
   /** Edit a past user line: truncates thread from that turn and resends the revised text. */
   onEditUserMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   attachments?: ImageAttachment[];

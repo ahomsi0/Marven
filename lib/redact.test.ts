@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "module";
-import { redactText, redactLines } from "./redact";
+import { containsSecret, redactText, redactLines } from "./redact";
 
 // electron/redact.js is the main process's CommonJS copy; both must agree.
 const require = createRequire(import.meta.url);
@@ -69,5 +69,35 @@ describe("redactLines", () => {
       "a [REDACTED_KEY]",
       "b",
     ]);
+  });
+});
+
+describe("containsSecret", () => {
+  it("spots provider keys and bearer tokens", () => {
+    expect(containsSecret("key sk-ant-api03-abcdefghijkl")).toBe(true);
+    expect(containsSecret("sk-or-v1-abcdefghij")).toBe(true);
+    expect(containsSecret("sk-abcdefghijklmnopqrst")).toBe(true);
+    expect(containsSecret("gsk_abcdefghijklmnopqrst")).toBe(true);
+    expect(containsSecret("nvapi-abcdefghijklmnopqrst")).toBe(true);
+    expect(containsSecret("Authorization: Bearer abc.def.ghi")).toBe(true);
+    expect(containsSecret("ghp_abcdefghijklmnopqrstuvwxyz0123456789")).toBe(true);
+    expect(containsSecret("github_pat_11ABCDEFG0123456789_abcdefghij")).toBe(true);
+    expect(containsSecret("AKIAABCDEFGHIJKLMNOP")).toBe(true);
+    expect(containsSecret("sk-proj-abc-defghijklmnopqrstuvwx")).toBe(true);
+  });
+
+  it("finds known secret values anywhere in the text", () => {
+    expect(containsSecret("https://x.test/?d=my-own-key-123456", ["my-own-key-123456"])).toBe(true);
+  });
+
+  it("ignores short known values and ordinary text", () => {
+    expect(containsSecret("hello", ["hello"])).toBe(false);
+    expect(containsSecret("Search for running shoes size 42")).toBe(false);
+    expect(containsSecret("https://example.com/products/0f8fad5b-d9cb-469f-a165-70867728950e")).toBe(false);
+    expect(containsSecret("ada@example.com")).toBe(false);
+    expect(containsSecret("bearer authentication tutorial")).toBe(false);
+    expect(containsSecret("ring bearer accessories")).toBe(false);
+    expect(containsSecret("https://shop.test/sk-ii-facial-treatment-essence")).toBe(false);
+    expect(containsSecret("")).toBe(false);
   });
 });

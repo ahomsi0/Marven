@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { AIProvider, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment, EditorProblem } from "@/types";
+import type { AIProvider, ApprovalScope, WorkspaceFile, AgentMessage, EditorTab, CustomShortcut, MCPServer, PromptTemplate, ImageAttachment, EditorProblem } from "@/types";
 import type { VoiceState } from "@/hooks/useVoice";
 import { AgentPanel } from "./AgentPanel";
 import { EditorPanel } from "./EditorPanel";
@@ -11,7 +11,8 @@ import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
-import { DotsIcon, FolderIcon, SidebarIcon } from "./Icons";
+import { DotsIcon, FolderIcon, GlobeIcon, SidebarIcon } from "./Icons";
+import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { TerminalView } from "./TerminalView";
 import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
@@ -303,7 +304,7 @@ interface AgentWorkspaceProps {
   onRefreshFiles: () => void;
   checkpoints?: string[];
   liveTerminalOutput?: string;
-  onApproveToolCall?: (callId: string, accept: boolean) => void;
+  onApproveToolCall?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
   recentWorkspaces?: string[];
   onSelectRecent?: (path: string) => void;
   onOpenSettings?: () => void;
@@ -343,6 +344,9 @@ interface AgentWorkspaceProps {
   onOpenCommandPalette?: () => void;
   /** The workspace's own palette commands are published here while mounted. */
   paletteCommandsRef?: React.MutableRefObject<PaletteCommand[]>;
+  /** The in-app browser panel beside the workspace (desktop app only). */
+  browserOpen?: boolean;
+  onToggleBrowser?: () => void;
 }
 
 export function AgentWorkspace({
@@ -423,6 +427,8 @@ export function AgentWorkspace({
   onWorkspaceTrustChange,
   onOpenCommandPalette,
   paletteCommandsRef,
+  browserOpen,
+  onToggleBrowser,
 }: AgentWorkspaceProps) {
   const { t } = useT();
   const { theme } = useTheme();
@@ -1045,6 +1051,21 @@ export function AgentWorkspace({
               />
             )}
           </div>
+        )}
+
+        {onToggleBrowser && getBrowserBridge() && (
+          <button
+            type="button"
+            onClick={onToggleBrowser}
+            aria-pressed={!!browserOpen}
+            aria-label={t("browser.open")}
+            title={t("browser.open")}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              browserOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+            }`}
+          >
+            <GlobeIcon className="h-[18px] w-[18px]" />
+          </button>
         )}
 
         {/* View menu — top-right kebab */}

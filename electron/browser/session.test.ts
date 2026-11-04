@@ -50,11 +50,11 @@ function writeFilterCache(rules: string) {
   fs.writeFileSync(path.join(dir, "adblock.bin"), Buffer.from(engine.serialize()));
 }
 
-function request(ses: FakeSession, url: string) {
+function request(ses: FakeSession, url: string, resourceType = "script") {
   const callback = vi.fn();
   const pageUrl = "https://news.com/";
   const webContents = { isDestroyed: () => false, getURL: () => pageUrl };
-  ses.beforeRequest!({ id: 1, url, resourceType: "script", referrer: pageUrl, webContentsId: 7, webContents }, callback);
+  ses.beforeRequest!({ id: 1, url, resourceType, referrer: pageUrl, webContentsId: 7, webContents }, callback);
   return callback.mock.calls[0][0];
 }
 
@@ -124,5 +124,27 @@ describe("setupSession", () => {
     expect(request(ses, "https://ads.example.net/a.js")).toEqual({});
     expect(isDisabledFor).toHaveBeenCalledWith("news.com");
     expect(onBlocked).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent tabs", () => {
+  it("cancels the requests the agent's tabs may not make, filter lists or not", () => {
+    const refuseRequest = vi.fn((details: { url: string }) => details.url.startsWith("http://localhost:3000"));
+    const { ses, onBlocked } = setup(undefined, { refuseRequest, isDisabledFor: () => true });
+    expect(request(ses, "http://localhost:3000/", "mainFrame")).toEqual({ cancel: true });
+    expect(refuseRequest).toHaveBeenLastCalledWith(expect.objectContaining({ url: "http://localhost:3000/", resourceType: "mainFrame", webContentsId: 7 }));
+    expect(request(ses, "http://localhost:3000/api/agent/approve", "xhr")).toEqual({ cancel: true });
+    expect(request(ses, "http://localhost:5173/", "mainFrame")).toEqual({});
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("denies fullscreen only to tabs an agent run is using", () => {
+    const { ses } = setup(undefined, { isAgentActing: (id: number) => id === 7 });
+    const answer = vi.fn();
+    ses.onRequest!({ id: 7 }, "fullscreen", answer);
+    expect(answer).toHaveBeenLastCalledWith(false);
+    ses.onRequest!({ id: 8 }, "fullscreen", answer);
+    expect(answer).toHaveBeenLastCalledWith(true);
+    expect(ses.onCheck!({ id: 7 }, "clipboard-sanitized-write")).toBe(true);
   });
 });

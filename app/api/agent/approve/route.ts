@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveApproval, hasPending } from "@/lib/agent/approvals";
 
 export async function POST(req: NextRequest) {
-  let body: { callId?: string; accept?: boolean };
+  let body: { callId?: string; accept?: boolean; scope?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -15,6 +15,6 @@ export async function POST(req: NextRequest) {
   if (!hasPending(callId)) {
     return NextResponse.json({ error: "No pending approval for that callId" }, { status: 404 });
   }
-  resolveApproval(callId, accept);
+  resolveApproval(callId, accept, body.scope === "site" ? "site" : "once");
   return NextResponse.json({ ok: true });
 }

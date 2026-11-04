@@ -2,7 +2,7 @@
 // call these, and every argument is checked before it reaches the manager.
 
 const { ipcMain } = require('electron');
-const { isWebUrl, cleanBounds, cleanText, isId, isHost } = require('./validate');
+const { isWebUrl, cleanBounds, cleanText, isId, isHost, cleanAgentAction } = require('./validate');
 
 const COMMANDS = new Set(['back', 'forward', 'reload', 'stop', 'retry']);
 
@@ -59,6 +59,18 @@ function registerBrowserIpc(manager, getWindow) {
     }
   });
   on('browser-menu-labels', (labels) => manager.setMenuLabels(labels));
+
+  // Marven's agent (relayed by the renderer from the agent stream). The action
+  // came from a model: cleanAgentAction refuses anything it doesn't know.
+  handle('browser-agent-run', (runId, conversationId, action) => {
+    if (!isId(runId) || !isId(conversationId)) return { kind: 'error', text: 'Bad browser request.' };
+    const clean = cleanAgentAction(action);
+    if (!clean) return { kind: 'error', text: 'Those browser tool arguments are not valid. Check the tool description and try again.' };
+    return manager.agentRun(runId, conversationId, clean);
+  });
+  on('browser-agent-resume', () => manager.agentResume());
+  on('browser-agent-take-over', () => manager.agentTakeOver());
+  on('browser-agent-end', (runId) => { if (isId(runId)) manager.agentEnd(runId); });
 
   handle('browser-toggle-bookmark', (url, title) => (isWebUrl(url) ? manager.toggleBookmark(url, cleanText(title, 300)) : false));
   handle('browser-remove-bookmark', (id) => { if (isId(id)) manager.removeBookmark(id); });

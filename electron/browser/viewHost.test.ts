@@ -136,6 +136,24 @@ describe("createViewHost", () => {
     expect(views[0].muted).toBe(false);
   });
 
+  it("says whether a view is on screen: attached, shown, not frozen, showable", async () => {
+    expect(host.isOnScreen(views[0] as never)).toBe(false);
+    showFirst();
+    expect(host.isOnScreen(views[0] as never)).toBe(true);
+    expect(host.isOnScreen(views[1] as never)).toBe(false);
+    expect(host.isOnScreen(null as never)).toBe(false);
+    views[0].webContents.capturePage.mockResolvedValue(fakeImage());
+    await host.freeze();
+    expect(host.isOnScreen(views[0] as never)).toBe(false);
+    host.unfreeze();
+    expect(host.isOnScreen(views[0] as never)).toBe(true);
+    showable = false;
+    expect(host.isOnScreen(views[0] as never)).toBe(false);
+    showable = true;
+    host.hide();
+    expect(host.isOnScreen(views[0] as never)).toBe(false);
+  });
+
   it("ignores missing views when muting", () => {
     views = [views[0], null as never];
     showFirst();

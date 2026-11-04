@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GlobeIcon } from "../Icons";
+import { MarvenLogo } from "../MarvenLogo";
 import { useT } from "@/lib/i18n";
 import { hostOf, type BrowserBridge, type BrowserSnapshot } from "@/lib/inAppBrowser";
 
@@ -73,7 +74,7 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
-            title={label}
+            title={tab.agent ? `${label} — ${t("browser.agent.badge")}` : label}
             draggable
             onDragStart={(e) => {
               setDragId(tab.id);
@@ -97,7 +98,7 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
               active
                 ? "border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text)]"
                 : "border-transparent text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)]"
-            }`}
+            } ${tab.agent ? "ring-1 ring-inset ring-[var(--m-accent)]/60" : ""}`}
           >
             {tab.loading ? (
               <span className="h-3 w-3 shrink-0 animate-spin rounded-full border border-[var(--m-text-faint)] border-t-[var(--m-text)]" />
@@ -108,6 +109,11 @@ export function TabStrip({ bridge, snapshot }: { bridge: BrowserBridge; snapshot
               <GlobeIcon className="h-3.5 w-3.5 shrink-0" />
             )}
             <span className="min-w-0 flex-1 truncate">{label}</span>
+            {tab.agent && (
+              <span className="shrink-0" role="img" aria-label={t("browser.agent.badge")}>
+                <MarvenLogo size={11} />
+              </span>
+            )}
             <button
               type="button"
               tabIndex={-1}

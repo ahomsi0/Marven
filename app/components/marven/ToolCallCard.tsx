@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { ToolCallState } from "@/types";
+import type { ApprovalScope, BrowserActionKind, ToolCallState } from "@/types";
+import { useT } from "@/lib/i18n";
+import { hostOf } from "@/lib/inAppBrowser";
+import { BrowserApprovalCard } from "./browser/BrowserApprovalCard";
+import { actionKey } from "./browser/actionText";
+import { isolate, marked } from "./browser/isolate";
 
 const APPROVAL_TIMEOUT_SECONDS = 60;
 
@@ -66,6 +71,9 @@ function ToolGlyph({ tool }: { tool: string }) {
     case "remember":
       return <svg className={cls} viewBox="0 0 24 24" {...stroke}><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>;
     default:
+      if (tool.startsWith("browser_")) {
+        return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>;
+      }
       if (tool.startsWith("git_")) {
         return <svg className={cls} viewBox="0 0 24 24" {...stroke}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="6" cy="18" r="2" /><path d="M6 8v8M8 18h8M18 16V8a2 2 0 00-2-2H8" /></svg>;
       }
@@ -75,7 +83,7 @@ function ToolGlyph({ tool }: { tool: string }) {
 
 interface ToolCallCardProps {
   toolCall: ToolCallState;
-  onApprove?: (callId: string, accept: boolean) => void;
+  onApprove?: (callId: string, accept: boolean, scope?: ApprovalScope) => void;
 }
 
 function basename(p: string): string {
@@ -111,8 +119,38 @@ function ArgSummary({ tool, args }: { tool: string; args: Record<string, unknown
 }
 
 
+const BROWSER_KINDS: readonly BrowserActionKind[] = [
+  "open", "history", "read", "screenshot", "tabs", "wait", "scroll", "click", "type", "press", "select",
+];
+
+function browserKind(tool: string): BrowserActionKind | null {
+  const kind = tool.startsWith("browser_") ? tool.slice("browser_".length) : "";
+  return BROWSER_KINDS.find((k) => k === kind) ?? null;
+}
+
+// What a browser call acts on, from the model's own arguments: shown as plain
+// text, and kept short.
+function browserTarget(kind: BrowserActionKind, args: Record<string, unknown> | null): string {
+  const a = args ?? {};
+  const text = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v).slice(0, 80) : "");
+  if (kind === "open") return hostOf(text(a.url)) || text(a.url);
+  if (kind === "history" || kind === "tabs") return text(a.action);
+  if (kind === "press") return text(a.key);
+  if (kind === "select") return text(a.option) || (a.ref !== undefined ? `#${text(a.ref)}` : "");
+  if (kind === "click" || kind === "type") return a.ref !== undefined ? `#${text(a.ref)}` : "";
+  return "";
+}
+
+/** "opening example.com", "clicking “#12”": the card's title for a browser tool, in the app language. */
+function BrowserCallLabel({ kind, args }: { kind: BrowserActionKind; args: Record<string, unknown> | null }) {
+  const { t } = useT();
+  const target = browserTarget(kind, args);
+  return <>{isolate(t(actionKey(kind, target), marked({ target })), { target })}</>;
+}
+
 export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
   const { tool, args, status, output } = toolCall;
+  const browserCallKind = browserKind(tool);
 
   const isActive = status === "running";
   const isDone = status === "done";
@@ -163,14 +201,15 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
       >
         <ToolGlyph tool={tool} />
         <span
-          className={`text-[11px] shrink-0 tracking-tight ${
+          className={`text-[11px] tracking-tight ${browserCallKind ? "min-w-0 truncate first-letter:uppercase" : "shrink-0"} ${
             isActive ? "text-[#d19a66]" : isDone ? "text-[var(--m-text-muted)]" : isError ? "text-red-400" : "text-[var(--m-text-muted)]"
           }`}
+          title={browserCallKind ? tool : undefined}
         >
-          {tool === "__plan__" ? "Plan" : tool}
+          {browserCallKind ? <BrowserCallLabel kind={browserCallKind} args={args} /> : tool === "__plan__" ? "Plan" : tool}
         </span>
         <span className="min-w-0 flex-1 truncate">
-          <ArgSummary tool={tool} args={args} />
+          {!browserCallKind && <ArgSummary tool={tool} args={args} />}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {isActive && (
@@ -245,7 +284,16 @@ export function ToolCallCard({ toolCall, onApprove }: ToolCallCardProps) {
         </div>
       )}
 
-      {toolCall.tool !== "__plan__" && toolCall.status === "awaiting_approval" && (
+      {toolCall.status === "awaiting_approval" && toolCall.browserApproval && (
+        <BrowserApprovalCard
+          callId={toolCall.callId}
+          approval={toolCall.browserApproval}
+          secondsLeft={approvalSecondsLeft}
+          onApprove={onApprove}
+        />
+      )}
+
+      {toolCall.tool !== "__plan__" && toolCall.status === "awaiting_approval" && !toolCall.browserApproval && (
         <div className="border-t border-[var(--m-border-subtle)] px-3 py-2 flex items-center justify-between gap-2">
           <span className="text-[10px] text-[#d19a66]">
             {approvalSecondsLeft > 0

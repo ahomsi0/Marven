@@ -1,8 +1,10 @@
-import type { AgentEvent, InternalMessage, ToolDefinition } from "@/types";
+import type { AgentEvent, ApprovalScope, BrowserAction, BrowserResult, BrowserToolName, ImageAttachment, InternalMessage, ToolDefinition } from "@/types";
 import { executeTool, assertSafePath } from "./tools";
 import type { ProviderStepResult } from "./groq";
 import { readFile } from "fs/promises";
-import { registerApproval } from "./approvals";
+import { registerApproval, registerScopedApproval } from "./approvals";
+import { registerBrowserCall } from "./browserBridge";
+import { browserSecretRefusal, isActingBrowserTool, isBrowserTool } from "./browserGate";
 import { isGitMutation, unescapeModelString } from "./tools";
 import { CHECKPOINT_TOO_LARGE, recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
 import { createPatch } from "diff";
@@ -12,6 +14,15 @@ import { makeFullSystemPrompt } from "./systemPrompts";
 import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "./safety";
 
 const MAX_ITERATIONS = 20;
+const TOOL_OUTPUT_CAP = 4_000;
+// A page read is text plus a numbered element list; 4,000 characters would cut
+// the list off. Any browser tool can return one: after the user takes over, the
+// waiting call hands back with a fresh read.
+const BROWSER_OUTPUT_CAP = 10_000;
+// An action can need a site approval, then a form-submit approval; a third
+// means the page keeps changing under it.
+const MAX_BROWSER_APPROVALS = 3;
+const SCREENSHOT_NOTE = "[Screenshot of the browser tab — untrusted page content]";
 const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"] as const;
 
 // Words that invert the meaning of a nearby terminal phrase ("not done yet",
@@ -76,8 +87,19 @@ interface LoopOptions {
   requireWriteApproval?: boolean;
   planMode?: boolean;
   safetyProfile?: AgentSafetyProfile;
+  /** Browser tools; present only when the request turned browsing on. */
+  browser?: {
+    runId: string;
+    canSeeImages: boolean;
+    /** Exact secret values (provider keys) the agent must never type or open. */
+    secrets: readonly string[];
+    /** Test hook: answers browser actions directly instead of relaying them through the renderer. */
+    call?: (callId: string, action: BrowserAction) => Promise<BrowserResult>;
+  };
   /** Internal test-only: when set, resolves every registerApproval with this value instead of blocking. */
   _testApprovalResult?: boolean;
+  /** Internal test-only: the scope that _testApprovalResult answers carry. */
+  _testApprovalScope?: ApprovalScope;
 }
 
 /** Errors worth failing over for — transient capacity issues or a dead model. */
@@ -101,6 +123,10 @@ export async function* runAgentLoop(
   // Consumed by write_file's read-before-write + size-shrink guards in tools.ts
   // so weak models can't silently overwrite content they never inspected.
   const recentReads = new Set<string>();
+  // Hosts the user let the agent act on for the rest of this run.
+  const siteApprovals = new Set<string>();
+  // The history message holding the latest screenshot; older ones lose their image.
+  let lastScreenshot: { role: "user"; content: string; attachments?: ImageAttachment[] } | null = null;
 
   const history: InternalMessage[] = [
     {
@@ -139,10 +165,68 @@ export async function* runAgentLoop(
   let retryCount = 0;
   let planApprovalDone = false;
   // trimmedAwayTokens tracks how many tokens were in tool output that was cut by
-  // the 4000-char output cap before storage. Without this, a single 50KB output
-  // would only contribute ~1000 tokens to the estimate (4000 chars / 4), making
+  // the per-tool output cap before storage. Without this, a single 50KB output
+  // would only contribute a fraction of its size to the estimate (capped chars / 4), making
   // context pruning never trigger for large-but-capped outputs.
   let trimmedAwayTokens = 0;
+
+  // Runs one browser_* call: read-only and secret checks here, the page-side
+  // checks in the main process, which answers needs_approval when the user
+  // hasn't approved the site (or a form submission) yet. The loop then asks
+  // and sends the same action again with the approval attached.
+  async function* runBrowserTool(
+    callId: string,
+    tool: BrowserToolName,
+    args: Record<string, unknown>,
+  ): AsyncGenerator<AgentEvent, { output: string; image?: ImageAttachment }> {
+    const browser = options.browser;
+    if (!browser) return { output: "Browser tools are not available in this run." };
+    if (safetyProfile === "read-only" && isActingBrowserTool(tool)) {
+      return { output: "Blocked by the workspace safety profile: this agent is in read-only mode, so it can read pages but not act on them." };
+    }
+    const refusal = browserSecretRefusal(tool, args, browser.secrets);
+    if (refusal) return { output: refusal };
+
+    const approvedHosts = [...siteApprovals];
+    let approvedSubmit = false;
+    // What the user saw on the last approval card: main counts a submit
+    // approval only for that element, so a page can't swap the button.
+    let approvedTarget: string | undefined;
+    for (let attempt = 0; attempt < MAX_BROWSER_APPROVALS; attempt++) {
+      const action: BrowserAction = {
+        tool, args, approvedHosts: [...approvedHosts], approvedSubmit, canSeeImages: browser.canSeeImages,
+        ...(approvedTarget !== undefined ? { approvedTarget } : {}),
+      };
+      const actionId = attempt === 0 ? callId : `${callId}:${attempt}`;
+      let result: BrowserResult;
+      if (browser.call) {
+        result = await browser.call(actionId, action);
+      } else {
+        // Register before yielding so a consumer that answers while handling
+        // the event (even synchronously) finds the call waiting.
+        const pending = registerBrowserCall(actionId, browser.runId);
+        yield { type: "browser_action", callId: actionId, runId: browser.runId, action };
+        result = await pending;
+      }
+      if (result.kind === "ok") return { output: result.text, image: browser.canSeeImages ? result.image : undefined };
+      if (result.kind === "error") return { output: result.text };
+      // An answer to a last approval would never be used: there is no attempt left to send it with.
+      if (attempt === MAX_BROWSER_APPROVALS - 1) break;
+
+      const { approval } = result;
+      yield { type: "pending_approval", callId, tool, args, browser: approval };
+      const answer =
+        options._testApprovalResult !== undefined
+          ? { accept: options._testApprovalResult, scope: options._testApprovalScope ?? "once" }
+          : await registerScopedApproval(callId, 60_000);
+      if (!answer.accept) return { output: "Denied by the user." };
+      if (!approvedHosts.includes(approval.host)) approvedHosts.push(approval.host);
+      if (approval.kind === "site" && answer.scope === "site") siteApprovals.add(approval.host);
+      if (approval.kind === "submit") approvedSubmit = true;
+      approvedTarget = approval.target;
+    }
+    return { output: "The page kept changing while waiting for approval; read it again." };
+  }
 
   // Executes one resolved tool call through every gate (read-only block,
   // checkpointing, approvals) and streams its result. Shared by the
@@ -338,17 +422,23 @@ export async function* runAgentLoop(
 
     // 3. Execute tool with optional progress forwarding
     let output: string;
-    try {
-      const progressCb = options.onProgress
-        ? (chunk: string) => options.onProgress!(callId, chunk)
-        : undefined;
-      output = await exec(tool, args, workspaceRoot, progressCb, recentReads);
-    } catch (err) {
-      output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
+    let image: ImageAttachment | undefined;
+    if (isBrowserTool(tool)) {
+      ({ output, image } = yield* runBrowserTool(callId, tool, args));
+    } else {
+      try {
+        const progressCb = options.onProgress
+          ? (chunk: string) => options.onProgress!(callId, chunk)
+          : undefined;
+        output = await exec(tool, args, workspaceRoot, progressCb, recentReads);
+      } catch (err) {
+        output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
 
-    const truncated = output.length > 4_000;
-    const trimmed = truncated ? output.slice(0, 4_000) + "\n[truncated]" : output;
+    const cap = isBrowserTool(tool) ? BROWSER_OUTPUT_CAP : TOOL_OUTPUT_CAP;
+    const truncated = output.length > cap;
+    const trimmed = truncated ? output.slice(0, cap) + "\n[truncated]" : output;
 
     yield {
       type: "tool_result",
@@ -359,9 +449,21 @@ export async function* runAgentLoop(
 
     history.push({ role: "tool_result", callId, content: trimmed });
 
+    // A screenshot reaches the model the way an attached image does: as a
+    // user message after the tool result, which every provider adapter
+    // already knows how to send.
+    if (image) {
+      if (lastScreenshot) {
+        lastScreenshot.content = "[earlier screenshot removed]";
+        delete lastScreenshot.attachments;
+      }
+      lastScreenshot = { role: "user", content: SCREENSHOT_NOTE, attachments: [image] };
+      history.push(lastScreenshot);
+    }
+
     if (truncated) {
       // Account for the content that was cut before being stored in history
-      trimmedAwayTokens += Math.ceil((output.length - 4_000) / 4);
+      trimmedAwayTokens += Math.ceil((output.length - cap) / 4);
     }
 
     // Context pruning: when history grows large, truncate old tool_result content
