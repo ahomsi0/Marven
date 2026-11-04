@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
-import { cancelBrowserCalls, hasBrowserCall, registerBrowserCall } from "@/lib/agent/browserBridge";
+import { cancelBrowserCalls, registerBrowserCall } from "@/lib/agent/browserBridge";
 
 const postRaw = (body: string) =>
   POST(new NextRequest("http://localhost/api/agent/browser-result", { method: "POST", body }));
@@ -27,10 +27,12 @@ describe("POST /api/agent/browser-result", () => {
   });
 
   it("requires the runId that owns the call", async () => {
-    registerBrowserCall("r3", "run1");
+    const waiting = registerBrowserCall("r3", "run1");
     expect((await post({ callId: "r3", result: { kind: "ok", text: "x" } })).status).toBe(400);
     expect((await post({ callId: "r3", runId: "other", result: { kind: "ok", text: "x" } })).status).toBe(404);
-    expect(hasBrowserCall("r3")).toBe(true);
+    // Still waiting for its own run.
+    expect((await post({ callId: "r3", runId: "run1", result: { kind: "ok", text: "mine" } })).status).toBe(200);
+    await expect(waiting).resolves.toEqual({ kind: "ok", text: "mine" });
   });
 
   it("rejects a body that isn't a JSON object", async () => {

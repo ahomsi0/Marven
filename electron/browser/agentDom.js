@@ -598,12 +598,13 @@ function cleanFields(raw) {
     : [];
 }
 
-/** A page read, or null if the page had nothing usable (blank, not loaded, not http(s)). */
+/**
+ * A page read, or null if the page had nothing usable (blank, not loaded, not
+ * http(s)). The page's URL and title come from the tab instead (the header).
+ */
 function cleanRead(raw, isWebUrl) {
   if (!raw || typeof raw !== 'object' || !isWebUrl(raw.url)) return null;
   return {
-    url: raw.url,
-    title: str(raw.title, 300),
     text: typeof raw.text === 'string' ? raw.text.slice(0, MAX_PAGE_TEXT) : '',
     elements: Array.isArray(raw.elements) ? raw.elements.slice(0, MAX_ELEMENTS).map(cleanElement) : [],
     totalElements: num(raw.totalElements),

@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cancelBrowserCalls, cleanBrowserResult, hasBrowserCall, registerBrowserCall, resolveBrowserCall } from "./browserBridge";
+import { cancelBrowserCalls, cleanBrowserResult, registerBrowserCall, resolveBrowserCall } from "./browserBridge";
 
 afterEach(() => vi.useRealTimers());
 
 describe("browser call registry", () => {
   it("resolves a registered call once", async () => {
     const p = registerBrowserCall("c1", "run1");
-    expect(hasBrowserCall("c1")).toBe(true);
     expect(resolveBrowserCall("c1", "run1", { kind: "ok", text: "hi" })).toBe(true);
     await expect(p).resolves.toEqual({ kind: "ok", text: "hi" });
     expect(resolveBrowserCall("c1", "run1", { kind: "ok", text: "again" })).toBe(false);
@@ -15,7 +14,6 @@ describe("browser call registry", () => {
   it("only resolves a call for the run that owns it", async () => {
     const p = registerBrowserCall("c3", "runA");
     expect(resolveBrowserCall("c3", "runB", { kind: "ok", text: "hijack" })).toBe(false);
-    expect(hasBrowserCall("c3")).toBe(true);
     expect(resolveBrowserCall("c3", "runA", { kind: "ok", text: "mine" })).toBe(true);
     await expect(p).resolves.toEqual({ kind: "ok", text: "mine" });
   });
@@ -25,7 +23,7 @@ describe("browser call registry", () => {
     const p = registerBrowserCall("c2", "run1", 1000);
     vi.advanceTimersByTime(1001);
     await expect(p).resolves.toMatchObject({ kind: "error" });
-    expect(hasBrowserCall("c2")).toBe(false);
+    expect(resolveBrowserCall("c2", "run1", { kind: "ok", text: "late" })).toBe(false);
   });
 
   it("cancels only the given run's calls", async () => {
@@ -33,9 +31,8 @@ describe("browser call registry", () => {
     const b = registerBrowserCall("b", "runB");
     cancelBrowserCalls("runA");
     await expect(a).resolves.toEqual({ kind: "error", text: "Stopped." });
-    expect(hasBrowserCall("b")).toBe(true);
-    resolveBrowserCall("b", "runB", { kind: "error", text: "x" });
-    await b;
+    expect(resolveBrowserCall("b", "runB", { kind: "ok", text: "x" })).toBe(true);
+    await expect(b).resolves.toEqual({ kind: "ok", text: "x" });
   });
 });
 

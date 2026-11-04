@@ -48,10 +48,6 @@ export function resolveBrowserCall(callId: string, runId: string, result: Browse
   return true;
 }
 
-export function hasBrowserCall(callId: string): boolean {
-  return calls.has(callId);
-}
-
 /** Ends every call of a run (Stop, or the stream's consumer went away). */
 export function cancelBrowserCalls(runId: string): void {
   for (const [callId, entry] of calls) {
