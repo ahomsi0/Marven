@@ -2,8 +2,9 @@
 // electron/browser/agentDom.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  UNTRUSTED_PAGE_HEADER as MAIN_HEADER, agentInPage, cleanRead, cleanTarget, findSnippets, formatRead, script,
+  UNSAFE_TEXT, UNTRUSTED_PAGE_HEADER as MAIN_HEADER, agentInPage, cleanFocused, cleanRead, cleanTarget, findSnippets, formatRead, script,
 } from "./agentDom.js";
+import { UNSAFE_TEXT as BRIDGE_UNSAFE_TEXT } from "@/lib/agent/browserBridge";
 import { isWebUrl } from "./validate.js";
 import { UNTRUSTED_PAGE_HEADER } from "@/lib/pageAttachment";
 
@@ -257,6 +258,11 @@ describe("agentInPage targets", () => {
     ]);
   });
 
+  it("strips control and bidi characters from names in the page too", () => {
+    document.body.innerHTML = `<button aria-label="Pay\u202e now\u200f">x</button>`;
+    expect(read().elements[0].name).toBe("Pay now");
+  });
+
   it("keeps its numbering when the page has an element with the state's id", () => {
     document.body.innerHTML = `<div id="__marvenAgentState"></div><div id="__marvenAgentState"></div><button>Go</button>`;
     // jsdom doesn't expose elements by id on window; Chromium does, in every
@@ -317,6 +323,21 @@ describe("main-side helpers", () => {
     expect(cleanRead({ url: "about:blank", text: "x" }, isWebUrl)).toBeNull();
     const r = cleanRead({ url: "https://a.test/", title: "T", text: "body", elements: [{ ref: 1, role: "link", name: "n".repeat(200) }] }, isWebUrl)!;
     expect(r.elements[0].name).toHaveLength(80);
+  });
+
+  it("strips control and bidi characters from names, as the bridge does", () => {
+    expect(UNSAFE_TEXT.source).toBe(BRIDGE_UNSAFE_TEXT.source);
+    expect(agentInPage.toString()).toContain(UNSAFE_TEXT.source);
+    const r = cleanRead({ url: "https://a.test/", text: "", elements: [{ ref: 1, role: "button", name: " \u200fتأكيد\u200f  الطلب\u202e\u0007 ", value: "a\u2066b" }] }, isWebUrl)!;
+    expect(r.elements[0]).toMatchObject({ name: "تأكيد الطلب", value: "ab" });
+    expect(cleanTarget({ x: 1, y: 2, info: { name: "Pay\u061c" }, covered: "Ban\u202ener", fields: [{ name: "E\u200email", value: "x\u2069" }] }))
+      .toMatchObject({ info: { name: "Pay" }, covered: "Banner", fields: [{ name: "Email", value: "x" }] });
+    expect(cleanFocused({ name: "\u202eGo", fields: [] })).toMatchObject({ name: "Go" });
+  });
+
+  it("keeps a clean name within its cap and without spaces at the ends", () => {
+    const r = cleanRead({ url: "https://a.test/", text: "", elements: [{ ref: 1, role: "button", name: `${"a".repeat(79)} b` }] }, isWebUrl)!;
+    expect(r.elements[0].name).toBe("a".repeat(79));
   });
 
   it("cleanTarget maps unknown errors to gone", () => {

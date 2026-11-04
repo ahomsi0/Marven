@@ -1,6 +1,8 @@
 // electron/browser/agent.test.ts
 import { describe, expect, it, vi } from "vitest";
 import { createAgentController } from "./agent.js";
+import { cleanAgentAction } from "./validate.js";
+import { cleanBrowserResult } from "@/lib/agent/browserBridge";
 
 type Req = { op: string; [k: string]: unknown };
 
@@ -177,6 +179,22 @@ describe("agent controller", () => {
     expect(deps.sendInput).not.toHaveBeenCalled();
     expect(await agent.perform("run1", "conv1", act("browser_click", { tab: "t1", ref: 1 }, { ...approved, approvedTarget: "Delete account" })))
       .toMatchObject({ kind: "ok" });
+  });
+
+  it("matches a submit approval for a name with bidi marks after the round trip through the bridge", async () => {
+    const name = "تأكيد\u200F الطلب\u202e";
+    const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult(element({ name, submits: true })) : { ok: true }));
+    makeTab("t1", "conv1");
+    const raw = { tool: "browser_click", args: { tab: "t1", ref: 1 }, approvedHosts: ["shop.test"], approvedSubmit: false, canSeeImages: false };
+    const asked = await agent.perform("run1", "conv1", cleanAgentAction(raw));
+    // What the loop and the approval card get: the result as the result route cleans it.
+    const seen = cleanBrowserResult(JSON.parse(JSON.stringify(asked)));
+    expect(seen).toEqual({ kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "click", target: "تأكيد الطلب", fields: [] } });
+    expect(seen).toEqual(asked);
+    const target = seen?.kind === "needs_approval" ? seen.approval.target : "";
+    const approved = cleanAgentAction({ ...raw, approvedSubmit: true, approvedTarget: target });
+    expect(await agent.perform("run1", "conv1", approved)).toMatchObject({ kind: "ok" });
+    expect(deps.sendInput).toHaveBeenCalledTimes(1);
   });
 
   it("names the page an action landed on, not the one it started from", async () => {

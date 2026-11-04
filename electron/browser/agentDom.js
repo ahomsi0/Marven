@@ -54,8 +54,10 @@ function agentInPage(req) {
   const backgrounds = new Map();
   const textClips = new Map();
 
+  // Controls and bidi marks go (as UNSAFE_TEXT in the main process).
+  const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
   const clip = (value, max) => {
-    const s = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    const s = String(value == null ? '' : value).replace(/\s+/g, ' ').replace(UNSAFE, '').replace(/ {2,}/g, ' ').trim();
     return s.length > max ? s.slice(0, max - 1) + '…' : s;
   };
   const tag = (el) => String(el.tagName || '').toUpperCase();
@@ -539,18 +541,23 @@ function script(request) {
 
 // ── Checking what came back ──────────────────────────────────────────────────
 
-// \u0085 (next line) isn't \s, but may read as a line break.
-const str = (v, max) => (typeof v === 'string' ? v.replace(/[\s\u0085]+/g, ' ').trim().slice(0, max) : '');
-
 // Characters that could disguise page text where it is shown to the model or
-// the user: controls, and bidirectional marks, embeddings and overrides.
+// the user: controls, and bidirectional marks, embeddings and overrides. The
+// same as UNSAFE_TEXT in lib/agent/browserBridge.ts (agentDom.test.ts
+// checks): an approval's target comes back as `approvedTarget`, which must
+// still equal the element's name here.
 const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 
-/** Page text as one line of at most `max` characters, without unsafe characters. */
+/**
+ * Page text as one line of at most `max` characters, without unsafe
+ * characters or spaces at either end, so the bridge's own cleaning leaves it
+ * as it is. \u0085 (next line) isn't \s, but may read as a line break.
+ */
 function pageLine(v, max) {
   if (typeof v !== 'string') return '';
   return v.replace(/[\s\u0085]+/g, ' ').replace(UNSAFE_TEXT, '').replace(/ {2,}/g, ' ').trim().slice(0, max).trim();
 }
+const str = pageLine;
 const num = (v) => (Number.isFinite(v) ? Math.round(v) : 0);
 const TARGET_ERRORS = new Set(['stale', 'unknown', 'gone', 'not-select', 'no-option']);
 // The page sets roles (role="…"), and they go into the read unquoted, so only
@@ -702,6 +709,7 @@ function formatRead(read, { header, offset = 0, find = '' }) {
 module.exports = {
   AGENT_WORLD_ID,
   MAX_ELEMENTS,
+  UNSAFE_TEXT,
   UNTRUSTED_PAGE_HEADER,
   agentInPage,
   script,

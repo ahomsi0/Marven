@@ -81,7 +81,10 @@ const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max
 
 // Page-controlled text shown in approval cards must not carry control or
 // bidirectional-override characters that could disguise what is being approved.
-const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+// The main process strips the same ones (electron/browser/agentDom.js, which
+// checks they match): an approval's target comes back as `approvedTarget` and
+// must still equal the element's name there.
+export const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 const label = (v: unknown, max: number) => str(v, max).replace(UNSAFE_TEXT, "").trim();
 
 function cleanImage(raw: unknown): ImageAttachment | undefined {
