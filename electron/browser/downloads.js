@@ -43,7 +43,10 @@ function quarantine(filePath) {
   });
 }
 
-function createDownloads({ onChange }) {
+/**
+ * @param {{ onChange: () => void, shouldBlock?: (webContents: Electron.WebContents) => boolean }} options
+ */
+function createDownloads({ onChange, shouldBlock = () => false }) {
   const entries = new Map();
   // Names of downloads still in progress, lower-cased (APFS is case-insensitive
   // by default), so two downloads started together never pick the same file.
@@ -82,6 +85,11 @@ function createDownloads({ onChange }) {
 
   // True when this download may go ahead; otherwise cancels it.
   function admit(event, item, webContents) {
+    // The agent may not download files (its tab, while it is acting).
+    if (shouldBlock(webContents)) {
+      block(event, item);
+      return false;
+    }
     if (inProgress >= MAX_IN_PROGRESS) {
       if (!capWarned) console.warn(`[browser] too many downloads in progress, cancelling new ones (limit ${MAX_IN_PROGRESS})`);
       capWarned = true;

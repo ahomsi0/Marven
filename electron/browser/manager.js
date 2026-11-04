@@ -17,6 +17,8 @@ const { searchEngine, DEFAULT_ENGINE_ID } = require('./searchEngines');
 const { hostOf, isWebUrl, staysOnOrigin } = require('./validate');
 const { EXTRACT_SCRIPT, cleanExtract } = require('./pageText');
 const { cleanLabels, contextMenuTemplate } = require('./contextMenu');
+const { createAgentController } = require('./agent');
+const { AGENT_WORLD_ID, script: agentScript } = require('./agentDom');
 
 // Snapshots are coalesced: structural changes go out within a frame, while
 // bumps of the blocked-request counter (which can fire hundreds of times
@@ -29,6 +31,11 @@ const POPUPS_PER_SECOND = 2;
 // and not 999, which Electron uses for preloads) and gives up after this long.
 const EXTRACT_WORLD_ID = 1001;
 const EXTRACT_TIMEOUT_MS = 5000;
+// Screenshots for the agent: at most this wide, as JPEG.
+const SCREENSHOT_MAX_WIDTH = 1280;
+const SCREENSHOT_JPEG_QUALITY = 70;
+// Input the agent sends counts as its own for this long; later input is the user's.
+const OWN_INPUT_GRACE_MS = 150;
 const newId = () => crypto.randomUUID();
 
 /**
@@ -61,6 +68,74 @@ function createBrowserManager({ dir, getWindow }) {
     },
   });
 
+  const agent = createAgentController({
+    tabs: {
+      get: (id) => existingTab(id),
+      open: (conversationId, url) => {
+        const id = newTab(url);
+        const tab = id ? existingTab(id) : null;
+        if (!tab) return null;
+        tab.agent = { conversationId };
+        tab.ensureView();
+        scheduleSnapshot();
+        return tab;
+      },
+      owned: (conversationId) => state.tabs
+        .map((entry) => tabs.get(entry.id))
+        .filter((tab) => tab?.agent?.conversationId === conversationId),
+      // The agent's own switching: not a user action, so it doesn't pause the run.
+      activate: (id) => { if (state.activeId !== id) activateTab(id); },
+      close: (id) => closeTab(id),
+    },
+    isShown: () => host.isShown(),
+    onChange: () => scheduleSnapshot(),
+    runInPage: runAgentScript,
+    sendInput: sendAgentInput,
+    insertText: (tab, text) => {
+      const wc = tab.webContents;
+      if (!wc) return;
+      tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
+      wc.focus();
+      return wc.insertText(text);
+    },
+    capture: captureForAgent,
+  });
+
+  // The agent's in-page script (agentDom.js), in its own isolated world.
+  // A page that throws or isn't ready answers null.
+  async function runAgentScript(tab, request) {
+    tab.ensureView();
+    const wc = tab.webContents;
+    if (!wc) return null;
+    return wc.executeJavaScriptInIsolatedWorld(AGENT_WORLD_ID, [{ code: agentScript(request) }], false).catch(() => null);
+  }
+
+  // Real input events at CSS-pixel points, scaled to the page's zoom. Keyboard
+  // events go to the focused webContents, so the page takes the focus first.
+  function sendAgentInput(tab, events) {
+    const wc = tab.webContents;
+    if (!wc) return;
+    const zoom = wc.getZoomFactor();
+    tab.agentInputUntil = Date.now() + OWN_INPUT_GRACE_MS;
+    if (events.some((e) => e.type.startsWith('key') || e.type === 'char')) wc.focus();
+    for (const event of events) {
+      wc.sendInputEvent('x' in event ? { ...event, x: Math.round(event.x * zoom), y: Math.round(event.y * zoom) } : event);
+    }
+  }
+
+  async function captureForAgent(tab) {
+    const wc = tab.webContents;
+    if (!wc) return null;
+    let image = await wc.capturePage();
+    if (image.isEmpty()) return null;
+    if (image.getSize().width > SCREENSHOT_MAX_WIDTH) image = image.resize({ width: SCREENSHOT_MAX_WIDTH, quality: 'good' });
+    return {
+      base64: `data:image/jpeg;base64,${image.toJPEG(SCREENSHOT_JPEG_QUALITY).toString('base64')}`,
+      mimeType: 'image/jpeg',
+      name: 'screenshot.jpg',
+    };
+  }
+
   function init() {
     if (ses) return;
     library = createLibrary({ dir, newId });
@@ -75,6 +150,11 @@ function createBrowserManager({ dir, getWindow }) {
         scheduleSnapshot(BLOCKED_SNAPSHOT_DELAY_MS);
       },
       onDownloadsChange: scheduleSnapshot,
+      isAgentWebContents: (webContentsId) => !!byWebContents.get(webContentsId)?.agent,
+      shouldBlockDownload: (webContents) => {
+        const tab = webContents ? byWebContents.get(webContents.id) : null;
+        return !!tab && agent.blocksDownloadFrom(tab);
+      },
     }));
     // The filter lists are downloaded on the first show(), not here, so a call
     // from Settings (clearing browsing data) never starts that download.
@@ -107,9 +187,11 @@ function createBrowserManager({ dir, getWindow }) {
           error: tab?.error ?? null,
           find: tab?.find ?? null,
           auth: tab?.auth ? { host: tab.auth.host, realm: tab.auth.realm, isProxy: tab.auth.isProxy } : null,
+          agent: !!tab?.agent,
         };
       }),
       activeId: state.activeId,
+      agentActivity: agent.activity(),
       canReopen: state.closed.length > 0,
       downloads: downloads.list(),
       searchEngine: { id: engine.id, name: engine.name, searchUrl: engine.searchUrl },
@@ -170,6 +252,7 @@ function createBrowserManager({ dir, getWindow }) {
         onFullscreen,
         onShortcut: handleShortcut,
         onView: (t) => byWebContents.set(t.webContentsId, t),
+        onUserInput: (t) => agent.onUserInput(t),
       },
     });
     tabs.set(entry.id, tab);
@@ -184,6 +267,7 @@ function createBrowserManager({ dir, getWindow }) {
       scheduleSnapshot();
     }
     if (tab.id === state.activeId) host.syncVisibility();
+    agent.onTabUpdate(tab);
   }
 
   function activeTab() {
@@ -317,6 +401,10 @@ function createBrowserManager({ dir, getWindow }) {
   // Only the page on screen may go fullscreen; it then covers the window.
   function onFullscreen(tab, on) {
     if (on) {
+      if (tab.agent) {
+        tab.exitFullscreen();
+        return;
+      }
       if (tab.id !== state.activeId || !host.isShown()) {
         tab.exitFullscreen();
         return;
@@ -384,6 +472,8 @@ function createBrowserManager({ dir, getWindow }) {
   function handleShortcut(input) {
     const shortcut = shortcutAction(input);
     if (!shortcut) return false;
+    // A browser shortcut is the user taking control.
+    agent.takeOver();
     const active = state.activeId;
     switch (shortcut.action) {
       case 'new-tab': newTab(engine.homeUrl); break;
@@ -434,6 +524,7 @@ function createBrowserManager({ dir, getWindow }) {
     // A renderer reload (HMR, crash recovery) must not leave a page floating
     // over a UI that no longer has a browser panel.
     const hideForReload = () => {
+      agent.reset();
       panelFocused = false;
       if (ses) hide();
     };
@@ -478,9 +569,15 @@ function createBrowserManager({ dir, getWindow }) {
   return {
     attachWindow,
     flush,
-    show: ready(show),
+    show: ready((b) => {
+      show(b);
+      agent.onShow();
+    }),
     setBounds: ready(host.setBounds),
-    hide: ready(hide),
+    hide: ready(() => {
+      agent.onHide();
+      hide();
+    }),
     freeze: ready(host.freeze),
     unfreeze: ready(host.unfreeze),
     setPanelFocused: (focused) => { panelFocused = focused; },
@@ -490,11 +587,25 @@ function createBrowserManager({ dir, getWindow }) {
       if (ses) scheduleSnapshot();
     },
     snapshot: ready(snapshot),
-    newTab: ready((url) => newTab(url)),
-    closeTab: ready(closeTab),
-    activateTab: ready(activateTab),
+    // The user opening a tab is taking control: the agent's next action would
+    // otherwise pull the view back to its own tab.
+    newTab: ready((url) => {
+      agent.takeOver();
+      return newTab(url);
+    }),
+    closeTab: ready((id) => {
+      agent.onUserClose(id);
+      closeTab(id);
+    }),
+    activateTab: ready((id) => {
+      agent.onUserActivate(id);
+      activateTab(id);
+    }),
     moveTab: ready(moveTab),
-    reopenClosedTab: ready(reopenClosedTab),
+    reopenClosedTab: ready(() => {
+      agent.takeOver();
+      reopenClosedTab();
+    }),
     navigate: ready(navigate),
     command: ready(command),
     find: ready(find),
@@ -510,6 +621,10 @@ function createBrowserManager({ dir, getWindow }) {
     cancelDownload: ready((id) => downloads.cancel(id)),
     showDownload: ready((id) => downloads.show(id)),
     clearBrowsingData: ready(clearBrowsingData),
+    agentRun: ready((runId, conversationId, action) => agent.perform(runId, conversationId, action)),
+    agentResume: ready(() => agent.resume()),
+    agentTakeOver: ready(() => agent.takeOver()),
+    agentEnd: ready((runId) => agent.end(runId)),
   };
 }
 

@@ -126,3 +126,15 @@ describe("setupSession", () => {
     expect(onBlocked).not.toHaveBeenCalled();
   });
 });
+
+describe("agent tabs", () => {
+  it("denies fullscreen to agent tabs only", () => {
+    const { ses } = setup(undefined, { isAgentWebContents: (id: number) => id === 7 });
+    const answer = vi.fn();
+    ses.onRequest!({ id: 7 }, "fullscreen", answer);
+    expect(answer).toHaveBeenLastCalledWith(false);
+    ses.onRequest!({ id: 8 }, "fullscreen", answer);
+    expect(answer).toHaveBeenLastCalledWith(true);
+    expect(ses.onCheck!({ id: 7 }, "clipboard-sanitized-write")).toBe(true);
+  });
+});

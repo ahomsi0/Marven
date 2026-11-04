@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { quarantineValue, isFinished } from "./downloads.js";
+import { describe, it, expect, vi } from "vitest";
+import { quarantineValue, isFinished, createDownloads } from "./downloads.js";
 
 describe("quarantineValue", () => {
   it("writes flags, hex epoch seconds and the app name", () => {
@@ -25,5 +25,17 @@ describe("isFinished", () => {
 
   it("is false for a done download still being flagged as quarantined", () => {
     expect(isFinished({ state: "progressing", item: null })).toBe(false);
+  });
+});
+
+describe("createDownloads shouldBlock", () => {
+  it("blocks a download the agent's tab started while acting", () => {
+    const downloads = createDownloads({ onChange: vi.fn(), shouldBlock: (wc: { id: number }) => wc?.id === 3 });
+    const event = { preventDefault: vi.fn() };
+    const item = { getFilename: () => "report.pdf", cancel: vi.fn() };
+    downloads.handle(event, item, { id: 3 });
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(item.cancel).toHaveBeenCalled();
+    expect(downloads.list()).toEqual([expect.objectContaining({ state: "blocked", filename: "report.pdf" })]);
   });
 });

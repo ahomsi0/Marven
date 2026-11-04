@@ -15,6 +15,9 @@ const isCertificateError = (code) => code <= -200 && code > -300;
 // Leaving fullscreen runs in its own isolated world (not the page's, not 999
 // for preloads, not 1001 for page extraction).
 const FULLSCREEN_WORLD_ID = 1002;
+// Input that is the user's own: a click, a key or a tap. Mouse moves and
+// scrolling (looking around while the agent works) don't count.
+const USER_INPUT_TYPES = new Set(['mouseDown', 'keyDown', 'rawKeyDown', 'touchStart']);
 const EXIT_FULLSCREEN = 'if (document.fullscreenElement) document.exitFullscreen().catch(() => {});';
 
 function securePreferences(session) {
@@ -44,6 +47,7 @@ class Tab {
    *   onFullscreen: (tab: Tab, on: boolean) => void,
    *   onShortcut: (input: Electron.Input) => boolean,
    *   onView: (tab: Tab) => void,
+   *   onUserInput: (tab: Tab) => void,
    * } }} options
    */
   constructor({ id, url, title, session, hooks }) {
@@ -71,6 +75,11 @@ class Tab {
     // A pending HTTP sign-in request from the server: { host, realm, isProxy, callback }.
     this.auth = null;
     this.fullscreen = false;
+    // Set when Marven's agent opened this tab: { conversationId }. Not saved.
+    this.agent = null;
+    // Input sent before this time (ms) is the agent's own; later input is the
+    // user's and pauses the agent.
+    this.agentInputUntil = 0;
   }
 
   // A view's webContents can be gone (not just destroyed) once a pop-up has
@@ -230,6 +239,9 @@ class Tab {
       this.error = { kind: 'crashed', description: details.reason };
       this.loading = false;
       update();
+    });
+    wc.on('input-event', (_e, input) => {
+      if (USER_INPUT_TYPES.has(input.type) && Date.now() > this.agentInputUntil) this.hooks.onUserInput(this);
     });
     wc.on('before-input-event', (event, input) => {
       if (this.hooks.onShortcut(input)) event.preventDefault();
