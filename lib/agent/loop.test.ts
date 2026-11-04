@@ -655,6 +655,14 @@ describe("runAgentLoop browser tools", () => {
     expect(result.output).toBe("x".repeat(10_000) + "\n[truncated]");
   });
 
+  it("allows the longer result for every browser tool (a hand-back carries a read)", async () => {
+    const handBack = "The user took over and handed back. The page may have changed; here it is now:\n" + "x".repeat(9_000);
+    for (const tool of ["browser_click", "browser_type", "browser_press", "browser_wait"]) {
+      const { events } = await run({ steps: [click("c1", tool)], call: async () => ({ kind: "ok", text: handBack }) });
+      expect(events.find((e) => e.type === "tool_result"), tool).toMatchObject({ output: handBack, truncated: false });
+    }
+  });
+
   it("keeps only the latest screenshot in the history", async () => {
     const image = { base64: "data:image/jpeg;base64,AA", mimeType: "image/jpeg" as const, name: "screenshot.jpg" };
     const { lastMessages } = await run({

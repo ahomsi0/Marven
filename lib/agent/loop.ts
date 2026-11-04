@@ -15,8 +15,10 @@ import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "./safety";
 
 const MAX_ITERATIONS = 20;
 const TOOL_OUTPUT_CAP = 4_000;
-// A page read is text plus a numbered element list; 4,000 characters would cut the list off.
-const BROWSER_READ_OUTPUT_CAP = 10_000;
+// A page read is text plus a numbered element list; 4,000 characters would cut
+// the list off. Any browser tool can return one: after the user takes over, the
+// waiting call hands back with a fresh read.
+const BROWSER_OUTPUT_CAP = 10_000;
 // An action can need a site approval, then a form-submit approval; a third
 // means the page keeps changing under it.
 const MAX_BROWSER_APPROVALS = 3;
@@ -434,7 +436,7 @@ export async function* runAgentLoop(
       }
     }
 
-    const cap = tool === "browser_read" ? BROWSER_READ_OUTPUT_CAP : TOOL_OUTPUT_CAP;
+    const cap = isBrowserTool(tool) ? BROWSER_OUTPUT_CAP : TOOL_OUTPUT_CAP;
     const truncated = output.length > cap;
     const trimmed = truncated ? output.slice(0, cap) + "\n[truncated]" : output;
 
