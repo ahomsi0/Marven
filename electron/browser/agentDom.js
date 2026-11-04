@@ -501,10 +501,22 @@ function agentInPage(req) {
     return { ok: true };
   }
 
+  // What has the focus: Enter in a text field submits its form, and Enter or
+  // Space on a submit button (focused with Tab) does too.
   function focused() {
     const el = deepActive();
-    if (!el || el === document.body || el === document.documentElement) return { name: '', sensitive: false, entersSubmit: false, fields: [] };
-    return { name: clip(nameOf(el), MAX_NAME), sensitive: sensitive(el), entersSubmit: entersSubmit(el), fields: entersSubmit(el) ? fieldsOf(formOf(el)) : [] };
+    if (!el || el === document.body || el === document.documentElement) {
+      return { name: '', sensitive: false, entersSubmit: false, submits: false, fields: [] };
+    }
+    const enters = entersSubmit(el);
+    const clicks = submits(el);
+    return {
+      name: clip(nameOf(el), MAX_NAME),
+      sensitive: sensitive(el),
+      entersSubmit: enters,
+      submits: clicks,
+      fields: enters || clicks ? fieldsOf(formOf(el)) : [],
+    };
   }
 
   switch (req.op) {
@@ -593,7 +605,13 @@ function cleanTarget(raw) {
 
 function cleanFocused(raw) {
   const f = raw && typeof raw === 'object' ? raw : {};
-  return { name: str(f.name, MAX_NAME), sensitive: f.sensitive === true, entersSubmit: f.entersSubmit === true, fields: cleanFields(f.fields) };
+  return {
+    name: str(f.name, MAX_NAME),
+    sensitive: f.sensitive === true,
+    entersSubmit: f.entersSubmit === true,
+    submits: f.submits === true,
+    fields: cleanFields(f.fields),
+  };
 }
 
 /** Results of the smaller operations (focus, select, scroll, hasText). */

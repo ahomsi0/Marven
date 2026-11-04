@@ -251,6 +251,29 @@ describe("agent controller", () => {
     expect(submit).toMatchObject({ kind: "needs_approval", approval: { kind: "submit" } });
   });
 
+  it("asks before Enter or Space on a focused submit button, not before other keys", async () => {
+    const fields = [{ name: "Email", value: "a@b.c" }];
+    const { agent, deps, makeTab } = setup((req) =>
+      (req.op === "focused" ? { name: "Place order", sensitive: false, entersSubmit: false, submits: true, fields } : { ok: true }));
+    makeTab("t1", "conv1");
+    for (const key of ["Enter", "Space"]) {
+      expect(await agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key }, { approvedHosts: ["shop.test"] }))).toEqual({
+        kind: "needs_approval", approval: { kind: "submit", host: "shop.test", action: "press", target: key, fields },
+      });
+    }
+    expect(deps.sendInput).not.toHaveBeenCalled();
+    expect(await agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Tab" }, { approvedHosts: ["shop.test"] }))).toMatchObject({ kind: "ok" });
+    expect(await agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Enter" }, { approvedHosts: ["shop.test"], approvedSubmit: true, approvedTarget: "Enter" })))
+      .toMatchObject({ kind: "ok" });
+  });
+
+  it("presses Space in a text field without asking", async () => {
+    const { agent, makeTab } = setup((req) =>
+      (req.op === "focused" ? { name: "Search", sensitive: false, entersSubmit: true, submits: false, fields: [] } : { ok: true }));
+    makeTab("t1", "conv1");
+    expect(await agent.perform("run1", "conv1", act("browser_press", { tab: "t1", key: "Space" }, { approvedHosts: ["shop.test"] }))).toMatchObject({ kind: "ok" });
+  });
+
   it("refuses keys while focus is in a sensitive field", async () => {
     const { agent, deps, makeTab } = setup((req) => (req.op === "focused" ? { name: "Password", sensitive: true, entersSubmit: true, fields: [] } : null));
     makeTab("t1", "conv1");

@@ -292,6 +292,16 @@ describe("agentInPage targets", () => {
     expect(inPage({ op: "select", nav: 1, ref: 2, option: "XL" })).toEqual({ error: "no-option", options: ["Small", "Large"] });
   });
 
+  it("says when the focus is on a submit button, with the form's fields", () => {
+    document.body.innerHTML = `<form><input name="q" value="x"><button type="submit">Place order</button><input type="checkbox" name="agree"></form>`;
+    document.querySelector("button")!.focus();
+    expect(inPage({ op: "focused" })).toMatchObject({ name: "Place order", entersSubmit: false, submits: true, fields: [{ name: "q", value: "x" }] });
+    document.querySelector<HTMLInputElement>("input[type=checkbox]")!.focus();
+    expect(inPage({ op: "focused" })).toMatchObject({ entersSubmit: false, submits: false, fields: [] });
+    document.body.innerHTML = "";
+    expect(inPage({ op: "focused" })).toMatchObject({ name: "", submits: false, fields: [] });
+  });
+
   it("serializes with its request as a JSON literal", () => {
     document.body.innerHTML = `<p>Hello "world"</p>`;
     expect((0, eval)(script({ op: "hasText", text: 'hello "WORLD' }))).toEqual({ found: true });

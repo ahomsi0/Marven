@@ -457,7 +457,9 @@ function createAgentController(deps) {
     if (!host) return fail(NO_HOST);
     const focused = cleanFocused(await deps.runInPage(tab, { op: 'focused' }));
     if (focused.sensitive) return fail('The focus is in a sensitive field (a password, payment detail or one-time code). Ask the user to finish it.');
-    const approval = approvalFor(action, host, 'press', key, key === 'Enter' && focused.entersSubmit, focused.fields);
+    // Enter submits from a text field or a submit button, Space from a submit button.
+    const submitting = (key === 'Enter' && (focused.entersSubmit || focused.submits)) || (key === 'Space' && focused.submits);
+    const approval = approvalFor(action, host, 'press', key, submitting, focused.fields);
     if (approval) return approval;
     const stop = halted(r, t);
     if (stop) return stop;
