@@ -5,8 +5,11 @@
 // a form submission yet, outlines the target, then acts with real input
 // events. Any input of the user's in the run's tab or switching tabs pauses
 // the run until Resume; hiding the panel (closing it, or an overlay such as
-// Settings covering it) pauses it until the panel shows again. Either way the
-// next action returns a fresh read instead of running. Stop, a time-out or a
+// Settings covering it) pauses it until the panel shows again; a sign-in
+// prompt on one of its tabs pauses it until the user answers. Each of these
+// is a separate reason, and the run acts again only once none is left, so
+// one ending never cancels another. Either way the next action returns a
+// fresh read instead of running. Stop, a time-out or a
 // newer run cancel the action in flight: it checks before every side effect,
 // since the page can hold it up (a dialog) for as long as it likes. Works only
 // through `deps` (the manager passes real tabs), so it can be tested with fakes.
@@ -32,6 +35,8 @@ const KIND = {
 };
 
 const NO_TAB = 'No such agent tab. Use browser_tabs with action "list".';
+// Why a run waits, most important first (what activity() reports).
+const PAUSE_REASONS = ['sign-in', 'user', 'hidden'];
 // Returned from inside an action when the user took over mid-way; the caller
 // waits for Resume outside the action's time limit.
 const PAUSED = Symbol('paused');
@@ -80,8 +85,11 @@ function targetError(code, ref) {
 function createAgentController(deps) {
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now ?? Date.now;
-  // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, tabId, action, gate, downloadBlocked, current }
-  // `current` is the token of the action in flight (see perform).
+  // { id, conversationId, state: 'acting' | 'paused' | 'waiting-user', reason, reasons, signIns, tabId, action, gate,
+  //   downloadBlocked, current }
+  // `reasons` holds every reason the run waits for (PAUSE_REASONS), `signIns`
+  // the ids of its tabs showing a sign-in prompt, and `current` the token of
+  // the action in flight (see perform).
   let run = null;
 
   const header = (tab) => `[tab ${tab.id}] ${tab.title || '(untitled)'} — ${tab.url}`;
@@ -129,10 +137,15 @@ function createAgentController(deps) {
 
   // ── Pausing ────────────────────────────────────────────────────────────
 
+  function updateState(r) {
+    r.reason = PAUSE_REASONS.find((reason) => r.reasons.has(reason)) ?? null;
+    r.state = !r.reason ? 'acting' : r.reasons.has('sign-in') ? 'waiting-user' : 'paused';
+  }
+
   function pause(reason) {
-    if (!run) return;
-    run.state = reason === 'sign-in' ? 'waiting-user' : 'paused';
-    run.reason = reason;
+    if (!run || run.reasons.has(reason)) return;
+    run.reasons.add(reason);
+    updateState(run);
     if (!run.gate) {
       let release;
       const promise = new Promise((resolve) => { release = resolve; });
@@ -141,14 +154,24 @@ function createAgentController(deps) {
     deps.onChange();
   }
 
-  function resume() {
-    if (!run || run.state === 'acting') return;
-    const gate = run.gate;
-    run.state = 'acting';
-    run.reason = null;
-    run.gate = null;
-    gate?.release('resumed');
+  function unpause(reason) {
+    if (!run || !run.reasons.delete(reason)) return;
+    updateState(run);
+    if (run.reasons.size === 0 && run.gate) {
+      const gate = run.gate;
+      run.gate = null;
+      gate.release('resumed');
+    }
     deps.onChange();
+  }
+
+  // Resume (the strip's button) ends the user's own pause. A sign-in prompt
+  // whose tab has gone (closed meanwhile) no longer holds the run up either.
+  function resume() {
+    if (!run) return;
+    for (const id of run.signIns) if (!deps.tabs.get(id)?.auth) run.signIns.delete(id);
+    if (run.signIns.size === 0) unpause('sign-in');
+    unpause('user');
   }
 
   function end(runId) {
@@ -181,7 +204,10 @@ function createAgentController(deps) {
   async function perform(runId, conversationId, action) {
     if (!run || run.id !== runId) {
       if (run) end(run.id);
-      run = { id: runId, conversationId, state: 'acting', reason: null, tabId: null, action: null, gate: null, downloadBlocked: false, current: null };
+      run = {
+        id: runId, conversationId, state: 'acting', reason: null, reasons: new Set(), signIns: new Set(),
+        tabId: null, action: null, gate: null, downloadBlocked: false, current: null,
+      };
     }
     const r = run;
     if (r.gate) return waitAndHandBack(r);
@@ -403,17 +429,21 @@ function createAgentController(deps) {
     /** The renderer went away (reload, crash): nothing will end the run otherwise. */
     reset: () => { if (run) end(run.id); },
     takeOver: () => pause('user'),
-    onUserInput: (tab) => { if (run && run.state === 'acting' && owns(run, tab)) pause('user'); },
+    onUserInput: (tab) => { if (run && owns(run, tab)) pause('user'); },
     onUserActivate: (id) => { if (run && run.tabId && id !== run.tabId) pause('user'); },
     onUserClose: (id) => { if (run && owns(run, deps.tabs.get(id))) pause('user'); },
     // A hidden page can't take input reliably, so the run waits while the
     // panel is closed or covered, and carries on when it shows again.
-    onHide: () => { if (run && run.state === 'acting') pause('hidden'); },
-    onShow: () => { if (run && run.reason === 'hidden') resume(); },
+    onHide: () => pause('hidden'),
+    onShow: () => unpause('hidden'),
     onTabUpdate: (tab) => {
       if (!run || !owns(run, tab)) return;
-      if (tab.auth && run.reason !== 'sign-in') pause('sign-in');
-      else if (!tab.auth && run.reason === 'sign-in') resume();
+      if (tab.auth) {
+        run.signIns.add(tab.id);
+        pause('sign-in');
+      } else if (run.signIns.delete(tab.id) && run.signIns.size === 0) {
+        unpause('sign-in');
+      }
     },
     blocksDownloadFrom: (tab) => {
       if (!run || run.state !== 'acting' || !owns(run, tab)) return false;

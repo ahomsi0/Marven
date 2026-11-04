@@ -271,6 +271,61 @@ describe("agent controller", () => {
     expect(agent.activity()).toMatchObject({ state: "acting" });
   });
 
+  it("keeps the user's own pause when a sign-in prompt comes and goes", async () => {
+    const { agent, tabs, makeTab } = setup(() => readResult());
+    const tab = makeTab("t1", "conv1");
+    await agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+    agent.takeOver();
+    tab.auth = { host: "shop.test" };
+    agent.onTabUpdate(tabs.get("t1"));
+    expect(agent.activity()).toMatchObject({ state: "waiting-user", reason: "sign-in" });
+    agent.resume(); // Resume doesn't answer the sign-in prompt
+    expect(agent.activity()).toMatchObject({ state: "waiting-user", reason: "sign-in" });
+    agent.takeOver();
+    tab.auth = null;
+    agent.onTabUpdate(tabs.get("t1"));
+    expect(agent.activity()).toMatchObject({ state: "paused", reason: "user" });
+    agent.resume();
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+  });
+
+  it("keeps waiting while hidden after a sign-in is answered, and acts once shown", async () => {
+    const { agent, tabs, makeTab } = setup(() => readResult());
+    const tab = makeTab("t1", "conv1");
+    await agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+    agent.onHide();
+    tab.auth = { host: "shop.test" };
+    agent.onTabUpdate(tabs.get("t1"));
+    expect(agent.activity()).toMatchObject({ state: "waiting-user", reason: "sign-in" });
+    let settled = false;
+    const waiting = agent.perform("run1", "conv1", act("browser_read", { tab: "t1" })).then((r) => { settled = true; return r; });
+    tab.auth = null;
+    agent.onTabUpdate(tabs.get("t1"));
+    expect(agent.activity()).toMatchObject({ state: "paused", reason: "hidden" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+    agent.onShow();
+    expect((await waiting).text).toMatch(/handed back/);
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+  });
+
+  it("waits for every open sign-in prompt, and forgets the ones whose tab is gone", async () => {
+    const { agent, tabs, makeTab } = setup(() => readResult());
+    const one = makeTab("t1", "conv1");
+    const two = makeTab("t2", "conv1");
+    await agent.perform("run1", "conv1", act("browser_read", { tab: "t1" }));
+    one.auth = { host: "shop.test" };
+    two.auth = { host: "shop.test" };
+    agent.onTabUpdate(tabs.get("t1"));
+    agent.onTabUpdate(tabs.get("t2"));
+    one.auth = null;
+    agent.onTabUpdate(tabs.get("t1"));
+    expect(agent.activity()).toMatchObject({ state: "waiting-user", reason: "sign-in" });
+    tabs.delete("t2");
+    agent.resume();
+    expect(agent.activity()).toMatchObject({ state: "acting" });
+  });
+
   it("blocks downloads only while acting on its own tab, and says so", async () => {
     const { agent, deps, tabs, makeTab } = setup((req) => (req.op === "target" ? targetResult() : { ok: true }));
     makeTab("t1", "conv1");
