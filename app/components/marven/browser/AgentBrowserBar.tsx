@@ -3,6 +3,7 @@
 import { useT } from "@/lib/i18n";
 import type { AgentActivity, BrowserBridge } from "@/lib/inAppBrowser";
 import { MarvenLogo } from "../MarvenLogo";
+import { isolate, marked } from "./isolate";
 
 const BUTTON = "shrink-0 rounded-md border border-[var(--m-border)] px-2 py-0.5 text-[11px] text-[var(--m-text)] hover:bg-[var(--m-surface-2)]";
 
@@ -13,23 +14,22 @@ const BUTTON = "shrink-0 rounded-md border border-[var(--m-border)] px-2 py-0.5 
  */
 export function AgentBrowserBar({ bridge, activity }: { bridge: BrowserBridge; activity: AgentActivity }) {
   const { t } = useT();
+  const target = activity.action?.target ?? "";
   const doing = activity.action
-    ? t(`browser.agent.actions.${activity.action.kind}`, { target: activity.action.target })
+    ? t(`browser.agent.actions.${activity.action.kind}`, marked({ target }))
     : t("browser.agent.actions.idle");
   const line =
-    activity.state === "acting" ? t("browser.agent.acting", { action: doing })
+    activity.state === "acting" ? isolate(t("browser.agent.acting", { action: doing }), { target })
     : activity.reason === "sign-in" ? t("browser.agent.waitingSignIn")
     : activity.reason === "hidden" ? t("browser.agent.hidden")
     : t("browser.agent.paused");
 
   return (
     <div
-      role="status"
-      aria-live="polite"
       className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--m-border-subtle)] bg-[var(--m-accent)]/10 px-2 text-[12px] text-[var(--m-text)]"
     >
       <MarvenLogo size={14} className={activity.state === "acting" ? "animate-pulse" : ""} />
-      <span className="min-w-0 flex-1 truncate" dir="auto">{line}</span>
+      <span role="status" aria-live="polite" className="min-w-0 flex-1 truncate" dir="auto">{line}</span>
       {activity.state === "acting" ? (
         <button type="button" className={BUTTON} onClick={() => bridge.agent.takeOver()}>{t("browser.agent.takeOver")}</button>
       ) : activity.reason === "user" ? (

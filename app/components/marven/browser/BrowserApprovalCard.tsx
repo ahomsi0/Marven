@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { useT } from "@/lib/i18n";
+import { isolate, marked } from "./isolate";
 import type { ApprovalScope, BrowserApprovalPreview } from "@/types";
 
 interface BrowserApprovalCardProps {
@@ -24,22 +25,25 @@ export function BrowserApprovalCard({ callId, approval, secondsLeft, onApprove }
     e.stopPropagation();
     onApprove?.(callId, accept, scope);
   };
-  const action = t(`browser.agent.actions.${approval.action}`, { target: approval.target });
+  const shown = (value: string) => (value === "(hidden)" ? t("browser.agent.approval.hidden") : value);
+  const values = { host: approval.host, target: approval.target };
+  const m = marked(values);
+  const action = t(`browser.agent.actions.${approval.action}`, m);
   const title = approval.kind === "submit" ? "browser.agent.approval.submitTitle" : "browser.agent.approval.siteTitle";
 
   return (
     <div className="space-y-2 border-t border-[var(--m-border-subtle)] px-3 py-2">
-      <p className="text-[12px] text-[var(--m-text)]">{t(title, { host: approval.host })}</p>
-      <p className="text-[11px] text-[var(--m-text-muted)]" dir="auto">{t("browser.agent.approval.next", { action })}</p>
+      <p className="text-[12px] text-[var(--m-text)]">{isolate(t(title, m), values)}</p>
+      <p className="text-[11px] text-[var(--m-text-muted)]" dir="auto">{isolate(t("browser.agent.approval.next", { action }), values)}</p>
       {approval.kind === "submit" && approval.fields && approval.fields.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-wide text-[var(--m-text-faint)]">{t("browser.agent.approval.fields")}</p>
-          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
+          <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[11px]">
             {approval.fields.map((field, i) => (
               <Fragment key={i}>
-                <dt className="truncate text-[var(--m-text-muted)]" dir="auto">{field.name}</dt>
-                <dd className="truncate text-[var(--m-text)]" dir="auto">
-                  {field.value === "(hidden)" ? t("browser.agent.approval.hidden") : field.value}
+                <dt className="max-w-[10rem] [overflow-wrap:anywhere] text-[var(--m-text-muted)]" dir="auto" title={field.name}>{field.name}</dt>
+                <dd className="[overflow-wrap:anywhere] text-[var(--m-text)]" dir="auto" title={shown(field.value)}>
+                  {shown(field.value)}
                 </dd>
               </Fragment>
             ))}
