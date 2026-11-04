@@ -87,6 +87,13 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     cancelDownload: (id) => ipcRenderer.send("browser-cancel-download", id),
     showDownload: (id) => ipcRenderer.send("browser-show-download", id),
     clearBrowsingData: () => ipcRenderer.invoke("browser-clear-data"),
+    // Marven's agent driving its own tabs (electron/browser/agent.js).
+    agent: {
+      run: (runId, conversationId, action) => ipcRenderer.invoke("browser-agent-run", runId, conversationId, action),
+      resume: () => ipcRenderer.send("browser-agent-resume"),
+      takeOver: () => ipcRenderer.send("browser-agent-take-over"),
+      end: (runId) => ipcRenderer.send("browser-agent-end", runId),
+    },
     onSnapshot: (cb) => {
       const handler = (_e, data) => cb(data);
       ipcRenderer.on("browser-snapshot", handler);
