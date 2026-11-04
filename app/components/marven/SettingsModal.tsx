@@ -1426,11 +1426,11 @@ export function SettingsModal({
             </div>
 
             {/* Let the agent use the browser toggle (desktop app only) */}
-            {getBrowserBridge() && (
+            {browserBridge && (
               <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.agentBrowsing")}</h3>
+                    <h3 id="agent-browsing-label" className="text-[13px] font-medium text-[var(--m-text)]">{tr("settings.general.agentBrowsing")}</h3>
                     <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
                       {tr("settings.general.agentBrowsingHint")}
                     </p>
@@ -1438,6 +1438,7 @@ export function SettingsModal({
                   <button
                     type="button"
                     role="switch"
+                    aria-labelledby="agent-browsing-label"
                     aria-checked={agentBrowsing}
                     onClick={() => {
                       const next = !agentBrowsing;
