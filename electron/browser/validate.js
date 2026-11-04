@@ -1,6 +1,8 @@
 // Argument checks for everything that crosses into the in-app browser from
 // the renderer (IPC) or from saved files. Nothing here imports Electron.
 
+const { isAgentKey } = require('./agentKeys');
+
 const MAX_URL_LENGTH = 8192;
 const MAX_BOUND = 100000;
 
@@ -66,4 +68,91 @@ function hostOf(url) {
   }
 }
 
-module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission };
+// A browser action from the agent (via the renderer): a known tool with its
+// arguments checked and capped. The model wrote these arguments, so nothing
+// is trusted; null means the action is refused.
+const AGENT_TOOLS = new Set([
+  'browser_open', 'browser_history', 'browser_read', 'browser_screenshot', 'browser_tabs',
+  'browser_wait', 'browser_scroll', 'browser_click', 'browser_type', 'browser_press', 'browser_select',
+]);
+const HISTORY_ACTIONS = new Set(['back', 'forward', 'reload']);
+const TAB_ACTIONS = new Set(['list', 'switch', 'close']);
+const MAX_WAIT_MS = 15000;
+const DEFAULT_WAIT_MS = 10000;
+
+// Models sometimes send numbers as strings.
+function toRef(value) {
+  const n = typeof value === 'string' && /^\d{1,5}$/.test(value) ? Number(value) : value;
+  return Number.isInteger(n) && n >= 1 && n <= 10000 ? n : null;
+}
+
+function cleanAgentAction(raw) {
+  if (!raw || typeof raw !== 'object' || !AGENT_TOOLS.has(raw.tool)) return null;
+  const a = raw.args && typeof raw.args === 'object' ? raw.args : {};
+  const args = {};
+  if (a.tab != null) {
+    if (!isId(a.tab)) return null;
+    args.tab = a.tab;
+  }
+  const ref = toRef(a.ref);
+  switch (raw.tool) {
+    case 'browser_open':
+      if (!isWebUrl(a.url)) return null;
+      args.url = a.url;
+      break;
+    case 'browser_history':
+      if (!HISTORY_ACTIONS.has(a.action)) return null;
+      args.action = a.action;
+      break;
+    case 'browser_read':
+      args.offset = Number.isInteger(a.offset) && a.offset > 0 ? Math.min(a.offset, 1000000) : 0;
+      args.find = cleanText(a.find, 200);
+      break;
+    case 'browser_tabs':
+      if (!TAB_ACTIONS.has(a.action)) return null;
+      args.action = a.action;
+      break;
+    case 'browser_wait':
+      if (a.for !== 'load' && a.for !== 'text') return null;
+      args.for = a.for;
+      args.text = cleanText(a.text, 200);
+      if (a.for === 'text' && !args.text) return null;
+      args.timeoutMs = Number.isFinite(a.timeoutMs) ? Math.min(MAX_WAIT_MS, Math.max(0, Math.round(a.timeoutMs))) : DEFAULT_WAIT_MS;
+      break;
+    case 'browser_scroll':
+      if (ref) args.ref = ref;
+      else if (a.direction === 'up' || a.direction === 'down') args.direction = a.direction;
+      else return null;
+      break;
+    case 'browser_click':
+      if (!ref) return null;
+      args.ref = ref;
+      break;
+    case 'browser_type':
+      if (!ref || typeof a.text !== 'string') return null;
+      args.ref = ref;
+      args.text = a.text.slice(0, 2000);
+      args.submit = a.submit === true;
+      break;
+    case 'browser_press':
+      if (!isAgentKey(a.key)) return null;
+      args.key = a.key;
+      break;
+    case 'browser_select':
+      if (!ref || typeof a.option !== 'string') return null;
+      args.ref = ref;
+      args.option = a.option.slice(0, 200);
+      break;
+    default:
+      break; // browser_screenshot: only `tab`
+  }
+  return {
+    tool: raw.tool,
+    args,
+    approvedHosts: Array.isArray(raw.approvedHosts) ? raw.approvedHosts.filter(isHost).slice(0, 100) : [],
+    approvedSubmit: raw.approvedSubmit === true,
+    canSeeImages: raw.canSeeImages === true,
+  };
+}
+
+module.exports = { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission, cleanAgentAction };

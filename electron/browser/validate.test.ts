@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission } from "./validate.js";
+import { isWebUrl, cleanBounds, cleanText, isId, isHost, hostOf, staysOnOrigin, isAllowedPermission, cleanAgentAction } from "./validate.js";
 
 describe("validate", () => {
   it("accepts only http(s) URLs", () => {
@@ -64,5 +64,33 @@ describe("validate", () => {
     for (const p of ["clipboard-read", "media", "geolocation", "notifications", "pointerLock", "keyboardLock", "openExternal", ""]) {
       expect(isAllowedPermission(p)).toBe(false);
     }
+  });
+});
+
+describe("cleanAgentAction", () => {
+  const base = { approvedHosts: ["shop.test", "../bad"], approvedSubmit: true, canSeeImages: false };
+
+  it("keeps known tools with checked arguments", () => {
+    expect(cleanAgentAction({ ...base, tool: "browser_open", args: { url: "https://shop.test/" } })).toEqual({
+      tool: "browser_open", args: { url: "https://shop.test/" }, approvedHosts: ["shop.test"], approvedSubmit: true, canSeeImages: false,
+    });
+    expect(cleanAgentAction({ ...base, tool: "browser_click", args: { tab: "t-1", ref: "3" } })?.args).toEqual({ tab: "t-1", ref: 3 });
+    expect(cleanAgentAction({ ...base, tool: "browser_type", args: { tab: "t", ref: 1, text: "x".repeat(3000), submit: "yes" } })?.args)
+      .toEqual({ tab: "t", ref: 1, text: "x".repeat(2000), submit: false });
+    expect(cleanAgentAction({ ...base, tool: "browser_wait", args: { tab: "t", for: "load", timeoutMs: 99999 } })?.args)
+      .toEqual({ tab: "t", for: "load", text: "", timeoutMs: 15000 });
+    expect(cleanAgentAction({ ...base, tool: "browser_read", args: { tab: "t" } })?.args).toEqual({ tab: "t", offset: 0, find: "" });
+  });
+
+  it("refuses unknown tools and bad arguments", () => {
+    expect(cleanAgentAction(null)).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_fly", args: {} })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_open", args: { url: "file:///etc/passwd" } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_click", args: { tab: "t", ref: 0 } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_click", args: { tab: "../x", ref: 1 } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_press", args: { tab: "t", key: "F12" } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_history", args: { tab: "t", action: "home" } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_wait", args: { tab: "t", for: "text" } })).toBeNull();
+    expect(cleanAgentAction({ ...base, tool: "browser_scroll", args: { tab: "t" } })).toBeNull();
   });
 });
