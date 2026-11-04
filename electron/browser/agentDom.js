@@ -44,6 +44,7 @@ function agentInPage(req) {
   const state = window.__marvenAgent || (window.__marvenAgent = { nav: null, refs: new Map() });
   const styles = new Map();
   const backgrounds = new Map();
+  const textClips = new Map();
 
   const clip = (value, max) => {
     const s = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -71,45 +72,139 @@ function agentInPage(req) {
     return result;
   }
 
+  // A shadow root, closed ones too where the world can see them (chrome.dom
+  // isn't there in isolated worlds; then the layout checks below catch the
+  // light DOM a closed root never shows).
+  function shadowOf(el) {
+    if (el.shadowRoot) return el.shadowRoot;
+    try {
+      const dom = typeof chrome === 'object' && chrome ? chrome.dom : null;
+      return (dom && typeof dom.openOrClosedShadowRoot === 'function' && dom.openOrClosedShadowRoot(el)) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The width and height a `clip: rect(top, right, bottom, left)` leaves
+  // (`auto` sides leave the box as it is). Clip applies to absolute and fixed boxes only.
+  function clippedAway(s) {
+    const m = /^rect\((.*)\)$/.exec(s.clip || '');
+    if (!m || !/^(absolute|fixed)$/.test(s.position)) return false;
+    const [top, right, bottom, left] = m[1].split(/[\s,]+/).map((v) => (v === 'auto' ? NaN : parseFloat(v)));
+    return right - left <= 1 || bottom - top <= 1;
+  }
+
   // Whether `el` itself keeps its contents from a person looking at the page.
   function hiddenSelf(el) {
     if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
     const s = styleOf(el);
     if (s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse') return true;
     if (parseFloat(s.opacity) === 0 || parseFloat(s.fontSize) === 0) return true;
-    if (/^rect\(0(px)?,?\s*0(px)?,?\s*0(px)?,?\s*0(px)?\)$/.test(s.clip) || s.clipPath === 'inset(50%)') return true;
+    if (clippedAway(s) || s.clipPath === 'inset(50%)' || s.contentVisibility === 'hidden') return true;
     if (s.display === 'contents') return false;
+    // Not laid out at all: inside a closed <details>, or light DOM of a shadow
+    // root that has no slot for it.
+    if (typeof el.getClientRects === 'function' && el.getClientRects().length === 0) return true;
     const r = el.getBoundingClientRect();
-    if ((r.width === 0 || r.height === 0) && s.overflow !== 'visible') return true;
+    if ((r.width <= 1 || r.height <= 1) && s.overflow !== 'visible') return true;
     // Entirely left of or above the document, where it can never be scrolled into view.
     return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
   }
 
+  // A closed <details> shows only its first <summary>.
+  function hiddenInDetails(details, child) {
+    if (tag(details) !== 'DETAILS' || details.hasAttribute('open')) return false;
+    return child !== Array.from(details.children).find((c) => tag(c) === 'SUMMARY');
+  }
+
   function visible(el) {
-    for (let e = el; e && e.nodeType === 1; e = parentOf(e)) if (hiddenSelf(e)) return false;
+    // No size at all (transform: scale(0) on it or above it): nothing to see or click.
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0 && styleOf(el).display !== 'contents') return false;
+    for (let e = el, child = null; e && e.nodeType === 1; child = e, e = parentOf(e)) {
+      if (hiddenSelf(e)) return false;
+      if (child && hiddenInDetails(e, child)) return false;
+    }
     return true;
   }
 
-  const sameColour = (el) => {
-    const c = styleOf(el).color;
-    return !!c && c === backgroundOf(el);
-  };
+  // The alpha of a computed colour: rgba(…, a), rgb(… / a) and the like.
+  function alphaOf(colour) {
+    if (typeof colour !== 'string' || !colour) return 1;
+    if (colour === 'transparent') return 0;
+    const m = /\/\s*([\d.]+)(%?)\s*\)$/.exec(colour) || /^rgba\([^,]*,[^,]*,[^,]*,\s*([\d.]+)(%?)\s*\)$/.exec(colour);
+    if (!m) return 1;
+    return parseFloat(m[1]) / (m[2] ? 100 : 1);
+  }
 
-  // Visible text under `root`, with line breaks at block boundaries.
+  // Gradient text: transparent glyphs that show the background behind them.
+  function clipsToText(el) {
+    if (textClips.has(el)) return textClips.get(el);
+    const s = styleOf(el);
+    const parent = parentOf(el);
+    const result = s.backgroundClip === 'text' || s.webkitBackgroundClip === 'text' || (!!parent && clipsToText(parent));
+    textClips.set(el, result);
+    return result;
+  }
+
+  // Text in `el` that can't be seen for its colour: (nearly) transparent, or
+  // the colour of the background behind it.
+  function invisibleColour(el) {
+    const s = styleOf(el);
+    if (alphaOf(s.color) < 0.1 || alphaOf(s.webkitTextFillColor) < 0.1) return !clipsToText(el);
+    return !!s.color && s.color === backgroundOf(el);
+  }
+
+  // Whether a text node takes up any room on the page. Text that isn't laid
+  // out (a closed shadow root's light DOM) or is shrunk to nothing
+  // (transform: scale(0)) has no box with an area.
+  function laidOut(node) {
+    if (typeof document.createRange !== 'function') return true;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    if (typeof range.getClientRects !== 'function') return true;
+    return Array.from(range.getClientRects()).some((r) => r.width > 0 && r.height > 0);
+  }
+
+  function shownText(node) {
+    if (!/\S/.test(node.nodeValue)) return true; // spacing, never content
+    const parent = node.parentElement || (node.parentNode && node.parentNode.host);
+    return !parent || (!invisibleColour(parent) && laidOut(node));
+  }
+
+  // Visible text under `root`, with line breaks at block boundaries. Walks
+  // what the page shows: a shadow root instead of its host's light DOM, which
+  // shows only through the root's slots; only the summary of a closed <details>.
+  // `out.chars` counts what was collected, so a huge page stops being walked
+  // once there is more than pageText keeps (with room for collapsed spaces).
   function textOf(root, out) {
-    for (let n = root.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === 3) {
-        const parent = n.parentElement || (n.parentNode && n.parentNode.host);
-        if (!parent || !sameColour(parent)) out.push(n.nodeValue);
-        continue;
-      }
-      if (n.nodeType !== 1 || SKIP.test(tag(n)) || hiddenSelf(n)) continue;
-      if (n.shadowRoot) textOf(n.shadowRoot, out);
-      textOf(n, out);
-      if (BLOCK.test(tag(n))) out.push('\n');
-      else if (tag(n) === 'TD' || tag(n) === 'TH') out.push(' ');
-    }
+    for (let n = root.firstChild; n && !(out.chars > 2 * MAX_TEXT); n = n.nextSibling) nodeText(n, out);
     return out;
+  }
+
+  function nodeText(n, out) {
+    if (n.nodeType === 3) {
+      if (shownText(n)) {
+        out.push(n.nodeValue);
+        out.chars = (out.chars || 0) + n.nodeValue.length;
+      }
+      return;
+    }
+    if (n.nodeType !== 1 || SKIP.test(tag(n)) || hiddenSelf(n)) return;
+    const shadow = shadowOf(n);
+    if (shadow) {
+      textOf(shadow, out);
+    } else if (tag(n) === 'SLOT' && typeof n.assignedNodes === 'function') {
+      // What's assigned to the slot, or its fallback content when nothing is.
+      for (const assigned of n.assignedNodes({ flatten: true })) nodeText(assigned, out);
+    } else if (tag(n) === 'DETAILS' && !n.hasAttribute('open')) {
+      const summary = Array.from(n.children).find((c) => tag(c) === 'SUMMARY');
+      if (summary) nodeText(summary, out);
+    } else {
+      textOf(n, out);
+    }
+    if (BLOCK.test(tag(n))) out.push('\n');
+    else if (tag(n) === 'TD' || tag(n) === 'TH') out.push(' ');
   }
 
   function pageText() {
@@ -247,7 +342,10 @@ function agentInPage(req) {
           found.push(el);
         }
       }
-      for (const el of Array.from(root.querySelectorAll('*'))) if (el.shadowRoot) collect(el.shadowRoot);
+      for (const el of Array.from(root.querySelectorAll('*'))) {
+        const shadow = shadowOf(el);
+        if (shadow) collect(shadow);
+      }
     };
     collect(document);
     return found;

@@ -11,17 +11,30 @@ import { UNTRUSTED_PAGE_HEADER } from "@/lib/pageAttachment";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const inPage = agentInPage as (req: Record<string, unknown>) => any;
 
-// jsdom has no layout: every element gets a 100×20 box unless data-rect says otherwise.
+// jsdom has no layout: every element gets a 100×20 box unless data-rect says
+// otherwise, and is laid out (has client rects) unless it has data-norects.
+// Text is laid out in its parent's box unless the parent has
+// data-unrendered-text (as for text a closed shadow root never shows).
+type RangeWithRects = Range & { getClientRects?: () => DOMRect[] };
 beforeEach(() => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const custom = this.getAttribute("data-rect");
     const [left, top, width, height] = custom ? custom.split(",").map(Number) : [10, 10, 100, 20];
     return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} } as DOMRect;
   });
-  delete (window as unknown as { __marvenAgent?: unknown }).__marvenAgent;
+  vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element) {
+    return (this.hasAttribute("data-norects") ? [] : [this.getBoundingClientRect()]) as unknown as DOMRectList;
+  });
+  (Range.prototype as RangeWithRects).getClientRects = function (this: Range) {
+    const parent = this.startContainer.parentElement;
+    if (!parent || parent.closest("[data-norects]") || parent.hasAttribute("data-unrendered-text")) return [];
+    return [parent.getBoundingClientRect()];
+  };
+  delete (window as unknown as { __marvenAgentState?: unknown }).__marvenAgentState;
 });
 
 afterEach(() => {
+  delete (Range.prototype as RangeWithRects).getClientRects;
   vi.restoreAllMocks();
   document.body.innerHTML = "";
   document.title = "";
@@ -85,6 +98,69 @@ describe("agentInPage read", () => {
     expect(byName["doc"]).toMatchObject({ file: true });
     expect(byName["Pay"]).toMatchObject({ submits: true });
     expect(byName["Help"]).toMatchObject({ submits: false });
+  });
+
+  it("drops transparent text, but not gradient text", () => {
+    document.body.innerHTML = `
+      <p>Visible text</p>
+      <p style="color: transparent">SECRET-1</p>
+      <p style="color: rgba(0, 0, 0, 0.05)">SECRET-2</p>
+      <p style="-webkit-text-fill-color: transparent">SECRET-3</p>
+      <h1 style="-webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent">Gradient heading</h1>`;
+    const r = read();
+    expect(r.text).toContain("Visible text");
+    expect(r.text).toContain("Gradient heading");
+    for (let i = 1; i <= 3; i++) expect(r.text).not.toContain(`SECRET-${i}`);
+  });
+
+  it("drops text and elements that aren't laid out or have no size", () => {
+    document.body.innerHTML = `
+      <p>Visible text</p>
+      <div data-norects><p>SECRET-1</p><button>Hidden button</button></div>
+      <div data-unrendered-text>SECRET-2<span data-norects>SECRET-3</span></div>
+      <p data-rect="10,10,0,0">SECRET-4</p>
+      <button data-rect="10,10,0,0">Shrunk button</button>
+      <div style="display: contents">Contents text</div>
+      <div style="content-visibility: hidden">SECRET-5</div>`;
+    const r = read();
+    expect(r.text).toContain("Visible text");
+    expect(r.text).toContain("Contents text");
+    for (let i = 1; i <= 5; i++) expect(r.text).not.toContain(`SECRET-${i}`);
+    expect(r.elements).toHaveLength(0);
+  });
+
+  it("shows only the summary of a closed details element", () => {
+    document.body.innerHTML = `
+      <details><summary>More</summary>SECRET-1<p>SECRET-2</p><button>Inside</button></details>
+      <details open><summary>Open</summary><p>Shown body</p><button>Open inside</button></details>`;
+    const r = read();
+    expect(r.text).toContain("More");
+    expect(r.text).toContain("Shown body");
+    expect(r.text).not.toMatch(/SECRET/);
+    expect(r.elements.map((e: { name: string }) => e.name)).toEqual(["More", "Open", "Open inside"]);
+  });
+
+  it("drops text clipped to a pixel, only where clip applies", () => {
+    document.body.innerHTML = `
+      <p style="position: absolute; clip: rect(1px, 1px, 1px, 1px)">SECRET-1</p>
+      <p style="position: absolute; clip: rect(0px, 0px, 0px, 0px)">SECRET-2</p>
+      <p style="position: absolute; clip: rect(0px, 100px, 1px, 0px)">SECRET-3</p>
+      <p style="clip: rect(0px, 0px, 0px, 0px)">Not positioned</p>
+      <p style="position: absolute; clip: rect(0px, 100px, 20px, 0px)">Clipped to its size</p>`;
+    const r = read();
+    expect(r.text).toContain("Not positioned");
+    expect(r.text).toContain("Clipped to its size");
+    expect(r.text).not.toMatch(/SECRET/);
+  });
+
+  it("reads a shadow host's light DOM only where a slot shows it", () => {
+    document.body.innerHTML = `<div id="plain">SECRET-1<span>SECRET-2</span></div><div id="slotted">Slotted text</div>`;
+    document.getElementById("plain")!.attachShadow({ mode: "open" }).innerHTML = "<p>Shadow text</p>";
+    document.getElementById("slotted")!.attachShadow({ mode: "open" }).innerHTML = "<p>Before</p><slot></slot><p>After</p>";
+    const text = read().text;
+    expect(text).toContain("Shadow text");
+    expect(text).toMatch(/Before\s*Slotted text\s*After/);
+    expect(text).not.toMatch(/SECRET/);
   });
 
   it("treats password fields shown as text, passcodes and labelled card fields as sensitive", () => {
