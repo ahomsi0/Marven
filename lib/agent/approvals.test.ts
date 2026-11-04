@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { registerApproval, registerScopedApproval, resolveApproval, hasPending } from "./approvals";
 
 describe("approvals", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("resolves with accept=true", async () => {
     const p = registerApproval("call-1", 1000);
     queueMicrotask(() => resolveApproval("call-1", true));
