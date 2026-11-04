@@ -129,7 +129,7 @@ describe("setupSession", () => {
 
 describe("agent tabs", () => {
   it("cancels the requests the agent's tabs may not make, filter lists or not", () => {
-    const refuseRequest = vi.fn((details: { url: string; webContentsId: number }) => details.url.startsWith("http://localhost:3000"));
+    const refuseRequest = vi.fn((details: { url: string }) => details.url.startsWith("http://localhost:3000"));
     const { ses, onBlocked } = setup(undefined, { refuseRequest, isDisabledFor: () => true });
     expect(request(ses, "http://localhost:3000/", "mainFrame")).toEqual({ cancel: true });
     expect(refuseRequest).toHaveBeenLastCalledWith(expect.objectContaining({ url: "http://localhost:3000/", resourceType: "mainFrame", webContentsId: 7 }));
