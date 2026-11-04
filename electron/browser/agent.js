@@ -422,7 +422,9 @@ function createAgentController(deps) {
       if (now) return now;
       if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, clickEvents(again.x, again.y));
-      return ok(`${header(tab)}\nClicked ${JSON.stringify(target)}. ${await settle(tab, navigation)}`);
+      // Settled first, so the header names the page the click landed on.
+      const outcome = await settle(tab, navigation);
+      return ok(`${header(tab)}\nClicked ${JSON.stringify(target)}. ${outcome}`);
     }
     if ((stop = halted(r, t))) return stop;
     const focused = cleanOutcome(await deps.runInPage(tab, { op: 'focus', nav: tab.navigation, ref: args.ref }));
@@ -434,7 +436,8 @@ function createAgentController(deps) {
       if ((stop = halted(r, t))) return stop;
       await deps.sendInput(tab, keyEvents('Enter'));
     }
-    return ok(`${header(tab)}\nTyped ${args.text.length} characters into ${JSON.stringify(target)}. ${await settle(tab, navigation)}`);
+    const outcome = await settle(tab, navigation);
+    return ok(`${header(tab)}\nTyped ${args.text.length} characters into ${JSON.stringify(target)}. ${outcome}`);
   }
 
   async function press(r, t, tab, action) {
@@ -450,7 +453,8 @@ function createAgentController(deps) {
     setAction(r, 'press', key);
     const navigation = tab.navigation;
     await deps.sendInput(tab, keyEvents(key));
-    return ok(`${header(tab)}\nPressed ${key}. ${await settle(tab, navigation)}`);
+    const outcome = await settle(tab, navigation);
+    return ok(`${header(tab)}\nPressed ${key}. ${outcome}`);
   }
 
   // ── What the user does ─────────────────────────────────────────────────

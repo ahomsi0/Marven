@@ -120,6 +120,30 @@ describe("agent controller", () => {
       .toMatchObject({ kind: "ok" });
   });
 
+  it("names the page an action landed on, not the one it started from", async () => {
+    const editable = element({ role: "textbox", name: "Search", editable: true });
+    for (const [tool, args, info] of [
+      ["browser_click", { ref: 1 }, element()],
+      ["browser_type", { ref: 1, text: "socks" }, editable],
+      ["browser_press", { key: "Tab" }, element()],
+    ] as const) {
+      const { agent, deps, makeTab } = setup((req) => (req.op === "target" ? targetResult(info) : { ok: true }));
+      const tab = makeTab("t1", "conv1");
+      // The page commits the navigation a little after the input, while the controller waits.
+      let navigating = false;
+      deps.sendInput.mockImplementation(() => { navigating = true; });
+      deps.insertText.mockImplementation(() => { navigating = true; });
+      const sleep = deps.sleep.getMockImplementation()!;
+      deps.sleep.mockImplementation(async (ms: number) => {
+        if (navigating) Object.assign(tab, { url: "https://shop.test/cart", title: "Cart", navigation: 2 });
+        return sleep(ms);
+      });
+      const result = await agent.perform("run1", "conv1", act(tool, { tab: "t1", ...args }, { approvedHosts: ["shop.test"] }));
+      expect(result.text.split("\n")[0]).toBe("[tab t1] Cart — https://shop.test/cart");
+      expect(result.text).toContain("The page navigated");
+    }
+  });
+
   it("checks the element again right before clicking", async () => {
     const cases: Array<[unknown, unknown]> = [
       [targetResult(element({ sensitive: true, editable: true })), { kind: "error", text: expect.stringMatching(/sensitive field/) }],
