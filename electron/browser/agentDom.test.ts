@@ -15,7 +15,7 @@ const inPage = agentInPage as (req: Record<string, unknown>) => any;
 // otherwise, and is laid out (has client rects) unless it has data-norects.
 // Text is laid out in its parent's box unless the parent has
 // data-unrendered-text (as for text a closed shadow root never shows).
-type RangeWithRects = Range & { getClientRects?: () => DOMRect[] };
+const rangeRects = Object.getOwnPropertyDescriptor(Range.prototype, "getClientRects");
 beforeEach(() => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const custom = this.getAttribute("data-rect");
@@ -25,16 +25,21 @@ beforeEach(() => {
   vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element) {
     return (this.hasAttribute("data-norects") ? [] : [this.getBoundingClientRect()]) as unknown as DOMRectList;
   });
-  (Range.prototype as RangeWithRects).getClientRects = function (this: Range) {
-    const parent = this.startContainer.parentElement;
-    if (!parent || parent.closest("[data-norects]") || parent.hasAttribute("data-unrendered-text")) return [];
-    return [parent.getBoundingClientRect()];
-  };
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    writable: true,
+    value(this: Range) {
+      const parent = this.startContainer.parentElement;
+      if (!parent || parent.closest("[data-norects]") || parent.hasAttribute("data-unrendered-text")) return [];
+      return [parent.getBoundingClientRect()];
+    },
+  });
   delete (window as unknown as { __marvenAgentState?: unknown }).__marvenAgentState;
 });
 
 afterEach(() => {
-  delete (Range.prototype as RangeWithRects).getClientRects;
+  if (rangeRects) Object.defineProperty(Range.prototype, "getClientRects", rangeRects);
+  else delete (Range.prototype as unknown as Record<string, unknown>).getClientRects;
   vi.restoreAllMocks();
   document.body.innerHTML = "";
   document.title = "";
@@ -342,7 +347,7 @@ describe("main-side helpers", () => {
       url: "https://a.test/", text: "",
       elements: [{ ref: 1, role: "link" }, { ref: 2, role: 'button "Pay" (submits a form)' }, { ref: 3, role: "heading" }, { ref: 4, role: "password" }],
     }, isWebUrl)!;
-    expect(r.elements.map((e) => e.role)).toEqual(["link", "element", "element", "password"]);
+    expect(r.elements.map((e: { role: string }) => e.role)).toEqual(["link", "element", "element", "password"]);
   });
 
   it("finds snippets around matches", () => {
