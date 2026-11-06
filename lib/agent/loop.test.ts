@@ -595,9 +595,14 @@ describe("runAgentLoop browser tools", () => {
     expect(approvals[0]).toMatchObject({ callId: "c1", browser: { kind: "site", host: "shop.test" } });
   });
 
-  it("reports a denial", async () => {
+  it("reports a denial and tells the model to stop and ask", async () => {
     const { events } = await run({ steps: [click("c1")], call: async (_id, a) => needsSite(a), approve: false });
-    expect(events).toContainEqual({ type: "tool_result", callId: "c1", output: "Denied by the user.", truncated: false });
+    expect(events).toContainEqual({
+      type: "tool_result",
+      callId: "c1",
+      output: expect.stringMatching(/^Denied by the user\. Stop here: don't retry this or look for another way .* ask what they'd like instead\.$/),
+      truncated: false,
+    });
   });
 
   it("asks before submitting even when trusted", async () => {
