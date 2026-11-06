@@ -12,6 +12,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.15.0",
+    items: [
+      { tag: "new", label: "The agent can use the in-app browser — it opens pages in tabs of its own, reads them, clicks, types and scrolls while you watch in the side panel. Turn it on in Settings → General → \"Let the agent use the browser\"" },
+      { tag: "new", label: "You stay in control: the agent asks before acting on each new site and before every form it submits, shows what would be sent, and you can Take over or Stop at any time" },
+      { tag: "new", label: "The browser panel now opens in agent mode too, with a strip showing what the agent is doing" },
+      { tag: "imp", label: "Safety built in: the agent never types passwords, card numbers or one-time codes, never downloads or uploads files, stays off your local network and Marven itself, and treats page text as data, not instructions" },
+      { tag: "imp", label: "After you deny an action, the agent stops and asks what you'd like instead of looking for another way round" },
+    ],
+  },
+  {
     version: "2.14.0",
     items: [
       { tag: "new", label: "In-app browser — open it from the globe in the chat header: tabs, bookmarks, history, downloads, find in page, a right-click menu, ad and tracker blocking, and a choice of search engine" },
