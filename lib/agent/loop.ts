@@ -5,6 +5,7 @@ import { readFile } from "fs/promises";
 import { registerApproval, registerScopedApproval } from "./approvals";
 import { registerBrowserCall } from "./browserBridge";
 import { browserSecretRefusal, isActingBrowserTool, isBrowserTool } from "./browserGate";
+import { BROWSER_DENIED } from "./browserTools";
 import { isGitMutation, unescapeModelString } from "./tools";
 import { CHECKPOINT_TOO_LARGE, recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
 import { createPatch } from "diff";
@@ -219,7 +220,7 @@ export async function* runAgentLoop(
         options._testApprovalResult !== undefined
           ? { accept: options._testApprovalResult, scope: options._testApprovalScope ?? "once" }
           : await registerScopedApproval(callId, 60_000);
-      if (!answer.accept) return { output: "Denied by the user." };
+      if (!answer.accept) return { output: BROWSER_DENIED };
       if (!approvedHosts.includes(approval.host)) approvedHosts.push(approval.host);
       if (approval.kind === "site" && answer.scope === "site") siteApprovals.add(approval.host);
       if (approval.kind === "submit") approvedSubmit = true;
