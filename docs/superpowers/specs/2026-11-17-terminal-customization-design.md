@@ -136,8 +136,12 @@ export function useTerminalSettings(): TerminalSettings;
   running xterm in place: `options.theme`, `fontFamily`, `fontSize`,
   `lineHeight`, `cursorStyle` and `cursorBlink`. The shell keeps running.
 - **Re-fit after font changes.** When the font family, size or line height
-  changes, the terminal re-fits on the next animation frame and again after
-  `document.fonts.ready` resolves.
+  changes, the terminal re-fits on the next animation frame. (xterm re-measures
+  cells when these options change; waiting on `document.fonts.ready` would not
+  trigger a new measurement, and installed fonts are available immediately.)
+- **First frame.** `useTerminalSettings()` reads storage on its first render,
+  and the terminal is built from the hook's state, so a newly mounted terminal
+  never shows the defaults first.
 - **Wrapper background.** The wrapper's background comes from the resolved
   theme's background, so light presets have no dark edge.
 - **Removed code.** `DARK_THEME`, `MIDNIGHT_THEME`, `AURORA_THEME` and
