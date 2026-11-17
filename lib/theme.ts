@@ -38,7 +38,11 @@ export function useTheme(): { theme: Theme; setTheme: (t: Theme) => void } {
 
     const onThemeChange = (e: Event) => setThemeState((e as CustomEvent<Theme>).detail);
     const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY || e.key === null) setThemeState(getStoredTheme());
+      if (e.key !== KEY && e.key !== null) return;
+      // Another window changed the theme: restyle this window too, not just this hook's consumers.
+      const next = getStoredTheme();
+      document.documentElement.setAttribute("data-theme", next);
+      setThemeState(next);
     };
     window.addEventListener(THEME_CHANGE_EVENT, onThemeChange);
     window.addEventListener("storage", onStorage);

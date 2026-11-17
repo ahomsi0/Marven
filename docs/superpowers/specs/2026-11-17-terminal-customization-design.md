@@ -136,9 +136,15 @@ export function useTerminalSettings(): TerminalSettings;
   running xterm in place: `options.theme`, `fontFamily`, `fontSize`,
   `lineHeight`, `cursorStyle` and `cursorBlink`. The shell keeps running.
 - **Re-fit after font changes.** When the font family, size or line height
-  changes, the terminal re-fits on the next animation frame. (xterm re-measures
-  cells when these options change; waiting on `document.fonts.ready` would not
-  trigger a new measurement, and installed fonts are available immediately.)
+  changes, the terminal re-fits on the next animation frame, and again after
+  xterm's next render. The renderer adopts the new cell size only when it
+  renders, so the first fit alone can use stale cell sizes and clip rows.
+- **App theme changes reach open terminals.** `setStoredTheme` in
+  `lib/theme.ts` announces a `marven:theme-change` event, and `useTheme()`
+  listens for it (and for changes from other windows). Before this, each
+  `useTheme()` caller read the theme once on mount, so "Match app theme" only
+  followed a switch after the editor remounted. This applies app-wide, so the
+  code editor's colors now follow a theme switch live too.
 - **First frame.** `useTerminalSettings()` reads storage on its first render,
   and the terminal is built from the hook's state, so a newly mounted terminal
   never shows the defaults first.
