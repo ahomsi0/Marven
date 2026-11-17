@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AIProvider } from "@/types";
+import { DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
+import { DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
+import { DEFAULT_MODEL as OPENAI_DEFAULT_MODEL, isOpenAIReasoningModel } from "@/lib/openai";
 
 interface SummarizeRequest {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -16,11 +20,14 @@ export async function POST(req: NextRequest) {
   }
 
   const provider = (body.provider ?? "groq") as AIProvider;
+  // Cheap, fast models are enough for summarizing. NIM and OpenRouter used to
+  // fall through to a Groq model id here, which neither of them serves.
   const model = body.model ?? (
-    provider === "groq"      ? "llama-3.3-70b-versatile" :
-    provider === "openai"    ? "gpt-4o-mini" :
-    provider === "anthropic" ? "claude-haiku-4-5-20251001" :
-    "llama-3.3-70b-versatile"
+    provider === "openai"     ? OPENAI_DEFAULT_MODEL :
+    provider === "anthropic"  ? "claude-haiku-5-5" :
+    provider === "nim"        ? NIM_DEFAULT_MODEL :
+    provider === "openrouter" ? OPENROUTER_DEFAULT_MODEL :
+    GROQ_DEFAULT_MODEL
   );
 
   const conversationText = body.messages
@@ -37,9 +44,11 @@ export async function POST(req: NextRequest) {
       const key = process.env.ANTHROPIC_API_KEY;
       if (!key) throw new Error("ANTHROPIC_API_KEY not set");
       const client = new Anthropic({ apiKey: key });
+      // Current Claude models think first, and that counts against max_tokens:
+      // 512 could be spent before any summary text was written.
       const res = await client.messages.create({
         model,
-        max_tokens: 512,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content: `Summarize this conversation:\n\n${conversationText}` }],
       });
@@ -49,15 +58,16 @@ export async function POST(req: NextRequest) {
       const key = process.env.OPENAI_API_KEY;
       if (!key) throw new Error("OPENAI_API_KEY not set");
       const client = new OpenAI({ apiKey: key });
-      const res = await client.chat.completions.create({
+      const res = await client.responses.create({
         model,
-        max_tokens: 512,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Summarize this conversation:\n\n${conversationText}` },
-        ],
+        instructions: systemPrompt,
+        input: `Summarize this conversation:\n\n${conversationText}`,
+        // Reasoning tokens count against this limit on GPT-6 models.
+        max_output_tokens: 4096,
+        store: false,
+        ...(isOpenAIReasoningModel(model) ? { reasoning: { effort: "low" as const } } : {}),
       });
-      summary = res.choices[0]?.message?.content ?? "";
+      summary = res.output_text ?? "";
     } else {
       // Groq / OpenRouter / NIM all use OpenAI-compatible API
       const apiUrl =
@@ -75,7 +85,9 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
         body: JSON.stringify({
           model,
-          max_tokens: 512,
+          // gpt-oss and the other current defaults are reasoning models whose
+          // reasoning tokens count against this limit.
+          max_tokens: 2048,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: `Summarize this conversation:\n\n${conversationText}` },

@@ -23,7 +23,13 @@ interface UsageIndicatorProps {
 // fill — actual API limits vary slightly per checkpoint.
 function contextWindowFor(model: string): number {
   const m = model.toLowerCase();
-  if (m.includes("claude")) return 200_000;
+  if (m.includes("claude-haiku-4")) return 200_000;
+  if (m.includes("claude")) return 1_000_000;
+  if (m.includes("gpt-oss")) return 131_072;
+  if (m.includes("gpt-6")) return 1_050_000;
+  if (m.includes("nemotron-3")) return 1_000_000;
+  if (m.includes("gemma-4")) return 262_144;
+  if (m.includes("qwen3.8")) return 131_072;
   if (m.includes("gpt-4o")) return 128_000;
   if (m.includes("gpt-4")) return 128_000;
   if (m.includes("o1") || m.includes("o3")) return 128_000;

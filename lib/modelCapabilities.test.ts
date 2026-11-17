@@ -24,8 +24,9 @@ describe("modelSupportsVision", () => {
   it("matches the cloud providers' current behaviour", async () => {
     expect(await modelSupportsVision("openai", "gpt-4o")).toBe(true);
     expect(await modelSupportsVision("anthropic", "claude")).toBe(true);
+    expect(await modelSupportsVision("groq", "qwen/qwen3.8-27b")).toBe(true);
     expect(await modelSupportsVision("groq", "meta-llama/llama-4-scout-17b-16e-instruct")).toBe(true);
-    expect(await modelSupportsVision("groq", "llama-3.3-70b-versatile")).toBe(false);
+    expect(await modelSupportsVision("groq", "openai/gpt-oss-120b")).toBe(false);
     expect(await modelSupportsVision("openrouter", "x")).toBe(false);
     expect(await modelSupportsVision("ollama", "")).toBe(false);
   });

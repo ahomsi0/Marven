@@ -4,14 +4,16 @@ import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/li
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-export const DEFAULT_MODEL = "google/gemma-3-27b-it:free";
+export const DEFAULT_MODEL = "google/gemma-4-31b-it:free";
 
+// Free models with tool support from OpenRouter's /api/v1/models (checked
+// 2026-11-17). OpenRouter rotates its free models often, so recheck this list.
 export const OPENROUTER_MODELS = [
-  { name: "google/gemma-3-27b-it:free", size: 0 },
-  { name: "meta-llama/llama-3.1-8b-instruct:free", size: 0 },
-  { name: "microsoft/phi-3-mini-128k-instruct:free", size: 0 },
-  { name: "deepseek/deepseek-r1:free", size: 0 },
-  { name: "mistralai/mistral-7b-instruct:free", size: 0 },
+  { name: "google/gemma-4-31b-it:free", size: 0 },
+  { name: "nvidia/nemotron-3-ultra-550b-a55b:free", size: 0 },
+  { name: "nvidia/nemotron-3.5-super-vl:free", size: 0 },
+  { name: "google/gemma-4-26b-a4b-it:free", size: 0 },
+  { name: "cohere/north-mini-code:free", size: 0 },
 ];
 
 export function streamOpenRouter(

@@ -170,7 +170,7 @@ const settingsEn = {
     failoverHint:
       "When the selected model is rate-limited or unavailable, the agent automatically continues with the next model in this list instead of failing. Nothing happens if the list is empty.",
     failoverPlaceholder:
-      "One per line as provider:model — tried top to bottom, for example:\ngroq:llama-3.1-8b-instant\nopenai:gpt-4o-mini",
+      "One per line as provider:model — tried top to bottom, for example:\ngroq:openai/gpt-oss-20b\nopenai:gpt-6-luna",
     failoverProviders:
       "Providers: groq, openai, anthropic, openrouter, nim, ollama. Each target needs its API key set. Switching is announced inline in the conversation.",
     liteMode: "Lite agent mode",

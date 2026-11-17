@@ -5,6 +5,7 @@ import type { ToolDefinition, InternalMessage } from "@/types";
 import type { ProviderStepResult } from "./groq";
 import { buildAnthropicContent } from "@/lib/imageHelpers";
 import { parseNarratedToolCall } from "./parseNarratedToolCall";
+import { ANTHROPIC_REFUSAL_MESSAGE } from "@/lib/anthropic";
 
 /** Extract system prompt and convert remaining messages to Anthropic format. */
 function toAnthropicMessages(messages: InternalMessage[]): {
@@ -72,9 +73,13 @@ export async function anthropicAgentStep(
   const client = new Anthropic({ apiKey: key });
   const { system, messages: anthropicMessages } = toAnthropicMessages(messages);
 
+  // Current Claude models think before answering and that counts against
+  // max_tokens. 16000 leaves room for it while staying under the SDK's limit
+  // for non-streaming requests. Thinking blocks aren't kept in the history,
+  // which the API accepts (each step reasons afresh).
   const response = await client.messages.create({
     model,
-    max_tokens: 8192,
+    max_tokens: 16000,
     system,
     messages: anthropicMessages,
     tools: tools.map((t) => ({
@@ -83,6 +88,10 @@ export async function anthropicAgentStep(
       input_schema: t.parameters as Anthropic.Tool["input_schema"],
     })),
   });
+
+  if (response.stop_reason === "refusal") {
+    return { type: "text", content: ANTHROPIC_REFUSAL_MESSAGE };
+  }
 
   // Collect ALL tool_use blocks — Claude routinely emits parallel calls, and
   // dropping the rest silently discarded requested work. Text blocks emitted

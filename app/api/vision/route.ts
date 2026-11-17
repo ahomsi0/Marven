@@ -5,6 +5,7 @@ import path from "path";
 import crypto from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { GROQ_VISION_MODEL } from "@/lib/imageHelpers";
 
 const execAsync = promisify(exec);
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: GROQ_VISION_MODEL,
         messages: [
           {
             role: "user",
@@ -64,7 +65,8 @@ export async function POST(req: NextRequest) {
             ],
           },
         ],
-        max_tokens: 500,
+        // Room for the Qwen model's reasoning tokens as well as the answer.
+        max_tokens: 2048,
       }),
     });
 

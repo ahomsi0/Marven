@@ -8,6 +8,10 @@ import { openrouterAgentStep } from "./openrouter";
 import { openaiAgentStep } from "./openai";
 import { anthropicAgentStep } from "./anthropic";
 import { localOpenAiAgentStep } from "./localOpenAi";
+import { DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
+import { DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
+import { DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib/anthropic";
 
 export type AgentProviderStep = (
   msgs: InternalMessage[],
@@ -21,10 +25,10 @@ export type AgentProviderStep = (
  */
 export function defaultAgentModel(provider: AIProvider): string {
   switch (provider) {
-    case "groq": return "llama-3.3-70b-versatile";
-    case "nim": return "mistralai/mistral-nemotron";
-    case "openai": return "gpt-4o-mini";
-    case "anthropic": return "claude-sonnet-4-5";
+    case "groq": return GROQ_DEFAULT_MODEL;
+    case "nim": return NIM_DEFAULT_MODEL;
+    case "openai": return OPENAI_DEFAULT_MODEL;
+    case "anthropic": return ANTHROPIC_DEFAULT_MODEL;
     case "lmstudio":
     case "llamaserver":
       return "local-model";

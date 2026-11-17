@@ -5,11 +5,11 @@ import type { HistoryMessage } from "@/types";
 import { groqUserMessageContent } from "@/lib/imageHelpers";
 import { ProviderHttpError, providerStream, readOpenAICompatibleSse } from "@/lib/chatStream";
 
-// 70B is the default because the agent loop (multi-step tool use) needs a model
-// that reliably emits tool_calls and follows the full system prompt. The 8B
-// "instant" model is far weaker at agentic work — keep it only as a manual pick
-// for cheap/fast plain chat.
-export const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+// GPT-OSS 120B is the default because the agent loop (multi-step tool use)
+// needs a model that reliably emits tool_calls and follows the full system
+// prompt. Groq shut the Llama 3.x models down for free and developer tiers on
+// 2026-08-16 (they're Enterprise-only now), so they rank last.
+export const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -17,13 +17,11 @@ const SYSTEM_PROMPT =
   "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
 
 // Fallback list used if the live Groq models API is unavailable — only
-// long-standing production chat models, best first.
+// Groq's production chat models (plus its multimodal Qwen preview), best first.
 export const GROQ_MODELS = [
-  { name: "llama-3.3-70b-versatile", size: 0 },
-  { name: "openai/gpt-oss-120b",     size: 0 },
-  { name: "qwen/qwen3-32b",          size: 0 },
-  { name: "openai/gpt-oss-20b",      size: 0 },
-  { name: "llama-3.1-8b-instant",    size: 0 },
+  { name: "openai/gpt-oss-120b", size: 0 },
+  { name: "qwen/qwen3.8-27b",    size: 0 },
+  { name: "openai/gpt-oss-20b",  size: 0 },
 ];
 
 // Speech, TTS and moderation models share the /models list but can't chat.
@@ -42,14 +40,10 @@ export function isChatCapableGroqModel(id: string): boolean {
 // Best default first: strong general chat models that also handle the agent's
 // tool calls. Anything not listed ranks after these.
 const GROQ_PREFERRED_MODELS = [
-  "llama-3.3-70b-versatile",
   "openai/gpt-oss-120b",
-  "moonshotai/kimi-k2-instruct-0905",
-  "moonshotai/kimi-k2-instruct",
-  "meta-llama/llama-4-maverick-17b-128e-instruct",
-  "qwen/qwen3-32b",
-  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "qwen/qwen3.8-27b",
   "openai/gpt-oss-20b",
+  "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
 ];
 
