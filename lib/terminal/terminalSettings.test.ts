@@ -59,6 +59,32 @@ describe("terminal settings", () => {
     ).toEqual(DEFAULT_TERMINAL_SETTINGS);
   });
 
+  it("falls back per field for null, arrays and partly valid objects", () => {
+    expect(normalizeTerminalSettings(null)).toEqual(DEFAULT_TERMINAL_SETTINGS);
+    expect(normalizeTerminalSettings([])).toEqual(DEFAULT_TERMINAL_SETTINGS);
+    expect(normalizeTerminalSettings({ theme: "nord", fontSize: "x", cursorStyle: "bar" })).toEqual({
+      ...DEFAULT_TERMINAL_SETTINGS,
+      theme: "nord",
+      cursorStyle: "bar",
+    });
+  });
+
+  it("still announces the change when storage throws", () => {
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    const listener = vi.fn();
+    window.addEventListener(TERMINAL_SETTINGS_EVENT, listener);
+    try {
+      setTerminalSettings({ theme: "nord" });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect((listener.mock.calls[0][0] as CustomEvent).detail.theme).toBe("nord");
+    } finally {
+      window.removeEventListener(TERMINAL_SETTINGS_EVENT, listener);
+      spy.mockRestore();
+    }
+  });
+
   it("merges a patch, saves it, and fires the change event", () => {
     const listener = vi.fn();
     window.addEventListener(TERMINAL_SETTINGS_EVENT, listener);
@@ -92,5 +118,7 @@ describe("terminal settings", () => {
     expect(terminalFontStack("Menlo")).toBe(`"Menlo", ${DEFAULT_FONT_STACK}`);
     // Quotes and backslashes in a typed name can't break out of the CSS string.
     expect(terminalFontStack('Evil", serif')).toBe(`"Evil, serif", ${DEFAULT_FONT_STACK}`);
+    expect(terminalFontStack("Back\\slash")).toBe(`"Backslash", ${DEFAULT_FONT_STACK}`);
+    expect(terminalFontStack("Line\nBreak")).toBe(`"LineBreak", ${DEFAULT_FONT_STACK}`);
   });
 });

@@ -75,6 +75,10 @@ export function getTerminalSettings(): TerminalSettings {
   }
 }
 
+function sameSettings(a: TerminalSettings, b: TerminalSettings): boolean {
+  return (Object.keys(a) as (keyof TerminalSettings)[]).every((k) => a[k] === b[k]);
+}
+
 function announce(settings: TerminalSettings): void {
   window.dispatchEvent(new CustomEvent<TerminalSettings>(TERMINAL_SETTINGS_EVENT, { detail: settings }));
 }
@@ -85,7 +89,7 @@ export function setTerminalSettings(patch: Partial<TerminalSettings>): TerminalS
   try {
     localStorage.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(next));
   } catch {
-    // Storage full or blocked: still apply for this session.
+    // Storage full or blocked: the event below still updates open terminals for this session.
   }
   announce(next);
   return next;
@@ -105,7 +109,7 @@ export function resetTerminalSettings(): TerminalSettings {
 
 /** CSS font-family value: the chosen font (quoted) followed by the default stack. */
 export function terminalFontStack(fontFamily: string): string {
-  const name = fontFamily.replace(/["\\]/g, "").trim();
+  const name = fontFamily.replace(/["\\\u0000-\u001f\u007f]/g, "").trim();
   return name ? `"${name}", ${DEFAULT_FONT_STACK}` : DEFAULT_FONT_STACK;
 }
 
@@ -113,15 +117,18 @@ export function terminalFontStack(fontFamily: string): string {
 export function useTerminalSettings(): TerminalSettings {
   const [settings, setSettings] = useState<TerminalSettings>(() => ({ ...DEFAULT_TERMINAL_SETTINGS }));
   useEffect(() => {
-    const sync = () => setSettings(getTerminalSettings());
+    const apply = (next: TerminalSettings) => setSettings((prev) => (sameSettings(prev, next) ? prev : next));
+    const onChange = (e: Event) => apply(normalizeTerminalSettings((e as CustomEvent<TerminalSettings>).detail));
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TERMINAL_SETTINGS_KEY || e.key === null) sync();
+      if (e.storageArea === localStorage && (e.key === TERMINAL_SETTINGS_KEY || e.key === null)) {
+        apply(getTerminalSettings());
+      }
     };
-    sync();
-    window.addEventListener(TERMINAL_SETTINGS_EVENT, sync);
+    apply(getTerminalSettings());
+    window.addEventListener(TERMINAL_SETTINGS_EVENT, onChange);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener(TERMINAL_SETTINGS_EVENT, sync);
+      window.removeEventListener(TERMINAL_SETTINGS_EVENT, onChange);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
