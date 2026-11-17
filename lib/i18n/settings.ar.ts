@@ -170,7 +170,7 @@ const settingsAr = {
     failoverHint:
       "عندما يكون النموذج المحدد محدود الاستخدام أو غير متاح، يتابع الوكيل تلقائيًا بالنموذج التالي في هذه القائمة بدلًا من التوقف. لا يحدث شيء إذا كانت القائمة فارغة.",
     failoverPlaceholder:
-      "واحد في كل سطر بصيغة provider:model — يُجرَّب من الأعلى إلى الأسفل، مثلًا:\ngroq:llama-3.1-8b-instant\nopenai:gpt-4o-mini",
+      "واحد في كل سطر بصيغة provider:model — يُجرَّب من الأعلى إلى الأسفل، مثلًا:\ngroq:openai/gpt-oss-20b\nopenai:gpt-6-luna",
     failoverProviders:
       "المزوّدون: groq وopenai وanthropic وopenrouter وnim وollama. يحتاج كل نموذج إلى مفتاح API الخاص به. يُعلن عن التبديل داخل المحادثة.",
     liteMode: "وضع الوكيل الخفيف",

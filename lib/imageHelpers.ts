@@ -4,10 +4,22 @@ import { isLikelyVisionModel } from "@/lib/visionModels";
 // openrouter excluded: vision support varies per routed model
 export const VISION_PROVIDERS = new Set<AIProvider>(["groq", "openai", "anthropic"]);
 
-/** Groq chat completions only accept multipart image+text for Llama 4 vision models; text models require string content. */
+/** Groq vision model used for screenshots and as the suggestion in the strip note. */
+export const GROQ_VISION_MODEL = "qwen/qwen3.8-27b";
+
+/**
+ * Groq chat completions only accept multipart image+text for its multimodal
+ * models; text models require string content. Llama 4 is kept for Enterprise
+ * accounts that still have it (shut down for other tiers on 2026-07-17).
+ */
 export function groqModelSupportsVision(modelId: string): boolean {
   const id = modelId.toLowerCase();
-  return id.includes("llama-4-scout") || id.includes("llama-4-maverick");
+  return (
+    id.includes("qwen3.8") ||
+    id.includes("muse-spark") ||
+    id.includes("llama-4-scout") ||
+    id.includes("llama-4-maverick")
+  );
 }
 
 type OpenAITextPart = { type: "text"; text: string };
@@ -64,7 +76,7 @@ export function stripAttachments(
 }
 
 export const GROQ_TEXT_MODEL_IMAGE_STRIP_NOTE =
-  "[Image attachment removed — this Groq model is text-only. Use a vision model such as meta-llama/llama-4-scout-17b-16e-instruct to send images.]";
+  "[Image attachment removed — this Groq model is text-only. Use a vision model such as qwen/qwen3.8-27b to send images.]";
 
 export const LOCAL_TEXT_MODEL_IMAGE_STRIP_NOTE =
   "[Image attachment removed — this local model can't see images. Use a vision model such as llava or gemma3 to send images.]";

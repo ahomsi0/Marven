@@ -18,19 +18,21 @@ const IMG: ImageAttachment = {
 };
 
 describe("groqModelSupportsVision", () => {
-  it("is true for documented Llama 4 vision model ids", () => {
+  it("is true for documented Groq vision model ids", () => {
+    expect(groqModelSupportsVision("qwen/qwen3.8-27b")).toBe(true);
     expect(groqModelSupportsVision("meta-llama/llama-4-scout-17b-16e-instruct")).toBe(true);
     expect(groqModelSupportsVision("meta-llama/llama-4-maverick-17b-128e-instruct")).toBe(true);
   });
   it("is false for text-only Groq chat models", () => {
     expect(groqModelSupportsVision("llama-3.1-8b-instant")).toBe(false);
     expect(groqModelSupportsVision("llama-3.3-70b-versatile")).toBe(false);
+    expect(groqModelSupportsVision("openai/gpt-oss-120b")).toBe(false);
   });
 });
 
 describe("groqUserMessageContent", () => {
   it("returns multipart content for vision models when attachments exist", () => {
-    const out = groqUserMessageContent("hi", [IMG], "meta-llama/llama-4-scout-17b-16e-instruct");
+    const out = groqUserMessageContent("hi", [IMG], "qwen/qwen3.8-27b");
     expect(Array.isArray(out)).toBe(true);
   });
   it("returns string with strip note for text models when attachments exist", () => {

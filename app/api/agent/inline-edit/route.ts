@@ -5,11 +5,11 @@
 // drives the rewrite.
 
 import { NextRequest, NextResponse } from "next/server";
-import { streamGroq } from "@/lib/groq";
-import { streamOpenAI } from "@/lib/openai";
-import { streamAnthropic } from "@/lib/anthropic";
-import { streamOpenRouter } from "@/lib/openrouter";
-import { streamNim } from "@/lib/nim";
+import { streamGroq, DEFAULT_MODEL as GROQ_DEFAULT_MODEL } from "@/lib/groq";
+import { streamOpenAI, DEFAULT_MODEL as OPENAI_DEFAULT_MODEL } from "@/lib/openai";
+import { streamAnthropic, DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL } from "@/lib/anthropic";
+import { streamOpenRouter, DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL } from "@/lib/openrouter";
+import { streamNim, DEFAULT_MODEL as NIM_DEFAULT_MODEL } from "@/lib/nim";
 import type { AIProvider, HistoryMessage } from "@/types";
 
 interface InlineEditBody {
@@ -50,11 +50,11 @@ export async function POST(req: NextRequest) {
   const provider = (body.provider ?? "groq") as AIProvider;
   const model =
     body.model?.trim() ||
-    (provider === "groq"       ? "llama-3.3-70b-versatile" :
-     provider === "nim"        ? "mistralai/mistral-nemotron" :
-     provider === "openai"     ? "gpt-4o-mini" :
-     provider === "anthropic"  ? "claude-sonnet-4-5" :
-     provider === "openrouter" ? "google/gemma-3-27b-it:free" :
+    (provider === "groq"       ? GROQ_DEFAULT_MODEL :
+     provider === "nim"        ? NIM_DEFAULT_MODEL :
+     provider === "openai"     ? OPENAI_DEFAULT_MODEL :
+     provider === "anthropic"  ? ANTHROPIC_DEFAULT_MODEL :
+     provider === "openrouter" ? OPENROUTER_DEFAULT_MODEL :
      "qwen2.5-coder");
 
   const userMessage = `Language: ${language}\nInstruction: ${instruction}\n\nCurrent code:\n${selection}`;

@@ -5,13 +5,20 @@ import type { HistoryMessage } from "@/types";
 import { buildAnthropicContent } from "@/lib/imageHelpers";
 import { providerStream } from "@/lib/chatStream";
 
-export const DEFAULT_MODEL = "claude-sonnet-4-5";
+export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
+// Current Claude models. All of them think by default, and that thinking counts
+// against max_tokens, so the limits below leave room for it.
 export const ANTHROPIC_MODELS = [
-  { name: "claude-opus-4-5",   size: 0 },
-  { name: "claude-sonnet-4-5", size: 0 },
-  { name: "claude-haiku-4-5",  size: 0 },
+  { name: "claude-fable-5-2",  size: 0 },
+  { name: "claude-opus-5-5",   size: 0 },
+  { name: "claude-sonnet-5-5", size: 0 },
+  { name: "claude-haiku-5-5",  size: 0 },
 ];
+
+/** Shown when Claude's safety classifiers decline a request (stop_reason "refusal"). */
+export const ANTHROPIC_REFUSAL_MESSAGE =
+  "Claude declined to continue this request. Try rephrasing it, or switch to another model.";
 
 const SYSTEM_PROMPT =
   "You are Marven, a sophisticated AI assistant. You are intelligent, precise, and occasionally witty. You give complete but concise answers. You address the user by name when known. Never say you're just an AI — you are Marven.";
@@ -38,7 +45,7 @@ export function streamAnthropic(
     const stream = client.messages.stream(
       {
         model,
-        max_tokens: 8192,
+        max_tokens: 32000,
         system: systemPrompt ?? SYSTEM_PROMPT,
         messages: messages.map((m) => ({
           role: m.role as "user" | "assistant",
@@ -58,6 +65,7 @@ export function streamAnthropic(
     }
 
     const finalMsg = await stream.finalMessage();
+    if (finalMsg.stop_reason === "refusal") emit(`\n\n${ANTHROPIC_REFUSAL_MESSAGE}`);
     if (!finalMsg.usage) return null;
     const input = finalMsg.usage.input_tokens ?? 0;
     const output = finalMsg.usage.output_tokens ?? 0;
