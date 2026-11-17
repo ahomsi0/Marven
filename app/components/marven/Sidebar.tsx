@@ -566,20 +566,24 @@ export function Sidebar({
 
           {/* Primary actions — icon rows, no borders */}
           <nav className="flex flex-col px-2 pb-2 pt-2">
-            <button type="button" onClick={onNewChat} className={NAV_ROW}>
-              <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                <path d="M21 12a8.5 8.5 0 0 1-12.3 7.6L3 21l1.4-5.2A8.5 8.5 0 1 1 21 12z" />
-                <path d="M12 8.5v7M8.5 12h7" />
-              </svg>
-              {t("sidebar.newChat")}
-            </button>
-            <button type="button" onClick={onNewAgent} className={NAV_ROW}>
-              <svg className={`${NAV_ICON} text-[var(--m-accent)]`} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                <path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5z" />
-                <path d="M12 8v8M8 12h8" />
-              </svg>
-              {t("sidebar.newAgent")}
-            </button>
+            {/* One "new" action, matching the list the switcher above is showing */}
+            {view === "agent" ? (
+              <button type="button" onClick={onNewAgent} className={NAV_ROW}>
+                <svg className={`${NAV_ICON} text-[var(--m-accent)]`} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5z" />
+                  <path d="M12 8v8M8 12h8" />
+                </svg>
+                {t("sidebar.newAgent")}
+              </button>
+            ) : (
+              <button type="button" onClick={onNewChat} className={NAV_ROW}>
+                <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <path d="M21 12a8.5 8.5 0 0 1-12.3 7.6L3 21l1.4-5.2A8.5 8.5 0 1 1 21 12z" />
+                  <path d="M12 8.5v7M8.5 12h7" />
+                </svg>
+                {t("sidebar.newChat")}
+              </button>
+            )}
             <label className={`${NAV_ROW} cursor-text focus-within:bg-[var(--m-surface-2)]`}>
               <svg className={NAV_ICON} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="7" />

@@ -407,7 +407,7 @@ export function AgentPanel({
       <div className="bg-[var(--m-bg)] px-6 pt-2 pb-4">
         <div className="mx-auto w-full max-w-[760px]">
         <div
-          className="relative flex flex-col overflow-hidden rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)]"
+          className="relative flex flex-col rounded-2xl border border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] shadow-sm transition-colors focus-within:border-[var(--m-border)]"
           onDrop={async (e) => {
             e.preventDefault();
             const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
@@ -452,7 +452,7 @@ export function AgentPanel({
               onClose={() => setMentionPopup(null)}
             />
           )}
-            <div className="relative flex items-center gap-1 px-1.5 py-1.5">
+            <div className="relative">
             {menuOpen && (
               <SlashMenu
                 query={query}
@@ -481,10 +481,28 @@ export function AgentPanel({
               disabled={isRunning}
               rows={1}
               placeholder={t("agent.placeholder")}
-              className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-[13px] leading-5 text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
-              style={{ maxHeight: 104, overflowY: "auto" }}
+              className="block min-h-[44px] w-full resize-none border-0 bg-transparent px-4 pt-3 pb-1 text-[13px] leading-5 text-[var(--m-text)] placeholder-[var(--m-text-faint)] outline-none disabled:opacity-40"
+              style={{ maxHeight: 160, overflowY: "auto" }}
             />
-            <div className="ml-0.5 flex shrink-0 items-center gap-0.5 pr-0">
+            </div>
+
+            {/* Footer — model, mode and usage on the start side; actions on the end side */}
+            <div className="flex items-center gap-1 px-2 pb-2">
+              <ModelSelector
+                provider={provider}
+                selectedModel={selectedModel}
+                onSelect={onModelSelect}
+              />
+              {liteAgentMode === true && (
+                <span
+                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wide text-amber-400"
+                  title="Lite agent mode is on — reduced tool set, shorter prompt, extra guards. Designed for weak local or small cloud models."
+                >
+                  Lite
+                </span>
+              )}
+              <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} align="left" />
+            <div className="ms-auto flex shrink-0 items-center gap-0.5">
               <>
                 <button
                   type="button"
@@ -540,7 +558,7 @@ export function AgentPanel({
                 <button
                   type="button"
                   onClick={onStop}
-                  className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-md border border-red-700/40 bg-red-950/25 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/45"
+                  className="ms-1 flex h-7 w-7 items-center justify-center rounded-lg border border-red-700/40 bg-red-950/25 text-red-400 transition-colors hover:border-red-600/60 hover:bg-red-950/45"
                   title="Stop agent"
                 >
                   <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -552,7 +570,7 @@ export function AgentPanel({
                   type="button"
                   onClick={() => { onSend({ mentions }); setMentions([]); }}
                   disabled={!input.trim() && mentions.length === 0}
-                  className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--m-border)] bg-[var(--m-bg)] text-[var(--m-accent)] transition-colors hover:border-[var(--m-accent)]/50 disabled:opacity-30"
+                  className="ms-1 flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--m-accent)] text-[var(--m-bg)] transition-opacity hover:opacity-90 disabled:bg-[var(--m-surface-3)] disabled:text-[var(--m-text-faint)]"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
@@ -563,23 +581,6 @@ export function AgentPanel({
           </div>
         </div>
 
-        {/* Status line — below input, like Claude Code */}
-        <div className="mt-1.5 flex items-center gap-0.5 border-t border-[var(--m-border-subtle)] pl-0.5 pt-1.5">
-          <ModelSelector
-            provider={provider}
-            selectedModel={selectedModel}
-            onSelect={onModelSelect}
-          />
-          {liteAgentMode === true && (
-            <span
-              className="ml-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-[1px] text-[10px] font-medium uppercase tracking-wide text-amber-400"
-              title="Lite agent mode is on — reduced tool set, shorter prompt, extra guards. Designed for weak local or small cloud models."
-            >
-              Lite
-            </span>
-          )}
-          <UsageIndicator usage={tokenUsage} provider={provider} model={selectedModel} />
-        </div>
         </div>
       </div>
     </div>

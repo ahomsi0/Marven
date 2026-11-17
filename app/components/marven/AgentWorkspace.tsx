@@ -457,6 +457,15 @@ export function AgentWorkspace({
     if (drawerOpen && drawerView === "terminal") setDrawerOpen(false);
     else openDrawer("terminal");
   }
+  // ⌃` — with the Code view up, show/hide the editor's bottom panel (it is
+  // removed entirely when closed, so this is how it comes back); otherwise
+  // toggle the standalone Terminal view.
+  function toggleTerminalShortcut() {
+    if (drawerOpen && drawerView === "code") {
+      setEditorBottomTab("terminal");
+      setShowTerminal((v) => !(v && editorBottomTab === "terminal"));
+    } else toggleTerminalView();
+  }
   const [quickOpen, setQuickOpen] = useState(false);
   // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
   // useEditorShortcuts can drive it. EditorPanel reads the props and renders
@@ -766,7 +775,7 @@ export function AgentWorkspace({
     onSave: onSaveFile,
     onCloseTab: () => onCloseTab(activeTabIndex),
     onToggleExplorer: () => { setShowExplorer((v) => !v); openDrawer("code"); },
-    onToggleTerminal: toggleTerminalView,
+    onToggleTerminal: toggleTerminalShortcut,
     // The chat is always visible now; this shortcut toggles the workspace panel.
     onToggleChat: () => setDrawerOpen((v) => !v),
     onQuickOpen: () => setQuickOpen(true),
@@ -869,7 +878,7 @@ export function AgentWorkspace({
     { id: "save-file", label: t("palette.agent.saveFile"), keybinding: W ? "Ctrl+S" : "⌘S", action: onSaveFile },
     { id: "close-tab", label: t("palette.agent.closeTab"), keybinding: W ? "Ctrl+W" : "⌘W", action: () => onCloseTab(activeTabIndex) },
     { id: "toggle-explorer", label: t("palette.agent.toggleExplorer"), keybinding: W ? "Ctrl+B" : "⌘B", action: () => setShowExplorer((v) => !v) },
-    { id: "toggle-terminal", label: t("palette.agent.toggleTerminal"), keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalView },
+    { id: "toggle-terminal", label: t("palette.agent.toggleTerminal"), keybinding: W ? "Ctrl+`" : "⌃`", action: toggleTerminalShortcut },
     { id: "problems", label: t("palette.agent.problems"), action: () => {
       setEditorBottomTab("problems");
       setShowTerminal(true);
@@ -1325,44 +1334,8 @@ export function AgentWorkspace({
               className="flex min-h-0 flex-col border-s border-[var(--m-border)] bg-[var(--m-bg)]"
               style={{ width: drawerWidth, minWidth: drawerWidth, flexShrink: 0 }}
             >
-              <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
-                <button
-                  type="button"
-                  onClick={() => openDrawer("code")}
-                  aria-pressed={drawerView === "code"}
-                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "code" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
-                >
-                  {t("agent.code")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openDrawer("diff")}
-                  aria-pressed={showDiff}
-                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
-                >
-                  {t("agent.changes")}
-                  {checkpoints.length > 0 && <span className="text-[10px] text-[var(--m-accent)]">{checkpoints.length}</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openDrawer("terminal")}
-                  aria-pressed={drawerView === "terminal"}
-                  className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors ${drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
-                >
-                  {t("agent.terminal")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  aria-label={t("agent.closePanel")}
-                  title={t("agent.closePanel")}
-                  className="ms-auto flex h-7 w-7 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
-                    <path d="M6 6l12 12M18 6 6 18" />
-                  </svg>
-                </button>
-              </div>
+              {/* No tab strip here: the Files / Changes / Terminal buttons in the
+                  top bar switch this panel's view, and clicking the active one closes it. */}
               {drawerView === "diff" ? (
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <DiffPanel checkpoints={checkpoints} onClose={() => setDrawerView("code")} />

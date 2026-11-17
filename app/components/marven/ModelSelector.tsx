@@ -102,16 +102,16 @@ export function ModelSelector({
 
   return (
     <div ref={ref} className="relative">
-      {/* Trigger pill — fixed width so the input bar never shifts */}
+      {/* Trigger pill — sized to its label, capped so long model names truncate */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={t("input.modelPicker")}
-        className="flex w-[172px] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all hover:bg-[var(--m-surface-2)]"
+        className="flex max-w-[240px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-all hover:bg-[var(--m-surface-3)]"
       >
-        <span className={`w-[52px] shrink-0 truncate text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
+        <span className={`shrink-0 text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
         <span className="shrink-0 text-[var(--m-text-faint)]">·</span>
         <span className="min-w-0 flex-1 truncate text-start text-[var(--m-text-muted)]">
           {selectedModel ? shortModelName(selectedModel) : "—"}

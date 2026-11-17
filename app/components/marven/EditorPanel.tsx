@@ -927,49 +927,47 @@ export function EditorPanel({
         </div>
       </div>
 
-      {/* Bottom panel — Terminal + Problems (LSP diagnostics) */}
-      <div className={`border-t border-[var(--m-border)] bg-[var(--m-bg)] ${showTerminal ? "h-[240px]" : "h-7"} flex flex-col shrink-0 transition-all`}>
-        <div className="flex h-7 shrink-0 cursor-default items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
-          <button
-            type="button"
-            onClick={() => {
-              onBottomTabChange?.("terminal");
-              if (!showTerminal) onToggleTerminal();
-            }}
-            className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
-              bottomTab === "terminal" && showTerminal
-                ? "text-[#d19a66]"
-                : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
-            }`}
-            title="Terminal"
-          >
-            Terminal
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onBottomTabChange?.("problems");
-              if (!showTerminal) onToggleTerminal();
-            }}
-            className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
-              bottomTab === "problems" && showTerminal
-                ? "text-[#d19a66]"
-                : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
-            }`}
-            title="Problems"
-          >
-            Problems{problems.length > 0 ? ` (${problems.length})` : ""}
-          </button>
-          <button
-            type="button"
-            onClick={onToggleTerminal}
-            className="ml-auto rounded px-2 py-0.5 text-[9px] text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
-            title={showTerminal ? "Collapse panel" : "Expand panel"}
-          >
-            {showTerminal ? "▾" : "▸"}
-          </button>
-        </div>
-        {showTerminal && (
+      {/* Bottom panel — Terminal + Problems (LSP diagnostics). Closing it removes
+          it entirely; ⌃` / "Toggle Terminal" / the Problems command bring it back. */}
+      {showTerminal && (
+        <div className="flex h-[240px] shrink-0 flex-col border-t border-[var(--m-border)] bg-[var(--m-bg)]">
+          <div className="flex h-7 shrink-0 cursor-default items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
+            <button
+              type="button"
+              onClick={() => onBottomTabChange?.("terminal")}
+              className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+                bottomTab === "terminal"
+                  ? "text-[#d19a66]"
+                  : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+              }`}
+              title="Terminal"
+            >
+              Terminal
+            </button>
+            <button
+              type="button"
+              onClick={() => onBottomTabChange?.("problems")}
+              className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+                bottomTab === "problems"
+                  ? "text-[#d19a66]"
+                  : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+              }`}
+              title="Problems"
+            >
+              Problems{problems.length > 0 ? ` (${problems.length})` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={onToggleTerminal}
+              aria-label="Close panel"
+              title="Close panel"
+              className="ms-auto flex h-5 w-5 items-center justify-center rounded text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {bottomTab === "terminal" ? (
               workspaceRoot ? (
@@ -990,8 +988,8 @@ export function EditorPanel({
               />
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Status bar */}
       <div className="flex items-center justify-between border-t border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-1 font-mono text-[9px] text-[var(--m-text-faint)]">
