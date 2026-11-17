@@ -6,7 +6,7 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { sanitizedEnv } = require('./envSanitize');
+const { terminalEnv } = require('./envSanitize');
 const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 
@@ -873,7 +873,7 @@ ipcMain.handle('pty-start', (event, args) => {
       cols: Math.max(20, Math.floor(cols || 80)),
       rows: Math.max(5, Math.floor(rows || 24)),
       cwd: resolvedCwd,
-      env: sanitizedEnv({ TERM: 'xterm-256color' }),
+      env: terminalEnv(),
     });
     const entry = { pty: p, buffer: '', lastActive: Date.now() };
     ptys.set(id, entry);

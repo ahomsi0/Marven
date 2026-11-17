@@ -23,4 +23,17 @@ function sanitizedEnv(extra = {}) {
   return { ...env, ...extra };
 }
 
-module.exports = { sanitizedEnv, SECRET_ENV_KEYS };
+/**
+ * Environment for the interactive terminal: sanitized, plus the colour hints
+ * other terminals give (COLORTERM, as VS Code's terminal sets). macOS/BSD `ls`
+ * only colours its output when CLICOLOR is set, so turn that on unless the
+ * user's environment already chose (CLICOLOR set either way, or NO_COLOR).
+ * The shell's own startup files run afterwards and can still override these.
+ */
+function terminalEnv() {
+  const env = sanitizedEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' });
+  if (env.CLICOLOR === undefined && env.NO_COLOR === undefined) env.CLICOLOR = '1';
+  return env;
+}
+
+module.exports = { sanitizedEnv, terminalEnv, SECRET_ENV_KEYS };
