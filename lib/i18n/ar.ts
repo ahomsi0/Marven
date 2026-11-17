@@ -177,6 +177,7 @@ const ar: Shape<typeof en> = {
       manageMemory: "إدارة الذاكرة",
       settingsPage: "الانتقال إلى صفحة في الإعدادات…",
       keyboardShortcuts: "اختصارات لوحة المفاتيح",
+      terminalTheme: "الطرفية: تغيير السمة…",
       bookmarks: "فتح إشارة مرجعية…",
     },
     agent: {

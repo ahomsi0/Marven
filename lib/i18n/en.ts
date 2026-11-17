@@ -175,6 +175,7 @@ const en = {
       manageMemory: "Manage memory",
       settingsPage: "Go to Settings page…",
       keyboardShortcuts: "Keyboard shortcuts",
+      terminalTheme: "Terminal: Change theme…",
       bookmarks: "Open bookmark…",
     },
     agent: {
