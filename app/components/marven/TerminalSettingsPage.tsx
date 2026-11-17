@@ -151,6 +151,7 @@ export function TerminalSettingsPage() {
                 key={card.id}
                 type="button"
                 role="radio"
+                aria-label={card.name}
                 aria-checked={selected}
                 onClick={() => setTerminalSettings({ theme: card.id })}
                 className={`overflow-hidden rounded-lg text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--m-text-muted)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--m-bg)] ${
