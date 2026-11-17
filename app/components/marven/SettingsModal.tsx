@@ -33,6 +33,7 @@ import {
 } from "@/lib/keybindings";
 import { readStats as readInlineStats, resetStats as resetInlineStats } from "@/lib/completion/telemetry";
 import type { VoiceState } from "@/hooks/useVoice";
+import { TerminalSettingsPage } from "@/app/components/marven/TerminalSettingsPage";
 
 type SttProviderId = "local" | "groq";
 type TtsProviderId = "system" | "elevenlabs";
@@ -147,7 +148,7 @@ const SECTIONS: Array<{
 }> = [
   { heading: "workspace", items: ["general", "memory"] },
   { heading: "integrations", items: ["ai-backends", "keys-ai", "keys-voice", "connectors", "browser"] },
-  { heading: "customization", items: ["shortcuts", "keyboard", "templates"] },
+  { heading: "customization", items: ["shortcuts", "keyboard", "terminal", "templates"] },
   { heading: "help", items: ["commands", "about"] },
 ];
 
@@ -2702,6 +2703,9 @@ export function SettingsModal({
             )}
           </div>
         )}
+
+        {/* ── Terminal ── */}
+        {activePage === "terminal" && <TerminalSettingsPage />}
 
         {/* ── Keyboard ── */}
         {activePage === "keyboard" && (

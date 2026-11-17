@@ -30,6 +30,7 @@ export const SETTINGS_PAGES = [
   "browser",
   "shortcuts",
   "keyboard",
+  "terminal",
   "templates",
   "commands",
   "about",

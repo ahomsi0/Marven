@@ -483,6 +483,12 @@ export function ChatLayout({
         label: t("palette.commands.keyboardShortcuts"),
         action: () => openSettingsAt("keyboard"),
       },
+      {
+        id: "terminal-theme",
+        group: general,
+        label: t("palette.commands.terminalTheme"),
+        action: () => openSettingsAt("terminal"),
+      },
       { id: "toggle-sidebar", group: general, label: t("palette.commands.toggleSidebar"), action: () => setSidebarOpen((v) => !v) },
     ];
 
