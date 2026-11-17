@@ -207,10 +207,19 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       if (cancelled) return;
       try { fitRef.current?.fit(); } catch {}
     };
+    // Font changes alter the cell size: re-fit on the next frame, and again
+    // after xterm's next render, when the renderer has adopted the new size.
     const raf = requestAnimationFrame(refit);
+    const afterRender = t.onRender(() => {
+      afterRender.dispose();
+      refit();
+    });
+    // Register the listener first: the render is asynchronous.
+    t.refresh(0, t.rows - 1);
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      afterRender.dispose();
     };
   }, [settings, theme]);
 
