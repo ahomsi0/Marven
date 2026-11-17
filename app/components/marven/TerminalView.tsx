@@ -10,6 +10,13 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { Theme } from "@/lib/theme";
+import { resolveTerminalTheme } from "@/lib/terminal/themes";
+import {
+  getTerminalSettings,
+  terminalFontStack,
+  useTerminalSettings,
+  type TerminalSettings,
+} from "@/lib/terminal/terminalSettings";
 
 interface TerminalViewProps {
   ptyId: string;   // stable id per workspace
@@ -17,36 +24,17 @@ interface TerminalViewProps {
   theme: Theme;
 }
 
-// xterm theme objects. Light mode keeps the traditional dark terminal look
-// (users expect a dark terminal regardless of app theme).
-const DARK_THEME = {
-  background: "#1a1a1a",
-  foreground: "#d4d4d4",
-  cursor: "#d4d4d4",
-  cursorAccent: "#1a1a1a",
-  selectionBackground: "rgba(209,154,102,0.3)",
-};
-
-const MIDNIGHT_THEME = {
-  background: "#21252b",
-  foreground: "#abb2bf",
-  cursor: "#abb2bf",
-  cursorAccent: "#21252b",
-  selectionBackground: "rgba(97,175,239,0.3)",
-};
-
-const AURORA_THEME = {
-  background: "#1a1229",
-  foreground: "#f0e6d3",
-  cursor: "#f97ef8",
-  cursorAccent: "#1a1229",
-  selectionBackground: "rgba(249,126,248,0.25)",
-};
-
-function xtermTheme(t: Theme) {
-  if (t === "midnight") return MIDNIGHT_THEME;
-  if (t === "aurora") return AURORA_THEME;
-  return DARK_THEME; // dark, light, and anything else → standard dark terminal
+// xterm options derived from the terminal settings and the app theme.
+// "Match app theme" resolves to Marven's own scheme for the current app theme.
+function xtermOptions(settings: TerminalSettings, appTheme: Theme) {
+  return {
+    theme: resolveTerminalTheme(settings.theme, appTheme).colors,
+    fontFamily: terminalFontStack(settings.fontFamily),
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+    cursorStyle: settings.cursorStyle,
+    cursorBlink: settings.cursorBlink,
+  };
 }
 
 // Narrow interface for the preload bridge. We type-check against this at the
@@ -69,6 +57,7 @@ function getPtyBridge(): PtyBridge | null {
 }
 
 export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
+  const settings = useTerminalSettings();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -79,13 +68,12 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Read settings directly (not from the hook's state) so the very first
+    // frame already uses them instead of flashing the defaults.
     const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
+      ...xtermOptions(getTerminalSettings(), theme),
       scrollback: 5000,
       allowProposedApi: true,
-      theme: xtermTheme(theme),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -194,12 +182,37 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ptyId, cwd]);
 
-  // Theme swap — apply colors without recreating the terminal.
+  // Settings or app theme changed — update the running terminal in place so
+  // the shell keeps running. Font changes alter the cell size, so re-fit on the
+  // next frame and again once any newly chosen font has finished loading.
   useEffect(() => {
     const t = termRef.current;
     if (!t) return;
-    t.options.theme = xtermTheme(theme);
-  }, [theme]);
+    const next = xtermOptions(settings, theme);
+    const fontChanged =
+      t.options.fontFamily !== next.fontFamily ||
+      t.options.fontSize !== next.fontSize ||
+      t.options.lineHeight !== next.lineHeight;
+    t.options.theme = next.theme;
+    t.options.fontFamily = next.fontFamily;
+    t.options.fontSize = next.fontSize;
+    t.options.lineHeight = next.lineHeight;
+    t.options.cursorStyle = next.cursorStyle;
+    t.options.cursorBlink = next.cursorBlink;
+    if (!fontChanged) return;
+
+    let cancelled = false;
+    const refit = () => {
+      if (cancelled) return;
+      try { fitRef.current?.fit(); } catch {}
+    };
+    const raf = requestAnimationFrame(refit);
+    document.fonts?.ready.then(refit).catch(() => {});
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [settings, theme]);
 
   return (
     <div
@@ -213,7 +226,7 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       style={{
         // xterm renders against its own theme; this background fills any gap
         // before xterm mounts so we don't flash the panel's surface color.
-        background: xtermTheme(theme).background,
+        background: resolveTerminalTheme(settings.theme, theme).colors.background,
       }}
     />
   );
