@@ -121,8 +121,9 @@ export function useTerminalSettings(): TerminalSettings;
   its default. Reading never throws.
 - **Writing.** `setTerminalSettings()` merges the patch, validates the result,
   saves it, and dispatches `TERMINAL_SETTINGS_EVENT` on `window`.
-- **Fonts.** `terminalFontStack()` returns the chosen font, quoted when the
-  name contains spaces, followed by the default stack. A font that isn't
+- **Fonts.** `terminalFontStack()` returns the chosen font, always quoted
+  (with any quotes or backslashes in the name removed), followed by the
+  default stack. A font that isn't
   installed therefore falls back to the default.
 - **Hook.** `useTerminalSettings()` reads the settings on mount. It updates
   when `TERMINAL_SETTINGS_EVENT` fires, and on the `storage` event for this
@@ -176,9 +177,9 @@ pages.
 - **Settings nav.** Add `"terminal"` to `SETTINGS_PAGES` in
   `lib/settingsNav.ts`, after `"keyboard"`. `SettingsModal` adds the nav entry
   and renders `<TerminalSettingsPage />` for it.
-- **Command palette.** Add "Terminal: Change theme…" to the agent palette
-  commands. It opens Settings on the `terminal` page through
-  `openSettingsPage`.
+- **Command palette.** Add "Terminal: Change theme…" to the general palette
+  commands in `ChatLayout.tsx`, so it's available in both chat and agent mode.
+  It opens Settings on the `terminal` page through `openSettingsAt`.
 - **Strings.** Add every new UI string to `lib/i18n/settings.en.ts` and
   `lib/i18n/settings.ar.ts`, and the palette label to `en.ts` and `ar.ts`.
 
@@ -207,8 +208,8 @@ needs migrating, because no terminal settings are stored today.
   - An invalid cursor style falls back to the default.
   - `setTerminalSettings` merges, saves and dispatches the event.
   - `resetTerminalSettings` restores the defaults.
-  - `terminalFontStack` quotes names that contain spaces and appends the
-    default stack.
+  - `terminalFontStack` quotes the name, strips quotes and backslashes from
+    it, and appends the default stack.
 - **Existing i18n test** keeps `en` and `ar` keys in parity.
 - **Hands-on check in the browser preview.** xterm draws without a shell
   there, so the check covers:
