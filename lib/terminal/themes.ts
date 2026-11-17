@@ -161,6 +161,7 @@ export const TERMINAL_PRESETS: readonly TerminalThemePreset[] = [
     },
   },
   {
+    // brightBlack is base01 (as in Solarized Dark) so it reads as gray rather than near-black.
     id: "solarized-light", name: "Solarized Light", kind: "light",
     colors: {
       background: "#fdf6e3", foreground: "#657b83", cursor: "#586e75", cursorAccent: "#fdf6e3",

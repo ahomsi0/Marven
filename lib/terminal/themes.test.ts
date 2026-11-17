@@ -7,7 +7,7 @@ import {
   resolveTerminalTheme,
 } from "./themes";
 
-const COLOR = /^(#[0-9a-f]{6}|rgba\(\d{1,3},\s*\d{1,3},\s*\d{1,3},\s*(0(\.\d+)?|1(\.0+)?)\))$/i;
+const COLOR = /^(#[0-9a-f]{6}|rgba\((25[0-5]|2[0-4]\d|1?\d?\d),\s*(25[0-5]|2[0-4]\d|1?\d?\d),\s*(25[0-5]|2[0-4]\d|1?\d?\d),\s*(0(\.\d+)?|1(\.0+)?)\))$/i;
 
 const ALL = [...Object.values(MARVEN_THEMES), ...TERMINAL_PRESETS];
 
@@ -56,7 +56,24 @@ describe("terminal themes", () => {
     expect(resolveTerminalTheme("gone-theme", "midnight").id).toBe("marven-midnight");
   });
 
-  it("keeps the Marven themes' original base colors", () => {
+  it("keeps every theme legible", () => {
+    for (const theme of ALL) {
+      expect(theme.colors.foreground, theme.id).not.toBe(theme.colors.background);
+      expect(theme.colors.brightBlack, theme.id).not.toBe(theme.colors.background);
+    }
+  });
+
+  it("pins a few canonical values so a wrong key is caught", () => {
+    const byId = (id: string) => TERMINAL_PRESETS.find((p) => p.id === id)!;
+    expect(byId("dracula").colors.red).toBe("#ff5555");
+    expect(byId("nord").colors.blue).toBe("#81a1c1");
+    expect(byId("gruvbox-dark").colors.brightYellow).toBe("#fabd2f");
+    expect(byId("tokyo-night").colors.magenta).toBe("#bb9af7");
+    // Documented deviation: base01, not the canonical base03.
+    expect(byId("solarized-dark").colors.brightBlack).toBe("#586e75");
+  });
+
+  it("keeps key colors from the original Marven terminal themes", () => {
     expect(MARVEN_THEMES.dark.colors.background).toBe("#1a1a1a");
     expect(MARVEN_THEMES.midnight.colors.background).toBe("#21252b");
     expect(MARVEN_THEMES.aurora.colors.cursor).toBe("#f97ef8");
