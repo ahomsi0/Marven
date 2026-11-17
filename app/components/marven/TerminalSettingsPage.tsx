@@ -4,7 +4,7 @@
 // preview drawn with the selected theme's ANSI colors. Every change saves at
 // once and reaches open terminals through terminalSettings' change event.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import {
@@ -60,6 +60,7 @@ function TerminalSample({ colors, settings }: { colors: TerminalColors; settings
         color: colors.foreground,
         fontFamily: terminalFontStack(settings.fontFamily),
         fontSize: settings.fontSize,
+        // xterm's cells are a little taller than CSS line boxes at the same value; +0.2 keeps the preview's spacing close to the real terminal.
         lineHeight: settings.lineHeight + 0.2,
         whiteSpace: "pre",
       }}
@@ -107,14 +108,16 @@ export function TerminalSettingsPage() {
   const [customOpen, setCustomOpen] = useState(!isPresetFont);
   const [customDraft, setCustomDraft] = useState(isPresetFont ? "" : settings.fontFamily);
 
-  // Settings can change in another window: keep the font menu in step with
-  // the stored value.
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  // The stored font changed (e.g. from another window): bring the menu in step,
+  // unless the user is typing in the custom field right now.
   useEffect(() => {
-    if (!isPresetFont) {
-      setCustomOpen(true);
-      setCustomDraft(settings.fontFamily);
-    }
-  }, [isPresetFont, settings.fontFamily]);
+    if (document.activeElement === customInputRef.current) return;
+    const preset = settings.fontFamily === "" || (FONT_CHOICES as readonly string[]).includes(settings.fontFamily);
+    setCustomOpen(!preset);
+    setCustomDraft(preset ? "" : settings.fontFamily);
+  }, [settings.fontFamily]);
 
   const fontSelectValue = customOpen ? CUSTOM : settings.fontFamily;
 
@@ -124,7 +127,9 @@ export function TerminalSettingsPage() {
   ];
 
   const commitCustomFont = () => {
-    if (customDraft.trim() !== settings.fontFamily) setTerminalSettings({ fontFamily: customDraft });
+    const name = customDraft.trim();
+    if (!name) setCustomOpen(false);
+    if (name !== settings.fontFamily) setTerminalSettings({ fontFamily: name });
   };
 
   return (
@@ -148,7 +153,7 @@ export function TerminalSettingsPage() {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => setTerminalSettings({ theme: card.id })}
-                className={`overflow-hidden rounded-lg text-start transition-colors ${
+                className={`overflow-hidden rounded-lg text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--m-text-muted)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--m-bg)] ${
                   selected
                     ? "ring-2 ring-[var(--m-accent)]"
                     : "ring-1 ring-[var(--m-border-subtle)] hover:ring-[var(--m-border)]"
@@ -179,7 +184,9 @@ export function TerminalSettingsPage() {
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === CUSTOM) {
+                  setCustomDraft(settings.fontFamily);
                   setCustomOpen(true);
+                  requestAnimationFrame(() => customInputRef.current?.focus());
                   return;
                 }
                 setCustomOpen(false);
@@ -196,6 +203,8 @@ export function TerminalSettingsPage() {
             {customOpen && (
               <div>
                 <input
+                  ref={customInputRef}
+                  dir="ltr"
                   type="text"
                   value={customDraft}
                   onChange={(e) => setCustomDraft(e.target.value)}
@@ -256,7 +265,7 @@ export function TerminalSettingsPage() {
                 role="radio"
                 aria-checked={settings.cursorStyle === style}
                 onClick={() => setTerminalSettings({ cursorStyle: style })}
-                className={`rounded px-3 py-1 text-[12px] transition-colors ${
+                className={`rounded px-3 py-1 text-[12px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--m-accent)] ${
                   settings.cursorStyle === style
                     ? "bg-[var(--m-surface-3)] text-[var(--m-text)]"
                     : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
@@ -286,7 +295,7 @@ export function TerminalSettingsPage() {
             setCustomOpen(false);
             setCustomDraft("");
           }}
-          className="rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[12px] text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+          className="rounded-md border border-[var(--m-border)] px-3 py-1.5 text-[12px] text-[var(--m-text-muted)] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--m-accent)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
         >
           {t("settings.terminal.reset")}
         </button>
