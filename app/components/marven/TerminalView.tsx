@@ -12,7 +12,6 @@ import "@xterm/xterm/css/xterm.css";
 import type { Theme } from "@/lib/theme";
 import { resolveTerminalTheme } from "@/lib/terminal/themes";
 import {
-  getTerminalSettings,
   terminalFontStack,
   useTerminalSettings,
   type TerminalSettings,
@@ -58,20 +57,22 @@ function getPtyBridge(): PtyBridge | null {
 
 export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
   const settings = useTerminalSettings();
+  // Latest settings for the PTY effect, which must not re-run when they change.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
   // We intentionally remount the PTY when ptyId or cwd changes — different
-  // workspace ⇒ different shell. Theme is handled in a separate effect so
-  // toggling it doesn't kill the running shell.
+  // workspace ⇒ different shell. Settings and theme are applied by the live
+  // effect below, so changing them never restarts the shell.
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Read settings directly (not from the hook's state) so the very first
-    // frame already uses them instead of flashing the defaults.
+    // Build from the current settings so the first frame already uses them.
     const term = new Terminal({
-      ...xtermOptions(getTerminalSettings(), theme),
+      ...xtermOptions(settingsRef.current, theme),
       scrollback: 5000,
       allowProposedApi: true,
     });
@@ -178,13 +179,13 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       termRef.current = null;
       fitRef.current = null;
     };
-    // ptyId / cwd remount = fresh shell. Theme is handled separately.
+    // ptyId / cwd remount = fresh shell. Settings and theme are applied by the live effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ptyId, cwd]);
 
   // Settings or app theme changed — update the running terminal in place so
   // the shell keeps running. Font changes alter the cell size, so re-fit on the
-  // next frame and again once any newly chosen font has finished loading.
+  // next frame.
   useEffect(() => {
     const t = termRef.current;
     if (!t) return;
@@ -207,7 +208,6 @@ export function TerminalView({ ptyId, cwd, theme }: TerminalViewProps) {
       try { fitRef.current?.fit(); } catch {}
     };
     const raf = requestAnimationFrame(refit);
-    document.fonts?.ready.then(refit).catch(() => {});
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);

@@ -113,9 +113,14 @@ export function terminalFontStack(fontFamily: string): string {
   return name ? `"${name}", ${DEFAULT_FONT_STACK}` : DEFAULT_FONT_STACK;
 }
 
-/** Current settings, kept up to date across this window and other Marven windows. */
+/**
+ * Current settings, kept up to date across this window and other Marven windows.
+ * Reads storage on the first render, so only use it in components that are not
+ * server-rendered (TerminalView and the Settings page mount after client state
+ * loads); a server-rendered caller would get a hydration mismatch.
+ */
 export function useTerminalSettings(): TerminalSettings {
-  const [settings, setSettings] = useState<TerminalSettings>(() => ({ ...DEFAULT_TERMINAL_SETTINGS }));
+  const [settings, setSettings] = useState<TerminalSettings>(getTerminalSettings);
   useEffect(() => {
     const apply = (next: TerminalSettings) => setSettings((prev) => (sameSettings(prev, next) ? prev : next));
     const onChange = (e: Event) => apply(normalizeTerminalSettings((e as CustomEvent<TerminalSettings>).detail));
