@@ -24,8 +24,9 @@ export default async function DownloadPage() {
             Get Marven for your computer.
           </h1>
           <p className="mt-4 text-pretty text-lg leading-relaxed text-mute">
-            Free, with no account. Installers come straight from the project&apos;s GitHub releases, and the app updates
-            itself after that.
+            Free, with no account. Installers come straight from the project&apos;s GitHub releases. On Windows and Linux,
+            Marven installs new versions for you. On a Mac, get new versions from this page until releases are signed by
+            Apple.
           </p>
         </div>
 

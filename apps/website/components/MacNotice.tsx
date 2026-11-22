@@ -53,7 +53,7 @@ export function MacNotice() {
               </li>
             ))}
           </ol>
-          <p className="mt-3 text-sm text-mute">You only do this the first time you open a newly downloaded copy. After that it opens normally.</p>
+          <p className="mt-3 text-sm text-mute">After that first time it opens normally. Until releases are signed, a Mac can&apos;t install updates on its own, so download each new version from this page and repeat these steps once.</p>
         </div>
 
         <div className="rounded-xl border border-line bg-panel p-4">

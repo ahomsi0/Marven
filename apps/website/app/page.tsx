@@ -112,7 +112,7 @@ export default async function Home() {
               <a href={LICENSE_URL} className="text-ink-2 underline decoration-line-2 underline-offset-4 hover:text-ink">
                 AGPLv3
               </a>
-              . Read every line, build it yourself, or grab an installer. It updates itself when a new release ships.
+              . Read every line, build it yourself, or grab an installer. It checks GitHub for new releases every time it starts.
             </p>
             <div className="mt-9 w-full sm:w-auto">
               <DownloadCta
