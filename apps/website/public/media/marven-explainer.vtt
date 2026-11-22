@@ -1,0 +1,46 @@
+WEBVTT
+
+00:00.600 --> 00:05.639
+Your editor. Your terminal. Your browser. Your AI chat.
+
+00:06.239 --> 00:10.002
+Four windows, and none of them talk to each other.
+
+00:12.500 --> 00:13.556
+Meet Marven.
+
+00:13.956 --> 00:18.717
+An AI coding agent and a full code editor, in one desktop app.
+
+00:21.000 --> 00:26.670
+Ask for a change, and the agent reads your code, makes the edit, and runs your tests.
+
+00:33.100 --> 00:39.720
+Every edit shows up as a diff before it's written. Approve it, reject it, or roll it back.
+
+00:41.500 --> 00:48.870
+It's a real editor, too. Fourteen languages, a live terminal, and ⌘K to rewrite any selection.
+
+00:51.100 --> 00:56.866
+Bring your own model: Groq, OpenAI, Anthropic, OpenRouter or NVIDIA.
+
+00:57.266 --> 01:01.968
+Or run it all locally, with Ollama, LM Studio or llama-server.
+
+01:04.300 --> 01:08.863
+Your files, your history and your memory stay on your machine.
+
+01:09.263 --> 01:12.243
+Pick a local model, and nothing leaves at all.
+
+01:15.100 --> 01:21.220
+It can even use a browser, and it asks before every new site and every form it submits.
+
+01:23.500 --> 01:31.442
+Talk to it with “Hey Marven”, plug in MCP servers, commit with git, and teach it your project’s rules.
+
+01:34.200 --> 01:34.878
+Marven.
+
+01:35.478 --> 01:39.769
+Free and open source, for Mac, Windows and Linux.

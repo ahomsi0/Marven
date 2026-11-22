@@ -19,3 +19,6 @@ dist/
 npm-debug.log*
 .superpowers/
 .worktrees/
+
+# website build caches
+apps/website/*.tsbuildinfo
