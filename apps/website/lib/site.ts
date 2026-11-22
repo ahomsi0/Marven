@@ -6,7 +6,7 @@ export const LICENSE_URL = `${REPO_URL}/blob/master/LICENSE`;
 export const ISSUES_URL = `${REPO_URL}/issues`;
 
 /** Where the site is served; used for canonical URLs, the sitemap and OG tags. */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://marven.vercel.app").replace(/\/$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://marven-wheat.vercel.app").replace(/\/$/, "");
 
 export const TAGLINE = "An AI coding agent and a full code editor, in one desktop app.";
 export const DESCRIPTION =

@@ -1,0 +1,13 @@
+# Vercel builds only apps/website (the project's Root Directory). The site
+# also reads the root PRIVACY.md, so the repo root is uploaded, minus these.
+apps/desktop
+marketing
+design
+docs
+.claude
+.superpowers
+.worktrees
+**/node_modules
+**/.next
+**/out
+**/dist
