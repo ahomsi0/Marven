@@ -24,6 +24,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # The desktop app lives in apps/desktop (the website is in apps/website).
+    defaults:
+      run:
+        working-directory: apps/desktop
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,6 +38,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -75,13 +81,13 @@ jobs:
         with:
           name: marven-${{ matrix.platform }}
           path: |
-            dist/*.dmg
-            dist/*.dmg.blockmap
-            dist/*.exe
-            dist/*.exe.blockmap
-            dist/*.AppImage
-            dist/*.zip
-            dist/latest*.yml
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.dmg.blockmap
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/latest*.yml
           if-no-files-found: warn
           retention-days: 7
 

@@ -168,7 +168,7 @@ Requires **Node.js 20+** and **npm**. The `node-pty` dependency uses a prebuilt 
 
 ```bash
 git clone https://github.com/ahomsi0/Marven.git
-cd Marven
+cd Marven/apps/desktop
 npm install
 
 # Run in development (live reload)
@@ -178,7 +178,7 @@ npm run electron:dev
 npm run electron:build
 ```
 
-Built artifacts land in `dist/`.
+Built artifacts land in `apps/desktop/dist/`.
 
 ---
 
@@ -269,17 +269,22 @@ Or skip the project — **+ New chat** for plain conversation, voice commands, i
 Project layout:
 
 ```
-app/
-  api/                  # Next.js API routes — chat, agent, workspace, mcp, memory, tts, stt, search
-  components/marven/    # All UI components
-hooks/                  # React hooks (useVoice, useAgentStream, useEditorShortcuts)
-lib/
-  agent/                # Agent loop, tool definitions, provider clients
-  formatOnSave.ts       # Prettier wrapper
-  theme.ts              # Theme hook + localStorage persistence
-  workspaceState.ts     # Shared API-route module state
-electron/               # Electron main + preload (incl. PTY manager)
-docs/superpowers/       # Design specs & implementation plans
+apps/
+  desktop/                # The Marven desktop app (run npm commands here)
+    app/
+      api/                # Next.js API routes — chat, agent, workspace, mcp, memory, tts, stt, search
+      components/marven/  # All UI components
+    hooks/                # React hooks (useVoice, useAgentStream, useEditorShortcuts)
+    lib/
+      agent/              # Agent loop, tool definitions, provider clients
+      formatOnSave.ts     # Prettier wrapper
+      theme.ts            # Theme hook + localStorage persistence
+      workspaceState.ts   # Shared API-route module state
+    electron/             # Electron main + preload (incl. PTY manager)
+  website/                # The public website (marven site, deployed on Vercel)
+design/                   # Logos and design assets
+marketing/                # Explainer video sources
+docs/superpowers/         # Design specs & implementation plans
 ```
 
 ---

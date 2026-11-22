@@ -3,8 +3,10 @@ name: Test
 on:
   push:
     branches: [master]
+    paths-ignore: ["apps/website/**"]
   pull_request:
     branches: [master]
+    paths-ignore: ["apps/website/**"]
   workflow_dispatch:
 
 jobs:
@@ -16,6 +18,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # The desktop app lives in apps/desktop (the website is in apps/website).
+    defaults:
+      run:
+        working-directory: apps/desktop
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -25,6 +32,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       # `npm ci` runs our postinstall, which normally rebuilds better-sqlite3
       # against Electron's Node ABI. In CI we want to test against the

@@ -3,6 +3,11 @@
 **Stack:** Next.js 15 App Router + Electron 41 + React 19 + Tailwind CSS
 **App:** Local-first AI desktop assistant with chat, coding agent, editor, terminal, git, memory, voice, and codebase search.
 
+## Repo Layout
+
+- `apps/desktop/` — the desktop app. Every path in **Key Files** below is relative to it, and npm commands run there.
+- `apps/website/` — the public website (Next.js static export, deployed on Vercel).
+
 ## Current State
 
 - Chat providers: Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM, Ollama, LM Studio, llama-server.
@@ -30,7 +35,7 @@
 
 ## Verification
 
-Recommended pre-release checks:
+Recommended pre-release checks (from `apps/desktop`):
 
 ```bash
 npm audit --omit=dev

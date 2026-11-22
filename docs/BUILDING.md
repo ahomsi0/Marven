@@ -1,7 +1,8 @@
 # Building Marven
 
-This document covers building Marven for distribution. For day-to-day
-development, just run `npm install && npm run electron:dev`.
+This document covers building Marven for distribution. The desktop app lives
+in `apps/desktop`; run every command below from that folder. For day-to-day
+development, just run `npm install && npm run electron:dev` there.
 
 ## Native dependencies
 
@@ -60,7 +61,7 @@ node scripts/prepare-standalone.js
 npx electron-builder --mac   # or --win, --linux
 ```
 
-Artifacts land in `dist/`.
+Artifacts land in `apps/desktop/dist/`.
 
 ## CI
 
