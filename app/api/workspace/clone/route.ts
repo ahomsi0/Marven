@@ -3,10 +3,13 @@ import { execFile } from "child_process";
 import { homedir } from "os";
 import path from "path";
 import fs from "fs/promises";
+import { sanitizedChildEnv } from "@/lib/agent/sanitizedEnv";
 
 function runClone(url: string, cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile("git", ["clone", url], { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    // Sanitized env: git (and any credential helper or hook it runs) must not
+    // inherit provider keys or the app's API token.
+    execFile("git", ["clone", url], { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024, env: sanitizedChildEnv() }, (err, stdout, stderr) => {
       if (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code === "ENOENT") return reject(new Error("Git is not installed or not in PATH."));

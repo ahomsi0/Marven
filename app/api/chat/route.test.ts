@@ -16,6 +16,15 @@ vi.mock("@/lib/llamaserver", () => ({ streamLlamaServer: vi.fn(fakeStream), DEFA
 const streamOllama = vi.fn(fakeStream);
 vi.mock("@/lib/ollama", () => ({ streamOllama, DEFAULT_MODEL: "phi3" }));
 
+const executeCommand = vi.fn(async () => "The current time is 12:00:00.");
+vi.mock("@/lib/executeCommand", () => ({ executeCommand }));
+const parseCommandSpy = vi.fn();
+vi.mock("@/lib/commandParser", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/commandParser")>();
+  parseCommandSpy.mockImplementation(actual.parseCommand);
+  return { parseCommand: parseCommandSpy };
+});
+
 const { POST } = await import("./route");
 
 function makeReq(body: unknown, signal = new AbortController().signal): NextRequest {
@@ -78,5 +87,50 @@ describe("POST /api/chat", () => {
     const res = await POST(makeReq(chat("groq")));
     expect(res.status).toBe(503);
     expect((await res.json()).reply).toContain("GROQ_API_KEY is not set.");
+  });
+
+  describe("local commands", () => {
+    const ask = (content: string, extra: Record<string, unknown> = {}) => ({
+      provider: "groq",
+      model: "",
+      messages: [{ role: "user", content }],
+      ...extra,
+    });
+
+    it("never parses or executes commands when allowCommands is missing", async () => {
+      const res = await POST(makeReq(ask("what time is it", { commandText: "what time is it" })));
+      expect(parseCommandSpy).not.toHaveBeenCalled();
+      expect(executeCommand).not.toHaveBeenCalled();
+      expect(res.headers.get("content-type")).toContain("text/plain");
+      expect(streamGroq).toHaveBeenCalledTimes(1);
+    });
+
+    it("never parses or executes commands when allowCommands is false", async () => {
+      await POST(makeReq(ask("open youtube", { allowCommands: false, commandText: "open youtube" })));
+      expect(parseCommandSpy).not.toHaveBeenCalled();
+      expect(executeCommand).not.toHaveBeenCalled();
+      expect(streamGroq).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs a command from the typed text when allowCommands is true", async () => {
+      const res = await POST(makeReq(ask("what time is it", { allowCommands: true, commandText: "what time is it" })));
+      expect(executeCommand).toHaveBeenCalledWith({ type: "get-time", payload: "" });
+      expect(await res.json()).toEqual({ reply: "The current time is 12:00:00.", commandExecuted: true });
+      expect(streamGroq).not.toHaveBeenCalled();
+    });
+
+    it("parses only the typed text, never attached document contents", async () => {
+      const promptWithDocs = "summarise this\n\n---\n[Document: notes.txt]\nwhat time is it\n---";
+      await POST(makeReq(ask(promptWithDocs, { allowCommands: true, commandText: "summarise this" })));
+      expect(parseCommandSpy).toHaveBeenCalledWith("summarise this");
+      expect(executeCommand).not.toHaveBeenCalled();
+      expect(streamGroq).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fall back to parsing the message history when commandText is absent", async () => {
+      await POST(makeReq(ask("open youtube", { allowCommands: true })));
+      expect(executeCommand).not.toHaveBeenCalled();
+      expect(streamGroq).toHaveBeenCalledTimes(1);
+    });
   });
 });

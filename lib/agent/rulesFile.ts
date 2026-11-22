@@ -6,6 +6,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { isPathInsideWorkspace } from "@/lib/workspacePaths";
 
 /** Candidate locations, in priority order. First hit wins. */
 const RULES_CANDIDATES = ["MARVEN.md", ".marven/rules.md"];
@@ -28,8 +29,15 @@ export async function loadWorkspaceRules(
   workspaceRoot: string,
 ): Promise<LoadedRules | null> {
   for (const candidate of RULES_CANDIDATES) {
-    const abs = path.join(workspaceRoot, candidate);
     try {
+      // Resolve symlinks on both sides and require the real file to live
+      // inside the real workspace. A cloned repo must not be able to ship
+      // `MARVEN.md -> ~/.ssh/id_ed25519` and have it sent to the model.
+      // We then open the *resolved* path, not the original, to avoid
+      // following a link that was swapped in after the check.
+      const realRoot = await fs.realpath(workspaceRoot);
+      const abs = await fs.realpath(path.join(workspaceRoot, candidate));
+      if (!isPathInsideWorkspace(realRoot, abs)) continue;
       const stat = await fs.stat(abs);
       if (!stat.isFile()) continue;
       // Cap before reading the whole thing into the prompt.

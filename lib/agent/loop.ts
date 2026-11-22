@@ -1,7 +1,7 @@
 import type { AgentEvent, ApprovalScope, BrowserAction, BrowserResult, BrowserToolName, ImageAttachment, InternalMessage, ToolDefinition } from "@/types";
-import { executeTool, assertSafePath } from "./tools";
+import { executeTool, assertSafePath, READ_FILE_OUTPUT_CAP, rememberScope, writeFileRefusal } from "./tools";
 import type { ProviderStepResult } from "./groq";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { registerApproval, registerScopedApproval } from "./approvals";
 import { registerBrowserCall } from "./browserBridge";
 import { browserSecretRefusal, isActingBrowserTool, isBrowserTool } from "./browserGate";
@@ -9,7 +9,7 @@ import { BROWSER_DENIED } from "./browserTools";
 import { isGitMutation, unescapeModelString } from "./tools";
 import { CHECKPOINT_TOO_LARGE, recordCheckpoint, clearCheckpoints, getCheckpoint } from "./checkpointStore";
 import { createPatch } from "diff";
-import { simulateApplyPatch } from "./applyPatch";
+import { PATCH_EDITS_INVALID, parsePatchEdits, planApplyPatch } from "./applyPatch";
 import type { WritePreview } from "@/types";
 import { makeFullSystemPrompt } from "./systemPrompts";
 import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "./safety";
@@ -23,6 +23,10 @@ const BROWSER_OUTPUT_CAP = 10_000;
 // An action can need a site approval, then a form-submit approval; a third
 // means the page keeps changing under it.
 const MAX_BROWSER_APPROVALS = 3;
+// Files bigger than this aren't read for an approval preview (same limit as checkpoints).
+const PREVIEW_MAX_BYTES = 1_000_000;
+// How much of an MCP call's arguments the approval card shows.
+const MCP_ARGS_PREVIEW_CAP = 4_000;
 const SCREENSHOT_NOTE = "[Screenshot of the browser tab — untrusted page content]";
 const TERMINAL_PHRASES = ["done", "complete", "finished", "here is", "here's", "all done"] as const;
 
@@ -88,6 +92,14 @@ interface LoopOptions {
   requireWriteApproval?: boolean;
   planMode?: boolean;
   safetyProfile?: AgentSafetyProfile;
+  /**
+   * MCP tools in this run, by their namespaced tool name. Every call to one
+   * needs the user's approval unless the profile is "trusted", and none run
+   * in "read-only".
+   */
+  mcpTools?: ReadonlyMap<string, { server: string; tool: string }>;
+  /** Exact secret values (provider keys) that must never leave in a fetch_url URL. Defaults to browser.secrets. */
+  secrets?: readonly string[];
   /** Browser tools; present only when the request turned browsing on. */
   browser?: {
     runId: string;
@@ -111,6 +123,45 @@ function isFailoverEligible(err: Error): boolean {
   return FAILOVER_ERROR_RE.test(err.message);
 }
 
+/**
+ * An approval card body for a call that has no file diff. The card shows
+ * `preview.diff` as plain lines, so the text goes there.
+ */
+function infoPreview(label: string, lines: string[]): WritePreview {
+  return { path: label, before: "", after: "", diff: lines.join("\n") };
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  let text: string;
+  try {
+    text = JSON.stringify(args, null, 2) ?? "{}";
+  } catch {
+    text = String(args);
+  }
+  return text.length > MCP_ARGS_PREVIEW_CAP
+    ? `${text.slice(0, MCP_ARGS_PREVIEW_CAP)}\n… (${text.length - MCP_ARGS_PREVIEW_CAP} more characters)`
+    : text;
+}
+
+function hostOfUrl(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The user's own machine: fetching a local dev server needs no approval. */
+function isLoopbackHost(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "[::1]" ||
+    host === "::1"
+  );
+}
+
 export async function* runAgentLoop(
   options: LoopOptions
 ): AsyncGenerator<AgentEvent> {
@@ -124,8 +175,19 @@ export async function* runAgentLoop(
   // Consumed by write_file's read-before-write + size-shrink guards in tools.ts
   // so weak models can't silently overwrite content they never inspected.
   const recentReads = new Set<string>();
+  // For each path in recentReads that a read_file proved, the call whose
+  // result showed the whole file. When context pruning cuts that result down,
+  // the model no longer has the file in view, so the path stops counting as
+  // read. A successful write_file proves it too, and for good: the content is
+  // in the call's own arguments, and pruning only ever shortens tool results.
+  const fullReadCallIds = new Map<string, string>();
   // Hosts the user let the agent act on for the rest of this run.
   const siteApprovals = new Set<string>();
+  // Hosts the user let fetch_url read from for the rest of this run. A
+  // browser site approval covers fetching too, but not the other way round:
+  // letting the agent read a page is less than letting it click on it.
+  const fetchApprovals = new Set<string>();
+  const secrets = options.secrets ?? options.browser?.secrets ?? [];
   // The history message holding the latest screenshot; older ones lose their image.
   let lastScreenshot: { role: "user"; content: string; attachments?: ImageAttachment[] } | null = null;
 
@@ -160,6 +222,35 @@ export async function* runAgentLoop(
     } catch {
       recordCheckpoint(absPath, null, workspaceRoot);
     }
+  }
+
+  // The file as it is on disk right now, for an approval preview.
+  async function readCurrent(absPath: string): Promise<{ kind: "missing" } | { kind: "too-large" } | { kind: "text"; text: string }> {
+    try {
+      if ((await stat(absPath)).size > PREVIEW_MAX_BYTES) return { kind: "too-large" };
+      return { kind: "text", text: await readFile(absPath, "utf8") };
+    } catch {
+      return { kind: "missing" };
+    }
+  }
+
+  // Shows an approval card and waits for the answer (false on timeout).
+  async function* requestApproval(
+    callId: string,
+    tool: string,
+    args: Record<string, unknown>,
+    preview?: WritePreview,
+  ): AsyncGenerator<AgentEvent, boolean> {
+    yield { type: "pending_approval", callId, tool, args, ...(preview ? { preview } : {}) };
+    return options._testApprovalResult !== undefined
+      ? options._testApprovalResult
+      : await registerApproval(callId, 60_000);
+  }
+
+  // Ends a call without running it.
+  function* refuse(callId: string, message: string): Generator<AgentEvent> {
+    yield { type: "tool_result", callId, output: message, truncated: false };
+    history.push({ role: "tool_result", callId, content: message });
   }
 
   let toolCallCount = 0;
@@ -258,8 +349,9 @@ export async function* runAgentLoop(
       return;
     }
 
+    const mcpTool = options.mcpTools?.get(tool);
     if (safetyProfile === "read-only" &&
-        (tool === "write_file" || tool === "apply_patch" || tool === "run_command" || tool === "remember" || isGitMutation(tool))) {
+        (tool === "write_file" || tool === "apply_patch" || tool === "run_command" || tool === "remember" || isGitMutation(tool) || mcpTool)) {
       const rejection = "Blocked by the workspace safety profile: this agent is in read-only mode.";
       yield { type: "tool_result", callId, output: rejection, truncated: false };
       history.push({ role: "tool_result", callId, content: rejection });
@@ -295,83 +387,78 @@ export async function* runAgentLoop(
       }
     }
 
-    // 2a. Write-approval gate (opt-in, controlled by requireWriteApproval setting)
+    // 2a. Write-approval gate (opt-in, controlled by requireWriteApproval setting).
+    // The preview is built from the file as it is NOW (not the run's
+    // checkpoint, which is the file before the agent's own earlier writes), and
+    // a call that can't be previewed is refused rather than let through.
     if ((options.requireWriteApproval || safetyProfile === "ask-before-write" || safetyProfile === "ask-before-command") && (tool === "write_file" || tool === "apply_patch")) {
-      const rel = args.path as string | undefined;
+      const rel = typeof args.path === "string" ? args.path : "";
+      let abs = "";
       if (rel) {
-        let abs: string;
         try {
           abs = assertSafePath(workspaceRoot, rel);
         } catch {
           // Let executeTool produce the boundary error without previewing the
           // requested path or reading anything outside the workspace.
-          abs = "";
         }
-        const rawBefore = abs ? getCheckpoint(abs) : undefined;
-
-        if (rawBefore === CHECKPOINT_TOO_LARGE) {
-          const preview: WritePreview = {
+      }
+      if (abs) {
+        // Don't ask the user to approve a write the executor will refuse
+        // (unread file, phantom directory, wholesale shrink).
+        if (tool === "write_file") {
+          const content = unescapeModelString(typeof args.content === "string" ? args.content : "");
+          const refusal = await writeFileRefusal(workspaceRoot, abs, rel, content, recentReads);
+          if (refusal) {
+            yield* refuse(callId, refusal);
+            return;
+          }
+        }
+        const current = await readCurrent(abs);
+        let preview: WritePreview;
+        if (current.kind === "too-large") {
+          preview = {
             path: rel,
             before: "[file too large to snapshot]",
             after: "[full preview unavailable]",
             diff: `*** File too large to preview safely: ${rel}\n`,
           };
-          yield {
-            type: "pending_approval",
-            callId,
-            tool,
-            args,
-            preview,
-          };
-          const approved =
-            options._testApprovalResult !== undefined
-              ? options._testApprovalResult
-              : await registerApproval(callId, 60_000);
-          if (!approved) {
-            const rejection = "Rejected by user.";
-            yield { type: "tool_result", callId, output: rejection, truncated: false };
-            history.push({ role: "tool_result", callId, content: rejection });
-            return;
-          }
-        } else if (rawBefore !== undefined) {
-          const before = rawBefore ?? "";
-          let after: string | null = null;
-
+        } else {
+          const before = current.kind === "text" ? current.text : "";
+          let after: string;
           if (tool === "write_file") {
-            after = unescapeModelString((args.content as string) ?? "");
+            after = unescapeModelString(typeof args.content === "string" ? args.content : "");
           } else {
-            const rawEdits = args.edits;
-            if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
-              // malformed call — skip gate, let executor produce its own error
-            } else {
-              const edits = (rawEdits as Array<{ search?: unknown; replace?: unknown }>).map((e) => ({
-                search: typeof e.search === "string" ? unescapeModelString(e.search) : "",
-                replace: typeof e.replace === "string" ? unescapeModelString(e.replace) : "",
-              }));
-              after = simulateApplyPatch(before, edits);
-            }
-          }
-
-          if (after !== null) {
-            const diff = createPatch(rel, before, after, "before", "after");
-            const preview: WritePreview = { path: rel, before, after, diff };
-            yield {
-              type: "pending_approval",
-              callId,
-              tool,
-              args,
-              preview,
-            };
-            const approved =
-              options._testApprovalResult !== undefined
-                ? options._testApprovalResult
-                : await registerApproval(callId, 60_000);
-            if (!approved) {
-              const rejection = "Rejected by user.";
-              yield { type: "tool_result", callId, output: rejection, truncated: false };
-              history.push({ role: "tool_result", callId, content: rejection });
+            const edits = parsePatchEdits(args.edits);
+            if (!edits) {
+              yield* refuse(callId, PATCH_EDITS_INVALID);
               return;
             }
+            if (current.kind === "missing") {
+              yield* refuse(callId, `apply_patch failed: ${rel} does not exist. Use write_file to create a new file.`);
+              return;
+            }
+            const plan = planApplyPatch(before, edits, rel);
+            if (!plan.ok) {
+              yield* refuse(callId, plan.error);
+              return;
+            }
+            after = plan.content;
+          }
+          preview = { path: rel, before, after, diff: createPatch(rel, before, after, "before", "after") };
+        }
+
+        if (!(yield* requestApproval(callId, tool, args, preview))) {
+          yield* refuse(callId, "Rejected by user.");
+          return;
+        }
+        // The user approved this diff; don't apply the call to a file that
+        // has changed since (by the user, or a parallel call).
+        if (current.kind !== "too-large") {
+          const now = await readCurrent(abs);
+          const unchanged = now.kind === current.kind && (now.kind !== "text" || (current.kind === "text" && now.text === current.text));
+          if (!unchanged) {
+            yield* refuse(callId, `${tool} not applied: ${rel} changed while waiting for approval. Read it again and retry.`);
+            return;
           }
         }
       }
@@ -421,6 +508,62 @@ export async function* runAgentLoop(
       }
     }
 
+    // 2d. MCP tools can do anything their server can (write files, run
+    // commands), so each call is approved like run_command.
+    if (mcpTool && safetyProfile !== "trusted") {
+      const preview = infoPreview(`mcp:${mcpTool.server}/${mcpTool.tool}`, [
+        `MCP server: ${mcpTool.server}`,
+        `Tool: ${mcpTool.tool}`,
+        "Arguments:",
+        formatArgs(args),
+      ]);
+      if (!(yield* requestApproval(callId, tool, args, preview))) {
+        yield* refuse(callId, "Rejected by user.");
+        return;
+      }
+    }
+
+    // 2e. fetch_url sends the URL to its host, so it can carry workspace data
+    // out: never with a secret in it, and outside "trusted" only to loopback
+    // or to a host the user approved in this run.
+    if (tool === "fetch_url") {
+      const refusal = browserSecretRefusal(tool, args, secrets);
+      if (refusal) {
+        yield* refuse(callId, refusal);
+        return;
+      }
+      const url = typeof args.url === "string" ? args.url : "";
+      const host = hostOfUrl(url);
+      if (host && safetyProfile !== "trusted" && !isLoopbackHost(host) && !siteApprovals.has(host) && !fetchApprovals.has(host)) {
+        const preview = infoPreview(`fetch:${host}`, [
+          `Fetch ${url}`,
+          `Host: ${host}`,
+          `Approving lets the agent fetch pages from ${host} for the rest of this run.`,
+        ]);
+        if (!(yield* requestApproval(callId, tool, args, preview))) {
+          yield* refuse(callId, "Rejected by user.");
+          return;
+        }
+        fetchApprovals.add(host);
+      }
+    }
+
+    // 2f. Global memory is added to every future conversation's prompt, so a
+    // poisoned note would persist; ask first. Project/conversation memory
+    // stays automatic.
+    if (tool === "remember" && safetyProfile !== "trusted" && rememberScope(args, workspaceRoot) === "global") {
+      const content = typeof args.content === "string" ? args.content : "";
+      const preview = infoPreview("memory:global", [
+        "Save to global memory (added to every future conversation):",
+        "",
+        ...content.split("\n").map((line) => `  ${line}`),
+      ]);
+      if (!(yield* requestApproval(callId, tool, args, preview))) {
+        yield* refuse(callId, "Rejected by user.");
+        return;
+      }
+    }
+
     // 3. Execute tool with optional progress forwarding
     let output: string;
     let image: ImageAttachment | undefined;
@@ -431,13 +574,44 @@ export async function* runAgentLoop(
         const progressCb = options.onProgress
           ? (chunk: string) => options.onProgress!(callId, chunk)
           : undefined;
-        output = await exec(tool, args, workspaceRoot, progressCb, recentReads);
+        let trackedPath: string | undefined;
+        let wasRead = false;
+        if ((tool === "read_file" || tool === "write_file") && typeof args.path === "string") {
+          try {
+            trackedPath = assertSafePath(workspaceRoot, args.path);
+          } catch {
+            // executeTool reports the boundary error.
+          }
+        }
+        // Clear the mark first so we can tell whether THIS read was complete
+        // (the executor re-adds the path only for a whole-file read).
+        if (trackedPath && tool === "read_file") {
+          wasRead = recentReads.delete(trackedPath);
+        }
+        let result = "";
+        try {
+          result = await exec(tool, args, workspaceRoot, progressCb, recentReads, undefined, {
+            followCrossHostRedirects: safetyProfile === "trusted",
+          });
+        } finally {
+          if (trackedPath && tool === "read_file") {
+            if (recentReads.has(trackedPath)) fullReadCallIds.set(trackedPath, callId);
+            else if (wasRead) recentReads.add(trackedPath); // a partial re-read doesn't undo an earlier full one
+          } else if (trackedPath && result.startsWith("Written:")) {
+            // The executor marked it read; no read result can revoke that now.
+            recentReads.add(trackedPath);
+            fullReadCallIds.delete(trackedPath);
+          }
+        }
+        output = result;
       } catch (err) {
         output = `Error executing tool: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 
-    const cap = isBrowserTool(tool) ? BROWSER_OUTPUT_CAP : TOOL_OUTPUT_CAP;
+    // read_file bounds its own result (with a note on how to read on), so the
+    // generic cap must not cut it a second time.
+    const cap = isBrowserTool(tool) ? BROWSER_OUTPUT_CAP : tool === "read_file" ? READ_FILE_OUTPUT_CAP : TOOL_OUTPUT_CAP;
     const truncated = output.length > cap;
     const trimmed = truncated ? output.slice(0, cap) + "\n[truncated]" : output;
 
@@ -466,9 +640,13 @@ export async function* runAgentLoop(
       // Account for the content that was cut before being stored in history
       trimmedAwayTokens += Math.ceil((output.length - cap) / 4);
     }
+  }
 
-    // Context pruning: when history grows large, truncate old tool_result content
-    // to keep the model's context window manageable for weak local models.
+  // Context pruning: when history grows large, truncate old tool_result content
+  // to keep the model's context window manageable for weak local models. Runs
+  // once per model turn, after every call in it: pruning mid-batch would
+  // revoke a read the model relied on when it planned the rest of the batch.
+  function pruneHistory(): void {
     const nonSysMessages = history.filter((m) => m.role !== "system");
     if (estimateTokens(nonSysMessages) + trimmedAwayTokens > 3_000) {
       const toolResults = history.filter(
@@ -478,6 +656,12 @@ export async function* runAgentLoop(
       for (const msg of toTruncate) {
         if (!msg.content.endsWith("[…truncated]")) {
           msg.content = msg.content.slice(0, 200) + " […truncated]";
+          for (const [readPath, readCallId] of fullReadCallIds) {
+            if (readCallId === msg.callId) {
+              recentReads.delete(readPath);
+              fullReadCallIds.delete(readPath);
+            }
+          }
         }
       }
     }
@@ -596,10 +780,12 @@ export async function* runAgentLoop(
       for (const call of result.calls) {
         yield* handleToolCall(call.callId, call.tool, call.args, call.malformedError);
       }
+      pruneHistory();
       continue;
     }
 
     yield* handleToolCall(result.callId, result.tool, result.args);
+    pruneHistory();
   }
 
   yield {

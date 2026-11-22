@@ -19,11 +19,16 @@ export function isActingBrowserTool(name: string): boolean {
   return ACTING_TOOLS.has(name);
 }
 
-/** A refusal message when the call would type or open a secret, else null. */
+/**
+ * A refusal message when the call would type a secret, or send one in a URL
+ * (browser_open, fetch_url), else null.
+ */
 export function browserSecretRefusal(tool: string, args: Record<string, unknown>, knownSecrets: readonly string[]): string | null {
-  const value = tool === "browser_type" ? args.text : tool === "browser_open" ? args.url : undefined;
+  const value = tool === "browser_type" ? args.text : tool === "browser_open" || tool === "fetch_url" ? args.url : undefined;
   if (typeof value !== "string" || !containsSecret(value, knownSecrets)) return null;
-  return "This looks like a secret (an API key or token). Don't put it into a web page; ask the user to enter it themselves if it's really needed.";
+  return tool === "fetch_url"
+    ? "This URL looks like it contains a secret (an API key or token). Don't send secrets in a URL; ask the user to make the request themselves if it's really needed."
+    : "This looks like a secret (an API key or token). Don't put it into a web page; ask the user to enter it themselves if it's really needed.";
 }
 
 /**

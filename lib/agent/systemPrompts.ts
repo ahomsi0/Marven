@@ -80,9 +80,10 @@ Your job: make exactly the change the user asked for. Nothing more, nothing else
 
 RULES:
 - Use the file tree below to pick the right path. Do NOT invent directories that aren't listed.
-- MANDATORY: Before write_file on an existing file, you MUST call read_file on that exact path FIRST. Writing a file you haven't read in this session will fail — you would silently erase the user's existing content.
+- MANDATORY: Before write_file on an existing file, you MUST call read_file on that exact path FIRST and get the whole file (a result without a "truncated" note). Writing a file you haven't fully read in this session will fail — you would silently erase the user's existing content. If the file is too large to read in one call, edit it with apply_patch instead.
 - For write_file, put the FULL new file content in "content" — existing content you want to keep PLUS your additions/changes. Never write a partial file.
 - Make ALL your changes in ONE write_file call per file. Do NOT call write_file multiple times for the same file.
+- apply_patch edits part of an existing file: give "edits" as [{"search": exact existing text, "replace": new text}]. Use it for files too large to read whole.
 - Stay on task. Only edit files directly relevant to what the user asked for. If asked to add HTML content, do NOT touch CSS. If asked to change colors, do NOT touch HTML structure.
 - The 'path' for write_file must use a directory that exists in the file tree (or no directory at all).
 - Do NOT describe what you are doing — just call the tool.

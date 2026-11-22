@@ -9,11 +9,16 @@ const crypto = require('crypto');
 const { terminalEnv } = require('./envSanitize');
 const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
+const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
 // embedded standalone server otherwise).
 const APP_PORT = isDev ? 3000 : 47891;
+// Per-launch secret every /api/* request must carry (see electron/apiToken.js
+// and middleware.ts). Production only: in dev `next dev` is a separate process
+// that never sees this value, so the server skips the check there.
+const API_TOKEN = isDev ? null : createApiToken();
 
 // ── Single instance ──────────────────────────────────────────────────────────
 // A second copy would share the same userData (settings.json, the Chromium
@@ -100,7 +105,9 @@ function waitForHealth(port, healthToken, timeoutMs = 30000) {
         port,
         path: '/api/health',
         timeout: 1000,
-        headers: { 'x-marven-health-token': healthToken },
+        // The API token gets the request past middleware.ts; the health
+        // token is what /api/health itself checks.
+        headers: { 'x-marven-health-token': healthToken, [API_TOKEN_HEADER]: API_TOKEN },
       }, (res) => {
         let body = '';
         res.setEncoding('utf8');
@@ -143,6 +150,9 @@ function startNextServer() {
   process.env.HOSTNAME = '127.0.0.1';
   process.env.NODE_ENV = 'production';
   process.env.MARVEN_HEALTH_TOKEN = healthToken;
+  // middleware.ts rejects every /api/* request without this token. Must be set
+  // before the server is required below.
+  process.env.MARVEN_API_TOKEN = API_TOKEN;
   // Lets the embedded API server read persisted settings (e.g. the agent
   // safety profile) from the same file the main process manages.
   process.env.MARVEN_USER_DATA = app.getPath('userData');
@@ -965,6 +975,23 @@ app.on('before-quit', () => {
 app.whenReady().then(async () => {
   applySettings(loadSettings());
   await startNextServer();
+
+  // One onBeforeSendHeaders listener for the default session (Electron keeps
+  // only the last one registered): it stamps the API token on requests to the
+  // app's own origin from the app window's top-level frame (subframes such as
+  // the editor preview get it only for the read-only preview/file GETs; see
+  // electron/apiToken.js), and fixes the Origin header for the Web Speech API.
+  // Registered before the window loads so the renderer's first API calls
+  // already carry the token. The in-app browser uses its own partition
+  // (electron/browser/session.js), so its pages never get the token.
+  const requestHeaders = createRequestHeaderHandler({
+    port: APP_PORT,
+    token: API_TOKEN,
+    speechOrigin: `http://localhost:${APP_PORT}`,
+    isAppWebContents: (id) => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === id,
+  });
+  session.defaultSession.webRequest.onBeforeSendHeaders(requestHeaders.filter, requestHeaders.listener);
+
   // Set custom dock icon on macOS
   if (process.platform === 'darwin' && !APP_ICON.isEmpty()) {
     app.dock.setIcon(APP_ICON);
@@ -1058,16 +1085,8 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Fix for Web Speech API: Google's speech service checks the Origin header.
-  // In Electron, requests may not carry a proper Origin. Inject it so
-  // wss://www.google.com/speech-api accepts them.
-  session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['https://www.google.com/*', 'wss://www.google.com/*'] },
-    (details, callback) => {
-      details.requestHeaders['Origin'] = APP_ORIGIN;
-      callback({ requestHeaders: details.requestHeaders });
-    }
-  );
+  // (The Web Speech API Origin fix lives in the single onBeforeSendHeaders
+  // listener registered before createWindow(), with the API token.)
 
   const ok = globalShortcut.register('CommandOrControl+Shift+M', () => {
     triggerVoice();

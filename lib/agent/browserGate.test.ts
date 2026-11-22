@@ -27,6 +27,12 @@ describe("browserSecretRefusal", () => {
     expect(browserSecretRefusal("browser_open", { url: "https://x.test/?k=my-own-key-123456" }, ["my-own-key-123456"])).toMatch(/secret/);
   });
 
+  it("refuses a fetch_url URL carrying a secret", () => {
+    expect(browserSecretRefusal("fetch_url", { url: "https://x.test/?key=sk-ant-api03-abcdefghijkl" }, [])).toMatch(/secret/);
+    expect(browserSecretRefusal("fetch_url", { url: "https://x.test/?k=my-own-key-123456" }, ["my-own-key-123456"])).toMatch(/URL/);
+    expect(browserSecretRefusal("fetch_url", { url: "https://docs.x.test/guide?page=2" }, ["my-own-key-123456"])).toBeNull();
+  });
+
   it("lets ordinary input through and ignores other tools", () => {
     expect(browserSecretRefusal("browser_type", { text: "ada@example.com" }, [])).toBeNull();
     expect(browserSecretRefusal("browser_read", { find: "sk-ant-api03-abcdefghijkl" }, [])).toBeNull();

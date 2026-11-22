@@ -5,6 +5,47 @@
 
 import { NextRequest } from "next/server";
 
+/** Header the Electron main process stamps on the app renderer's requests. */
+export const API_TOKEN_HEADER = "x-marven-token";
+
+/**
+ * Compares two strings in time that depends only on their lengths, not on
+ * where they first differ. Pure JS so it works in any middleware runtime.
+ * (The token's length is fixed and public; only its content is secret.)
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Rejects a request that doesn't carry the per-launch API token.
+ *
+ * The server listens on 127.0.0.1, which ANY local program can reach, and a
+ * non-browser caller can omit Origin and set Host to whatever it likes — so
+ * the Origin/Host guards below only stop web pages. In the packaged app the
+ * Electron main process generates a random token per launch, passes it to the
+ * in-process server as MARVEN_API_TOKEN and adds it to every request the app
+ * renderer makes to its own origin (electron/apiToken.js).
+ *
+ * When `expected` is unset (dev: `next dev` runs as a separate process and
+ * never sees the token; plain browser preview) there is nothing to check and
+ * the request is allowed, keeping development working.
+ *
+ * Returns an error string to respond with, or null when the request is allowed.
+ */
+export function apiTokenRejection(
+  req: NextRequest,
+  expected: string | undefined = process.env.MARVEN_API_TOKEN,
+): string | null {
+  if (!expected) return null;
+  const provided = req.headers.get(API_TOKEN_HEADER);
+  if (!provided) return "Missing API token";
+  return constantTimeEqual(provided, expected) ? null : "Invalid API token";
+}
+
 /**
  * Rejects a request whose `Origin` header is present and is NOT a local origin.
  * Same-origin requests from the app renderer send `Origin: http://localhost:<port>`

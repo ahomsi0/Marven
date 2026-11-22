@@ -123,7 +123,6 @@ const NATURAL_LANGUAGE_SECTIONS = [
       "take a screenshot",
       "lock the screen",
       "open my downloads",
-      "empty the trash",
     ],
   },
   {

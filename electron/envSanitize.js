@@ -13,8 +13,13 @@ const SECRET_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'ELEVENLABS_API_KEY',
   // App-internal secrets that shouldn't leak into user-visible shells either.
+  // MARVEN_API_TOKEN is what gates the local API (middleware.ts): a script run
+  // in the terminal or by an LSP/MCP server must not be able to read it.
   'MARVEN_HEALTH_TOKEN',
+  'MARVEN_API_TOKEN',
 ];
+// lib/agent/sanitizedEnv.ts keeps a mirror of this list for the Next server's
+// child processes; lib/agent/sanitizedEnv.test.ts fails if the two drift.
 
 /** Returns a copy of process.env with provider secrets removed, plus any extras. */
 function sanitizedEnv(extra = {}) {

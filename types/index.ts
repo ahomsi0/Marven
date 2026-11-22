@@ -80,6 +80,10 @@ export interface ChatRequest {
   model: string;
   provider?: AIProvider;
   systemPrompt?: string;
+  /** Run local system commands for this turn. The server treats a missing value as false. */
+  allowCommands?: boolean;
+  /** The text the user typed (no attached documents) — the only text parsed for commands. */
+  commandText?: string;
 }
 
 export interface TokenUsage {
@@ -123,7 +127,6 @@ export interface ParsedCommand {
     | "take-screenshot"
     | "lock-screen"
     | "open-downloads"
-    | "empty-trash"
     | "volume-up"
     | "volume-down"
     | "volume-mute"

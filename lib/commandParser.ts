@@ -45,103 +45,127 @@ const APP_MAP: Record<string, string> = {
   "system settings": "System Settings",
 };
 
+const NO_COMMAND: ParsedCommand = { type: null, payload: "" };
+
+// Extensions that are also TLDs but in chat almost always name a file
+// ("open package.json", "open notes.md"), never a website.
+const FILE_EXTENSIONS = new Set([
+  "c", "cc", "cfg", "conf", "cpp", "cs", "css", "csv", "env", "go", "h", "html",
+  "ini", "java", "js", "json", "jsx", "kt", "lock", "log", "md", "mdx", "mjs",
+  "php", "pl", "py", "rb", "rs", "scss", "sh", "sql", "swift", "toml", "ts",
+  "tsx", "txt", "xml", "yaml", "yml", "zip",
+]);
+
+/** A bare domain or http(s) URL with no spaces, e.g. "github.com" or "https://x.com/a". */
+function asWebsite(target: string): string | null {
+  const match = target.match(/^(https?:\/\/)?([\w-]+(?:\.[\w-]+)+)(?::\d+)?(?:[/?#]\S*)?$/);
+  if (!match) return null;
+  const tld = match[2].split(".").pop() ?? "";
+  if (!/^[a-z]{2,}$/.test(tld) || (!match[1] && FILE_EXTENSIONS.has(tld))) return null;
+  return match[1] ? target : `https://${target}`;
+}
+
 /**
- * Parses a user message and detects whether it maps to a known command.
+ * Parses a user message and detects whether it IS a known command.
  * Returns the command type and payload, or null type if no command matched.
  *
- * @param message The raw user message
+ * Every pattern matches the whole message (after trimming, lowercasing and
+ * stripping trailing punctuation), so a message that merely mentions a command
+ * — "how do I open the terminal in VS Code?", "what's the time complexity of
+ * quicksort?" — is left for the model. Questions never match, apart from bare
+ * status questions such as "what time is it?".
+ *
+ * @param message The raw text the user typed or spoke (never document contents)
  * @param customShortcuts Optional user-defined shortcut overrides (checked first)
  */
 export function parseCommand(
   message: string,
   customShortcuts: CustomShortcut[] = []
 ): ParsedCommand {
-  // Strip trailing punctuation that Whisper commonly adds ("Open Spotify." / "Open Spotify, please.")
-  const lower = message.toLowerCase().trim().replace(/[.,!?]+$/, "");
+  const trimmed = message.trim().replace(/[\u2018\u2019]/g, "'");
+  // Strip trailing punctuation that Whisper commonly adds ("Open Spotify." / "What time is it?")
+  const lower = trimmed.toLowerCase().replace(/[.,!?]+$/, "").trim();
+  // A "?" inside a URL ("…/search?q=x") is not a question mark; one ending
+  // the sentence, even right after a URL ("open https://x.com?"), is.
+  const isQuestion = trimmed
+    .replace(/https?:\/\/\S*?(?=[.,!?]*(?:\s|$))/gi, "")
+    .includes("?");
 
-  // ─── 1. Custom shortcuts (checked first) ─────────────────────────────────
+  // ─── 1. Custom shortcuts (checked first, exact trigger only) ─────────────
   for (const shortcut of customShortcuts) {
     if (lower === shortcut.trigger.toLowerCase().trim()) {
       return { type: "open-website", payload: shortcut.url };
     }
   }
 
-  // ─── 2. Volume commands ──────────────────────────────────────────────────
-  if (/^(?:volume|turn it) up$/i.test(lower)) {
-    return { type: "volume-up", payload: "" };
-  }
-  if (/^(?:volume|turn it) down$/i.test(lower)) {
-    return { type: "volume-down", payload: "" };
-  }
-  if (/^(?:mute|silence)(?: (?:the )?(?:volume|audio|sound))?$/i.test(lower)) {
-    return { type: "volume-mute", payload: "" };
-  }
-  if (/^unmute(?: (?:the )?(?:volume|audio|sound))?$/i.test(lower)) {
-    return { type: "volume-unmute", payload: "" };
-  }
-  const volumeSetMatch = lower.match(/^set (?:the )?volume to (\d+)(?:%)?$/i);
-  if (volumeSetMatch) {
-    return { type: "set-volume", payload: volumeSetMatch[1] };
-  }
-
-  // ─── 2b. Media commands ───────────────────────────────────────────────────
-  if (/^(?:play|pause|play\/pause|toggle (?:music|playback))$/i.test(lower)) {
-    return { type: "media-play-pause", payload: "" };
-  }
-  if (/^(?:next|next (?:song|track))$/i.test(lower)) {
-    return { type: "media-next", payload: "" };
-  }
-  if (/^(?:previous|prev|(?:previous|prev) (?:song|track))$/i.test(lower)) {
-    return { type: "media-previous", payload: "" };
-  }
-  if (/^what(?:'s| is) (?:playing|this song|this track)$/i.test(lower)) {
-    return { type: "media-what-playing", payload: "" };
-  }
-
-  // ─── 2c. Battery ─────────────────────────────────────────────────────────
-  if (/^(?:battery|battery (?:level|status|life)|how(?:'s| is) (?:my )?battery)$/i.test(lower)) {
-    return { type: "get-battery", payload: "" };
-  }
-
-  // ─── 3. Time / Date ───────────────────────────────────────────────────────
+  // ─── 2. Status questions (the only commands that may be phrased with "?") ─
   if (
-    /\b(?:what(?:'s| is)(?: the)? time|what time is it|current time|tell me the time|time (right )?now)\b/i.test(lower)
+    /^(?:what(?:'s| is)(?: the)? time(?: (?:right )?now)?|what time is it(?: (?:right )?now)?|(?:the )?current time|tell me the time|time(?: right)? now)$/.test(lower)
   ) {
     return { type: "get-time", payload: "" };
   }
   if (
-    /\b(?:what(?:'s| is)(?: the| today'?s?)? date|what day is(?: it| today)|today'?s? date|current date|what(?:'s| is) today)\b/i.test(lower)
+    /^(?:what(?:'s| is)(?: the| today'?s?)? date(?: today)?|what day is(?: it| today)|today'?s? date|(?:the )?current date|what(?:'s| is) today)$/.test(lower)
   ) {
     return { type: "get-date", payload: "" };
   }
+  if (/^what(?:'s| is) (?:playing|this song|this track)$/.test(lower)) {
+    return { type: "media-what-playing", payload: "" };
+  }
+  if (/^(?:battery|battery (?:level|status|life)|how(?:'s| is) (?:my )?battery)$/.test(lower)) {
+    return { type: "get-battery", payload: "" };
+  }
 
-  // ─── 3. Screenshot ────────────────────────────────────────────────────────
-  if (/^take a screenshot$/i.test(lower)) {
+  // Anything else phrased as a question is a question for the model.
+  if (isQuestion) return NO_COMMAND;
+
+  // ─── 3. Volume commands ──────────────────────────────────────────────────
+  if (/^(?:volume|turn it) up$/.test(lower)) {
+    return { type: "volume-up", payload: "" };
+  }
+  if (/^(?:volume|turn it) down$/.test(lower)) {
+    return { type: "volume-down", payload: "" };
+  }
+  if (/^(?:mute|silence)(?: (?:the )?(?:volume|audio|sound))?$/.test(lower)) {
+    return { type: "volume-mute", payload: "" };
+  }
+  if (/^unmute(?: (?:the )?(?:volume|audio|sound))?$/.test(lower)) {
+    return { type: "volume-unmute", payload: "" };
+  }
+  const volumeSetMatch = lower.match(/^set (?:the )?volume to (\d+)(?:%)?$/);
+  if (volumeSetMatch) {
+    return { type: "set-volume", payload: volumeSetMatch[1] };
+  }
+
+  // ─── 4. Media commands ───────────────────────────────────────────────────
+  if (/^(?:play|pause|play\/pause|toggle (?:music|playback))$/.test(lower)) {
+    return { type: "media-play-pause", payload: "" };
+  }
+  if (/^(?:next|next (?:song|track))$/.test(lower)) {
+    return { type: "media-next", payload: "" };
+  }
+  if (/^(?:previous|prev|(?:previous|prev) (?:song|track))$/.test(lower)) {
+    return { type: "media-previous", payload: "" };
+  }
+
+  // ─── 5. Screenshot / lock screen / Downloads ─────────────────────────────
+  if (/^take a screenshot$/.test(lower)) {
     return { type: "take-screenshot", payload: "" };
   }
-
-  // ─── 4. Lock screen ──────────────────────────────────────────────────────
-  if (/^lock (?:the )?screen$/i.test(lower) || /^lock screen$/i.test(lower)) {
+  if (/^lock (?:the )?screen$/.test(lower)) {
     return { type: "lock-screen", payload: "" };
   }
-
-  // ─── 5. Open Downloads ───────────────────────────────────────────────────
-  if (/^open (?:my )?downloads$/i.test(lower)) {
+  if (/^open (?:my )?downloads$/.test(lower)) {
     return { type: "open-downloads", payload: "" };
   }
 
-  // ─── 6. Empty Trash ──────────────────────────────────────────────────────
-  if (/^empty (?:the )?trash$/i.test(lower)) {
-    return { type: "empty-trash", payload: "" };
-  }
-
-  // ─── 7. Google search ────────────────────────────────────────────────────
+  // ─── 6. Google search ────────────────────────────────────────────────────
+  // `.` does not cross newlines and `$` is end-of-input, so a single line only.
   const searchPatterns = [
-    /^search\s+(?:google\s+)?for\s+(.+)$/i,
-    /^google\s+search\s+(.+)$/i,
-    /^search\s+(.+)\s+on\s+google$/i,
+    /^search\s+(?:google\s+)?for\s+(.+)$/,
+    /^google\s+search\s+(.+)$/,
+    /^search\s+(.+)\s+on\s+google$/,
   ];
-
   for (const pattern of searchPatterns) {
     const match = lower.match(pattern);
     if (match) {
@@ -149,56 +173,39 @@ export function parseCommand(
     }
   }
 
-  // ─── 8. Open website / app ───────────────────────────────────────────────
-  // Strip common filler prefix words that voice/Whisper may add
+  // ─── 7. Open website / app ───────────────────────────────────────────────
+  // Only "<verb> <known name | domain>" as the whole message. Allow the
+  // wake-word / "please" prefix and "for me" / "please" / "now" suffix that
+  // voice input adds — but not "can you …" style questions.
   const stripped = lower
-    .replace(/^(?:hey\s+marven[,.]?\s*)?(?:can\s+you|please|could\s+you|would\s+you)\s+/i, "")
-    .replace(/[,.]?\s*(?:for\s+me|please|now|right\s+now)$/i, "")
+    .replace(/^hey\s+marven[,.]?\s*/, "")
+    .replace(/^please[,]?\s+/, "")
+    .replace(/[,.]?\s*(?:for\s+me|please|now|right\s+now)$/, "")
     .trim();
 
-  // Match: open / open up / launch / start / run / go to / visit / navigate to
   const openMatch = stripped.match(
-    /^(?:open(?:\s+up)?|launch|start|run|go\s+to|visit|navigate\s+to)\s+(.+)$/i,
+    /^(?:open(?:\s+up)?|launch|start|go\s+to|visit|navigate\s+to)\s+(\S.*)$/,
   );
+  if (!openMatch) return NO_COMMAND;
 
-  if (openMatch) {
-    const target = openMatch[1].trim().replace(/[.,!?]+$/, "");
+  const target = openMatch[1].trim().replace(/[.,!?]+$/, "").replace(/\s+/g, " ");
 
-    // App map first (more specific)
-    if (APP_MAP[target]) {
-      return { type: "open-app", payload: APP_MAP[target] };
-    }
-    // Website map
-    if (WEBSITE_MAP[target]) {
-      return { type: "open-website", payload: WEBSITE_MAP[target] };
-    }
-    // Custom shortcuts
-    for (const shortcut of customShortcuts) {
-      if (target === shortcut.trigger.toLowerCase().trim()) {
-        return { type: "open-website", payload: shortcut.url };
-      }
-    }
-    // Bare URL
-    if (/^https?:\/\//.test(target) || /^[\w-]+\.[\w]{2,}/.test(target)) {
-      const url = /^https?:\/\//.test(target) ? target : `https://${target}`;
-      return { type: "open-website", payload: url };
+  // App map first (more specific)
+  if (Object.hasOwn(APP_MAP, target)) {
+    return { type: "open-app", payload: APP_MAP[target] };
+  }
+  if (Object.hasOwn(WEBSITE_MAP, target)) {
+    return { type: "open-website", payload: WEBSITE_MAP[target] };
+  }
+  for (const shortcut of customShortcuts) {
+    if (target === shortcut.trigger.toLowerCase().trim()) {
+      return { type: "open-website", payload: shortcut.url };
     }
   }
-
-  // ─── Fuzzy app / site scan (fallback) ────────────────────────────────────
-  // Catches "marven, open spotify" or any sentence containing a known app name
-  // preceded by an open-intent verb — avoids false positives on casual mentions
-  const verbPresent = /\b(?:open(?:\s+up)?|launch|start|run)\b/.test(lower);
-  if (verbPresent) {
-    for (const [key, appName] of Object.entries(APP_MAP)) {
-      const re = new RegExp(`\\b${key.replace(/\s+/g, "\\s+")}\\b`, "i");
-      if (re.test(lower)) return { type: "open-app", payload: appName };
-    }
-    for (const [key, url] of Object.entries(WEBSITE_MAP)) {
-      const re = new RegExp(`\\b${key}\\b`, "i");
-      if (re.test(lower)) return { type: "open-website", payload: url };
-    }
+  const website = asWebsite(target);
+  if (website) {
+    return { type: "open-website", payload: website };
   }
 
-  return { type: null, payload: "" };
+  return NO_COMMAND;
 }

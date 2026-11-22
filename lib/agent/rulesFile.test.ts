@@ -61,4 +61,43 @@ describe("loadWorkspaceRules", () => {
     await fs.writeFile(path.join(dir, "MARVEN.md"), "   \n  ", "utf8");
     expect(await loadWorkspaceRules(dir)).toBeNull();
   });
+
+  describe("symlink containment", () => {
+    let outside: string;
+    beforeEach(async () => {
+      outside = await fs.mkdtemp(path.join(os.tmpdir(), "marven-rules-outside-"));
+      await fs.writeFile(path.join(outside, "secret"), "TOP-SECRET-KEY", "utf8");
+    });
+    afterEach(async () => {
+      await fs.rm(outside, { recursive: true, force: true });
+    });
+
+    it("ignores MARVEN.md symlinked to a file outside the workspace", async () => {
+      await fs.symlink(path.join(outside, "secret"), path.join(dir, "MARVEN.md"));
+      expect(await loadWorkspaceRules(dir)).toBeNull();
+    });
+
+    it("falls through to the next candidate when the first escapes", async () => {
+      await fs.symlink(path.join(outside, "secret"), path.join(dir, "MARVEN.md"));
+      await fs.mkdir(path.join(dir, ".marven"));
+      await fs.writeFile(path.join(dir, ".marven", "rules.md"), "safe rules", "utf8");
+      const rules = await loadWorkspaceRules(dir);
+      expect(rules?.source).toBe(".marven/rules.md");
+      expect(rules?.content).toBe("safe rules");
+    });
+
+    it("still loads a symlink that points inside the workspace", async () => {
+      await fs.mkdir(path.join(dir, "docs"));
+      await fs.writeFile(path.join(dir, "docs", "rules.md"), "inside rules", "utf8");
+      await fs.symlink(path.join(dir, "docs", "rules.md"), path.join(dir, "MARVEN.md"));
+      const rules = await loadWorkspaceRules(dir);
+      expect(rules?.content).toBe("inside rules");
+    });
+
+    it("ignores a .marven directory symlinked outside the workspace", async () => {
+      await fs.writeFile(path.join(outside, "rules.md"), "TOP-SECRET-KEY", "utf8");
+      await fs.symlink(outside, path.join(dir, ".marven"));
+      expect(await loadWorkspaceRules(dir)).toBeNull();
+    });
+  });
 });

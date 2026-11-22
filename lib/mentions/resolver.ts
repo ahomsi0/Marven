@@ -3,6 +3,7 @@ import path from "path";
 import type { Mention, ResolvedMention } from "./types";
 import { searchCodebase } from "@/lib/index/search";
 import { safeFetch } from "@/lib/ssrfGuard";
+import { isPathInsideWorkspace } from "@/lib/workspacePaths";
 
 export interface ResolveOptions {
   workspaceRoot: string;
@@ -43,6 +44,18 @@ function safeJoin(root: string, rel: string): string {
   return resolved;
 }
 
+/** Like safeJoin, but also resolves symlinks and requires the real path to stay
+ *  inside the real workspace root. Returns the resolved real path, which
+ *  callers should read from (not the original) to avoid link-swap races. */
+async function safeRealJoin(root: string, rel: string): Promise<string> {
+  const abs = safeJoin(root, rel);
+  // Missing files surface the normal fs error (ENOENT) to the caller.
+  const realRoot = await fs.realpath(root);
+  const real = await fs.realpath(abs);
+  if (!isPathInsideWorkspace(realRoot, real)) throw new Error(`Path "${rel}" escapes the workspace`);
+  return real;
+}
+
 /** Crude binary sniff: a buffer is binary if it contains a NUL byte in the
  *  first 8KB or if more than 30% of bytes are non-printable. */
 function looksBinary(buf: Buffer): boolean {
@@ -63,7 +76,7 @@ async function resolveFile(
 ): Promise<{ body: string; truncated: boolean; ok: boolean; error?: string }> {
   let abs: string;
   try {
-    abs = safeJoin(workspaceRoot, rel);
+    abs = await safeRealJoin(workspaceRoot, rel);
   } catch (err) {
     return { body: "", truncated: false, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -95,7 +108,7 @@ async function resolveFolder(
 ): Promise<{ body: string; truncated: boolean; ok: boolean; error?: string }> {
   let abs: string;
   try {
-    abs = safeJoin(workspaceRoot, rel);
+    abs = await safeRealJoin(workspaceRoot, rel);
   } catch (err) {
     return { body: "", truncated: false, ok: false, error: err instanceof Error ? err.message : String(err) };
   }

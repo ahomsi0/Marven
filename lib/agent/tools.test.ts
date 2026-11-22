@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { assertSafePath, executeTool, TOOL_DEFINITIONS, formatWebSearchResult } from "./tools";
+import { assertSafePath, executeTool, TOOL_DEFINITIONS, formatWebSearchResult, READ_FILE_OUTPUT_CAP } from "./tools";
 import * as memoryClient from "@/lib/memoryClient";
 import { parseRememberToolResult } from "@/lib/memoryEvents";
 import fs from "fs/promises";
@@ -183,6 +183,99 @@ describe("executeTool – write_file + read_file", () => {
       reads,
     );
     expect(result).toMatch(/^Written:/);
+  });
+
+  it("says a large read was truncated and how to read the next part", async () => {
+    const lines = Array.from({ length: 2000 }, (_, i) => `line ${i + 1} ${"x".repeat(20)}`);
+    await fs.writeFile(path.join(tmpDir, "big.txt"), lines.join("\n") + "\n");
+    const result = await executeTool("read_file", { path: "big.txt" }, tmpDir);
+    expect(result.length).toBeLessThanOrEqual(READ_FILE_OUTPUT_CAP);
+    expect(result).toMatch(/truncated/i);
+    const shown = result.match(/lines 1-(\d+) of 2000/);
+    expect(shown).not.toBeNull();
+    const next = Number(shown![1]) + 1;
+    expect(result).toContain(`startLine: ${next}`);
+    // The shown text is the file's own lines, verbatim.
+    expect(result.startsWith(lines.slice(0, next - 1).join("\n"))).toBe(true);
+  });
+
+  it("returns the requested line range", async () => {
+    const lines = Array.from({ length: 50 }, (_, i) => `row ${i + 1}`);
+    await fs.writeFile(path.join(tmpDir, "rows.txt"), lines.join("\n") + "\n");
+    const result = await executeTool("read_file", { path: "rows.txt", startLine: 10, endLine: 12 }, tmpDir);
+    expect(result.startsWith("row 10\nrow 11\nrow 12")).toBe(true);
+    expect(result).not.toContain("row 9\n");
+    expect(result).not.toContain("row 13");
+    expect(result).toContain("lines 10-12 of 50");
+    expect(result).toContain("startLine: 13");
+  });
+
+  it("reads from startLine to the end when endLine is omitted", async () => {
+    const lines = Array.from({ length: 5 }, (_, i) => `row ${i + 1}`);
+    await fs.writeFile(path.join(tmpDir, "rows.txt"), lines.join("\n") + "\n");
+    const result = await executeTool("read_file", { path: "rows.txt", startLine: 4 }, tmpDir);
+    expect(result.startsWith("row 4\nrow 5")).toBe(true);
+    expect(result).toContain("lines 4-5 of 5");
+    expect(result).toMatch(/end of file/i);
+  });
+
+  it("reports a startLine past the end of the file", async () => {
+    await fs.writeFile(path.join(tmpDir, "rows.txt"), "a\nb\n");
+    const result = await executeTool("read_file", { path: "rows.txt", startLine: 9 }, tmpDir);
+    expect(result).toMatch(/past the end/i);
+    expect(result).toContain("2 lines");
+  });
+
+  it("refuses write_file on an existing file that was only partly read, pointing at apply_patch", async () => {
+    const lines = Array.from({ length: 2000 }, (_, i) => `line ${i + 1} ${"x".repeat(20)}`);
+    const original = lines.join("\n") + "\n";
+    await fs.writeFile(path.join(tmpDir, "big.txt"), original);
+    const reads = new Set<string>();
+    const shown = await executeTool("read_file", { path: "big.txt" }, tmpDir, undefined, reads);
+    // Writing back what was shown (plus a line) would delete most of the file.
+    const result = await executeTool(
+      "write_file",
+      { path: "big.txt", content: shown + "\nnew line" },
+      tmpDir,
+      undefined,
+      reads,
+    );
+    expect(result).toMatch(/refused/i);
+    expect(result).toContain("apply_patch");
+    expect(await fs.readFile(path.join(tmpDir, "big.txt"), "utf-8")).toBe(original);
+  });
+
+  it("refuses write_file after a ranged read of only part of a small file", async () => {
+    const original = Array.from({ length: 40 }, (_, i) => `row ${i + 1}`).join("\n") + "\n";
+    await fs.writeFile(path.join(tmpDir, "rows.txt"), original);
+    const reads = new Set<string>();
+    await executeTool("read_file", { path: "rows.txt", startLine: 1, endLine: 5 }, tmpDir, undefined, reads);
+    const result = await executeTool("write_file", { path: "rows.txt", content: "row 1\n" }, tmpDir, undefined, reads);
+    expect(result).toMatch(/refused/i);
+    expect(await fs.readFile(path.join(tmpDir, "rows.txt"), "utf-8")).toBe(original);
+  });
+
+  it("allows write_file after a ranged read that covered the whole file", async () => {
+    await fs.writeFile(path.join(tmpDir, "rows.txt"), "a\nb\nc\n");
+    const reads = new Set<string>();
+    await executeTool("read_file", { path: "rows.txt", startLine: 1, endLine: 3 }, tmpDir, undefined, reads);
+    const result = await executeTool("write_file", { path: "rows.txt", content: "a\nb\nc\nd\n" }, tmpDir, undefined, reads);
+    expect(result).toMatch(/^Written:/);
+  });
+
+  it("still writes brand-new files when read tracking is on", async () => {
+    const reads = new Set<string>();
+    const result = await executeTool("write_file", { path: "fresh.txt", content: "new" }, tmpDir, undefined, reads);
+    expect(result).toMatch(/^Written:/);
+    expect(await fs.readFile(path.join(tmpDir, "fresh.txt"), "utf-8")).toBe("new");
+  });
+
+  it("counts a file the agent wrote itself as fully read", async () => {
+    const reads = new Set<string>();
+    const big = Array.from({ length: 2000 }, (_, i) => `line ${i}`).join("\n");
+    expect(await executeTool("write_file", { path: "made.txt", content: big }, tmpDir, undefined, reads)).toMatch(/^Written:/);
+    // The model has the whole content in its own call, so a rewrite is allowed without a read.
+    expect(await executeTool("write_file", { path: "made.txt", content: big + "\nmore" }, tmpDir, undefined, reads)).toMatch(/^Written:/);
   });
 
   it("skips guards entirely when recentReads is not provided (backward compat)", async () => {
@@ -464,5 +557,41 @@ describe("executeTool – apply_patch", () => {
       tmpDir,
     );
     expect(out).toContain("non-empty array");
+  });
+});
+
+describe("executeTool – fetch_url redirects", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubRedirects(map: Record<string, string>) {
+    const fetchMock = vi.fn(async (url: string) => {
+      const target = map[url];
+      return target
+        ? new Response(null, { status: 302, headers: { location: target } })
+        : new Response("<p>final page</p>", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("does not follow a redirect to another host by default, and says where it pointed", async () => {
+    const fetchMock = stubRedirects({ "http://127.0.0.1:3000/login": "http://8.8.8.8/?d=stolen" });
+    const out = await executeTool("fetch_url", { url: "http://127.0.0.1:3000/login" }, tmpDir);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(out).toContain("http://8.8.8.8/?d=stolen");
+    expect(out).toMatch(/fetch_url/);
+    expect(out).not.toContain("final page");
+  });
+
+  it("follows a redirect on the same host", async () => {
+    stubRedirects({ "http://127.0.0.1:3000/old": "/new" });
+    const out = await executeTool("fetch_url", { url: "http://127.0.0.1:3000/old" }, tmpDir);
+    expect(out).toBe("final page");
+  });
+
+  it("follows cross-host redirects when allowed (trusted)", async () => {
+    stubRedirects({ "http://127.0.0.1:3000/login": "http://8.8.8.8/" });
+    const out = await executeTool("fetch_url", { url: "http://127.0.0.1:3000/login" }, tmpDir, undefined, undefined, undefined, { followCrossHostRedirects: true });
+    expect(out).toBe("final page");
   });
 });

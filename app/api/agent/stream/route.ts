@@ -19,7 +19,9 @@ import { BROWSER_PROMPT_SECTION, BROWSER_TOOL_DEFINITIONS } from "@/lib/agent/br
 import { canSeeImages, secretValuesFromEnv } from "@/lib/agent/browserGate";
 import { cancelBrowserCalls } from "@/lib/agent/browserBridge";
 
-const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "search_files"] as const;
+// apply_patch is in the lite set because write_file can't replace a file too
+// large to read whole in one call; patching is the only way to edit those.
+const SIMPLE_TOOL_NAMES = ["list_files", "read_file", "write_file", "apply_patch", "search_files"] as const;
 const LOCAL_PROVIDERS = ["ollama", "lmstudio", "llamaserver"] as const;
 
 interface StreamRequestBody {
@@ -181,7 +183,8 @@ export async function POST(req: NextRequest) {
         makeProviderStep(t.provider, t.model)(msgs, tools),
     }));
 
-  // Merge MCP tools from enabled servers
+  // Merge MCP tools from enabled servers. Read-only runs get none; in every
+  // other profile but "trusted" the loop asks before each MCP call.
   const enabledMcpServers = (body.mcpServers ?? []).filter((s) => s.enabled);
   const safeMcpServers = safetyProfile === "read-only" ? [] : enabledMcpServers;
   const baseToolDefs =
@@ -190,6 +193,7 @@ export async function POST(req: NextRequest) {
       : [...TOOL_DEFINITIONS];
   const allTools = [...baseToolDefs, ...(browsing ? BROWSER_TOOL_DEFINITIONS : [])];
   const mcpToolOwners = new Map<string, string>(); // namespaced tool name → server id
+  const mcpToolInfo = new Map<string, { server: string; tool: string }>(); // namespaced name → what the approval card names
 
   for (const server of safeMcpServers) {
     try {
@@ -198,11 +202,15 @@ export async function POST(req: NextRequest) {
         const def = mcpToolToDefinition(server.name, tool);
         allTools.push(def);
         mcpToolOwners.set(def.name, server.id);
+        mcpToolInfo.set(def.name, { server: server.name, tool: tool.name });
       }
     } catch {
       // Server not connected — skip its tools silently
     }
   }
+
+  // Provider keys the agent must never send out (browser pages, fetch_url URLs).
+  const secrets = secretValuesFromEnv(process.env);
 
   const encoder = new TextEncoder();
 
@@ -250,10 +258,12 @@ export async function POST(req: NextRequest) {
           safetyProfile,
           failoverPlan,
           primaryLabel: primaryLabelStr,
+          mcpTools: mcpToolInfo,
+          secrets,
           browser: browsing
-            ? { runId, canSeeImages: canSeeImages(provider, model), secrets: secretValuesFromEnv(process.env) }
+            ? { runId, canSeeImages: canSeeImages(provider, model), secrets }
             : undefined,
-          executeToolFn: async (name, args, root, onProgressCb, recentReads) => {
+          executeToolFn: async (name, args, root, onProgressCb, recentReads, _memoryContext, toolOptions) => {
             // Route MCP tools to the MCP client
             const mcpServerId = mcpToolOwners.get(name);
             if (mcpServerId) {
@@ -268,7 +278,7 @@ export async function POST(req: NextRequest) {
             return executeTool(name, args, root, onProgressCb, recentReads, {
               workspaceRoot: root,
               conversationId: body.conversationId,
-            });
+            }, toolOptions);
           },
         })) {
           if (consumerGone || req.signal.aborted) break;

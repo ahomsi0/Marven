@@ -1,6 +1,7 @@
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import type { ParsedCommand } from "@/types";
+import { sanitizedChildEnv } from "@/lib/agent/sanitizedEnv";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -43,12 +44,13 @@ async function openApp(appName: string): Promise<void> {
   if (IS_WIN) {
     // `start` resolves Start-Menu entries and PATH executables. The app name
     // has already been restricted to inert characters above.
-    await execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "start", "", safeName]);
+    // Launched apps inherit this env: keep provider keys and app tokens out of it.
+    await execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "start", "", safeName], { env: sanitizedChildEnv() });
   } else if (process.platform === "darwin") {
     await execFileAsync("open", ["-a", safeName]);
   } else {
     // Linux app names are commonly executable names. No shell is involved.
-    await execFileAsync(safeName, []);
+    await execFileAsync(safeName, [], { env: sanitizedChildEnv() });
   }
 }
 
@@ -118,13 +120,6 @@ export async function executeCommand(
     case "open-downloads": {
       await execAsync("open ~/Downloads");
       return "Opening your Downloads folder.";
-    }
-
-    case "empty-trash": {
-      await execAsync(
-        `osascript -e 'tell application "Finder" to empty trash'`
-      );
-      return "Trash emptied.";
     }
 
     case "volume-up":

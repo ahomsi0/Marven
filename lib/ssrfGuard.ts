@@ -124,14 +124,24 @@ export async function assertFetchableUrl(urlStr: string): Promise<void> {
   }
 }
 
+/** Thrown by safeFetch when `allowRedirect` declines a hop; `location` is the absolute target. */
+export class RedirectNotFollowedError extends Error {
+  constructor(readonly location: string) {
+    super(`Redirect to ${location} not followed`);
+    this.name = "RedirectNotFollowedError";
+  }
+}
+
 /**
  * fetch() with SSRF validation on every hop. Redirects are followed manually so
- * a public URL cannot 30x-redirect into an internal address.
+ * a public URL cannot 30x-redirect into an internal address. `allowRedirect`
+ * (optional) vets each hop: `to` is the redirect target, `from` the original
+ * URL; returning false stops with a RedirectNotFollowedError.
  */
 export async function safeFetch(
   urlStr: string,
   init: RequestInit = {},
-  opts: { maxRedirects?: number } = {},
+  opts: { maxRedirects?: number; allowRedirect?: (to: URL, from: URL) => boolean } = {},
 ): Promise<Response> {
   let current = urlStr;
   let redirectsLeft = opts.maxRedirects ?? 5;
@@ -143,7 +153,11 @@ export async function safeFetch(
       const location = res.headers.get("location");
       if (!location) return res;
       if (redirectsLeft-- <= 0) throw new Error("Too many redirects");
-      current = new URL(location, current).toString();
+      const next = new URL(location, current);
+      if (opts.allowRedirect && !opts.allowRedirect(next, new URL(urlStr))) {
+        throw new RedirectNotFollowedError(next.toString());
+      }
+      current = next.toString();
       continue;
     }
     return res;

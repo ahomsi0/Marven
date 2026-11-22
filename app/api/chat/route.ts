@@ -54,8 +54,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1. Try to detect a known command (no custom shortcuts on server — parsed client-side first)
-  const command = parseCommand(messageText);
+  // 1. Local commands run only when the client opted in (it skips them when a
+  // custom system prompt is set) and only on the text the user typed — never
+  // on the history content, which carries attached document text. No custom
+  // shortcuts here: those are matched and opened client-side.
+  const commandText =
+    body.allowCommands === true && typeof body.commandText === "string"
+      ? body.commandText.trim()
+      : "";
+  const command = commandText ? parseCommand(commandText) : { type: null, payload: "" };
 
   if (command.type !== null) {
     // 2. Execute the local macOS command — return JSON (not streamed)

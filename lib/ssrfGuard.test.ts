@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { isBlockedIp, assertFetchableUrl } from "./ssrfGuard";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { isBlockedIp, assertFetchableUrl, safeFetch, RedirectNotFollowedError } from "./ssrfGuard";
 
 describe("isBlockedIp", () => {
   it("allows loopback (local dev servers)", () => {
@@ -78,5 +78,40 @@ describe("assertFetchableUrl", () => {
 
   it("allows a loopback IP literal", async () => {
     await expect(assertFetchableUrl("http://127.0.0.1:3000/")).resolves.toBeUndefined();
+  });
+});
+
+describe("safeFetch redirect policy", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubRedirects(map: Record<string, string>) {
+    const fetchMock = vi.fn(async (url: string) => {
+      const target = map[url];
+      return target
+        ? new Response(null, { status: 302, headers: { location: target } })
+        : new Response("final", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("stops at a redirect the caller doesn't allow and reports where it pointed", async () => {
+    const fetchMock = stubRedirects({ "http://127.0.0.1:3000/login": "http://8.8.8.8/collect?d=data" });
+    const err = await safeFetch("http://127.0.0.1:3000/login", {}, {
+      allowRedirect: (to, from) => to.hostname === from.hostname,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(RedirectNotFollowedError);
+    expect((err as RedirectNotFollowedError).location).toBe("http://8.8.8.8/collect?d=data");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows redirects the caller allows, and all redirects without a policy", async () => {
+    const fetchMock = stubRedirects({ "http://127.0.0.1:3000/a": "/b", "http://127.0.0.1:3000/b": "http://8.8.8.8/" });
+    const res = await safeFetch("http://127.0.0.1:3000/a", {}, { allowRedirect: () => true });
+    expect(await res.text()).toBe("final");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    fetchMock.mockClear();
+    await safeFetch("http://127.0.0.1:3000/a");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

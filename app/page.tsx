@@ -1942,6 +1942,8 @@ export default function Home() {
             const extra = getSystemPrompt().trim();
             return extra ? `${base}\n\n---\n\nAdditional instructions:\n${extra}` : base;
           })(),
+          allowCommands: useShortcuts,
+          commandText: text,
         };
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -1985,6 +1987,8 @@ export default function Home() {
             ? `### PRIORITY INSTRUCTIONS (always follow these):\n${extra}\n\n---\n\n${base}\n\n---\n\nREMINDER: ${extra}`
             : base;
         })(),
+        allowCommands: useShortcuts,
+        commandText: text,
       };
 
       const res = await fetch("/api/chat", {
@@ -2347,7 +2351,7 @@ export default function Home() {
         break;
       case "/help": {
         const helpConvId = ensureActiveConversation("help");
-        const helpContent = `## Marven — Quick Reference\n\n**Slash Commands** *(type \`/\` in the input)*\n- \`/clear\` — Clear the current chat\n- \`/new\` — Start a new conversation\n- \`/shortcuts\` — Open shortcuts manager\n- \`/help\` — Show this reference\n- \`/voice\` — Toggle "Hey Marven" wake word\n- \`/speech\` — Toggle text-to-speech\n- \`/briefing\` — Morning briefing\n\n**Agent Workspace**\n- Use **New agent** in the sidebar for file-aware editing.\n- Ask for concrete changes like “add a settings panel” or “refactor this component and update styles.”\n- Open any file on the right to inspect or manually edit it.\n\n**Natural Language Commands**\n- *Time & date:* "what's the time", "what's the date"\n- *Web:* "open youtube", "open github", "open [any site]"\n- *Apps:* "open Chrome", "open Terminal", "open Spotify"\n- *Search:* "search Google for [query]"\n- *System:* "take a screenshot", "lock the screen", "open my downloads", "empty the trash"\n- *Clipboard:* "what's in my clipboard", "summarize clipboard", "fix my grammar"\n- *Timers:* "set a timer for 5 minutes", "timer 30 seconds"\n- *Volume:* "volume up", "volume down", "mute", "set volume to 50"\n- *Media:* "play", "next", "previous", "what's playing"\n- *Memory:* "remember that I prefer dark mode"\n- *Screen:* "what's on my screen"`;
+        const helpContent = `## Marven — Quick Reference\n\n**Slash Commands** *(type \`/\` in the input)*\n- \`/clear\` — Clear the current chat\n- \`/new\` — Start a new conversation\n- \`/shortcuts\` — Open shortcuts manager\n- \`/help\` — Show this reference\n- \`/voice\` — Toggle "Hey Marven" wake word\n- \`/speech\` — Toggle text-to-speech\n- \`/briefing\` — Morning briefing\n\n**Agent Workspace**\n- Use **New agent** in the sidebar for file-aware editing.\n- Ask for concrete changes like “add a settings panel” or “refactor this component and update styles.”\n- Open any file on the right to inspect or manually edit it.\n\n**Natural Language Commands**\n- *Time & date:* "what's the time", "what's the date"\n- *Web:* "open youtube", "open github", "open [any site]"\n- *Apps:* "open Chrome", "open Terminal", "open Spotify"\n- *Search:* "search Google for [query]"\n- *System:* "take a screenshot", "lock the screen", "open my downloads"\n- *Clipboard:* "what's in my clipboard", "summarize clipboard", "fix my grammar"\n- *Timers:* "set a timer for 5 minutes", "timer 30 seconds"\n- *Volume:* "volume up", "volume down", "mute", "set volume to 50"\n- *Media:* "play", "next", "previous", "what's playing"\n- *Memory:* "remember that I prefer dark mode"\n- *Screen:* "what's on my screen"`;
         addMessageToConversation(helpConvId, createMessage("assistant", helpContent));
         break;
       }

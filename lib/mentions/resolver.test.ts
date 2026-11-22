@@ -167,3 +167,59 @@ describe("resolveMentions — budget enforcement", () => {
     }
   });
 });
+
+describe("resolveMentions — symlink containment", () => {
+  let outside: string;
+  beforeEach(async () => {
+    outside = await fs.mkdtemp(path.join(os.tmpdir(), "mentions-outside-"));
+    await fs.writeFile(path.join(outside, "secret.txt"), "TOP-SECRET-KEY");
+  });
+  afterEach(async () => {
+    await fs.rm(outside, { recursive: true, force: true });
+  });
+
+  it("does not return contents of a file symlink pointing outside the workspace", async () => {
+    await fs.symlink(path.join(outside, "secret.txt"), path.join(tmpRoot, "link.txt"));
+    const [r] = await resolveMentions([{ kind: "file", path: "link.txt" }], {
+      workspaceRoot: tmpRoot,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.body).not.toContain("TOP-SECRET-KEY");
+  });
+
+  it("does not read through a directory symlink pointing outside", async () => {
+    await fs.symlink(outside, path.join(tmpRoot, "linkdir"));
+    const [f, d] = await resolveMentions(
+      [
+        { kind: "file", path: "linkdir/secret.txt" },
+        { kind: "folder", path: "linkdir" },
+      ],
+      { workspaceRoot: tmpRoot },
+    );
+    expect(f.ok).toBe(false);
+    expect(d.ok).toBe(false);
+    expect(f.body + d.body).not.toContain("TOP-SECRET-KEY");
+  });
+
+  it("does not preview symlinked files escaping the workspace inside a folder mention", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"));
+    await fs.writeFile(path.join(tmpRoot, "src", "ok.ts"), "export const ok = 1;\n");
+    await fs.symlink(path.join(outside, "secret.txt"), path.join(tmpRoot, "src", "leak.txt"));
+    const [r] = await resolveMentions([{ kind: "folder", path: "src" }], {
+      workspaceRoot: tmpRoot,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.body).toContain("ok.ts");
+    expect(r.body).not.toContain("TOP-SECRET-KEY");
+  });
+
+  it("still resolves a symlink that stays inside the workspace", async () => {
+    await fs.writeFile(path.join(tmpRoot, "real.ts"), "export const y = 2;\n");
+    await fs.symlink(path.join(tmpRoot, "real.ts"), path.join(tmpRoot, "alias.ts"));
+    const [r] = await resolveMentions([{ kind: "file", path: "alias.ts" }], {
+      workspaceRoot: tmpRoot,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.body).toContain("export const y = 2;");
+  });
+});

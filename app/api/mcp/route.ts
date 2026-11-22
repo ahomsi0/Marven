@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
   if (!body.server || typeof body.server.id !== "string" || typeof body.server.command !== "string" || body.server.command.length > 2000) {
     return NextResponse.json({ ok: false, error: "Invalid MCP server configuration" }, { status: 400 });
   }
-  if (body.action !== "stop" && body.server.trusted === false) {
+  // Starting a server runs its command through `sh -c`, so require the user's
+  // explicit trust flag. Checking `=== false` would let a caller simply omit it.
+  if (body.action !== "stop" && body.server.trusted !== true) {
     return NextResponse.json({ ok: false, error: "MCP server is not trusted. Review and trust it before connecting." }, { status: 403 });
   }
 

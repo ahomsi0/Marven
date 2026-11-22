@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: 2026-06-15**
+**Last updated: 2026-11-10**
 
 Marven is built on a simple promise: **your code is yours.** This document
 explains exactly what data Marven handles, where it goes, and what it never
@@ -15,15 +15,16 @@ touches.
   you open, or what prompts you send.
 - **Your code never leaves your machine unless you ask it to** by selecting a
   cloud AI provider for a request.
-- **Local-first by default.** Marven works fully offline with Ollama,
-  LM Studio, or llama-server. In that mode, *nothing* leaves your computer.
+- **Local-first by default.** With Ollama, LM Studio, or llama-server as your
+  provider, your prompts, code, and conversations stay on your computer.
+  Marven still makes a few small requests of its own, such as looking up the
+  weather when it starts; every one is listed under
+  [Other network connections](#other-network-connections).
 - **Open source.** You can audit every line of this claim.
 
 ---
 
 ## What data Marven processes
-
-Marven operates on three kinds of data:
 
 ### 1. Your workspace files
 
@@ -38,9 +39,10 @@ Marven operates on three kinds of data:
 
 ### 2. Conversation history
 
-- **Stored:** Locally in browser `localStorage` for the renderer, including
-  chat history, folders, and agent transcripts. The semantic codebase index is
-  stored separately in SQLite under `~/.marven/index/`.
+- **Stored:** Locally, in a SQLite database (`conversations.db`) in Marven's
+  app data folder, with a working copy in the app's `localStorage`. This
+  covers chat history, folders, edited and retried message versions, and
+  agent transcripts.
 - **Sent over the network:** Conversation history is included as context in
   AI provider requests when you continue a chat. Same rule as above — only
   goes to the provider you've chosen.
@@ -51,9 +53,11 @@ Marven operates on three kinds of data:
 - **Stored:** Locally in `~/.marven/index/<workspace-hash>/vectors.db`. SQLite
   with the `sqlite-vec` extension.
 - **How embeddings are generated:** By calling the local Ollama server's
-  `/api/embeddings` endpoint (defaults to `nomic-embed-text` model).
-- **Sent over the network:** Nothing. Embeddings are computed locally and
-  stored locally.
+  `/api/embeddings` endpoint (defaults to `nomic-embed-text` model). If that
+  model isn't installed, Ollama downloads it from its own model registry the
+  first time you index.
+- **Sent over the network:** None of your code. Embeddings are computed
+  locally and stored locally.
 - **Indexed content:** Marven honors the workspace `.gitignore`, excludes
   common secret files such as `.env*`, private keys, credentials, and
   certificates, and supports additional user-defined exclusions. Search
@@ -62,12 +66,45 @@ Marven operates on three kinds of data:
 
 ### 4. Voice input and speech output
 
-- **Voice input:** Local voice recognition runs on your machine. If you switch
+- **Voice input:** Local voice recognition runs on your machine. The Whisper
+  model it uses is downloaded once from Hugging Face the first time you use
+  voice (or switch to a different model size), then cached. If you switch
   voice recognition to Groq, recorded audio is sent to Groq Whisper for
   transcription.
 - **Speech output:** The system voice runs locally. If you switch speech output
   to ElevenLabs, Marven sends the assistant reply text to ElevenLabs to generate
   audio.
+
+### 5. The in-app browser
+
+- **Stored:** Locally. Cookies and site data live in the browser's own
+  persistent session, separate from the rest of the app. Open tabs, history,
+  bookmarks, and per-site ad-blocking choices are saved as JSON files in the
+  `browser` folder of Marven's app data folder. Downloads go to your Downloads
+  folder.
+- **Sent over the network:** Like any browser, the pages you open are loaded
+  from the sites that serve them, and searches go to the search engine you
+  picked in Settings. Sites see a plain Chrome user agent, not "Marven".
+- **Ad and tracker blocking:** The EasyList and EasyPrivacy filter lists are
+  downloaded from the Ghostery adblocker project on GitHub the first time you
+  open the browser, and refreshed when the saved copy is more than a week old.
+- **"Ask about this page":** Sends that page's text, or your selection, to
+  the AI provider you've chosen, as part of your message.
+
+### 6. Agent browsing
+
+Off by default. You turn it on in **Settings → General → "Let the agent use
+the browser"**.
+
+- **What the agent's provider receives:** The text of the pages the agent
+  reads, and screenshots of them when the model can see images. Page content
+  goes to your chosen AI provider in the same way as file content does.
+- **Your sign-ins:** The agent's tabs use the same browser session as your own
+  tabs, so on a site where you're signed in, the agent acts as you. It asks
+  before acting on each new site and before every form it submits, showing
+  what would be sent.
+- **Where it can't go:** The agent can't open addresses on your private
+  network or Marven's own address, and it never downloads or uploads files.
 
 ---
 
@@ -82,6 +119,10 @@ NVIDIA NIM, OpenRouter), Marven sends:
 - The workspace file tree (only when "Lite agent mode" is enabled — used to
   prevent hallucinated paths)
 - Selected file content when you ask the agent to read or modify a file
+- Page text, or a selection, when you ask Marven about a page in the in-app
+  browser
+- Page text and screenshots from the pages the agent visits, when agent
+  browsing is on
 
 Marven uses the API keys **you** provide in Settings. Marven has no shared
 API key, no proxy, and no relay server. Requests go directly from your
@@ -98,6 +139,44 @@ they do with the data you send to them. Notably:
   output is selected.
 - **Local providers (Ollama, LM Studio, llama-server)** keep everything on
   your machine.
+
+---
+
+## Other network connections
+
+Besides your AI provider and the in-app browser, these are all the requests
+Marven makes, and when it makes them.
+
+**On its own:**
+
+- **Weather, every time Marven starts.** Marven asks `ipapi.co` for your
+  approximate location, which shares your IP address with that service.
+  It then asks `api.open-meteo.com` for the current weather at those
+  approximate coordinates. The result appears in the app and in `/briefing`.
+- **Updates.** The built-in updater checks this repository's GitHub releases
+  and downloads new versions from there.
+- **Ad and tracker filter lists**, as described under
+  [The in-app browser](#5-the-in-app-browser).
+
+**When you use a feature that needs it:**
+
+- **`/briefing`** fetches the top BBC News headlines through
+  `api.rss2json.com`.
+- **Local voice** downloads the Whisper model from Hugging Face once.
+- **Codebase indexing** may make Ollama download its embedding model once.
+- **Code intelligence** (go to definition, hover, errors): the first time you
+  open a file in a language whose language server isn't installed yet, Marven
+  runs `npm install` to fetch it from the npm registry into `~/.marven/lsp/`.
+- **Clone repo** contacts the Git host you give it.
+- **Agent tools:** `web_search` sends your query to DuckDuckGo's Instant Answer
+  API; `fetch_url` fetches the address it's given. `run_command`, the git
+  tools, and any MCP servers you add can reach whatever the command or server
+  connects to.
+- **Report a problem** sends nothing from the app. It opens a GitHub issue
+  form in your web browser with the report (your description, app info, and
+  recent logs with secrets removed) filled in. That text travels in the link
+  itself, so GitHub receives it when the page opens. Nothing is posted until
+  you submit the form.
 
 ---
 
@@ -134,6 +213,11 @@ Every claim above can be verified by reading the source code:
   `lib/ollama.ts`, `lib/lmstudio.ts`, `lib/llamaserver.ts`, and
   `app/api/tts/route.ts` for optional ElevenLabs speech output — those are
   the files that make outbound HTTP calls related to AI and voice.
+- The other requests: `app/api/weather/route.ts`, `app/api/news/route.ts`,
+  `lib/localStt.ts` (Whisper download), `lib/agent/tools.ts` (`web_search`,
+  `fetch_url`), `electron/lsp/lspManager.js` (language servers),
+  `lib/glitchReport.ts` (Report a problem), and `electron/browser/` (the
+  in-app browser, its ad blocker, and agent browsing).
 - No analytics or telemetry SDK is listed in `package.json`. Search it for
   yourself: `grep -E "posthog|sentry|mixpanel|datadog|amplitude" package.json`.
 - The auto-updater code: `electron/main.js` — uses `electron-updater`

@@ -1,8 +1,8 @@
 # Marven
 
-> An AI desktop assistant + full-featured code editor. Local-first when you choose Ollama; cloud providers optional.
+> An AI desktop assistant + full-featured code editor. Local-first when you choose Ollama, LM Studio, or llama-server; cloud providers optional.
 
-Marven is a desktop app that combines a multi-provider AI chat with a complete coding agent — file-aware, with a CodeMirror 6 editor, a real interactive terminal, global search, and git tools. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama. Your files, settings, and memory always stay on your machine; only your chosen AI provider sees prompts and (if you use voice) audio.
+Marven is a desktop app that combines a multi-provider AI chat with a complete coding agent — file-aware, with a CodeMirror 6 editor, a real interactive terminal, global search, git tools, and a built-in web browser the agent can use. Bring your own API keys (Groq, OpenAI, Anthropic, OpenRouter, NIM) or run everything locally via Ollama, LM Studio, or llama-server. Your files, settings, and memory always stay on your machine; only your chosen AI provider sees your prompts and code.
 
 [![License: AGPLv3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ahomsi0/Marven)](https://github.com/ahomsi0/Marven/releases/latest)
@@ -14,21 +14,26 @@ Marven is a desktop app that combines a multi-provider AI chat with a complete c
 Always local (regardless of which provider you pick):
 
 - **Your files** — loaded only for an action you initiate, or for the optional local semantic index (which honors `.gitignore` and excludes common secrets)
-- **Conversation history, settings, memory entries, recent workspaces** — stored in localStorage and a JSON settings file in your app data dir
+- **Conversation history** — stored in a local SQLite database in your app data dir, with a working copy in localStorage
+- **Settings, memory entries, recent workspaces** — stored in localStorage and a JSON settings file in your app data dir
+- **Browser history, bookmarks, cookies** — kept in the in-app browser's own storage in your app data dir
 - **API keys** — encrypted with OS-backed secure storage when available, never sent anywhere except as the `Authorization` header to the provider you chose
 
 What leaves your machine depends on which provider is selected:
 
 | Provider | Where your prompts / code / audio go |
 |---|---|
-| **Ollama** | Nowhere — runs entirely on your machine |
+| **Ollama, LM Studio, llama-server** | Nowhere — runs entirely on your machine |
 | **Groq, OpenAI, Anthropic, OpenRouter, NVIDIA NIM** | To that provider's API (subject to their data-retention policy) |
 | **"Hey Marven" voice (Local)** | Nowhere — runs entirely on your machine after first model download |
 | **"Hey Marven" voice (Groq)** | Audio is sent to **Groq Whisper** for transcription |
 | **Speech output (ElevenLabs)** | Assistant reply text is sent to **ElevenLabs** for speech generation when selected |
 | **`fetch_url` / `web_search` agent tools** | The URL or query you ask for is fetched / sent to DuckDuckGo |
+| **In-app browser** | Pages load from the sites you visit; searches go to the engine you pick; "Ask about this page" sends the page text to your provider |
+| **Agent browsing** (off by default) | Text and screenshots of the pages the agent visits go to your provider |
+| **Weather on launch** | `ipapi.co` sees your IP address to find your approximate location; `open-meteo.com` gets those coordinates |
 
-If full privacy matters, use **Ollama** locally for chat/agent and the **Local** voice option (default).
+If full privacy matters, use a local provider (Ollama, LM Studio, or llama-server) for chat/agent and the **Local** voice option (default).
 
 → Full privacy policy: [PRIVACY.md](./PRIVACY.md). Build/release notes: [docs/BUILDING.md](./docs/BUILDING.md).
 
@@ -62,7 +67,9 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 
 ### Agent mode
 - **Three-pane layout**: file explorer · multi-tab editor · chat panel, all resizable
-- **Built-in tools**: `read_file`, `write_file`, `list_files`, `search_files`, `run_command`, `web_search`, `fetch_url`, `remember`
+- **Built-in tools**: `read_file`, `write_file`, `apply_patch`, `list_files`, `search_files`, `search_codebase`, `run_command`, `web_search`, `fetch_url`, `remember`, plus the git and browser tools below
+- **Project rules** — drop a `MARVEN.md` (or `.marven/rules.md`) in your workspace and its conventions go into every agent run
+- **Model failover** — set a fallback chain (e.g. Groq → OpenAI) and the agent carries on through rate limits or outages instead of failing mid-task
 - **Cross-platform `run_command`** — uses `sh -c` on Unix and `cmd.exe /d /s /c` on Windows so `npm start` / dev servers actually launch from the agent on Windows
 - **Narrated tool-call recovery** — when smaller open-weights models (e.g. `llama-3.1-8b-instant`) write `<function(name){…}</function>` or `<tool_call>…</tool_call>` as text instead of using the OpenAI tool-call format, every provider client (Groq, OpenAI, Anthropic, OpenRouter, NIM, Ollama) recognises the narration and executes the call anyway
 - **Git tools** with approval gating: `git_status`, `git_diff`, `git_log`, `git_commit`, `git_branch`, `git_checkout`
@@ -75,9 +82,21 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 - **Live preview** — open HTML, Markdown, or image files in your chosen browser
 - **Background tasks panel** with elapsed time + Stop button
 
+### In-app browser (v2.14+)
+- Open it from the globe in the chat header: **tabs, bookmarks, history, downloads, find in page**, a right-click menu, and a choice of search engine
+- **Ad and tracker blocking** (EasyList + EasyPrivacy), which you can turn off per site
+- **Ask about this page** — hands the page's text, or your selection, to the chat
+
+### Agent browsing (v2.15+)
+- Turn it on in **Settings → General → "Let the agent use the browser"** (off by default)
+- The agent opens pages in **tabs of its own** and reads, clicks, types, and scrolls while you watch in the side panel, with tools `browser_open`, `browser_read`, `browser_click`, `browser_type`, `browser_press`, `browser_select`, `browser_scroll`, `browser_screenshot`, `browser_tabs`, `browser_history`, and `browser_wait`
+- It **asks before acting on each new site and before every form it submits**, showing what would be sent; you can **Take over** or **Stop** at any time
+- It never types passwords, card numbers, or one-time codes, never downloads or uploads files, and stays off your local network and Marven itself
+
 ### Chat mode
-- **Six providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, Ollama (local)
+- **Eight providers**: Groq, OpenAI, Anthropic, OpenRouter (free models), NVIDIA NIM, and three that run locally: Ollama, LM Studio, and llama-server
 - **Conversation management**: pin, search by title, per-conversation system prompt, markdown export
+- **Message versions** — edited and retried messages keep every version, and you can retry with a different model
 - **Voice**: "Hey Marven" wake word + TTS (English + Arabic via macOS `Maged` voice), with optional ElevenLabs speech output. Speech recognition defaults to a fully-local Whisper-tiny model (~150MB, downloaded once) so no API key is needed; switch to Groq Whisper in Settings → General if you'd prefer cloud speed.
 - **Image attachments** for vision-capable models (paperclip, paste, drag-drop) — non-vision providers get a graceful note
 - **Slash commands** + user-defined prompt templates
@@ -94,6 +113,7 @@ If full privacy matters, use **Ollama** locally for chat/agent and the **Local**
 
 ### System
 - **Light + dark themes** with theme-tracked CSS variables
+- **English and Arabic interface** — switch the app language in Settings, with right-to-left layout throughout
 - **External browser routing** — AI-given links open in your preferred browser (Chrome / Firefox / Safari / Edge / Arc)
 - **Auto-updater** via `electron-updater` (checks GitHub Releases on launch)
 
@@ -130,7 +150,7 @@ Grab the latest installer from the [**Releases page**](https://github.com/ahomsi
 | **Windows** | `Marven-Setup-<version>.exe` |
 | **Linux** | `Marven-<version>.AppImage` |
 
-**macOS:** open the DMG and drag Marven to `/Applications`. First launch may require right-click → Open to bypass Gatekeeper for unsigned apps.
+**macOS:** open the DMG and drag Marven to `/Applications`. Releases aren't signed with an Apple Developer ID yet, so macOS blocks the first launch: open **System Settings → Privacy & Security**, find the note about Marven, and click **Open Anyway**.
 
 **Windows:** run the EXE installer. Choose an install location when prompted.
 
@@ -175,6 +195,7 @@ Open Settings (⌘, or the sidebar gear). Under **Integrations**, use **Model AP
 | **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | Pay-as-you-go |
 | **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com) | Limited free credits |
 | **Ollama** | [ollama.com](https://ollama.com) — install locally | Free, fully offline |
+| **LM Studio** / **llama-server** | [lmstudio.ai](https://lmstudio.ai) / [llama.cpp](https://github.com/ggml-org/llama.cpp) — run locally | Free, fully offline |
 
 You only need **one** to get started. Voice features ("Hey Marven", dictation) default to a local Whisper-tiny model that runs on your machine — no API key required. If you'd rather use Groq's cloud Whisper (lower latency), flip the provider in **Settings → General → Voice recognition** and make sure your Groq key is filled in. If Groq blocks `whisper-large-v3-turbo` for your org, Marven falls back to `whisper-large-v3` and `distil-whisper-large-v3-en` automatically.
 

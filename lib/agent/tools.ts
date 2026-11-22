@@ -7,24 +7,18 @@ import type { ToolDefinition } from "@/types";
 import { appendScopedMemory, type MemoryContext, type MemoryScope } from "@/lib/memoryClient";
 import { formatRememberToolResult } from "@/lib/memoryEvents";
 import { runGit } from "./git";
-import { safeFetch } from "@/lib/ssrfGuard";
+import { RedirectNotFollowedError, safeFetch } from "@/lib/ssrfGuard";
 import { assertRealpathInsideWorkspace } from "@/lib/workspacePaths";
 import { sanitizedChildEnv } from "./sanitizedEnv";
 import { isLongRunningServerCommand, killProcessTree, registerAgentProcess } from "./agentProcesses";
+import { PATCH_EDITS_INVALID, parsePatchEdits, planApplyPatch, unescapeModelString } from "./applyPatch";
 
 const GIT_MUTATION_TOOLS = new Set(["git_commit", "git_branch", "git_checkout"]);
 export function isGitMutation(toolName: string): boolean {
   return GIT_MUTATION_TOOLS.has(toolName);
 }
 
-/** Some models serialize newlines as literal "\n"/"\t"/"\r" inside JSON strings.
- *  Only un-escape when the string has NO real newline already — otherwise we'd
- *  corrupt legitimate backslash-n/backslash-t in real file content (e.g. a
- *  source file that literally contains the two characters backslash and n). */
-export function unescapeModelString(s: string): string {
-  if (s.includes("\n")) return s;
-  return s.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
-}
+export { unescapeModelString };
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -43,11 +37,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "read_file",
-    description: "Read the full contents of a file in the workspace.",
+    description: "Read a file in the workspace. Returns the whole file when it fits in one result (about 8,000 characters); otherwise returns the first part followed by a note saying which lines were shown and the startLine to pass to read the next part. Use startLine/endLine (1-based, inclusive) to read a specific range. write_file can only replace an existing file that you have read whole in a single call; for partial changes use apply_patch.",
     parameters: {
       type: "object",
       properties: {
         path: { type: "string", description: "Relative path to the file." },
+        startLine: { type: "number", description: "Optional first line to return (1-based). Defaults to 1." },
+        endLine: { type: "number", description: "Optional last line to return (1-based, inclusive). Defaults to the end of the file." },
       },
       required: ["path"],
     },
@@ -244,6 +240,14 @@ const BLOCKED = [
   /\brm\s+(?:-\S+\s+)*-\S*r\S*\s+(?:-\S+\s+)*(?:\/\*?|~|\$HOME)(?:\s|$)/,
 ];
 
+/** The memory scope a remember call writes to (the loop asks before "global"). */
+export function rememberScope(args: Record<string, unknown>, workspaceRoot: string): MemoryScope {
+  const requested = typeof args.scope === "string" ? args.scope.trim() : undefined;
+  return requested === "global" || requested === "project" || requested === "conversation"
+    ? requested
+    : workspaceRoot ? "project" : "global";
+}
+
 export function formatWebSearchResult(data: {
   AbstractText?: string;
   AbstractURL?: string;
@@ -331,7 +335,71 @@ async function findFilesByBasename(
   return matches;
 }
 
-const MAX_READ = 8_000;
+/**
+ * Upper bound on one read_file result, note included. The loop passes
+ * read_file results through uncut up to this size, so nothing is cut twice.
+ */
+export const READ_FILE_OUTPUT_CAP = 8_000;
+// Room kept for the note that ends a partial read.
+const READ_NOTE_RESERVE = 400;
+
+function lineArg(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : undefined;
+}
+
+/**
+ * What read_file returns for `content`: the whole file when it fits and no
+ * range was asked for, else whole lines from the requested range up to the
+ * cap, ending with a note on what was shown and how to read on. `complete`
+ * is true only when the model got the entire file in this one result.
+ */
+export function readFileWindow(
+  content: string,
+  startLine?: unknown,
+  endLine?: unknown,
+): { text: string; complete: boolean } {
+  const lines = content.split("\n");
+  // A trailing newline ends the last line; it doesn't start another.
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const total = content === "" ? 0 : lines.length;
+  const from = lineArg(startLine) ?? 1;
+  const to = Math.min(lineArg(endLine) ?? total, total);
+
+  if (from === 1 && to === total && content.length <= READ_FILE_OUTPUT_CAP) {
+    return { text: content, complete: true };
+  }
+  if (from > total) {
+    return { text: `read_file: startLine ${from} is past the end of the file (${total} lines).`, complete: false };
+  }
+  if (to < from) {
+    return { text: `read_file: endLine ${to} is before startLine ${from}.`, complete: false };
+  }
+
+  const budget = READ_FILE_OUTPUT_CAP - READ_NOTE_RESERVE;
+  let text = "";
+  let last = from - 1;
+  for (let n = from; n <= to; n++) {
+    const piece = (n === from ? "" : "\n") + lines[n - 1];
+    if (text.length + piece.length > budget) break;
+    text += piece;
+    last = n;
+  }
+
+  const partHint = "This is only part of the file: change it with apply_patch, not write_file.";
+  let note: string;
+  if (last < from) {
+    // One line longer than a whole result (minified code, data blobs).
+    text = lines[from - 1].slice(0, budget);
+    note = `[truncated: line ${from} of ${total} is longer than ${budget} characters; only its start is shown and read_file can't show the rest. Use search_files to look inside it.${from < total ? ` To read on, call read_file again with startLine: ${from + 1}.` : ""} ${partHint}]`;
+  } else if (last < to) {
+    note = `[truncated: showing lines ${from}-${last} of ${total}. To read the next part, call read_file again with the same path and startLine: ${last + 1}. ${partHint}]`;
+  } else {
+    const more = last < total ? `To read on, call read_file again with startLine: ${last + 1}.` : "End of file.";
+    note = `[showing lines ${from}-${last} of ${total}. ${more} ${partHint}]`;
+  }
+  return { text: `${text}\n\n${note}`, complete: false };
+}
 
 function findFreePort(start: number): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -490,6 +558,94 @@ export async function streamShellCommand(
   });
 }
 
+/**
+ * Why write_file would refuse this write, or null if it may go ahead. The
+ * executor runs it before writing, and the loop runs it before asking the
+ * user, so nobody approves a write that is then refused. `content` is the
+ * already-unescaped text to write.
+ */
+export async function writeFileRefusal(
+  workspaceRoot: string,
+  abs: string,
+  displayPath: string,
+  content: string,
+  recentReads?: Set<string>,
+): Promise<string | null> {
+  const parentDir = path.dirname(abs);
+  // Phantom-directory guard: if the parent directory doesn't exist AND a
+  // file with the same basename already lives somewhere in the workspace,
+  // refuse the write and suggest the real location. Catches the common
+  // weak-model failure of writing `public/style.css` when only `style.css`
+  // exists at the root.
+  if (parentDir !== workspaceRoot) {
+    let parentExists = true;
+    try {
+      await fs.stat(parentDir);
+    } catch {
+      parentExists = false;
+    }
+    if (!parentExists) {
+      const basename = path.basename(abs);
+      const matches = await findFilesByBasename(workspaceRoot, basename, 5);
+      if (matches.length > 0) {
+        const rel = path.relative(workspaceRoot, parentDir);
+        const list = matches.map((m) => `- ${m}`).join("\n");
+        return `write_file refused: directory "${rel}/" does not exist in the workspace, but a file named "${basename}" already exists here:\n${list}\nDid you mean one of those paths? Re-call write_file with the correct path.`;
+      }
+    }
+  }
+
+  // Determine if the target file already exists and grab its size for
+  // the read-before-write + size-shrink guards.
+  let existingSize: number | null = null;
+  try {
+    const st = await fs.stat(abs);
+    if (st.isFile()) existingSize = st.size;
+  } catch {
+    existingSize = null;
+  }
+
+  // Guards only apply when the file already exists AND we have read-set
+  // tracking enabled (i.e. running inside the agent loop). In tests and
+  // CLI usage where recentReads is undefined we leave behavior unchanged.
+  if (existingSize !== null && recentReads) {
+    const wasRead = recentReads.has(abs);
+
+    // Read-before-write guard — the model is about to overwrite content
+    // it hasn't seen in full this session (never read, or only part of
+    // it). Refuse and point it at apply_patch or a full read.
+    if (!wasRead) {
+      return `write_file refused: "${displayPath}" already exists (${existingSize} bytes) but you have NOT read the whole file with read_file in this conversation, so rewriting it would erase content you haven't seen. To change part of it, use apply_patch. To replace it entirely, call read_file("${displayPath}") with no startLine/endLine first and check the result isn't truncated; if the file is too large for one read, use apply_patch instead.`;
+    }
+
+    // Size-shrink sanity guard — even after a read, if the model is
+    // dumping back <30% of what it read, that's almost certainly an
+    // accidental wipe. Refuse and ask for the full content.
+    // Compare byte-to-byte: content.length counts UTF-16 code units, so
+    // multibyte files (CJK, Arabic, emoji) would otherwise trip a false
+    // positive on identical-content rewrites.
+    const SHRINK_THRESHOLD = 0.3;
+    const newContentBytes = Buffer.byteLength(content, "utf8");
+    if (
+      existingSize >= 500 &&
+      newContentBytes < existingSize * SHRINK_THRESHOLD
+    ) {
+      return `write_file refused: new content is ${newContentBytes} bytes but the existing "${displayPath}" is ${existingSize} bytes — that's a ${Math.round((1 - newContentBytes / existingSize) * 100)}% reduction. This usually means you forgot to include the existing content. Re-call write_file with the FULL file (existing content + your additions/changes). If you genuinely intend to shrink the file, delete it first or rewrite it explicitly.`;
+    }
+  }
+  return null;
+}
+
+export interface ToolRunOptions {
+  /**
+   * Let fetch_url follow redirects to other hosts. Off by default: the loop
+   * approves (or exempts, for loopback) only the host the model asked for,
+   * so a redirect elsewhere could carry data out unapproved. The loop turns
+   * it on in the "trusted" profile.
+   */
+  followCrossHostRedirects?: boolean;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -504,6 +660,7 @@ export async function executeTool(
    */
   recentReads?: Set<string>,
   memoryContext?: MemoryContext,
+  options: ToolRunOptions = {},
 ): Promise<string> {
   switch (name) {
     case "list_files": {
@@ -522,86 +679,22 @@ export async function executeTool(
     case "read_file": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
       const content = await fs.readFile(abs, "utf-8");
-      // Record the read so write_file can verify the file was actually
-      // inspected before the model overwrites it.
-      recentReads?.add(abs);
-      if (content.length > MAX_READ) {
-        return (
-          content.slice(0, MAX_READ) +
-          `\n\n[truncated — ${content.length - MAX_READ} more chars]`
-        );
-      }
-      return content;
+      const { text, complete } = readFileWindow(content, args.startLine, args.endLine);
+      // Record only a read that showed the whole file: write_file may then
+      // replace it. A partial read must not unlock a rewrite, or writing back
+      // what was shown would silently delete the rest.
+      if (complete) recentReads?.add(abs);
+      return text;
     }
 
     case "write_file": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
       const parentDir = path.dirname(abs);
-
-      // Phantom-directory guard: if the parent directory doesn't exist AND a
-      // file with the same basename already lives somewhere in the workspace,
-      // refuse the write and suggest the real location. Catches the common
-      // weak-model failure of writing `public/style.css` when only `style.css`
-      // exists at the root.
-      if (parentDir !== workspaceRoot) {
-        let parentExists = true;
-        try {
-          await fs.stat(parentDir);
-        } catch {
-          parentExists = false;
-        }
-        if (!parentExists) {
-          const basename = path.basename(abs);
-          const matches = await findFilesByBasename(workspaceRoot, basename, 5);
-          if (matches.length > 0) {
-            const rel = path.relative(workspaceRoot, parentDir);
-            const list = matches.map((m) => `- ${m}`).join("\n");
-            return `write_file refused: directory "${rel}/" does not exist in the workspace, but a file named "${basename}" already exists here:\n${list}\nDid you mean one of those paths? Re-call write_file with the correct path.`;
-          }
-        }
-      }
-
       // Unescape literal \n / \t / \r the way the file expects them (only when
       // the payload has no real newlines — see unescapeModelString).
       const content = unescapeModelString(args.content as string);
-
-      // Determine if the target file already exists and grab its size for
-      // the read-before-write + size-shrink guards.
-      let existingSize: number | null = null;
-      try {
-        const st = await fs.stat(abs);
-        if (st.isFile()) existingSize = st.size;
-      } catch {
-        existingSize = null;
-      }
-
-      // Guards only apply when the file already exists AND we have read-set
-      // tracking enabled (i.e. running inside the agent loop). In tests and
-      // CLI usage where recentReads is undefined we leave behavior unchanged.
-      if (existingSize !== null && recentReads) {
-        const wasRead = recentReads.has(abs);
-
-        // Read-before-write guard — model is about to overwrite content it
-        // never inspected this session. Refuse and tell it to read first.
-        if (!wasRead) {
-          return `write_file refused: "${args.path}" already exists (${existingSize} bytes) but you have NOT called read_file on it in this conversation. Refusing to overwrite unseen content. Call read_file("${args.path}") first, then re-issue write_file with the full new content that preserves what should stay.`;
-        }
-
-        // Size-shrink sanity guard — even after a read, if the model is
-        // dumping back <30% of what it read, that's almost certainly an
-        // accidental wipe. Refuse and ask for the full content.
-        // Compare byte-to-byte: content.length counts UTF-16 code units, so
-        // multibyte files (CJK, Arabic, emoji) would otherwise trip a false
-        // positive on identical-content rewrites.
-        const SHRINK_THRESHOLD = 0.3;
-        const newContentBytes = Buffer.byteLength(content, "utf8");
-        if (
-          existingSize >= 500 &&
-          newContentBytes < existingSize * SHRINK_THRESHOLD
-        ) {
-          return `write_file refused: new content is ${newContentBytes} bytes but the existing "${args.path}" is ${existingSize} bytes — that's a ${Math.round((1 - newContentBytes / existingSize) * 100)}% reduction. This usually means you forgot to include the existing content. Re-call write_file with the FULL file (existing content + your additions/changes). If you genuinely intend to shrink the file, delete it first or rewrite it explicitly.`;
-        }
-      }
+      const refusal = await writeFileRefusal(workspaceRoot, abs, String(args.path), content, recentReads);
+      if (refusal) return refusal;
 
       await fs.mkdir(parentDir, { recursive: true });
       // Re-check symlinks right before writing (the awaits above leave a
@@ -609,26 +702,17 @@ export async function executeTool(
       // even a dangling one, so it must not point outside the workspace.
       assertRealpathInsideWorkspace(path.resolve(workspaceRoot), abs);
       await fs.writeFile(abs, content, "utf-8");
+      // The model has the whole new file in its own call, so it may rewrite
+      // it later without reading it back.
+      recentReads?.add(abs);
       return `Written: ${args.path}`;
     }
 
     case "apply_patch": {
       const abs = assertSafePath(workspaceRoot, args.path as string);
-      const rawEdits = args.edits;
-      if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
-        return `apply_patch failed: edits must be a non-empty array.`;
-      }
-
-      // Unescape literal \n / \t / \r the same way write_file does — models
-      // sometimes serialize newlines as backslash-n inside JSON strings.
-      function unescape(s: unknown): string {
-        return typeof s === "string" ? unescapeModelString(s) : "";
-      }
-
-      const edits = rawEdits.map((e: unknown) => {
-        const o = (e ?? {}) as { search?: unknown; replace?: unknown };
-        return { search: unescape(o.search), replace: unescape(o.replace) };
-      });
+      // Unescapes literal \n / \t / \r the same way write_file does.
+      const edits = parsePatchEdits(args.edits);
+      if (!edits) return PATCH_EDITS_INVALID;
 
       // Validate before touching disk — bail with a clear message rather
       // than half-applying.
@@ -640,33 +724,9 @@ export async function executeTool(
         return `apply_patch failed: could not read ${args.path}. ${msg}`;
       }
 
-      let next = original;
-      const summaries: string[] = [];
-      for (let i = 0; i < edits.length; i++) {
-        const { search, replace } = edits[i];
-        if (!search) {
-          return `apply_patch failed at edit #${i + 1}: 'search' is empty. To create a new file use write_file instead.`;
-        }
-        const firstIdx = next.indexOf(search);
-        if (firstIdx === -1) {
-          return `apply_patch failed at edit #${i + 1}: 'search' text not found in ${args.path}. The text must match EXACTLY including whitespace. Read the file again, copy the snippet to replace, and retry. No edits were committed.`;
-        }
-        const secondIdx = next.indexOf(search, firstIdx + 1);
-        if (secondIdx !== -1) {
-          return `apply_patch failed at edit #${i + 1}: 'search' text appears multiple times in ${args.path}. Add 1-2 lines of surrounding context (before/after) so the snippet is unique, then retry. No edits were committed.`;
-        }
-        next = next.slice(0, firstIdx) + replace + next.slice(firstIdx + search.length);
-        const delta = replace.length - search.length;
-        summaries.push(
-          replace.length === 0
-            ? `#${i + 1}: deleted ${search.length} chars`
-            : delta > 0
-              ? `#${i + 1}: +${delta} chars`
-              : delta < 0
-                ? `#${i + 1}: ${delta} chars`
-                : `#${i + 1}: rewrote ${search.length} chars`,
-        );
-      }
+      const plan = planApplyPatch(original, edits, String(args.path));
+      if (!plan.ok) return plan.error;
+      const { content: next, summaries } = plan;
 
       if (next === original) {
         return `apply_patch ok — no net change (all edits were no-ops).`;
@@ -846,7 +906,12 @@ export async function executeTool(
         // can't turn this into an internal-network pivot. See lib/ssrfGuard.ts.
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
-        const res = await safeFetch(url, { signal: controller.signal });
+        const res = await safeFetch(url, { signal: controller.signal }, {
+          // Same-host redirects (http→https, /old → /new) are still followed.
+          allowRedirect: options.followCrossHostRedirects
+            ? undefined
+            : (to, from) => to.hostname.toLowerCase() === from.hostname.toLowerCase(),
+        });
         clearTimeout(timer);
         if (!res.ok) return `Error ${res.status}: ${res.statusText}`;
         const text = await res.text();
@@ -860,6 +925,9 @@ export async function executeTool(
           ? stripped.slice(0, 8_000) + "\n[truncated]"
           : stripped;
       } catch (err) {
+        if (err instanceof RedirectNotFollowedError) {
+          return `Not followed: ${url} redirects to ${err.location}, which is on a different host. If you need that page, call fetch_url on ${err.location} directly (it may need the user's approval).`;
+        }
         return `Fetch failed: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
@@ -867,11 +935,7 @@ export async function executeTool(
     case "remember": {
       const content = args.content as string;
       try {
-        const requestedScope = (args.scope as string | undefined)?.trim();
-        const scope: MemoryScope =
-          requestedScope === "global" || requestedScope === "project" || requestedScope === "conversation"
-            ? requestedScope
-            : workspaceRoot ? "project" : "global";
+        const scope = rememberScope(args, workspaceRoot);
         const entry = appendScopedMemory(content, scope, {
           workspaceRoot,
           conversationId: memoryContext?.conversationId,

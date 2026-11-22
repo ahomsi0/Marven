@@ -155,3 +155,40 @@ describe("POST /api/agent/stream — vision + lite mode", () => {
     expect(users.some((u) => u.attachments?.length)).toBe(true);
   });
 });
+
+describe("POST /api/agent/stream — MCP tools and secrets", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("tells the loop which tools are MCP tools (so it can ask before each call) and which secrets to guard", async () => {
+    const { mcpClient } = await import("@/lib/mcpClient");
+    vi.spyOn(mcpClient, "listTools").mockResolvedValue([
+      { name: "write_file", description: "write", inputSchema: { type: "object", properties: {} } },
+    ] as never);
+    const res = await POST(
+      makeReq({
+        prompt: "Use the server",
+        history: [],
+        provider: "groq",
+        model: "test-model",
+        workspaceRoot: tmpRoot,
+        safetyProfile: "ask-before-write",
+        mcpServers: [{ id: "srv1", name: "files", enabled: true }],
+      }),
+    );
+    await drain(res.body!);
+    const opts = captured.opts as unknown as { mcpTools?: Map<string, unknown>; secrets?: unknown };
+    expect(opts.mcpTools?.get("files__write_file")).toEqual({ server: "files", tool: "write_file" });
+    expect(Array.isArray(opts.secrets)).toBe(true);
+  });
+});
+
+describe("POST /api/agent/stream — lite tools", () => {
+  it("gives the lite tier apply_patch, so big files can still be edited", async () => {
+    const res = await POST(
+      makeReq({ prompt: "fix it", history: [], provider: "ollama", model: "m", workspaceRoot: tmpRoot, liteAgentMode: true }),
+    );
+    await drain(res.body!);
+    const names = (captured.opts as unknown as { tools: Array<{ name: string }> }).tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["read_file", "write_file", "apply_patch"]));
+  });
+});
