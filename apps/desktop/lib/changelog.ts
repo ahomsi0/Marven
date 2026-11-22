@@ -12,6 +12,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.16.0",
+    items: [
+      { tag: "new", label: "Terminal settings: pick a colour theme, font, font size and cursor style in Settings → Terminal, or open it from the command palette" },
+      { tag: "new", label: "Claude Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5, with Sonnet 5.5 as the default" },
+      { tag: "imp", label: "Every cloud provider is updated to its current models; Groq now defaults to gpt-oss-120b, and NVIDIA and OpenRouter list their live models" },
+      { tag: "imp", label: "Tidier sidebar, a single-card agent composer, and workspace panels driven from the top bar" },
+      { tag: "imp", label: "The built-in terminal shows coloured output on macOS, and theme changes reach the open terminal and editor straight away" },
+      { tag: "imp", label: "Only Marven itself can use its local API now; other programs on your computer are turned away, and API keys and app tokens are kept out of the terminal, agent commands and MCP servers" },
+      { tag: "fix", label: "Models that providers shut down are gone from the pickers, which also fixes screenshots sent to Groq" },
+    ],
+  },
+  {
     version: "2.15.0",
     items: [
       { tag: "new", label: "The agent can use the in-app browser — it opens pages in tabs of its own, reads them, clicks, types and scrolls while you watch in the side panel. Turn it on in Settings → General → \"Let the agent use the browser\"" },
