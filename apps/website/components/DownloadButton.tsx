@@ -69,6 +69,14 @@ export function DownloadCta({
           {platform ? "other platforms" : "all downloads"}
         </Link>
       </p>
+      {platform === "mac" && (
+        <p className="-mt-1.5 text-center font-mono text-xs text-dim">
+          Not signed by Apple yet, so the first launch needs one extra step.{" "}
+          <Link href="/download#macos" className="text-amber underline decoration-amber/40 underline-offset-2 hover:text-ink-2">
+            See how
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

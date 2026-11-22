@@ -14,8 +14,12 @@ const DETAILS: Record<Platform, { requirement: string; format: string; steps: Re
     format: ".dmg",
     steps: (
       <>
-        Open the DMG and drag Marven to Applications. Releases aren&apos;t signed with an Apple Developer ID yet, so the
-        first launch is blocked: open <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>.
+        Open the DMG and drag Marven to Applications. Releases aren&apos;t signed by Apple yet, so the first launch
+        needs one extra step:{" "}
+        <a href="#macos" className="font-medium text-amber underline decoration-amber/40 underline-offset-2">
+          how to open it
+        </a>
+        .
       </>
     ),
   },

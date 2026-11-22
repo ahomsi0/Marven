@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DownloadCards } from "@/components/DownloadCards";
 import { Eyebrow } from "@/components/landing/Section";
+import { MacNotice } from "@/components/MacNotice";
 import { getLatestReleaseAtBuild } from "@/lib/releases";
 import { REPO_URL } from "@/lib/site";
 
@@ -29,6 +30,7 @@ export default async function DownloadPage() {
         </div>
 
         <DownloadCards release={release} />
+        <MacNotice />
 
         <div className="mt-16 grid gap-6 md:grid-cols-2">
           <section className="rounded-2xl border border-line bg-panel p-6">
