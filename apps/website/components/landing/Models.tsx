@@ -61,7 +61,7 @@ export function Models() {
             />
             <div className="relative flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-mono text-xs uppercase tracking-[0.16em] text-local">Local · on your machine</h3>
-              <span className="text-xs text-local/80">Nothing leaves your computer</span>
+              <span className="text-xs text-local/80">Prompts and code stay on your computer</span>
             </div>
             <ul className="relative mt-5 grid gap-2.5">
               {LOCAL.map((p) => (
