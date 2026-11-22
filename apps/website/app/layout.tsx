@@ -19,7 +19,7 @@ const accent = Instrument_Serif({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Marven — your AI agent, inside your editor",
+    default: "Marven: your AI agent, inside your editor",
     template: "%s · Marven",
   },
   description: DESCRIPTION,
@@ -29,14 +29,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Marven",
-    title: "Marven — your AI agent, inside your editor",
+    title: "Marven: your AI agent, inside your editor",
     description: DESCRIPTION,
     url: "/",
     images: [{ url: "/og.jpg", width: 1200, height: 630, alt: "Marven: four windows, none of them talk." }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Marven — your AI agent, inside your editor",
+    title: "Marven: your AI agent, inside your editor",
     description: DESCRIPTION,
     images: ["/og.jpg"],
   },

@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { DownloadButton } from "@/components/DownloadButton";
+import { DownloadCta } from "@/components/DownloadButton";
 import { HeroWindow } from "@/components/HeroWindow";
-import { ArrowRight, GitHubIcon } from "@/components/Icons";
+import { ArrowRight } from "@/components/Icons";
 import { Logo } from "@/components/Logo";
 import { Features } from "@/components/landing/Features";
 import { Models } from "@/components/landing/Models";
@@ -49,18 +49,8 @@ export default async function Home() {
               Marven is a coding agent, a full code editor, a real terminal and a browser in one desktop app. Bring your own
               model or run everything locally. Your files, history and memory stay on your machine.
             </p>
-            <div
-              className="reveal mt-9 flex flex-col items-center gap-4 sm:flex-row sm:items-start"
-              style={{ animationDelay: "240ms" }}
-            >
-              <DownloadButton release={release} />
-              <a
-                href={REPO_URL}
-                className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-line-2 bg-panel/70 px-5 text-[0.95rem] font-medium text-ink backdrop-blur transition hover:border-dim/40 hover:bg-panel-2"
-              >
-                <GitHubIcon />
-                View source
-              </a>
+            <div className="reveal mt-9 w-full sm:w-auto" style={{ animationDelay: "240ms" }}>
+              <DownloadCta release={release} secondary={{ href: REPO_URL, label: "View source" }} />
             </div>
           </div>
 
@@ -78,7 +68,7 @@ export default async function Home() {
       <section className="border-y border-line bg-bg-2 px-4 py-6 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 font-mono text-[13px] sm:flex-row">
           <p className="text-dim">
-            editor · terminal · browser · AI chat <span className="text-red">— four windows that don&apos;t talk</span>
+            editor · terminal · browser · AI chat: <span className="text-red">four windows that don&apos;t talk</span>
           </p>
           <p className="flex items-center gap-2 text-ink-2">
             <Logo size={16} className="text-brand" /> one workspace, one agent that can use all of it
@@ -124,15 +114,11 @@ export default async function Home() {
               </a>
               . Read every line, build it yourself, or grab an installer. It updates itself when a new release ships.
             </p>
-            <div className="mt-9 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-              <DownloadButton release={release} />
-              <a
-                href={REPO_URL}
-                className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-line-2 bg-bg-2 px-5 text-[0.95rem] font-medium text-ink transition hover:bg-panel-2"
-              >
-                <GitHubIcon />
-                Star on GitHub
-              </a>
+            <div className="mt-9 w-full sm:w-auto">
+              <DownloadCta
+                release={release}
+                secondary={{ href: REPO_URL, label: "Star on GitHub", className: "bg-bg-2" }}
+              />
             </div>
           </div>
         </div>

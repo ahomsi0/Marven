@@ -31,7 +31,7 @@ touches.
 - **Stored:** On your local filesystem, where they already were.
 - **Sent over the network:** Only to the AI provider you've chosen for a
   given task. If that's `ollama`, `lmstudio`, or `llamaserver`, the request
-  goes to `localhost` — never leaves your machine.
+  goes to `localhost` and never leaves your machine.
 - **Stored by Marven:** Files you open are buffered in memory while editing.
   Dirty editor buffers and agent sessions are also persisted in browser
   `localStorage` so a restart can restore unsaved work. They remain on your
@@ -44,7 +44,7 @@ touches.
   covers chat history, folders, edited and retried message versions, and
   agent transcripts.
 - **Sent over the network:** Conversation history is included as context in
-  AI provider requests when you continue a chat. Same rule as above — only
+  AI provider requests when you continue a chat. Same rule as above: it only
   goes to the provider you've chosen.
 - **Marven never reads, exports, or transmits this data anywhere else.**
 
@@ -116,7 +116,7 @@ NVIDIA NIM, OpenRouter), Marven sends:
 - Your prompt
 - Recent conversation history (for context)
 - Any `@file` / `@folder` content you've explicitly attached
-- The workspace file tree (only when "Lite agent mode" is enabled — used to
+- The workspace file tree (only when "Lite agent mode" is enabled, to
   prevent hallucinated paths)
 - Selected file content when you ask the agent to read or modify a file
 - Page text, or a selection, when you ask Marven about a page in the in-app
@@ -129,7 +129,7 @@ API key, no proxy, and no relay server. Requests go directly from your
 machine to the provider you chose, exactly as if you'd called their API
 yourself.
 
-Each AI provider has its own privacy policy — read theirs to understand what
+Each AI provider has its own privacy policy. Read theirs to understand what
 they do with the data you send to them. Notably:
 
 - **Anthropic** and **OpenAI** do not use API requests for training by
@@ -187,7 +187,7 @@ Marven makes, and when it makes them.
   built-in updater queries the GitHub releases API directly (which is a
   public, anonymous endpoint).
 - We do not run analytics or A/B tests.
-- We do not have a "Marven account" — there is nothing to log in to.
+- We do not have a "Marven account". There is nothing to log in to.
 - We do not share data with third parties because we don't have any data to
   share.
 
@@ -206,12 +206,13 @@ because no such service exists.
 
 ## Open source verification
 
-Every claim above can be verified by reading the source code:
+Every claim above can be verified by reading the source code. The desktop
+app lives in `apps/desktop/`, and the paths below are relative to it:
 
 - The list of network endpoints Marven contacts: `lib/groq.ts`,
   `lib/openai.ts`, `lib/anthropic.ts`, `lib/nim.ts`, `lib/openrouter.ts`,
   `lib/ollama.ts`, `lib/lmstudio.ts`, `lib/llamaserver.ts`, and
-  `app/api/tts/route.ts` for optional ElevenLabs speech output — those are
+  `app/api/tts/route.ts` for optional ElevenLabs speech output. Those are
   the files that make outbound HTTP calls related to AI and voice.
 - The other requests: `app/api/weather/route.ts`, `app/api/news/route.ts`,
   `lib/localStt.ts` (Whisper download), `lib/agent/tools.ts` (`web_search`,
@@ -219,8 +220,8 @@ Every claim above can be verified by reading the source code:
   `lib/glitchReport.ts` (Report a problem), and `electron/browser/` (the
   in-app browser, its ad blocker, and agent browsing).
 - No analytics or telemetry SDK is listed in `package.json`. Search it for
-  yourself: `grep -E "posthog|sentry|mixpanel|datadog|amplitude" package.json`.
-- The auto-updater code: `electron/main.js` — uses `electron-updater`
+  yourself: `grep -E "posthog|sentry|mixpanel|datadog|amplitude" apps/desktop/package.json`.
+- The auto-updater code: `electron/main.js`, which uses `electron-updater`
   pointing at this repository's GitHub releases.
 
 If you find any outbound network call not documented here, please open an

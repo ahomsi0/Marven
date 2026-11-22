@@ -8,7 +8,7 @@ import { CheckIcon } from "./Icons";
  * A scripted re-enactment of one agent run inside a Marven window: the user
  * asks for a change, the agent reads and searches, proposes a patch (the diff
  * appears in the editor), runs the tests in the terminal and reports back.
- * Purely decorative — screen readers get a one-line summary instead.
+ * Purely decorative; screen readers get a one-line summary instead.
  */
 
 const STEPS = [
@@ -128,7 +128,7 @@ export function HeroWindow() {
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-center gap-2 font-mono text-[11px] text-dim">
             <Logo size={13} className="text-brand" />
-            <span className="truncate">payments-api — Marven</span>
+            <span className="truncate">payments-api · Marven</span>
           </div>
           <span className="hidden items-center gap-1.5 rounded-md bg-local-soft px-2 py-0.5 font-mono text-[10px] font-medium text-local sm:inline-flex">
             <span className="size-1.5 rounded-full bg-local" />

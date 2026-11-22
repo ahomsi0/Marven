@@ -1,5 +1,5 @@
 /**
- * The Marven mark — an open hexagon ring with a solid dot at its centre.
+ * The Marven mark: an open hexagon ring with a solid dot at its centre.
  * Same geometry as apps/desktop/app/components/marven/MarvenLogo.tsx.
  */
 export function Logo({ size = 24, className = "" }: { size?: number; className?: string }) {
