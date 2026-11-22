@@ -26,7 +26,7 @@ const COLUMNS = [
 export function Footer() {
   return (
     <footer className="border-t border-line">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-[88rem] gap-10 px-4 py-14 sm:px-6 lg:px-10 md:grid-cols-[1.4fr_1fr_1fr]">
         <div className="max-w-xs">
           <Wordmark />
           <p className="mt-4 text-sm leading-relaxed text-mute">
@@ -54,7 +54,7 @@ export function Footer() {
           </div>
         ))}
       </div>
-      <div className="mx-auto flex max-w-6xl flex-col gap-2 border-t border-line px-4 py-6 font-mono text-xs text-dim sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="mx-auto flex max-w-[88rem] flex-col gap-2 border-t border-line px-4 py-6 font-mono text-xs text-dim sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
         <span>© {new Date().getFullYear()} Marven contributors</span>
         <span>No analytics. No cookies. Not here, not in the app.</span>
       </div>

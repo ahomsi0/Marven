@@ -17,13 +17,13 @@ export default async function Home() {
   return (
     <>
       {/* Hero */}
-      <section className="grain relative -mt-16 overflow-hidden px-4 pb-20 pt-32 sm:px-6 sm:pt-40">
+      <section className="grain relative -mt-16 overflow-hidden px-4 pb-20 pt-32 sm:px-6 lg:px-10 sm:pt-40">
         <div aria-hidden="true" className="bg-grid pointer-events-none absolute inset-0" />
         <div
           aria-hidden="true"
           className="pointer-events-none absolute left-1/2 top-[-12rem] h-[42rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,var(--glow),transparent)] [animation:drift_18s_ease-in-out_infinite]"
         />
-        <div className="relative mx-auto max-w-6xl">
+        <div className="relative mx-auto max-w-[88rem]">
           <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
             <Link
               href="/download"
@@ -65,8 +65,8 @@ export default async function Home() {
       </section>
 
       {/* Problem → answer strip */}
-      <section className="border-y border-line bg-bg-2 px-4 py-6 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 font-mono text-[13px] sm:flex-row">
+      <section className="border-y border-line bg-bg-2 px-4 py-6 sm:px-6 lg:px-10">
+        <div className="mx-auto flex max-w-[88rem] flex-col items-center justify-between gap-3 font-mono text-[13px] sm:flex-row">
           <p className="text-dim">
             editor · terminal · browser · AI chat: <span className="text-red">four windows that don&apos;t talk</span>
           </p>
@@ -79,8 +79,8 @@ export default async function Home() {
       <Features />
 
       {/* Video tour */}
-      <section className="px-4 pb-8 sm:px-6">
-        <div className="mx-auto max-w-5xl">
+      <section className="px-4 pb-8 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-6xl">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
             <Eyebrow>Tour</Eyebrow>
             <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-3xl">
@@ -95,8 +95,8 @@ export default async function Home() {
       <Privacy />
 
       {/* Open source CTA */}
-      <section className="px-4 pb-24 sm:px-6 sm:pb-32">
-        <div className="grain relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-line-2 bg-panel px-6 py-16 text-center sm:px-12 sm:py-20">
+      <section className="px-4 pb-24 sm:px-6 lg:px-10 sm:pb-32">
+        <div className="grain relative mx-auto max-w-[88rem] overflow-hidden rounded-3xl border border-line-2 bg-panel px-6 py-16 text-center sm:px-12 sm:py-20">
           <div aria-hidden="true" className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
           <div
             aria-hidden="true"

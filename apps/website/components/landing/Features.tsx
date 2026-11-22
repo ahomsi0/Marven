@@ -110,8 +110,8 @@ function BrowserVisual() {
 
 export function Features() {
   return (
-    <section id="features" className="relative scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
-      <div className="mx-auto max-w-6xl">
+    <section id="features" className="relative scroll-mt-20 px-4 py-24 sm:px-6 lg:px-10 sm:py-32">
+      <div className="mx-auto max-w-[88rem]">
         <SectionHeading
           eyebrow="What's inside"
           title={

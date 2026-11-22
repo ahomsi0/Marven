@@ -15,9 +15,9 @@ export default async function DownloadPage() {
   const release = await getLatestReleaseAtBuild();
 
   return (
-    <div className="relative overflow-hidden px-4 pb-24 pt-16 sm:px-6 sm:pt-24">
+    <div className="relative overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10 sm:pt-24">
       <div aria-hidden="true" className="bg-grid pointer-events-none absolute inset-x-0 top-0 h-[36rem]" />
-      <div className="relative mx-auto max-w-5xl">
+      <div className="relative mx-auto max-w-[88rem]">
         <div className="max-w-2xl">
           <Eyebrow>Download</Eyebrow>
           <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.035em] text-ink sm:text-5xl">

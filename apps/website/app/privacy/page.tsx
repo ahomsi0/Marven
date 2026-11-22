@@ -38,7 +38,7 @@ export default async function PrivacyPage() {
   const body = source.replace(/\*\*Last updated:[^\n]*\n/, "");
 
   return (
-    <div className="px-4 pb-24 pt-16 sm:px-6 sm:pt-24">
+    <div className="px-4 pb-24 pt-16 sm:px-6 lg:px-10 sm:pt-24">
       <article className="mx-auto max-w-3xl">
         <Eyebrow tone="local">Privacy</Eyebrow>
         <h1 className="mt-4 text-4xl font-semibold tracking-[-0.035em] text-ink sm:text-5xl">Privacy policy</h1>

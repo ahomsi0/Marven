@@ -29,8 +29,8 @@ function Provider({ name, mono, note, kind }: { name: string; mono: string; note
 
 export function Models() {
   return (
-    <section id="models" className="scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
-      <div className="mx-auto max-w-6xl">
+    <section id="models" className="scroll-mt-20 px-4 py-24 sm:px-6 lg:px-10 sm:py-32">
+      <div className="mx-auto max-w-[88rem]">
         <SectionHeading
           eyebrow="Any model"
           title={

@@ -37,7 +37,7 @@ export function Nav() {
           : "border-b border-transparent bg-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6" aria-label="Main">
+      <nav className="mx-auto flex h-16 max-w-[88rem] items-center justify-between px-4 sm:px-6 lg:px-10" aria-label="Main">
         <Link href="/" aria-label="Marven home" className="rounded-md">
           <Wordmark />
         </Link>

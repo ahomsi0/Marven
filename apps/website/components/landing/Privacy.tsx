@@ -12,8 +12,8 @@ const LOCAL_ITEMS = [
 
 export function Privacy() {
   return (
-    <section id="privacy" className="relative scroll-mt-20 overflow-hidden px-4 py-24 sm:px-6 sm:py-32">
-      <div className="mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[1fr_1.05fr]">
+    <section id="privacy" className="relative scroll-mt-20 overflow-hidden px-4 py-24 sm:px-6 lg:px-10 sm:py-32">
+      <div className="mx-auto grid max-w-[88rem] items-center gap-14 lg:grid-cols-[1fr_1.05fr]">
         <div>
           <SectionHeading
             eyebrow="Local-first"
