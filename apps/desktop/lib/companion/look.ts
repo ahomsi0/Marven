@@ -1,9 +1,19 @@
 // What Mini Me looks like. Stored in settings as `miniMeLook`; every field
 // falls back to the default on its own, so a bad value never breaks the character.
 
-export type HairStyle = "short" | "long" | "curly" | "buzz" | "bald";
+import { ART_STYLES, ART_STYLE_IDS, isArtStyle, type ArtStyle } from "./art";
+import type { SlotColours } from "./palette";
+
+export type { ArtStyle } from "./art";
+
+/** Every hair style any art style has; each art style offers a subset (hairStylesFor). */
+export type HairStyle = "short" | "long" | "curly" | "buzz" | "bald" | "bun" | "ponytail";
+
+/** Editor order. */
+export const ALL_HAIR_STYLES: readonly HairStyle[] = ["short", "long", "curly", "buzz", "bun", "ponytail", "bald"];
 
 export interface Look {
+  artStyle: ArtStyle;
   skin: string;
   hair: string;
   hairStyle: HairStyle;
@@ -17,6 +27,7 @@ export interface Look {
 }
 
 export const DEFAULT_LOOK: Look = {
+  artStyle: "chibiLarge",
   skin: "#e0ac7e",
   hair: "#2b1d14",
   hairStyle: "short",
@@ -31,8 +42,38 @@ export const DEFAULT_LOOK: Look = {
 
 // Colours must be 6-digit hex like "#3d6fb6"; 3-digit shorthand is not accepted.
 const HEX = /^#[0-9a-f]{6}$/i;
-/** Every hair style the art supports; the editor lists whatever is here. */
-export const HAIR_STYLES: readonly HairStyle[] = ["short", "long", "curly", "buzz", "bald"];
+
+/** The hair styles an art style has, in editor order. */
+export function hairStylesFor(artStyle: ArtStyle): readonly HairStyle[] {
+  const hair = ART_STYLES[artStyle].hair;
+  return ALL_HAIR_STYLES.filter((s) => Object.prototype.hasOwnProperty.call(hair, s));
+}
+
+/** A hair style the art style has: bun and ponytail stand in for each other, anything else becomes short. */
+export function fitHairStyle(style: unknown, artStyle: ArtStyle): HairStyle {
+  return fitHairStyleTo(style, hairStylesFor(artStyle));
+}
+
+/** fitHairStyle against an explicit list of available styles. */
+export function fitHairStyleTo(style: unknown, available: readonly string[]): HairStyle {
+  if (available.includes(style as string)) return style as HairStyle;
+  const swap: HairStyle | null = style === "bun" ? "ponytail" : style === "ponytail" ? "bun" : null;
+  if (swap && available.includes(swap)) return swap;
+  return "short";
+}
+
+/** The look's colours as the palette's input. */
+export function slotColours(look: Look): SlotColours {
+  return {
+    skin: look.skin,
+    hair: look.hair,
+    eyes: look.eyes,
+    shirt: look.shirt,
+    pants: look.pants,
+    shoes: look.shoes,
+    glasses: look.glassesColor,
+  };
+}
 export type ColorKey = "skin" | "hair" | "eyes" | "glassesColor" | "shirt" | "pants" | "shoes";
 
 /** Colour fields in editor order, with their preset swatches. */
@@ -50,11 +91,12 @@ export function parseLook(raw: unknown): Look {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const color = (k: ColorKey) => (typeof o[k] === "string" && HEX.test(o[k] as string) ? (o[k] as string) : DEFAULT_LOOK[k]);
   const flag = (k: "glasses" | "beard") => (typeof o[k] === "boolean" ? (o[k] as boolean) : DEFAULT_LOOK[k]);
-  const hairStyle = HAIR_STYLES.includes(o.hairStyle as HairStyle) ? (o.hairStyle as HairStyle) : DEFAULT_LOOK.hairStyle;
+  const artStyle = isArtStyle(o.artStyle) ? o.artStyle : DEFAULT_LOOK.artStyle;
   return {
+    artStyle,
     skin: color("skin"),
     hair: color("hair"),
-    hairStyle,
+    hairStyle: fitHairStyle(o.hairStyle, artStyle),
     eyes: color("eyes"),
     glasses: flag("glasses"),
     glassesColor: color("glassesColor"),
@@ -68,12 +110,14 @@ export function parseLook(raw: unknown): Look {
 const pick = <T>(list: readonly T[], rand: () => number): T =>
   list[Math.min(list.length - 1, Math.max(0, Math.floor(rand() * list.length)))];
 
-/** A random but tasteful look: one preset per colour, a random style, and occasional glasses or beard. */
+/** A random but tasteful look: an art style, one preset per colour, a hair style, and occasional glasses or beard. */
 export function randomLook(rand: () => number = Math.random): Look {
+  const artStyle = pick(ART_STYLE_IDS, rand);
   return {
+    artStyle,
     skin: pick(COLOR_PRESETS.skin, rand),
     hair: pick(COLOR_PRESETS.hair, rand),
-    hairStyle: pick(HAIR_STYLES, rand),
+    hairStyle: pick(hairStylesFor(artStyle), rand),
     eyes: pick(COLOR_PRESETS.eyes, rand),
     glasses: rand() < 0.3,
     glassesColor: pick(COLOR_PRESETS.glassesColor, rand),

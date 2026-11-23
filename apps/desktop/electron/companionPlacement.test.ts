@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "module";
+import { ART_STYLES, ART_STYLE_IDS } from "@/lib/companion/art";
+import { pixelScale } from "@/lib/companion/sprite";
+import { DEFAULT_LOOK } from "@/lib/companion/look";
 
 // companionPlacement.js is CommonJS (Electron main process).
 const require = createRequire(import.meta.url);
 type Rect = { x: number; y: number; width: number; height: number };
 type Display = { id: number; workArea: Rect };
 const P = require("./companionPlacement") as {
-  windowSize: (scale: unknown) => { width: number; height: number };
+  windowSize: (scale: unknown, artStyle?: unknown) => { width: number; height: number };
+  ART_SIZES: Record<string, number>;
+  DEFAULT_ART_STYLE: string;
+  pixelScale: (size: number, scale: number) => number;
   dockStrip: (wa: Rect, size: { width: number; height: number }) => { minX: number; maxX: number; y: number };
   clampToDisplays: (rect: Rect, displays: Display[]) => { x: number; y: number; displayId: number };
   isInDockStrip: (rect: Rect, wa: Rect) => boolean;
@@ -25,12 +31,29 @@ const size = P.windowSize(3);
 
 describe("windowSize", () => {
   it("is 360 wide with room for the bubble above the sprite", () => {
-    expect(P.windowSize(3)).toEqual({ width: 360, height: 184 + 96 });
-    expect(P.windowSize(2)).toEqual({ width: 360, height: 184 + 64 });
+    expect(P.windowSize(3, "chibi")).toEqual({ width: 360, height: 184 + 96 });
+    expect(P.windowSize(2, "chibi")).toEqual({ width: 360, height: 184 + 64 });
+    expect(P.windowSize(4, "chibi")).toEqual({ width: 360, height: 184 + 128 });
   });
-  it("falls back to 3x for unknown scales", () => {
-    expect(P.windowSize(7)).toEqual(P.windowSize(3));
-    expect(P.windowSize(undefined)).toEqual(P.windowSize(3));
+  it("sizes 48-px art at whole-pixel steps of 1, 2 and 3", () => {
+    expect(P.windowSize(2, "chibiLarge")).toEqual({ width: 360, height: 184 + 48 });
+    expect(P.windowSize(3, "detailed")).toEqual({ width: 360, height: 184 + 96 });
+    expect(P.windowSize(4, "chibiLarge")).toEqual({ width: 360, height: 184 + 144 });
+  });
+  it("falls back to 3x and the default art style for unknown values", () => {
+    expect(P.windowSize(7, "chibi")).toEqual(P.windowSize(3, "chibi"));
+    expect(P.windowSize(undefined, "chibi")).toEqual(P.windowSize(3, "chibi"));
+    expect(P.windowSize(4, "anime")).toEqual(P.windowSize(4, DEFAULT_LOOK.artStyle));
+    expect(P.windowSize(4, "constructor")).toEqual(P.windowSize(4, DEFAULT_LOOK.artStyle));
+    expect(P.windowSize(4)).toEqual(P.windowSize(4, DEFAULT_LOOK.artStyle));
+  });
+  it("agrees with the renderer's art sizes, default style and pixel scale", () => {
+    expect(P.DEFAULT_ART_STYLE).toBe(DEFAULT_LOOK.artStyle);
+    expect(Object.keys(P.ART_SIZES).sort()).toEqual([...ART_STYLE_IDS].sort());
+    for (const id of ART_STYLE_IDS) expect(P.ART_SIZES[id], id).toBe(ART_STYLES[id].size);
+    for (const size of [32, 48, 64]) {
+      for (const scale of [1, 2, 3, 4, 5]) expect(P.pixelScale(size, scale), `${size} ${scale}`).toBe(pixelScale(size, scale));
+    }
   });
 });
 
@@ -101,6 +124,6 @@ describe("edge cases", () => {
     expect(P.stepToward(0, 10, -3)).toBe(1);
   });
   it("coerces numeric-string scales", () => {
-    expect(P.windowSize("4")).toEqual(P.windowSize(4));
+    expect(P.windowSize("4", "chibi")).toEqual(P.windowSize(4, "chibi"));
   });
 });

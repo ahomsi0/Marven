@@ -4,16 +4,25 @@
 // can be unit-tested. Rects and work areas are in screen points; a display is
 // `{ id, workArea: { x, y, width, height } }`.
 
-const SPRITE_SIZE = 32;      // sprite frame, in sprite pixels
+// Frame size of each art style, in sprite pixels (lib/companion/art/*.json `size`).
+const ART_SIZES = { detailed: 48, chibi: 32, chibiLarge: 48 };
+const DEFAULT_ART_STYLE = 'chibiLarge'; // DEFAULT_LOOK.artStyle in lib/companion/look.ts
 const BUBBLE_SPACE = 184;    // room above the sprite for the speech bubble
 const WINDOW_WIDTH = 360;
 const DOCK_TOLERANCE = 24;   // how close to the strip a drop counts as "on the Dock"
 const SCALES = [2, 3, 4];
 
-function windowSize(scale) {
+/** Screen pixels per sprite pixel for a size step; same as pixelScale in lib/companion/sprite.ts. */
+function pixelScale(size, scale) {
+  return Math.max(1, Math.round((32 * scale) / size));
+}
+
+/** The window for a size step (2/3/4) and art style; unknown values fall back to 3 and the default style. */
+function windowSize(scale, artStyle) {
   const n = Number(scale);
   const s = SCALES.includes(n) ? n : 3;
-  return { width: WINDOW_WIDTH, height: BUBBLE_SPACE + SPRITE_SIZE * s };
+  const size = Object.prototype.hasOwnProperty.call(ART_SIZES, artStyle) ? ART_SIZES[artStyle] : ART_SIZES[DEFAULT_ART_STYLE];
+  return { width: WINDOW_WIDTH, height: BUBBLE_SPACE + size * pixelScale(size, s) };
 }
 
 /** Where the window walks: its bottom edge on the work area's bottom edge (just above the Dock). */
@@ -88,7 +97,9 @@ function stepToward(current, target, maxStep) {
 }
 
 module.exports = {
-  SPRITE_SIZE,
+  ART_SIZES,
+  DEFAULT_ART_STYLE,
+  pixelScale,
   BUBBLE_SPACE,
   WINDOW_WIDTH,
   windowSize,

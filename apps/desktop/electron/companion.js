@@ -30,6 +30,13 @@ function placementDisplays() {
  *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, unavailable: boolean, wakeWord: boolean }) => void,
  * }} options
  */
+/** The window size for the saved size step and the look's art style (validated in companionPlacement). */
+const windowSizeFor = (s) => placement.windowSize(
+  s.miniMeScale,
+  s.miniMeLook && typeof s.miniMeLook === 'object' ? s.miniMeLook.artStyle : undefined,
+);
+const sameSize = (a, b) => a.width === b.width && a.height === b.height;
+
 function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange }) {
   let win = null;
   let settings = {};
@@ -177,7 +184,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   }
 
   function create() {
-    size = placement.windowSize(settings.miniMeScale);
+    size = windowSizeFor(settings);
     const pos = placement.restorePosition(settings.miniMePosition, placementDisplays(), screen.getPrimaryDisplay().id, size);
     const w = new BrowserWindow({
       ...size,
@@ -384,10 +391,10 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       create();
     } else if (!enabled && alive()) {
       destroy();
-    } else if (alive() && settings.miniMeScale !== prev.miniMeScale) {
-      // Keep the feet where they are: the window grows or shrinks upwards.
+    } else if (alive() && !sameSize(windowSizeFor(settings), size)) {
+      // Size step or art style changed. Keep the feet where they are: the window grows or shrinks upwards.
       const oldHeight = size.height;
-      size = placement.windowSize(settings.miniMeScale);
+      size = windowSizeFor(settings);
       const [x, y] = win.getPosition();
       stopWalking();
       win.setBounds({ x, y: y + oldHeight - size.height, ...size });

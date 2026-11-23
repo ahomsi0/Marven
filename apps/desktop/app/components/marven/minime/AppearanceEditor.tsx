@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Dropdown } from "../Dropdown";
-import { CompanionSprite } from "@/app/companion/CompanionSprite";
+import { CompanionSprite, SpriteStill } from "@/app/companion/CompanionSprite";
 import type { AnimState } from "@/lib/companion/behaviour";
-import { COLOR_PRESETS, DEFAULT_LOOK, HAIR_STYLES, randomLook, type ColorKey, type Look } from "@/lib/companion/look";
+import { ART_STYLE_IDS } from "@/lib/companion/art";
+import {
+  COLOR_PRESETS,
+  DEFAULT_LOOK,
+  fitHairStyle,
+  hairStylesFor,
+  randomLook,
+  type ArtStyle,
+  type ColorKey,
+  type Look,
+} from "@/lib/companion/look";
 import { ColorField } from "./ColorField";
 import { Switch, useTr } from "./primitives";
 
-const POSES = ["idle", "walk", "talk", "happy", "sleep", "sit"] as const satisfies readonly AnimState[];
+const POSES = [
+  "idle", "walk", "talk", "happy", "look", "listen", "think", "confused", "stretch", "sit", "sleep", "dangle",
+] as const satisfies readonly AnimState[];
 type Pose = (typeof POSES)[number];
 
 /** Checkerboard that follows the theme. */
@@ -62,13 +74,77 @@ function Preview({ look }: { look: Look }) {
   );
 }
 
-function GroupTitle({ children }: { children: string }) {
+function GroupTitle({ children, id }: { children: string; id?: string }) {
   return (
-    <h4 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--m-text-faint)]">{children}</h4>
+    <h4 id={id} className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--m-text-faint)]">
+      {children}
+    </h4>
   );
 }
 
 const OUTFIT: ColorKey[] = ["shirt", "pants", "shoes"];
+
+/** The look drawn in another art style, with a hair style that style has. */
+const inStyle = (look: Look, artStyle: ArtStyle): Look => ({
+  ...look,
+  artStyle,
+  hairStyle: fitHairStyle(look.hairStyle, artStyle),
+});
+
+/** Three cards, one per art style, each showing the current look in that style. */
+function ArtStylePicker({ look, onPick }: { look: Look; onPick: (artStyle: ArtStyle) => void }) {
+  const { tr } = useTr();
+  const labelId = useId();
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  // Arrow keys move the selection, as in a native radio group.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const rtl = getComputedStyle(e.currentTarget).direction === "rtl" && (e.key === "ArrowLeft" || e.key === "ArrowRight");
+    const n = ART_STYLE_IDS.length;
+    const next = (ART_STYLE_IDS.indexOf(look.artStyle) + (rtl ? -step : step) + n) % n;
+    onPick(ART_STYLE_IDS[next]);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div className="space-y-2">
+      <GroupTitle id={labelId}>{tr("settings.miniMe.artStyle")}</GroupTitle>
+      <div role="radiogroup" aria-labelledby={labelId} onKeyDown={onKeyDown} className="grid grid-cols-3 gap-2">
+        {ART_STYLE_IDS.map((id, i) => {
+          const selected = look.artStyle === id;
+          return (
+            <button
+              key={id}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onPick(id)}
+              className={`flex min-w-0 flex-col items-center gap-1.5 rounded-lg border px-1 pb-2 pt-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--m-accent-soft)] ${
+                selected
+                  ? "border-[var(--m-accent)]/60 bg-[var(--m-accent)]/10"
+                  : "border-[var(--m-border)] hover:border-[var(--m-text-faint)]"
+              }`}
+            >
+              <span className="flex h-[96px] items-end justify-center">
+                <SpriteStill look={inStyle(look, id)} scale={3} />
+              </span>
+              <span
+                className={`truncate text-[12px] ${selected ? "text-[var(--m-accent)]" : "text-[var(--m-text-muted)]"}`}
+              >
+                {tr(`settings.miniMe.artStyles.${id}`)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function AppearanceEditor({ look, onChange }: { look: Look; onChange: (next: Look) => void }) {
   const { tr, exists } = useTr();
@@ -97,14 +173,16 @@ export function AppearanceEditor({ look, onChange }: { look: Look; onChange: (ne
       </div>
 
       <div className="min-w-0 space-y-5">
-        <div className="space-y-3">
+        <ArtStylePicker look={look} onPick={(artStyle) => onChange(inStyle(look, artStyle))} />
+
+        <div className="space-y-3 border-t border-[var(--m-border-subtle)] pt-4">
           <GroupTitle>{tr("settings.miniMe.groupHead")}</GroupTitle>
           <div className="flex items-start justify-between gap-3">
             <span id={`${glassesId}-hair`} className="w-20 shrink-0 pt-1 text-[12px] text-[var(--m-text-muted)]">
               {tr("settings.miniMe.hairStyle")}
             </span>
             <div role="group" aria-labelledby={`${glassesId}-hair`} className="flex flex-1 flex-wrap gap-1.5">
-              {HAIR_STYLES.map((style) => {
+              {hairStylesFor(look.artStyle).map((style) => {
                 const selected = look.hairStyle === style;
                 return (
                   <button
