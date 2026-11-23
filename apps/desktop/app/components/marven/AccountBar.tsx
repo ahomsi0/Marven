@@ -186,9 +186,9 @@ export function AccountBar({ userName, providerLabel, appVersion, onOpenSettings
           onClick={() => { setPanel(null); onOpenSettings(); }}
           title={t("common.settings")}
           aria-label={t("common.settings")}
-          className="ms-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--m-text)] transition-colors hover:bg-[var(--m-surface-2)]"
+          className="ms-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
         >
-          <GearIcon className="h-5 w-5" />
+          <GearIcon className="h-4 w-4" />
         </button>
       </div>
     </div>

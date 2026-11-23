@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
-import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloseIcon, CloudIcon, HexagonIcon } from "./Icons";
+import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
 import { MarvenLogo } from "./MarvenLogo";
 import { useTheme } from "@/lib/theme";
@@ -1947,11 +1947,25 @@ export function SettingsModal({
                         {tr(`settings.backends.${badge}`)}
                       </span>
                     </div>
-                    <div className="text-[10px] text-[var(--m-text-faint)]">
-                      {backendStatus[id] === "checking" && tr("settings.backends.checking")}
-                      {backendStatus[id] === "live"     && <span className="text-[var(--m-local)]">● {tr("settings.backends.running")}</span>}
-                      {backendStatus[id] === "down"     && <span className="inline-flex items-center gap-1 text-[#555]"><CloseIcon className="h-2.5 w-2.5" /> {tr("settings.backends.notRunning")}</span>}
-                    </div>
+                    {backendStatus[id] && (
+                      <div className="mt-0.5 inline-flex items-center gap-1.5 text-[10px] text-[var(--m-text-faint)]">
+                        <span
+                          aria-hidden
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            backendStatus[id] === "live"
+                              ? "bg-[var(--m-local)]"
+                              : backendStatus[id] === "checking"
+                                ? "animate-pulse bg-[var(--m-text-faint)]"
+                                : "border border-[var(--m-text-faint)]"
+                          }`}
+                        />
+                        {backendStatus[id] === "live"
+                          ? tr("settings.backends.running")
+                          : backendStatus[id] === "checking"
+                            ? tr("settings.backends.checking")
+                            : tr("settings.backends.notRunning")}
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"

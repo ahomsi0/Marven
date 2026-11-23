@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckIcon, CloseIcon, CubeIcon, CloudIcon } from "./Icons";
+import { CubeIcon, CloudIcon } from "./Icons";
 import { Trans } from "react-i18next";
 import { useT } from "@/lib/i18n";
 import { SearchEnginePicker } from "./SearchEnginePicker";
@@ -307,17 +307,23 @@ function BackendRow({
         <div className="font-medium text-[#d4d4d4]">{name}</div>
         <div className="text-[11px] text-[#666]">{hint}</div>
       </div>
-      {status === "checking" && <span className="text-[11px] text-[#777]">{t("setup.checking")}</span>}
-      {status === "live" && (
-        <span className="inline-flex items-center gap-1 text-[11px] text-[#98c379]">
-          <CheckIcon className="h-3 w-3" /> {t("setup.running")}
-        </span>
-      )}
-      {status === "down" && (
-        <span className="inline-flex items-center gap-1 text-[11px] text-[#666]">
-          <CloseIcon className="h-3 w-3" /> {t("setup.notRunning")}
-        </span>
-      )}
+      <span
+        className={`inline-flex shrink-0 items-center gap-1.5 text-[11px] ${
+          status === "live" ? "text-[var(--m-text-muted)]" : "text-[var(--m-text-faint)]"
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 rounded-full ${
+            status === "live"
+              ? "bg-[var(--m-local)]"
+              : status === "checking"
+                ? "animate-pulse bg-[var(--m-text-faint)]"
+                : "border border-[var(--m-text-faint)]"
+          }`}
+        />
+        {status === "live" ? t("setup.running") : status === "checking" ? t("setup.checking") : t("setup.notRunning")}
+      </span>
     </div>
   );
 }

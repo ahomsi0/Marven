@@ -178,9 +178,9 @@ const lightTheme = EditorView.theme(
     },
     ".cm-scroller": {
       fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-      fontSize: "12px",
-      lineHeight: "28px",
+        "'JetBrains Mono', 'SF Mono', SFMono-Regular, 'Fira Code', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+      fontSize: "13px",
+      lineHeight: "1.6",
     },
     ".cm-content": {
       caretColor: "#1f1f1f",
@@ -248,8 +248,8 @@ const lightHighlight = HighlightStyle.define([
 
 // Loaded AFTER the theme compartment so it overrides both oneDark and the
 // custom light theme rules. Three things this does:
-//   1. Suppress the bracket-matching highlight (chunky gray box on `>`/`}`)
-//   2. Suppress the active-line highlight (tinted strip across the cursor row)
+//   1. Tone the bracket-matching highlight down to a quiet tint
+//   2. Keep the active line to a faint band (only while focused) and light up its number
 //   3. Force the editor background to match Marven's app background — oneDark
 //      paints a blue-ish #282c34 by default that reads as a "highlight" next
 //      to the darker app chrome.
@@ -264,16 +264,30 @@ const disableBracketHighlight = EditorView.theme({
     backgroundColor: "var(--m-surface) !important",
     borderRight: "none !important",
   },
-  ".cm-matchingBracket, .cm-nonmatchingBracket": {
+  // Matching brackets: a quiet tint, not oneDark's chunky box.
+  "&.cm-focused .cm-matchingBracket, .cm-matchingBracket": {
+    backgroundColor: "rgba(128, 128, 128, 0.22) !important",
+    outline: "none !important",
+    color: "inherit !important",
+  },
+  ".cm-nonmatchingBracket": {
     backgroundColor: "transparent !important",
     outline: "none !important",
     color: "inherit !important",
   },
-  "&.cm-focused .cm-activeLine, .cm-activeLine": {
+  // Current line: a faint band, and its line number lit up.
+  "&.cm-focused .cm-activeLine": {
+    backgroundColor: "rgba(128, 128, 128, 0.07) !important",
+  },
+  ".cm-activeLine": {
     backgroundColor: "transparent !important",
   },
   "&.cm-focused .cm-activeLineGutter, .cm-activeLineGutter": {
     backgroundColor: "transparent !important",
+    color: "var(--m-text) !important",
+  },
+  ".cm-lineNumbers .cm-gutterElement": {
+    color: "var(--m-text-faint)",
   },
 });
 
@@ -283,23 +297,23 @@ const typographyTheme = EditorView.theme({
   },
   ".cm-scroller": {
     fontFamily:
-      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-    fontSize: "12px",
-    lineHeight: "28px",
+      "'JetBrains Mono', 'SF Mono', SFMono-Regular, 'Fira Code', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+    fontSize: "13px",
+    lineHeight: "1.6",
   },
   ".cm-content": {
-    padding: "12px 0",
+    padding: "8px 0",
   },
   ".cm-line": {
-    padding: "0 16px",
+    padding: "0 16px 0 12px",
   },
   ".cm-gutters": {
-    paddingRight: "4px",
-    minWidth: "40px",
+    paddingRight: "0",
+    minWidth: "48px",
   },
   ".cm-lineNumbers .cm-gutterElement": {
-    padding: "0 6px 0 8px",
-    fontSize: "11px",
+    padding: "0 8px 0 16px",
+    fontSize: "12px",
   },
   ".cm-tooltip": {
     fontSize: "11px",
@@ -389,7 +403,6 @@ export function CodeEditor({
       basicSetup,
       keymap.of([indentWithTab]),
       saveKeymapCompartment.current.of(saveBinding),
-      EditorView.lineWrapping,
       typographyTheme,
       themeCompartment.current.of(themeExt),
       disableBracketHighlight,

@@ -534,34 +534,35 @@ export function Sidebar({
             </button>
             <MarvenLogo size={22} />
             <span className="text-[15px] font-semibold text-[var(--m-text)]">Marven</span>
+          </div>
 
-            {/* Chats / agent sessions switcher */}
-            <div
-              role="group"
-              aria-label={t("sidebar.showConversations")}
-              className="ms-auto flex items-center gap-0.5 rounded-lg bg-[var(--m-surface-2)] p-0.5"
-            >
-              {([
-                { id: "chat", label: t("sidebar.chats"), Icon: ChatBubbleIcon },
-                { id: "agent", label: t("sidebar.agentSessions"), Icon: CodeIcon },
-              ] as const).map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setView(id)}
-                  aria-pressed={view === id}
-                  aria-label={label}
-                  title={label}
-                  className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${
-                    view === id
-                      ? "bg-[var(--m-surface-3)] text-[var(--m-text)] shadow-sm ring-1 ring-[var(--m-border)]"
-                      : "text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
+          {/* Chats / agent sessions switcher — underline tabs, full width */}
+          <div
+            role="tablist"
+            aria-label={t("sidebar.showConversations")}
+            className="flex shrink-0 border-b border-[var(--m-border-subtle)] px-2"
+          >
+            {([
+              { id: "chat", label: t("sidebar.chats"), full: t("sidebar.chats"), Icon: ChatBubbleIcon },
+              { id: "agent", label: t("sidebar.agentsTab"), full: t("sidebar.agentSessions"), Icon: CodeIcon },
+            ] as const).map(({ id, label, full, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                onClick={() => setView(id)}
+                aria-selected={view === id}
+                title={full}
+                className={`-mb-px flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-[12px] font-medium transition-colors ${
+                  view === id
+                    ? "border-[var(--m-accent)] text-[var(--m-text)]"
+                    : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
 
           {/* Primary actions — icon rows, no borders */}

@@ -203,8 +203,8 @@ const settingsEn = {
     models_one: "{{count}} model",
     models_other: "{{count}} models",
     checking: "Checking…",
-    running: "running",
-    notRunning: "not running",
+    running: "Running",
+    notRunning: "Not detected",
   },
   keys: {
     desktopOnly: "Key storage is only available in the packaged desktop app.",

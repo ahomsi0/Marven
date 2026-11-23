@@ -11,6 +11,7 @@ import { GlobalSearchPanel } from "./GlobalSearchPanel";
 import { GitPanel } from "./GitPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { WorkspaceLanding } from "./WorkspaceLanding";
+import { WorkspaceAccessButton } from "./WorkspaceAccessButton";
 import { DotsIcon, FolderIcon, GlobeIcon, SidebarIcon } from "./Icons";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { TerminalView } from "./TerminalView";
@@ -437,7 +438,15 @@ export function AgentWorkspace({
     return localStorage.getItem("marven-show-explorer") !== "false";
   });
   const [showOutline, setShowOutline] = useState(true);
-  const [showTerminal, setShowTerminal] = useState(true);
+  // The editor's bottom panel (terminal / problems) starts closed and remembers
+  // its last state; the status bar's Terminal button brings it back.
+  const [showTerminal, setShowTerminal] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("marven-editor-terminal") === "true";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("marven-editor-terminal", String(showTerminal)); } catch { /* ignore */ }
+  }, [showTerminal]);
   const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems">("terminal");
   // Agent-first layout: the conversation is the page; files/editor/terminal and
   // the diff live in a slide-in panel. `drawerOpen` is that panel, `drawerView`
@@ -446,26 +455,38 @@ export function AgentWorkspace({
     if (typeof window === "undefined") return true;
     return localStorage.getItem("marven-agent-drawer") === "true";
   });
-  const [drawerView, setDrawerView] = useState<"code" | "diff" | "terminal">("code");
+  const [drawerView, setDrawerView] = useState<"code" | "diff">("code");
   const showDiff = drawerView === "diff";
-  function openDrawer(view: "code" | "diff" | "terminal") {
+  // The workspace view is up — showing the editor or, in its place, Changes.
+  const codeMode = drawerOpen;
+  // How the Editor view shares the screen: "hybrid" docks the agent chat beside
+  // the editor; "full" gives the editor the whole workspace.
+  const [editorLayout, setEditorLayoutState] = useState<"hybrid" | "full">(() => {
+    if (typeof window === "undefined") return "hybrid";
+    return localStorage.getItem("marven-editor-layout") === "full" ? "full" : "hybrid";
+  });
+  function setEditorLayout(next: "hybrid" | "full") {
+    setEditorLayoutState(next);
+    try { localStorage.setItem("marven-editor-layout", next); } catch { /* ignore */ }
+  }
+  function openDrawer(view: "code" | "diff") {
     setDrawerOpen(true);
     setDrawerView(view);
   }
-  // Terminal on its own — the same shell session as the editor's terminal.
+  // Terminal — the editor's bottom panel, like other editors. Opening it from
+  // the chat page brings up the workspace with the terminal showing; it never
+  // replaces the editor.
+  const terminalPanelUp = drawerOpen && showTerminal && editorBottomTab === "terminal";
   function toggleTerminalView() {
-    if (drawerOpen && drawerView === "terminal") setDrawerOpen(false);
-    else openDrawer("terminal");
+    if (terminalPanelUp) {
+      setShowTerminal(false);
+      return;
+    }
+    if (!drawerOpen) openDrawer("code");
+    setEditorBottomTab("terminal");
+    setShowTerminal(true);
   }
-  // ⌃` — with the Code view up, show/hide the editor's bottom panel (it is
-  // removed entirely when closed, so this is how it comes back); otherwise
-  // toggle the standalone Terminal view.
-  function toggleTerminalShortcut() {
-    if (drawerOpen && drawerView === "code") {
-      setEditorBottomTab("terminal");
-      setShowTerminal((v) => !(v && editorBottomTab === "terminal"));
-    } else toggleTerminalView();
-  }
+  const toggleTerminalShortcut = toggleTerminalView;
   const [quickOpen, setQuickOpen] = useState(false);
   // Find / Replace bar state — lives here so ⌘F / ⌘⌥F shortcuts registered via
   // useEditorShortcuts can drive it. EditorPanel reads the props and renders
@@ -711,29 +732,28 @@ export function AgentWorkspace({
     document.body.style.userSelect = "none";
   }
 
-  // ── Right panel drag ──────────────────────────────────────────────────────
-  const [rightWidth, setRightWidth] = useState(() => {
-    if (typeof window === "undefined") return 720;
-    return Math.min(1100, Math.max(480, Number(localStorage.getItem("marven-drawer-width") ?? 720) || 720));
+  // ── Chat column drag (Hybrid editor layout) ───────────────────────────────
+  const [chatWidth, setChatWidth] = useState(() => {
+    if (typeof window === "undefined") return 400;
+    return Math.min(640, Math.max(320, Number(localStorage.getItem("marven-agent-chat-width") ?? 400) || 400));
   });
-  const isRightDragging = useRef(false);
-  const rightDragStartX = useRef(0);
-  const rightDragStartWidth = useRef(0);
+  const isChatDragging = useRef(false);
+  const chatDragStartX = useRef(0);
+  const chatDragStartWidth = useRef(0);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
-      if (!isRightDragging.current) return;
+      if (!isChatDragging.current) return;
       const rtl = document.documentElement.dir === "rtl";
-      const delta = rtl ? e.clientX - rightDragStartX.current : rightDragStartX.current - e.clientX;
-      const next = Math.min(1100, Math.max(480, rightDragStartWidth.current + delta));
-      setRightWidth(next);
+      const delta = rtl ? e.clientX - chatDragStartX.current : chatDragStartX.current - e.clientX;
+      setChatWidth(Math.min(640, Math.max(320, chatDragStartWidth.current + delta)));
     }
     function onMouseUp() {
-      if (!isRightDragging.current) return;
-      isRightDragging.current = false;
+      if (!isChatDragging.current) return;
+      isChatDragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      localStorage.setItem("marven-drawer-width", String(rightWidth));
+      localStorage.setItem("marven-agent-chat-width", String(chatWidth));
     }
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -741,29 +761,25 @@ export function AgentWorkspace({
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [rightWidth]);
+  }, [chatWidth]);
 
-  function startRightDrag(e: React.MouseEvent) {
+  function startChatDrag(e: React.MouseEvent) {
     e.preventDefault();
-    isRightDragging.current = true;
-    rightDragStartX.current = e.clientX;
-    rightDragStartWidth.current = rightWidth;
+    isChatDragging.current = true;
+    chatDragStartX.current = e.clientX;
+    chatDragStartWidth.current = chatWidth;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   }
-
-  // The panel never takes more than half of the space beside the app sidebar,
-  // so the conversation keeps at least an equal share.
-  const drawerWidth =
-    typeof window === "undefined"
-      ? rightWidth
-      : Math.min(rightWidth, Math.round((window.innerWidth - (sidebarOpen ? 260 : 0)) / 2));
 
   // Open the workspace panel when a file gets opened — by you or by the agent —
   // but not for the file restored on first render.
   const lastSelectedRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (lastSelectedRef.current !== undefined && selectedFilePath && selectedFilePath !== lastSelectedRef.current) {
+      // Opening the editor on its own (e.g. the agent opened a file) shouldn't
+      // hide the conversation, so it opens in Hybrid for this time.
+      if (!codeMode && editorLayout === "full") setEditorLayoutState("hybrid");
       openDrawer("code");
     }
     lastSelectedRef.current = selectedFilePath ?? null;
@@ -926,6 +942,201 @@ export function AgentWorkspace({
     );
   }
 
+  const agentPanel = (
+    <AgentPanel
+          messages={messages}
+          input={input}
+          isRunning={isRunning}
+          error={error}
+          provider={provider as import("@/types").AIProvider}
+          selectedModel={model}
+          tokenUsage={tokenUsage}
+          onModelSelect={onModelSelect}
+          onInputChange={onInputChange}
+          onSend={onSend}
+          onStop={onStop}
+          onSlashCommand={onSlashCommand}
+          onApproveToolCall={onApproveToolCall}
+          attachments={attachments}
+          onAttachmentsChange={onAttachmentsChange}
+          isVoiceSupported={isVoiceSupported}
+          voiceState={voiceState}
+          onVoiceClick={onAgentVoiceClick}
+          planMode={planMode}
+          onPlanModeChange={onPlanModeChange}
+          liteAgentMode={liteAgentMode}
+          workspaceFiles={files}
+          onEditUserMessage={onEditAgentUserMessage}
+                />
+  );
+
+  // Files + editor (+ its terminal/problems panel) — the Editor view.
+  const codeView = (
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Left — File Explorer OR Global Search (mutually exclusive in
+            the explorer column). Search panel takes over when ⌘⇧F is
+            active; closing it (Esc / ✕) restores the explorer. */}
+        {showExplorer && (
+          <>
+            <div
+              className="flex min-h-0 flex-col overflow-hidden border-r border-[var(--m-border)]"
+              style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
+            >
+              {showWorkflowPanel && workspaceRoot ? (
+                <WorkflowPanel
+                  workspaceRoot={workspaceRoot}
+                  files={files}
+                  messages={messages}
+                  isRunning={isRunning}
+                  planMode={planMode}
+                  onPlanModeChange={onPlanModeChange}
+                  onRunAgentPrompt={onRunAgentPrompt}
+                  onSelectFile={onSelectFile}
+                  onClose={() => setShowWorkflowPanel(false)}
+                />
+              ) : showGitPanel && workspaceRoot ? (
+                <GitPanel
+                  workspaceRoot={workspaceRoot}
+                  provider={provider as AIProvider}
+                  model={model}
+                  onClose={() => setShowGitPanel(false)}
+                />
+              ) : globalSearchOpen ? (
+                <GlobalSearchPanel
+                  workspaceRoot={workspaceRoot}
+                  onClose={() => setGlobalSearchOpen(false)}
+                  onSelectMatch={handleSelectMatch}
+                />
+              ) : (
+                <>
+                  {/* The tree shrinks to make room for the Outline below it */}
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <FileExplorer
+                      files={files}
+                      workspaceRoot={workspaceRoot}
+                      selectedFilePath={selectedFilePath}
+                      onSelectFile={onSelectFile}
+                      onRefreshFiles={onRefreshFiles}
+                      onOpenFolder={onOpenFolder}
+                    />
+                  </div>
+                  {/* Symbol Outline — shown only when a code file is active */}
+                  {selectedFilePath && fileContent && (
+                    <div className="border-t border-[var(--m-border-subtle)] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowOutline((v) => !v)}
+                        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+                      >
+                        <svg
+                          className={`h-2.5 w-2.5 transition-transform ${showOutline ? "" : "-rotate-90"}`}
+                          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                        </svg>
+                        Outline
+                      </button>
+                      {showOutline && (
+                        <SymbolOutline
+                          content={fileContent}
+                          filePath={selectedFilePath}
+                          onJumpToLine={(line) => {
+                            if (onJumpToLine) {
+                              onJumpToLine(selectedFilePath, line);
+                            } else {
+                              // Fallback: use the pendingJump mechanism directly
+                              jumpTokenRef.current += 1;
+                              setPendingJump({ path: selectedFilePath, line, col: 1, token: jumpTokenRef.current });
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Drag handle 1 — between Explorer and Editor */}
+            <div
+              onMouseDown={startExplorerDrag}
+              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
+              title="Drag to resize"
+            >
+              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Middle — Editor (always shown, flexes to fill) */}
+        <div className="min-h-0 min-w-0 flex-1">
+          <EditorPanel
+            workspaceRoot={workspaceRoot}
+            selectedFilePath={selectedFilePath}
+            fileContent={fileContent}
+            fileError={fileError ?? null}
+            isFileLoading={isFileLoading}
+            isFileDirty={isFileDirty}
+            terminalOutput={liveTerminalOutput ?? terminalOutput}
+            showTerminal={showTerminal}
+            onToggleTerminal={() => {
+              setEditorBottomTab("terminal");
+              setShowTerminal((v) => !v);
+            }}
+            bottomTab={editorBottomTab}
+            onBottomTabChange={setEditorBottomTab}
+            mainContent={
+              showDiff ? <DiffPanel checkpoints={checkpoints} onClose={() => setDrawerView("code")} /> : undefined
+            }
+            problems={lspProblems}
+            onProblemSelect={handleProblemSelect}
+            onEditorScroll={onEditorScroll}
+            onFileContentChange={onFileContentChange}
+            onSaveFile={onSaveFile}
+            onCloseFile={onCloseFile}
+            openTabs={openTabs}
+            activeTabIndex={activeTabIndex}
+            fileBuffers={fileBuffers}
+            onApplyWorkspaceEdit={onApplyWorkspaceEdit}
+            inlineCompletions={inlineCompletions}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
+            shortcuts={shortcuts}
+            promptTemplates={promptTemplates}
+            mcpServers={mcpServers}
+            onSaveShortcuts={onSaveShortcuts}
+            onSaveTemplates={onSaveTemplates}
+            onSaveMCPServers={onSaveMCPServers}
+            voiceDiagnostics={{
+              isVoiceSupported,
+              voiceState,
+              wakeEnabled,
+              speechEnabled,
+              sttProvider,
+              ttsProvider,
+              isSpeakingNow,
+              voiceError,
+              lastHeard,
+            }}
+            onToggleChat={editorLayout === "full" ? () => setEditorLayout("hybrid") : undefined}
+            onCommandPalette={onOpenCommandPalette}
+            findOpen={findOpen}
+            replaceVisible={replaceVisible}
+            onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
+            onToggleReplace={() => setReplaceVisible((v) => !v)}
+            findActionsRef={findActionsRef}
+            editorActionsRef={editorActionsRef}
+            provider={provider as import("@/types").AIProvider}
+            model={model}
+            onOpenPreview={onOpenPreviewTab}
+          />
+        </div>
+
+                </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--m-bg)]">
       {/* Header — the single top bar for the agent workspace */}
@@ -955,7 +1166,8 @@ export function AgentWorkspace({
 
         <div className="flex-1" />
 
-        {/* Workspace panel — files, changes, terminal */}
+        {/* Workspace panel — editor, changes, terminal — as underline tabs */}
+        <div role="tablist" className="flex translate-y-px items-stretch self-stretch">
         <button
           type="button"
           aria-pressed={drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen}
@@ -970,16 +1182,19 @@ export function AgentWorkspace({
               openDrawer("code");
             }
           }}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          className={`flex h-full items-center gap-1.5 border-b-2 px-2.5 text-[12px] font-medium transition-colors ${drawerOpen && drawerView === "code" && showExplorer && !showGitPanel && !showWorkflowPanel && !globalSearchOpen ? "border-[var(--m-accent)] text-[var(--m-text)]" : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"}`}
         >
-          <FolderIcon className="h-3.5 w-3.5" />
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" />
+            <path d="M14 3v5h5M10 12.5 8 14.5l2 2M14 12.5l2 2-2 2" />
+          </svg>
           {t("agent.files")}
         </button>
         <button
           type="button"
           aria-pressed={drawerOpen && showDiff}
-          onClick={() => (drawerOpen && showDiff ? setDrawerOpen(false) : openDrawer("diff"))}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && showDiff ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          onClick={() => openDrawer(drawerOpen && showDiff ? "code" : "diff")}
+          className={`flex h-full items-center gap-1.5 border-b-2 px-2.5 text-[12px] font-medium transition-colors ${drawerOpen && showDiff ? "border-[var(--m-accent)] text-[var(--m-text)]" : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"}`}
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
             <path d="M12 3v12M6 9h12M6 21h12" />
@@ -991,28 +1206,44 @@ export function AgentWorkspace({
         </button>
         <button
           type="button"
-          aria-pressed={drawerOpen && drawerView === "terminal"}
+          aria-pressed={terminalPanelUp}
           onClick={toggleTerminalView}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition-colors ${drawerOpen && drawerView === "terminal" ? "bg-[var(--m-surface-3)] text-[var(--m-text)]" : "text-[var(--m-text-muted)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"}`}
+          className={`flex h-full items-center gap-1.5 border-b-2 px-2.5 text-[12px] font-medium transition-colors ${terminalPanelUp ? "border-[var(--m-accent)] text-[var(--m-text)]" : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"}`}
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
             <path d="m5 8 4 4-4 4M12 16h7" />
           </svg>
           {t("agent.terminal")}
         </button>
+        </div>
+
+        {/* Editor layout toggle — chat docked beside the editor (Hybrid) or editor only (Full) */}
+        {codeMode && (
+          <button
+            type="button"
+            onClick={() => setEditorLayout(editorLayout === "hybrid" ? "full" : "hybrid")}
+            aria-pressed={editorLayout === "hybrid"}
+            title={editorLayout === "hybrid" ? t("agent.layoutFull") : t("agent.layoutHybrid")}
+            aria-label={editorLayout === "hybrid" ? t("agent.layoutFull") : t("agent.layoutHybrid")}
+            className={`ms-1 flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[var(--m-surface-2)] ${
+              editorLayout === "hybrid" ? "text-[var(--m-text)]" : "text-[var(--m-text-faint)] hover:text-[var(--m-text)]"
+            }`}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+              <path d="M4 5h16v14H4zM15 5v14" />
+              {editorLayout === "hybrid" && <path d="M15 5h5v14h-5z" fill="currentColor" fillOpacity={0.35} stroke="none" />}
+            </svg>
+          </button>
+        )}
 
         <div className="mx-1 h-5 w-px bg-[var(--m-border)]" />
 
-        {/* Only shown when it needs attention; trusting / un-trusting lives in ⋯ */}
-        {workspaceRoot && !workspaceTrusted && (
-          <button
-            type="button"
-            onClick={() => onWorkspaceTrustChange?.(true)}
-            className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[12px] text-amber-300 transition-colors hover:bg-amber-500/15"
-            title={t("agent.readOnlyHint")}
-          >
-            {t("agent.readOnly")}
-          </button>
+        {/* Folder access — always visible; click explains it and switches it */}
+        {workspaceRoot && (
+          <WorkspaceAccessButton
+            trusted={!!workspaceTrusted}
+            onChange={(next) => onWorkspaceTrustChange?.(next)}
+          />
         )}
 
         {memoryLineCount > 0 && (
@@ -1293,221 +1524,32 @@ export function AgentWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Conversation — the page */}
-        <div className="min-h-0 min-w-0 flex-1">
-          <AgentPanel
-          messages={messages}
-          input={input}
-          isRunning={isRunning}
-          error={error}
-          provider={provider as import("@/types").AIProvider}
-          selectedModel={model}
-          tokenUsage={tokenUsage}
-          onModelSelect={onModelSelect}
-          onInputChange={onInputChange}
-          onSend={onSend}
-          onStop={onStop}
-          onSlashCommand={onSlashCommand}
-          onApproveToolCall={onApproveToolCall}
-          attachments={attachments}
-          onAttachmentsChange={onAttachmentsChange}
-          isVoiceSupported={isVoiceSupported}
-          voiceState={voiceState}
-          onVoiceClick={onAgentVoiceClick}
-          planMode={planMode}
-          onPlanModeChange={onPlanModeChange}
-          liteAgentMode={liteAgentMode}
-          workspaceFiles={files}
-          onEditUserMessage={onEditAgentUserMessage}
-                />
-                  </div>
-
-        {/* Workspace panel — slides in from the end side */}
-        {drawerOpen && (
+        {codeMode ? (
           <>
-            <div
-              onMouseDown={startRightDrag}
-              className="group relative z-10 -ms-px w-1 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 focus-visible:after:bg-[var(--m-accent)] active:after:bg-[var(--m-accent)]"
-              title={t("agent.resizePanel")}
-            />
-            <aside
-              className="flex min-h-0 flex-col border-s border-[var(--m-border)] bg-[var(--m-bg)]"
-              style={{ width: drawerWidth, minWidth: drawerWidth, flexShrink: 0 }}
-            >
-              {/* No tab strip here: the Files / Changes / Terminal buttons in the
-                  top bar switch this panel's view, and clicking the active one closes it. */}
-              {drawerView === "diff" ? (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <DiffPanel checkpoints={checkpoints} onClose={() => setDrawerView("code")} />
-                </div>
-              ) : drawerView === "terminal" ? (
-                <div className="min-h-0 flex-1 overflow-hidden px-2 py-1.5">
-                  {workspaceRoot ? (
-                    <TerminalView ptyId={`pty:${workspaceRoot}`} cwd={workspaceRoot} theme={theme} />
-                  ) : (
-                    <p className="px-2 py-2 font-mono text-[11px] text-[var(--m-text-faint)]">{t("agent.noFolder")}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left — File Explorer OR Global Search (mutually exclusive in
-            the explorer column). Search panel takes over when ⌘⇧F is
-            active; closing it (Esc / ✕) restores the explorer. */}
-        {showExplorer && (
-          <>
-            <div
-              className="flex flex-col border-r border-[var(--m-border)]"
-              style={{ width: explorerWidth, minWidth: explorerWidth, flexShrink: 0 }}
-            >
-              {showWorkflowPanel && workspaceRoot ? (
-                <WorkflowPanel
-                  workspaceRoot={workspaceRoot}
-                  files={files}
-                  messages={messages}
-                  isRunning={isRunning}
-                  planMode={planMode}
-                  onPlanModeChange={onPlanModeChange}
-                  onRunAgentPrompt={onRunAgentPrompt}
-                  onSelectFile={onSelectFile}
-                  onClose={() => setShowWorkflowPanel(false)}
+            {/* Editor — takes the main space in both layouts */}
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">{codeView}</div>
+            {editorLayout === "hybrid" && (
+              <>
+                <div
+                  onMouseDown={startChatDrag}
+                  className="group relative z-10 -ms-px w-1 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors hover:after:bg-[var(--m-accent)]/70 active:after:bg-[var(--m-accent)]"
+                  title={t("agent.resizePanel")}
                 />
-              ) : showGitPanel && workspaceRoot ? (
-                <GitPanel
-                  workspaceRoot={workspaceRoot}
-                  provider={provider as AIProvider}
-                  model={model}
-                  onClose={() => setShowGitPanel(false)}
-                />
-              ) : globalSearchOpen ? (
-                <GlobalSearchPanel
-                  workspaceRoot={workspaceRoot}
-                  onClose={() => setGlobalSearchOpen(false)}
-                  onSelectMatch={handleSelectMatch}
-                />
-              ) : (
-                <>
-                  <FileExplorer
-                    files={files}
-                    workspaceRoot={workspaceRoot}
-                    selectedFilePath={selectedFilePath}
-                    onSelectFile={onSelectFile}
-                    onRefreshFiles={onRefreshFiles}
-                    onOpenFolder={onOpenFolder}
-                  />
-                  {/* Symbol Outline — shown only when a code file is active */}
-                  {selectedFilePath && fileContent && (
-                    <div className="border-t border-[var(--m-border-subtle)] shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowOutline((v) => !v)}
-                        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
-                      >
-                        <svg
-                          className={`h-2.5 w-2.5 transition-transform ${showOutline ? "" : "-rotate-90"}`}
-                          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-                        </svg>
-                        Outline
-                      </button>
-                      {showOutline && (
-                        <SymbolOutline
-                          content={fileContent}
-                          filePath={selectedFilePath}
-                          onJumpToLine={(line) => {
-                            if (onJumpToLine) {
-                              onJumpToLine(selectedFilePath, line);
-                            } else {
-                              // Fallback: use the pendingJump mechanism directly
-                              jumpTokenRef.current += 1;
-                              setPendingJump({ path: selectedFilePath, line, col: 1, token: jumpTokenRef.current });
-                            }
-                          }}
-                        />
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            {/* Drag handle 1 — between Explorer and Editor */}
-            <div
-              onMouseDown={startExplorerDrag}
-              className="group relative z-10 -ml-px w-1 cursor-col-resize bg-transparent hover:bg-[#d19a66]/40 active:bg-[#d19a66]/60 transition-colors"
-              title="Drag to resize"
-            >
-              <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="h-8 w-0.5 rounded-full bg-[#d19a66]/60" />
-              </div>
-            </div>
+                {/* Agent chat — docked beside the editor */}
+                <aside
+                  className="flex min-h-0 flex-col border-s border-[var(--m-border)]"
+                  style={{ width: chatWidth, minWidth: chatWidth, flexShrink: 0 }}
+                >
+                  {agentPanel}
+                </aside>
+              </>
+            )}
           </>
-        )}
+        ) : (
+          <>
+            {/* Conversation — the page */}
+            <div className="min-h-0 min-w-0 flex-1">{agentPanel}</div>
 
-        {/* Middle — Editor (always shown, flexes to fill) */}
-        <div className="min-h-0 min-w-0 flex-1">
-          <EditorPanel
-            workspaceRoot={workspaceRoot}
-            selectedFilePath={selectedFilePath}
-            fileContent={fileContent}
-            fileError={fileError ?? null}
-            isFileLoading={isFileLoading}
-            isFileDirty={isFileDirty}
-            terminalOutput={liveTerminalOutput ?? terminalOutput}
-            showTerminal={showTerminal}
-            onToggleTerminal={() => {
-              setEditorBottomTab("terminal");
-              setShowTerminal((v) => !v);
-            }}
-            bottomTab={editorBottomTab}
-            onBottomTabChange={setEditorBottomTab}
-            problems={lspProblems}
-            onProblemSelect={handleProblemSelect}
-            onEditorScroll={onEditorScroll}
-            onFileContentChange={onFileContentChange}
-            onSaveFile={onSaveFile}
-            onCloseFile={onCloseFile}
-            openTabs={openTabs}
-            activeTabIndex={activeTabIndex}
-            fileBuffers={fileBuffers}
-            onApplyWorkspaceEdit={onApplyWorkspaceEdit}
-            inlineCompletions={inlineCompletions}
-            onSelectTab={onSelectTab}
-            onCloseTab={onCloseTab}
-            onReorderTabs={onReorderTabs}
-            shortcuts={shortcuts}
-            promptTemplates={promptTemplates}
-            mcpServers={mcpServers}
-            onSaveShortcuts={onSaveShortcuts}
-            onSaveTemplates={onSaveTemplates}
-            onSaveMCPServers={onSaveMCPServers}
-            voiceDiagnostics={{
-              isVoiceSupported,
-              voiceState,
-              wakeEnabled,
-              speechEnabled,
-              sttProvider,
-              ttsProvider,
-              isSpeakingNow,
-              voiceError,
-              lastHeard,
-            }}
-            onToggleChat={() => setDrawerOpen(false)}
-            onCommandPalette={onOpenCommandPalette}
-            findOpen={findOpen}
-            replaceVisible={replaceVisible}
-            onCloseFind={() => { setFindOpen(false); setReplaceVisible(false); }}
-            onToggleReplace={() => setReplaceVisible((v) => !v)}
-            findActionsRef={findActionsRef}
-            editorActionsRef={editorActionsRef}
-            provider={provider as import("@/types").AIProvider}
-            model={model}
-            onOpenPreview={onOpenPreviewTab}
-          />
-        </div>
-
-                </div>
-              )}
-            </aside>
           </>
         )}
       </div>

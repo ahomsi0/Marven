@@ -201,41 +201,64 @@ export function Message({
 
   const actionBarVisibility = menu ? "opacity-100" : "opacity-0 group-hover:opacity-100";
 
-  // "⋯" menu: Branch from here
+  // "⋯" menu: Retry with another model, Branch from here
   function moreMenu() {
-    if (!onBranch) return null;
+    const canRetryWith = !isUser && !!onRetry && !!onRetryWith;
+    if (!onBranch && !canRetryWith) return null;
+    const itemClass =
+      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-[12px] text-[var(--m-text)] hover:bg-[var(--m-surface-3)] disabled:cursor-not-allowed disabled:opacity-40";
     return (
       <div className="relative">
-        {actionBtn(t("versions.moreActions"), () => setMenu((m) => (m === "more" ? null : "more")), <DotsIcon />)}
+        {actionBtn(t("versions.moreActions"), () => setMenu((m) => (m ? null : "more")), <DotsIcon />)}
         {menu === "more" && (
           <div
             role="menu"
-            className={`absolute top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1 shadow-2xl ${isUser ? "end-0" : "start-0"}`}
+            className={`absolute top-full z-50 mt-1 min-w-[11rem] whitespace-nowrap rounded-lg border border-[var(--m-border)] bg-[var(--m-surface-2)] p-1 shadow-2xl ${isUser ? "end-0" : "start-0"}`}
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            {canRetryWith && (
+              <button type="button" role="menuitem" disabled={disabled} onClick={() => setMenu("retry")} className={itemClass}>
+                <span className="shrink-0 text-[var(--m-text-muted)]"><RetryIcon /></span>
+                {t("versions.retryOptions")}
+              </button>
+            )}
+            {onBranch && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onBranch();
+                }}
+                className={itemClass}
+              >
+                <svg className="h-3.5 w-3.5 shrink-0 text-[var(--m-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                  <circle cx="6" cy="5" r="2" />
+                  <circle cx="6" cy="19" r="2" />
+                  <circle cx="18" cy="7" r="2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M18 9c0 5-6 4-11.5 8.5" />
+                </svg>
+                {t("versions.branch")}
+              </button>
+            )}
+          </div>
+        )}
+        {menu === "retry" && onRetryWith && (
+          <div className="absolute start-0 top-full z-50 mt-1">
+            <RetryModelMenu
+              currentProvider={currentProvider}
+              currentModel={currentModel}
+              onPick={(p, m) => {
                 setMenu(null);
-                onBranch();
+                onRetryWith(p, m);
               }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-[12px] text-[var(--m-text)] hover:bg-[var(--m-surface-3)]"
-            >
-              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--m-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                <circle cx="6" cy="5" r="2" />
-                <circle cx="6" cy="19" r="2" />
-                <circle cx="18" cy="7" r="2" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 7v10M18 9c0 5-6 4-11.5 8.5" />
-              </svg>
-              {t("versions.branch")}
-            </button>
+            />
           </div>
         )}
       </div>
     );
   }
 
-  // Shared action button style
+  // Shared action button style — quiet icon buttons, no box until hovered
   function actionBtn(title: string, onClick: () => void, children: ReactNode) {
     return (
       <button
@@ -244,7 +267,7 @@ export function Message({
         disabled={disabled}
         aria-label={title}
         title={title}
-        className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text-muted)] shadow-sm transition-all duration-150 hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--m-text-faint)] transition-colors duration-150 hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-30"
       >
         {children}
       </button>
@@ -330,7 +353,7 @@ export function Message({
                 )}
               </div>
               {/* Action bar — left of bubble, visible on hover */}
-              <div ref={actionBarRef} className={`absolute end-full top-1 me-1.5 z-10 flex gap-1 transition-opacity duration-150 ${actionBarVisibility}`}>
+              <div ref={actionBarRef} className={`absolute end-full top-1 me-1 z-10 flex gap-0.5 transition-opacity duration-150 ${actionBarVisibility}`}>
                 {actionBtn(t("versions.edit"), () => { setEditValue(message.content); setIsEditing(true); }, <PencilIcon />)}
                 {actionBtn(copied ? t("common.copied") : t("common.copy"), handleCopy, <CopyIcon />)}
                 {moreMenu()}
@@ -349,45 +372,6 @@ export function Message({
         </div>
       ) : (
         <div className="relative max-w-[100%]">
-          {/* Action bar — right of bubble, visible on hover */}
-          <div ref={actionBarRef} className={`absolute start-full top-1 ms-1.5 z-10 flex gap-1 transition-opacity duration-150 ${actionBarVisibility}`}>
-            {onRetry && (
-              <div className="relative flex">
-                {actionBtn(t("versions.retry"), onRetry, <RetryIcon />)}
-                {onRetryWith && (
-                  <button
-                    type="button"
-                    onClick={() => setMenu((m) => (m === "retry" ? null : "retry"))}
-                    disabled={disabled}
-                    aria-haspopup="menu"
-                    aria-expanded={menu === "retry"}
-                    aria-label={t("versions.retryOptions")}
-                    title={t("versions.retryWith")}
-                    className="-ms-px flex h-6 w-4 items-center justify-center rounded-md border border-[var(--m-border-subtle)] bg-[var(--m-surface)] text-[var(--m-text-muted)] shadow-sm transition-all duration-150 hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
-                )}
-                {menu === "retry" && onRetryWith && (
-                  <div className="absolute start-0 top-full z-50 mt-1">
-                    <RetryModelMenu
-                      currentProvider={currentProvider}
-                      currentModel={currentModel}
-                      onPick={(p, m) => {
-                        setMenu(null);
-                        onRetryWith(p, m);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-            {actionBtn(copied ? t("common.copied") : t("common.copy"), handleCopy, <CopyIcon />)}
-            {moreMenu()}
-          </div>
-
           <div className="rounded-xl px-1 py-1">
             <div dir="auto" className="text-[13px] text-[var(--m-text)] leading-6">
               {message.isStreaming && !message.content ? (
@@ -433,10 +417,10 @@ export function Message({
             </div>
           </div>
 
-          {(version || (message.model && !message.isStreaming)) && (
-            <div className="flex items-center gap-2 px-1">
+          {!message.isStreaming && (
+            <div className="flex min-h-6 items-center gap-2 px-1">
               {version && <VersionSwitcher version={version} disabled={disabled} />}
-              {message.model && !message.isStreaming && (
+              {message.model && (
                 <span
                   dir="ltr"
                   title={t("versions.repliedBy", {
@@ -448,13 +432,18 @@ export function Message({
                   {shortModelName(message.model)}
                 </span>
               )}
+              {/* Actions — revealed on hover, in the footer instead of floating beside the text */}
+              <div
+                ref={actionBarRef}
+                className={`-ms-1 flex items-center gap-0.5 transition-opacity duration-150 ${actionBarVisibility}`}
+              >
+                {onRetry && actionBtn(t("versions.retry"), onRetry, <RetryIcon />)}
+                {actionBtn(copied ? t("common.copied") : t("common.copy"), handleCopy, <CopyIcon />)}
+                {moreMenu()}
+                <span className="ms-1 whitespace-nowrap text-[10px] text-[var(--m-text-faint)]">{timeLabel}</span>
+              </div>
             </div>
           )}
-
-          {/* Timestamp shown on hover */}
-          <span className="pointer-events-none absolute start-1 top-full mt-0.5 whitespace-nowrap text-[10px] text-[var(--m-text-faint)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            {timeLabel}
-          </span>
         </div>
       )}
     </div>

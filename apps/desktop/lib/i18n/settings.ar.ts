@@ -208,7 +208,7 @@ const settingsAr = {
     models_other: "{{count}} نموذج",
     checking: "جارٍ الفحص…",
     running: "يعمل",
-    notRunning: "لا يعمل",
+    notRunning: "غير مكتشف",
   },
   keys: {
     desktopOnly: "تخزين المفاتيح متاح فقط في تطبيق سطح المكتب المثبّت.",

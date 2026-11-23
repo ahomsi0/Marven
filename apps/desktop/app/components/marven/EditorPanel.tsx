@@ -1,8 +1,7 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState, useMemo, type MutableRefObject } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo, type MutableRefObject, type ReactNode } from "react";
 import type { EditorTab, CustomShortcut, MCPServer, PromptTemplate, AIProvider, EditorProblem } from "@/types";
-import { MarvenLogo } from "./MarvenLogo";
 import { SettingsModal } from "./SettingsModal";
 import { InlineEditPrompt } from "./InlineEditPrompt";
 import { CodeEditor, type CodeEditorActions } from "./CodeEditor";
@@ -11,6 +10,7 @@ import { ImagePreview } from "./ImagePreview";
 import { PdfPreview } from "./PdfPreview";
 import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
+import { workspacePreviewUrl } from "@/lib/previewUrl";
 import { RestClientPanel } from "./RestClientPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
 import type { VoiceState } from "@/hooks/useVoice";
@@ -62,6 +62,9 @@ interface EditorPanelProps {
   };
   // Empty state action props
   onToggleChat?: () => void;
+  /** Replaces the tabs + editor area (e.g. the Changes diff) while keeping the
+   *  bottom terminal panel and status bar in place. */
+  mainContent?: ReactNode;
   onCommandPalette?: () => void;
   // Find / Replace bar — state lifted to AgentWorkspace so ⌘F shortcuts can
   // drive it. The ref lets the parent invoke navigation/focus.
@@ -106,10 +109,14 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
     let resolved = target.trim();
     if (resolved.startsWith("file://")) {
       // Convert file:// → HTTP serve endpoint so the iframe can load it
-      const filePath = resolved.replace(/^file:\/\//, "");
-      resolved = `/api/workspace/serve?path=${encodeURIComponent(filePath)}${
-        workspaceRoot ? `&root=${encodeURIComponent(workspaceRoot)}` : ""
-      }`;
+      const filePath = decodeURIComponent(resolved.replace(/^file:\/\//, ""));
+      // Inside the workspace: the path-shaped preview route, so the page's
+      // relative links (CSS, JS, images) resolve too.
+      resolved = workspaceRoot && filePath.startsWith(`${workspaceRoot}/`)
+        ? workspacePreviewUrl(workspaceRoot, filePath.slice(workspaceRoot.length + 1))
+        : `/api/workspace/serve?path=${encodeURIComponent(filePath)}${
+            workspaceRoot ? `&root=${encodeURIComponent(workspaceRoot)}` : ""
+          }`;
     } else if (!resolved.startsWith("http://") && !resolved.startsWith("https://") && !resolved.startsWith("/")) {
       resolved = `https://${resolved}`;
     }
@@ -179,33 +186,33 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
 
 // ── Tab type icon ──────────────────────────────────────────────────────────────
 
+// File-type tint for the tab icon — a plain document glyph, coloured by language.
+const TAB_ICON_COLORS: Record<string, string> = {
+  ts: "#3b82f6", tsx: "#3b82f6", js: "#d6b13c", jsx: "#d6b13c", mjs: "#d6b13c", cjs: "#d6b13c",
+  json: "#d6b13c", md: "#6b9bd8", mdx: "#6b9bd8", py: "#4b8bbe", html: "#e07b39", css: "#c86fc9",
+  scss: "#c86fc9", rs: "#d0855f", go: "#4fb3c8", sh: "#8fbf6a", yml: "#c25b5b", yaml: "#c25b5b",
+  png: "#a07bd6", jpg: "#a07bd6", jpeg: "#a07bd6", gif: "#a07bd6", svg: "#a07bd6", webp: "#a07bd6",
+};
+
 function TabFileIcon({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "html") {
-    return <span className="font-mono text-[12px] font-bold text-[#e67e22]">&lt;&gt;</span>;
-  }
-  if (ext === "css" || ext === "scss") {
-    return <span className="font-mono text-[12px] font-bold text-[#ec4899]">#</span>;
-  }
-  if (ext === "json") {
-    return <span className="font-mono text-[12px] font-bold text-[#eab308]">{"{}"}</span>;
-  }
-  if (ext === "md" || ext === "mdx") {
-    return <span className="font-mono text-[10px] font-bold text-[#5b9cf6]">MD</span>;
-  }
-  if (ext === "ts" || ext === "tsx") {
-    return <span className="font-mono text-[10px] font-bold text-[#3b82f6]">TS</span>;
-  }
-  if (ext === "js" || ext === "jsx") {
-    return <span className="font-mono text-[10px] font-bold text-[#eab308]">JS</span>;
-  }
-  if (ext === "py") {
-    return <span className="font-mono text-[10px] font-bold text-[#3b82f6]">PY</span>;
-  }
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"].includes(ext)) {
-    return <span className="font-mono text-[10px] font-bold text-[#a855f7]">IMG</span>;
-  }
-  return <span className="font-mono text-[10px] font-bold text-[#888]">{ext ? ext.toUpperCase().slice(0, 3) : "·"}</span>;
+  const color = TAB_ICON_COLORS[ext];
+  return (
+    <svg
+      className="h-3.5 w-3.5 shrink-0"
+      style={{ color: color ?? "var(--m-text-faint)" }}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,6 +245,7 @@ export function EditorPanel({
   onSaveMCPServers,
   voiceDiagnostics,
   onToggleChat,
+  mainContent,
   onCommandPalette,
   findOpen = false,
   replaceVisible = false,
@@ -496,12 +504,15 @@ export function EditorPanel({
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--m-surface)]">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Editor */}
+        {mainContent ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{mainContent}</div>
+        ) : (
+        /* Editor */
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Multi-tab strip */}
           {openTabs.length > 0 && (
             <div
-              className="flex items-stretch border-b border-[var(--m-border)] bg-[var(--m-bg)] overflow-x-auto"
+              className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-[var(--m-bg)] shadow-[inset_0_-1px_0_var(--m-border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               onDragLeave={(e) => {
                 // Only clear if leaving the tab strip entirely (not entering a child)
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -541,8 +552,10 @@ export function EditorPanel({
                     }}
                     onDragEnd={() => setDragOverIndex(null)}
                     onClick={() => onSelectTab(i)}
-                    className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-r border-[var(--m-border)] px-3 py-2 transition-colors ${
-                      isActive ? "bg-[var(--m-surface)]" : "bg-[var(--m-bg)] hover:bg-[var(--m-surface)]/50"
+                    className={`group relative flex shrink-0 cursor-pointer items-center gap-2 border-b border-r border-r-[var(--m-border-subtle)] px-3 py-2 transition-colors ${
+                      isActive
+                        ? "border-b-transparent bg-[var(--m-surface)]"
+                        : "border-b-[var(--m-border)] bg-[var(--m-bg)] hover:bg-[var(--m-surface)]/50"
                     }`}
                     title={tab.kind === "file" ? tab.path : tab.kind === "preview" ? tab.url : tab.kind === "rest" ? "REST Client" : "Settings"}
                   >
@@ -566,7 +579,7 @@ export function EditorPanel({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     )}
-                    <span className={`italic text-[12px] ${isActive ? "text-[var(--m-text)]" : "text-[var(--m-text-muted)]"}`}>{label}</span>
+                    <span className={`text-[12px] ${isActive ? "text-[var(--m-text)]" : "text-[var(--m-text-muted)]"}`}>{label}</span>
                     {isDirty && <span className="text-[#d19a66] text-[10px]">●</span>}
                     <button
                       type="button"
@@ -578,7 +591,6 @@ export function EditorPanel({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
-                    {isActive && <span className="absolute top-0 left-0 right-0 h-[2px] bg-[#d19a66]" />}
                   </div>
                 );
               })}
@@ -599,7 +611,7 @@ export function EditorPanel({
 
           {/* Breadcrumbs — between tab strip and find bar, when a file is open. */}
           {selectedFilePath && !isSettingsTabActive && !isPreviewTabActive && !isRestTabActive && breadcrumbSegments.length > 0 && (
-            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-4 py-1.5 font-mono text-[10px] text-[var(--m-text-muted)]">
+            <div className="flex h-7 shrink-0 items-center gap-1 overflow-x-auto bg-[var(--m-surface)] px-4 text-[11.5px] text-[var(--m-text-muted)]">
               {breadcrumbSegments.map((seg, i) => {
                 const isLast = i === breadcrumbSegments.length - 1;
                 return (
@@ -609,7 +621,7 @@ export function EditorPanel({
                     </span>
                     {!isLast && (
                       <svg
-                        className="h-2.5 w-2.5 text-[#d19a66]/60"
+                        className="h-3 w-3 text-[var(--m-text-faint)]"
                         viewBox="0 0 16 16"
                         fill="none"
                         stroke="currentColor"
@@ -629,17 +641,18 @@ export function EditorPanel({
                   type="button"
                   onClick={() => {
                     if (activeTab.kind === "file") {
-                      // Use the *path-shaped* preview route so relative URLs
-                      // inside the HTML (style.css, app.js, /img/foo.png)
-                      // resolve back to the workspace correctly. Query-string
-                      // routes would 404 on every linked asset.
-                      const encoded = activeTab.path
-                        .split("/")
-                        .map(encodeURIComponent)
-                        .join("/");
-                      onOpenPreview?.(`/api/workspace/preview/${encoded}${
-                        workspaceRoot ? `?root=${encodeURIComponent(workspaceRoot)}` : ""
-                      }`);
+                      // Path-shaped preview URL with the workspace root in the
+                      // path, so relative links inside the HTML (style.css,
+                      // app.js, img/foo.png) resolve to the same folder.
+                      const rel =
+                        workspaceRoot && activeTab.path.startsWith(`${workspaceRoot}/`)
+                          ? activeTab.path.slice(workspaceRoot.length + 1)
+                          : activeTab.path;
+                      onOpenPreview?.(
+                        workspaceRoot
+                          ? workspacePreviewUrl(workspaceRoot, rel)
+                          : `/api/workspace/preview/${rel.split("/").map(encodeURIComponent).join("/")}`,
+                      );
                     }
                   }}
                   title="Preview in-app"
@@ -783,6 +796,7 @@ export function EditorPanel({
             /* Preview tab content */
             <div className="min-h-0 flex-1 overflow-hidden">
               <PreviewPane
+                key={activeTab.url}
                 url={activeTab.url}
                 workspaceRoot={workspaceRoot ?? undefined}
                 onClose={() => {
@@ -891,54 +905,47 @@ export function EditorPanel({
               )}
             </>
           ) : (
-            /* Empty editor state — watermark + shortcuts */
-            <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-[var(--m-surface)]">
-              <div className="opacity-15">
-                <MarvenLogo size={160} />
-              </div>
-              <div className="space-y-2 text-[12px] text-[var(--m-text-faint)]">
-                <button
-                  type="button"
-                  onClick={onToggleChat}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                >
-                  <span>Open Chat</span>
-                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+Alt+I" : "⌃⌘I"}</kbd>
-                </button>
-                <button
-                  type="button"
-                  onClick={onCommandPalette}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                >
-                  <span>Show All Commands</span>
-                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+Shift+P" : "⇧⌘P"}</kbd>
-                </button>
-                <button
-                  type="button"
-                  onClick={onToggleTerminal}
-                  className="flex w-full items-center justify-between gap-12 rounded px-2 py-1 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
-                >
-                  <span>Toggle Terminal</span>
-                  <kbd className="font-mono text-[10px]">{isWindows ? "Ctrl+`" : "⌃`"}</kbd>
-                </button>
+            /* Empty editor state — what to do next, with real shortcuts */
+            <div className="flex flex-1 flex-col items-center justify-center bg-[var(--m-surface)]">
+              <div className="w-64">
+                <p className="text-[13px] font-medium text-[var(--m-text-muted)]">No file open</p>
+                <p className="mt-1 text-[12px] text-[var(--m-text-faint)]">Pick a file in the tree, or:</p>
+                <div className="mt-3 space-y-0.5 text-[12px] text-[var(--m-text-muted)]">
+                  {([
+                    onToggleChat ? { label: "Show chat", keys: isWindows ? "Ctrl+Alt+I" : "⌃⌘I", onClick: onToggleChat } : null,
+                    { label: "Show all commands", keys: isWindows ? "Ctrl+Shift+P" : "⇧⌘P", onClick: onCommandPalette },
+                    { label: "Toggle terminal", keys: isWindows ? "Ctrl+`" : "⌃`", onClick: onToggleTerminal },
+                  ].filter(Boolean) as { label: string; keys: string; onClick?: () => void }[]).map((row) => (
+                    <button
+                      key={row.label}
+                      type="button"
+                      onClick={row.onClick}
+                      className="flex w-full items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                    >
+                      <span>{row.label}</span>
+                      <kbd className="font-mono text-[11px] text-[var(--m-text-faint)]">{row.keys}</kbd>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Bottom panel — Terminal + Problems (LSP diagnostics). Closing it removes
           it entirely; ⌃` / "Toggle Terminal" / the Problems command bring it back. */}
       {showTerminal && (
-        <div className="flex h-[240px] shrink-0 flex-col border-t border-[var(--m-border)] bg-[var(--m-bg)]">
-          <div className="flex h-7 shrink-0 cursor-default items-center gap-1 border-b border-[var(--m-border-subtle)] px-2">
+        <div className="flex h-[260px] shrink-0 flex-col border-t border-[var(--m-border)] bg-[var(--m-bg)]">
+          <div className="flex h-8 shrink-0 cursor-default items-stretch gap-1 border-b border-[var(--m-border-subtle)] px-2">
             <button
               type="button"
               onClick={() => onBottomTabChange?.("terminal")}
-              className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+              className={`flex h-full items-center border-b-2 px-2 text-[11px] font-medium transition-colors ${
                 bottomTab === "terminal"
-                  ? "text-[#d19a66]"
-                  : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+                  ? "border-[var(--m-accent)] text-[var(--m-text)]"
+                  : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
               }`}
               title="Terminal"
             >
@@ -947,10 +954,10 @@ export function EditorPanel({
             <button
               type="button"
               onClick={() => onBottomTabChange?.("problems")}
-              className={`rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] transition-colors ${
+              className={`flex h-full items-center border-b-2 px-2 text-[11px] font-medium transition-colors ${
                 bottomTab === "problems"
-                  ? "text-[#d19a66]"
-                  : "text-[var(--m-text-faint)] hover:text-[var(--m-text-muted)]"
+                  ? "border-[var(--m-accent)] text-[var(--m-text)]"
+                  : "border-transparent text-[var(--m-text-muted)] hover:text-[var(--m-text)]"
               }`}
               title="Problems"
             >
@@ -961,7 +968,7 @@ export function EditorPanel({
               onClick={onToggleTerminal}
               aria-label="Close panel"
               title="Close panel"
-              className="ms-auto flex h-5 w-5 items-center justify-center rounded text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
+              className="ms-auto flex h-5 w-5 self-center items-center justify-center rounded text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
             >
               <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
                 <path d="M6 6l12 12M18 6 6 18" />
@@ -991,12 +998,40 @@ export function EditorPanel({
         </div>
       )}
 
-      {/* Status bar */}
-      <div className="flex items-center justify-between border-t border-[var(--m-border)] bg-[var(--m-bg)] px-3 py-1 font-mono text-[9px] text-[var(--m-text-faint)]">
-        <span>{projectName}</span>
-        <div className="flex gap-4">
-          <span>{activeFileName ?? "—"}</span>
-          <span className="text-[#d19a66]/50">{langLabel}</span>
+      {/* Status bar — the bottom panel's toggles live here so it can always be reopened */}
+      <div className="flex h-6 shrink-0 items-center gap-1 border-t border-[var(--m-border)] bg-[var(--m-bg)] px-1.5 text-[11px] text-[var(--m-text-muted)]">
+        {([
+          { id: "terminal", label: "Terminal", d: "m5 8 4 4-4 4M12 16h7" },
+          { id: "problems", label: problems.length > 0 ? `Problems ${problems.length}` : "Problems", d: "M12 8v5M12 16.5v.01M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z" },
+        ] as const).map(({ id, label, d }) => {
+          const active = showTerminal && bottomTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                if (active) onToggleTerminal();
+                else {
+                  onBottomTabChange?.(id);
+                  if (!showTerminal) onToggleTerminal();
+                }
+              }}
+              title={id === "terminal" ? `Toggle terminal (${isWindows ? "Ctrl+`" : "⌃`"})` : "Toggle problems"}
+              className={`flex h-5 items-center gap-1 rounded px-1.5 transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)] ${
+                active ? "text-[var(--m-text)]" : ""
+              } ${id === "problems" && problems.length > 0 && !active ? "text-amber-300/90" : ""}`}
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+                <path d={d} />
+              </svg>
+              {label}
+            </button>
+          );
+        })}
+        <div className="ms-auto flex items-center gap-3 px-1.5 text-[var(--m-text-faint)]">
+          {activeFileName && <span className="truncate">{activeFileName}</span>}
+          {selectedFilePath && <span>{langLabel}</span>}
         </div>
       </div>
     </div>

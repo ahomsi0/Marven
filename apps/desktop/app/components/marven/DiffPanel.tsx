@@ -51,38 +51,41 @@ export function DiffPanel({ checkpoints, onClose }: DiffPanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--m-bg)]">
-      <header className="flex items-center justify-between border-b border-[var(--m-border)] px-3 py-2">
-        <span className="font-mono text-[10px] tracking-widest text-[var(--m-text-faint)] uppercase">
-          Changes ({diffs.length})
+    <div className="flex h-full min-h-0 flex-col bg-[var(--m-surface)]">
+      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--m-border)] bg-[var(--m-bg)] ps-3 pe-1.5">
+        <span className="text-[12px] font-medium text-[var(--m-text)]">
+          Changes <span className="text-[var(--m-text-faint)]">{diffs.length}</span>
         </span>
         <button
           type="button"
           onClick={onClose}
-          className="text-[var(--m-text-faint)] hover:text-[var(--m-text)]"
-          aria-label="Close diff panel"
+          title="Back to editor"
+          aria-label="Back to editor"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--m-text-faint)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
         >
-          ×
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
         </button>
       </header>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {loading && <p className="text-[11px] text-[var(--m-text-faint)]">Loading diffs…</p>}
+        {loading && <p className="text-[12px] text-[var(--m-text-faint)]">Loading changes…</p>}
         {!loading && diffs.length === 0 && (
-          <p className="text-[11px] text-[var(--m-text-faint)]">No changes since the last agent run.</p>
+          <p className="text-[12px] text-[var(--m-text-faint)]">No changes since the last agent run.</p>
         )}
         {diffs.map((d) => (
           <div key={d.path} className="rounded border border-[var(--m-border)] overflow-hidden">
             <div className="flex items-center justify-between bg-[var(--m-surface)] px-2 py-1.5">
-              <span className="font-mono text-[10px] text-[var(--m-text)] truncate">{d.path}</span>
+              <span className="truncate font-mono text-[11.5px] text-[var(--m-text)]">{d.path}</span>
               <button
                 type="button"
                 onClick={() => revert(d.path)}
-                className="text-[10px] text-[var(--m-text-muted)] hover:text-[#d19a66]"
+                className="rounded px-1.5 py-0.5 text-[11px] text-[var(--m-text-muted)] transition-colors hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
               >
                 Revert
               </button>
             </div>
-            <pre className="bg-[var(--m-bg)] px-2 py-1.5 overflow-x-auto font-mono text-[10px] leading-relaxed">
+            <pre className="overflow-x-auto bg-[var(--m-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed">
               {d.patch.split("\n").map((line, i) => {
                 const color = line.startsWith("+") && !line.startsWith("+++")
                   ? "text-green-400"
