@@ -100,6 +100,7 @@ import {
   type PendingVersion,
 } from "@/lib/messageVersions";
 import i18n from "@/lib/i18n";
+import { openSettingsPage } from "@/lib/settingsNav";
 
 /** Options for one chat send. Edit / retry pass the thread and the original turn's files. */
 interface ChatSendOptions {
@@ -1542,6 +1543,57 @@ export default function Home() {
     });
     return () => { cleanup?.(); };
   }, [startManualListen]);
+
+  // ── Mini Me ────────────────────────────────────────────────────────────────
+  // While Mini Me is on screen and listening for "Hey Marven", the main
+  // window's wake listener stands down so the mic isn't used twice. It comes
+  // back when Mini Me goes away.
+  const wakeEnabledNowRef = useRef(wakeEnabled);
+  wakeEnabledNowRef.current = wakeEnabled;
+  const toggleWakeWordRef = useRef(toggleWakeWord);
+  toggleWakeWordRef.current = toggleWakeWord;
+  const restoreWakeRef = useRef(false);
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+    if (!electron?.onCompanionVisibility) return;
+    return electron.onCompanionVisibility(({ visible, wakeWord }: { visible: boolean; wakeWord: boolean }) => {
+      const companionListens = visible && wakeWord;
+      if (companionListens && wakeEnabledNowRef.current) {
+        restoreWakeRef.current = true;
+        toggleWakeWordRef.current();
+      } else if (!companionListens && restoreWakeRef.current) {
+        restoreWakeRef.current = false;
+        if (!wakeEnabledNowRef.current) toggleWakeWordRef.current();
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+    if (!electron?.onCompanionOpenThread) return;
+    const offThread = electron.onCompanionOpenThread((raw: unknown) => {
+      if (!Array.isArray(raw)) return;
+      const messages = raw.filter(
+        (m): m is { role: "user" | "assistant"; content: string } =>
+          !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+      );
+      if (messages.length === 0) return;
+      const firstUser = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
+      const conv: Conversation = {
+        ...createConversation(firstUser),
+        messages: messages.map((m) => createMessage(m.role, m.content)),
+      };
+      setConversations((prev) => [...prev, conv]);
+      setActiveConversationId(conv.id);
+    });
+    const offSettings = electron.onCompanionOpenSettings(() => openSettingsPage({ page: "general" }));
+    return () => {
+      offThread?.();
+      offSettings?.();
+    };
+  }, []);
 
   function toggleSpeech() {
     const next = !speechEnabledRef.current;
