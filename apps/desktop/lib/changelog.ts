@@ -12,6 +12,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.17.0",
+    items: [
+      { tag: "new", label: "Two editor layouts, switched from the top bar: the editor with the agent chat beside it, or the editor on its own" },
+      { tag: "new", label: "The terminal opens under the editor and Changes opens in the editor area, so neither closes your files; a status bar under the editor brings the terminal and problems back any time" },
+      { tag: "imp", label: "The editor reads like one: normal line spacing without word wrapping, a faint current line, file icons on tabs and clearer breadcrumbs" },
+      { tag: "imp", label: "Sharper buttons, cards and menus throughout, quieter message actions, and a clearer Chats / Agents switcher" },
+      { tag: "imp", label: "Read only now explains what it means and lets you allow edits, and Files is renamed Editor" },
+      { tag: "fix", label: "Previewing an HTML file loads its stylesheets, scripts and images" },
+    ],
+  },
+  {
     version: "2.16.0",
     items: [
       { tag: "new", label: "Terminal settings: pick a colour theme, font, font size and cursor style in Settings → Terminal, or open it from the command palette" },
