@@ -9,7 +9,7 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
-import { MiniMeSettings } from "./MiniMeSettings";
+import { MiniMeSettingsPage } from "./minime/MiniMeSettingsPage";
 import { useOverlayGuard } from "@/lib/overlays";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { SearchEnginePicker } from "./SearchEnginePicker";
@@ -149,7 +149,7 @@ const SECTIONS: Array<{
 }> = [
   { heading: "workspace", items: ["general", "memory"] },
   { heading: "integrations", items: ["ai-backends", "keys-ai", "keys-voice", "connectors", "browser"] },
-  { heading: "customization", items: ["shortcuts", "keyboard", "terminal", "templates"] },
+  { heading: "customization", items: ["shortcuts", "keyboard", "terminal", "templates", "mini-me"] },
   { heading: "help", items: ["commands", "about"] },
 ];
 
@@ -1426,8 +1426,6 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
-
-            {electron && <MiniMeSettings electron={electron} />}
 
             {/* Let the agent use the browser toggle (desktop app only) */}
             {browserBridge && (
@@ -2733,6 +2731,9 @@ export function SettingsModal({
         {/* ── Terminal ── */}
         {activePage === "terminal" && <TerminalSettingsPage />}
 
+        {/* ── Mini Me (desktop app only) ── */}
+        {activePage === "mini-me" && electron && <MiniMeSettingsPage electron={electron} />}
+
         {/* ── Keyboard ── */}
         {activePage === "keyboard" && (
           <div className="space-y-3">
@@ -3221,10 +3222,15 @@ export function SettingsModal({
 
   // ─── Sidebar ─────────────────────────────────────────────────────────────
 
+  // Mini Me only exists in the desktop app.
+  function isPageAvailable(page: SettingsPage) {
+    return page !== "mini-me" || !!electron;
+  }
+
   function renderSidebar() {
     return (
       <aside className="flex w-[220px] shrink-0 flex-col overflow-y-auto border-e border-[var(--m-border-subtle)] bg-[var(--m-surface)] py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {SECTIONS.map((section) => (
+        {SECTIONS.map((section) => ({ ...section, items: section.items.filter(isPageAvailable) })).map((section) => (
           <div key={section.heading} className="mb-3 last:mb-0">
             <p className="px-4 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--m-accent)]/85">
               {tr(`settings.nav.${section.heading}`)}

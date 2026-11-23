@@ -64,6 +64,8 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     personality: PERSONALITIES.includes(settings.miniMePersonality) ? settings.miniMePersonality : 'playful',
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
+    // Passed through as-is; the renderer validates it (parseLook).
+    look: settings.miniMeLook && typeof settings.miniMeLook === 'object' && !Array.isArray(settings.miniMeLook) ? settings.miniMeLook : null,
   });
 
   function currentDisplay() {

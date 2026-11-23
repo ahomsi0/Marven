@@ -215,6 +215,7 @@ function settingsPath() {
 // New settings (e.g. inline-completion knobs) live alongside existing flags
 // like `liteAgentMode` and `codebaseIndexEnabled`.
 const SETTINGS_DEFAULTS = {
+  miniMeLook: null,
   inlineCompletionsEnabled: false,
   inlineCompletionProvider: 'ollama',
   inlineCompletionModel: '',

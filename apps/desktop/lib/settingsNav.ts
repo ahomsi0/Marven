@@ -32,6 +32,7 @@ export const SETTINGS_PAGES = [
   "keyboard",
   "terminal",
   "templates",
+  "mini-me",
   "commands",
   "about",
 ] as const;

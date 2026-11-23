@@ -9,7 +9,7 @@ import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
-import { DEFAULT_LOOK, parseLook, type Look } from "@/lib/companion/look";
+import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
@@ -23,7 +23,7 @@ export default function CompanionPage() {
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_COMPANION_SETTINGS);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const [look, setLook] = useState<Look>(DEFAULT_LOOK);
+  const look = useMemo(() => (settings.look ? parseLook(settings.look) : DEFAULT_LOOK), [settings.look]);
   const behaviourRef = useRef<BehaviourState>(initialState(Date.now()));
   const [behaviour, setBehaviour] = useState<BehaviourState>(behaviourRef.current);
   const [facing, setFacing] = useState<1 | -1>(1);
@@ -154,10 +154,6 @@ export default function CompanionPage() {
   }, [bridge, dispatch, openBubble]);
 
   useEffect(() => {
-    fetch("/companion/look.json")
-      .then((r) => r.json())
-      .then((j) => setLook(parseLook(j)))
-      .catch(() => {});
     document.documentElement.style.background = "transparent";
     document.body.style.background = "transparent";
   }, []);

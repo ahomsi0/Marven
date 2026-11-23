@@ -22,6 +22,8 @@ export interface CompanionSettings {
   personality: Personality;
   sleepMinutes: number;
   wakeWord: boolean;
+  /** The saved appearance (unvalidated; run it through parseLook), or null for the default. */
+  look: unknown | null;
 }
 
 export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
@@ -31,6 +33,7 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   personality: "playful",
   sleepMinutes: 5,
   wakeWord: false,
+  look: null,
 };
 
 type Unsubscribe = () => void;
