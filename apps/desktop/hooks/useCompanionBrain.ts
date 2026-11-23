@@ -18,6 +18,7 @@ import {
   AGENT_HANDOFF_REPLY,
   appendHistory,
   buildCompanionPrompt,
+  type Personality,
   loadHistory,
   routeInput,
   saveHistory,
@@ -35,6 +36,7 @@ export interface BrainReply {
 
 interface Options {
   speakReplies: boolean;
+  personality?: Personality;
   onEvent: (event: BrainEvent) => void;
   onSpeakingChange?: (speaking: boolean) => void;
   /** A timer fired. The brain has put the text in `reply`; the host should show the bubble. */
@@ -190,7 +192,7 @@ export function useCompanionBrain(options: Options) {
         messages: [...historyRef.current, { role: "user", content: prompt }],
         model,
         provider,
-        systemPrompt: buildCompanionPrompt(base, custom),
+        systemPrompt: buildCompanionPrompt(base, custom, optionsRef.current.personality),
         allowCommands: route.kind === "command",
         commandText: text,
       };

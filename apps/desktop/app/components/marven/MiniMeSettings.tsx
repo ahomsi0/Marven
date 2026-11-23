@@ -14,7 +14,9 @@ interface MiniMeState {
   miniMeEnabled: boolean;
   miniMeWakeWord: boolean;
   miniMeSpeak: boolean;
-  miniMeWalk: boolean;
+  miniMeActivity: string;
+  miniMeSpeed: string;
+  miniMePersonality: string;
   miniMeScale: number;
   miniMeSleepMinutes: number;
   miniMeHotkey: string;
@@ -24,7 +26,9 @@ const DEFAULTS: MiniMeState = {
   miniMeEnabled: false,
   miniMeWakeWord: false,
   miniMeSpeak: true,
-  miniMeWalk: true,
+  miniMeActivity: "lively",
+  miniMeSpeed: "normal",
+  miniMePersonality: "playful",
   miniMeScale: 3,
   miniMeSleepMinutes: 5,
   miniMeHotkey: "CommandOrControl+Shift+Space",
@@ -88,6 +92,20 @@ export function MiniMeSettings({ electron }: { electron: Electron }) {
     </div>
   );
 
+  const select = (id: string, label: string, key: keyof MiniMeState, options: [string, string][]) => (
+    <div className="flex items-center justify-between gap-4">
+      <label htmlFor={id} className="text-[12px] text-[var(--m-text)]">{label}</label>
+      <select
+        id={id}
+        value={state[key] as string}
+        onChange={(e) => void save({ [key]: e.target.value } as Partial<MiniMeState>)}
+        className="rounded-md border border-[var(--m-border)] bg-transparent px-2 py-1 text-[12px]"
+      >
+        {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+      </select>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
       <div className="flex items-start justify-between gap-4">
@@ -102,7 +120,21 @@ export function MiniMeSettings({ electron }: { electron: Electron }) {
         <div className="mt-4 space-y-3 border-t border-[var(--m-border-subtle)] pt-3">
           {row("mini-me-wake", tr("settings.general.miniMeWake"), state.miniMeWakeWord, "miniMeWakeWord", tr("settings.general.miniMeWakeHint"))}
           {row("mini-me-speak", tr("settings.general.miniMeSpeak"), state.miniMeSpeak, "miniMeSpeak")}
-          {row("mini-me-walk", tr("settings.general.miniMeWalk"), state.miniMeWalk, "miniMeWalk")}
+          {select("mini-me-activity", tr("settings.general.miniMeActivity"), "miniMeActivity", [
+            ["lively", tr("settings.general.miniMeActivityLively")],
+            ["calm", tr("settings.general.miniMeActivityCalm")],
+            ["still", tr("settings.general.miniMeActivityStill")],
+          ])}
+          {select("mini-me-speed", tr("settings.general.miniMeSpeed"), "miniMeSpeed", [
+            ["slow", tr("settings.general.miniMeSpeedSlow")],
+            ["normal", tr("settings.general.miniMeSpeedNormal")],
+            ["fast", tr("settings.general.miniMeSpeedFast")],
+          ])}
+          {select("mini-me-personality", tr("settings.general.miniMePersonality"), "miniMePersonality", [
+            ["playful", tr("settings.general.miniMePersonalityPlayful")],
+            ["neutral", tr("settings.general.miniMePersonalityNeutral")],
+            ["detailed", tr("settings.general.miniMePersonalityDetailed")],
+          ])}
 
           <div className="flex items-center justify-between gap-4">
             <label htmlFor="mini-me-size" className="text-[12px] text-[var(--m-text)]">{tr("settings.general.miniMeSize")}</label>

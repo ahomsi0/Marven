@@ -13,6 +13,8 @@ import { DEFAULT_LOOK, parseLook, type Look } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
+/** Left alone this long, Mini Me sits down and stays seated. */
+const REST_AFTER_MS = 120_000;
 /** A voice-opened bubble that heard nothing closes itself after this. */
 const VOICE_IDLE_CLOSE_MS = 4000;
 
@@ -26,6 +28,7 @@ export default function CompanionPage() {
   const [behaviour, setBehaviour] = useState<BehaviourState>(behaviourRef.current);
   const [facing, setFacing] = useState<1 | -1>(1);
   const stripRef = useRef<Strip>({ minX: 0, maxX: 0 });
+  const xRef = useRef(0);
   const [bubbleOpen, setBubbleOpen] = useState(false);
   const bubbleOpenRef = useRef(false);
   bubbleOpenRef.current = bubbleOpen;
@@ -54,6 +57,7 @@ export default function CompanionPage() {
   // not on the object it returns (which is new every render).
   const { reply, busy, send, retry, dismiss, history } = useCompanionBrain({
     speakReplies: settings.speak,
+    personality: settings.personality,
     onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
     onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
     onNotify: () => openBubble(false),
@@ -128,8 +132,9 @@ export default function CompanionPage() {
       bridge.onSettings(setSettings),
       bridge.onPosition((p) => {
         stripRef.current = p.strip;
+        xRef.current = p.x;
         setFacing(p.facing);
-        if (p.arrived) dispatch({ type: "arrived", now: Date.now() });
+        if (p.arrived) dispatch({ type: "arrived", now: Date.now(), rand: Math.random, activity: settingsRef.current.activity });
         if (p.dropped) dispatch({ type: "drop", now: Date.now(), inDock: p.inDock });
       }),
       bridge.onOpenInput(() => openBubble(true)),
@@ -159,7 +164,9 @@ export default function CompanionPage() {
         now: Date.now(),
         rand: Math.random,
         strip: stripRef.current,
-        walkAround: s.walk,
+        activity: s.activity,
+        x: xRef.current,
+        restAfterMs: REST_AFTER_MS,
         sleepAfterMs: s.sleepMinutes * 60_000,
       });
     }, 1000);

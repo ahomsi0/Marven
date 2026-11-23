@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   COMPANION_PERSONA,
+  PERSONAS,
   HISTORY_KEY,
   appendHistory,
   buildCompanionPrompt,
@@ -75,6 +76,24 @@ describe("routeInput", () => {
 describe("buildCompanionPrompt", () => {
   it("adds the persona after the base prompt", () => {
     expect(buildCompanionPrompt("BASE", "")).toBe(`BASE\n\n${COMPANION_PERSONA}`);
+  });
+  it("keeps the playful persona as COMPANION_PERSONA and the default", () => {
+    expect(COMPANION_PERSONA).toBe(PERSONAS.playful);
+    expect(buildCompanionPrompt("BASE", "", "playful")).toBe(`BASE\n\n${PERSONAS.playful}`);
+  });
+  it("uses the neutral persona", () => {
+    const prompt = buildCompanionPrompt("BASE", "", "neutral");
+    expect(prompt).toBe(`BASE\n\n${PERSONAS.neutral}`);
+    expect(PERSONAS.neutral).toContain("1–3 short, plain sentences");
+    expect(prompt).not.toContain(PERSONAS.playful);
+  });
+  it("uses the detailed persona", () => {
+    const prompt = buildCompanionPrompt("BASE", "", "detailed");
+    expect(prompt).toBe(`BASE\n\n${PERSONAS.detailed}`);
+    expect(PERSONAS.detailed).toContain("complete, well-organised answers");
+  });
+  it("applies custom instructions with any personality", () => {
+    expect(buildCompanionPrompt("BASE", "X", "neutral")).toContain(PERSONAS.neutral);
   });
   it("puts custom instructions first and last", () => {
     const prompt = buildCompanionPrompt("BASE", " Speak Arabic ");

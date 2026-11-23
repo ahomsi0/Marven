@@ -14,6 +14,8 @@ export interface BehaviourState {
   mode: Mode;
   /** The bubble is open or a request is in flight: the idle loop and sleep pause. */
   busy: boolean;
+  /** True while seated by the rest ladder (left alone for a while): no idle picks until interaction. */
+  resting: boolean;
   lastInteraction: number;
   nextIdleAt: number;
   /** A walk that has not arrived by this time is abandoned. */
@@ -25,9 +27,23 @@ export interface Strip {
   maxX: number;
 }
 
+/** lively: walk, look, repeat. calm: occasional short strolls. still: never walks on its own. */
+export type Activity = "lively" | "calm" | "still";
+
 export type BehaviourEvent =
-  | { type: "tick"; now: number; rand: () => number; strip: Strip; walkAround: boolean; sleepAfterMs: number }
-  | { type: "arrived"; now: number }
+  | {
+      type: "tick";
+      now: number;
+      rand: () => number;
+      strip: Strip;
+      activity: Activity;
+      /** Window x, so calm strolls stay near where it stands. */
+      x: number;
+      /** Left alone this long, he sits and stays seated. */
+      restAfterMs: number;
+      sleepAfterMs: number;
+    }
+  | { type: "arrived"; now: number; rand: () => number; activity?: Activity }
   | { type: "interact"; now: number }
   | { type: "bubble-open"; now: number }
   | { type: "bubble-close"; now: number }
@@ -55,35 +71,50 @@ export interface Effect {
 export const ONESHOTS: ReadonlySet<AnimState> = new Set<AnimState>(["stretch", "happy", "confused"]);
 
 const IDLE_PAUSE_MS = 4000;
-const IDLE_PAUSE_JITTER_MS = 6000;
 const WALK_TIMEOUT_MS = 90_000;
+const LOOK_MIN_MS = 2000;
+const LOOK_JITTER_MS = 2000;
+const STRETCH_CHANCE = 0.15;
+const CALM_PAUSE_MS = 8000;
+const CALM_PAUSE_JITTER_MS = 12_000;
+const CALM_STROLL_PX = 160;
+const STILL_PAUSE_MS = 6000;
+const STILL_PAUSE_JITTER_MS = 6000;
 
 export function initialState(now: number): BehaviourState {
-  return { anim: "idle", mode: "roam", busy: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0 };
+  return { anim: "idle", mode: "roam", busy: false, resting: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0 };
 }
 
-const resting = (state: BehaviourState): AnimState => (state.mode === "perched" ? "sit" : "idle");
+const standing = (state: BehaviourState): AnimState => (state.mode === "perched" ? "sit" : "idle");
 
 const stopIfWalking = (state: BehaviourState): Effect => (state.anim === "walk" ? { stop: true } : {});
+
+const pickPoint = (strip: Strip, rand: () => number) => Math.round(strip.minX + rand() * (strip.maxX - strip.minX));
+
+function startWalk(state: BehaviourState, now: number, x: number, nextIdleAt: number) {
+  return { state: { ...state, anim: "walk" as const, nextIdleAt, walkUntil: now + WALK_TIMEOUT_MS }, effect: { walkTo: x } as Effect };
+}
 
 function pickIdle(
   state: BehaviourState,
   e: Extract<BehaviourEvent, { type: "tick" }>,
 ): { state: BehaviourState; effect: Effect } {
-  const r = e.rand();
-  if (e.walkAround && state.mode === "roam") {
-    if (r < 0.4) {
-      const x = Math.round(e.strip.minX + e.rand() * (e.strip.maxX - e.strip.minX));
-      const nextIdleAt = e.now + IDLE_PAUSE_MS + e.rand() * IDLE_PAUSE_JITTER_MS;
-      return { state: { ...state, anim: "walk", nextIdleAt, walkUntil: e.now + WALK_TIMEOUT_MS }, effect: { walkTo: x } };
-    }
-    const anim: AnimState = r < 0.65 ? "idle" : r < 0.8 ? "look" : r < 0.95 ? "sit" : "stretch";
-    const nextIdleAt = e.now + IDLE_PAUSE_MS + e.rand() * IDLE_PAUSE_JITTER_MS;
-    return { state: { ...state, anim, nextIdleAt }, effect: {} };
+  // Perched on the desktop he never walks, whatever the setting.
+  const activity: Activity = state.mode === "perched" ? "still" : e.activity;
+  if (activity === "lively") {
+    return startWalk(state, e.now, pickPoint(e.strip, e.rand), e.now + IDLE_PAUSE_MS);
   }
-  const anim: AnimState = r < 0.5 ? "idle" : r < 0.75 ? "sit" : "look";
-  const nextIdleAt = e.now + IDLE_PAUSE_MS + e.rand() * IDLE_PAUSE_JITTER_MS;
-  return { state: { ...state, anim, nextIdleAt }, effect: {} };
+  if (activity === "calm") {
+    const r = e.rand();
+    const x = r < 0.3 ? e.x + (e.rand() * 2 - 1) * CALM_STROLL_PX : 0;
+    const nextIdleAt = e.now + CALM_PAUSE_MS + e.rand() * CALM_PAUSE_JITTER_MS;
+    if (r < 0.3) {
+      return startWalk(state, e.now, Math.round(Math.min(e.strip.maxX, Math.max(e.strip.minX, x))), nextIdleAt);
+    }
+    return { state: { ...state, anim: r < 0.7 ? "look" : "idle", nextIdleAt }, effect: {} };
+  }
+  const nextIdleAt = e.now + STILL_PAUSE_MS + e.rand() * STILL_PAUSE_JITTER_MS;
+  return { state: { ...state, anim: state.anim === "look" ? "idle" : "look", nextIdleAt }, effect: {} };
 }
 
 export function reduce(state: BehaviourState, e: BehaviourEvent): { state: BehaviourState; effect: Effect } {
@@ -91,7 +122,7 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
   switch (e.type) {
     case "tick": {
       if (state.anim === "walk" && e.now >= state.walkUntil) {
-        return { state: { ...state, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
+        return { state: { ...state, anim: standing(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
       }
       if (state.busy || state.anim === "sleep" || state.anim === "walk" || state.anim === "dangle" || ONESHOTS.has(state.anim)) {
         return none;
@@ -99,48 +130,67 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       if (e.now - state.lastInteraction >= e.sleepAfterMs) {
         return { state: { ...state, anim: "sleep" }, effect: { stop: true } };
       }
-      if (e.now < state.nextIdleAt) return none;
+      if (e.now - state.lastInteraction >= e.restAfterMs && !state.resting) {
+        return { state: { ...state, anim: "sit", resting: true }, effect: { stop: true } };
+      }
+      if (state.resting || e.now < state.nextIdleAt) return none;
       return pickIdle(state, e);
     }
     case "arrived":
       if (state.anim !== "walk") return none;
-      return { state: { ...state, anim: "idle", nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
+      if ((e.activity ?? "lively") === "lively") {
+        const r = e.rand();
+        const anim: AnimState = r < STRETCH_CHANCE ? "stretch" : "look";
+        const nextIdleAt = e.now + LOOK_MIN_MS + e.rand() * LOOK_JITTER_MS;
+        return { state: { ...state, anim, nextIdleAt }, effect: {} };
+      }
+      return {
+        state: {
+          ...state,
+          anim: "idle",
+          nextIdleAt:
+            e.now + (e.activity === "calm" ? CALM_PAUSE_MS + e.rand() * CALM_PAUSE_JITTER_MS : STILL_PAUSE_MS + e.rand() * STILL_PAUSE_JITTER_MS),
+        },
+        effect: {},
+      };
     case "interact": {
-      const next = { ...state, lastInteraction: e.now };
+      const next = { ...state, lastInteraction: e.now, resting: false };
       // Hovering a walker stops him; leave him resting rather than frozen mid-stride.
       if (state.anim === "walk") {
-        return { state: { ...next, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
+        return { state: { ...next, anim: standing(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
       }
-      return { state: state.anim === "sleep" ? { ...next, anim: "stretch" } : next, effect: stopIfWalking(state) };
+      if (state.anim === "sleep") return { state: { ...next, anim: "stretch" }, effect: {} };
+      if (state.resting && state.anim === "sit") return { state: { ...next, anim: "idle", nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
+      return { state: next, effect: {} };
     }
     case "bubble-open":
-      return { state: { ...state, busy: true, anim: "listen", lastInteraction: e.now }, effect: { stop: true } };
+      return { state: { ...state, busy: true, resting: false, anim: "listen", lastInteraction: e.now }, effect: { stop: true } };
     case "bubble-close":
       return {
-        state: { ...state, busy: false, anim: resting(state), lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
+        state: { ...state, busy: false, resting: false, anim: standing(state), lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
         effect: {},
       };
     case "thinking":
-      return { state: { ...state, busy: true, anim: "think", lastInteraction: e.now }, effect: { stop: true } };
+      return { state: { ...state, busy: true, resting: false, anim: "think", lastInteraction: e.now }, effect: { stop: true } };
     case "talking":
-      return { state: { ...state, busy: true, anim: "talk", lastInteraction: e.now }, effect: {} };
+      return { state: { ...state, busy: true, resting: false, anim: "talk", lastInteraction: e.now }, effect: {} };
     case "succeeded":
-      return { state: { ...state, anim: "happy", lastInteraction: e.now }, effect: stopIfWalking(state) };
+      return { state: { ...state, anim: "happy", resting: false, lastInteraction: e.now }, effect: stopIfWalking(state) };
     case "failed":
-      return { state: { ...state, anim: "confused", lastInteraction: e.now }, effect: stopIfWalking(state) };
+      return { state: { ...state, anim: "confused", resting: false, lastInteraction: e.now }, effect: stopIfWalking(state) };
     case "oneshot-done":
       if (!ONESHOTS.has(state.anim)) return none;
-      return { state: { ...state, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
+      return { state: { ...state, anim: standing(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
     case "drag-start":
-      return { state: { ...state, anim: "dangle", lastInteraction: e.now }, effect: { stop: true } };
+      return { state: { ...state, anim: "dangle", resting: false, lastInteraction: e.now }, effect: { stop: true } };
     case "drop": {
       const mode: Mode = e.inDock ? "roam" : "perched";
       return {
-        state: { ...state, mode, anim: e.inDock ? "idle" : "sit", lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
+        state: { ...state, mode, resting: false, anim: e.inDock ? "idle" : "sit", lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
         effect: {},
       };
     }
     case "return-home":
-      return { state: { ...state, mode: "roam", anim: "walk", lastInteraction: e.now, walkUntil: e.now + WALK_TIMEOUT_MS }, effect: { returnHome: true } };
+      return { state: { ...state, mode: "roam", resting: false, anim: "walk", lastInteraction: e.now, walkUntil: e.now + WALK_TIMEOUT_MS }, effect: { returnHome: true } };
   }
 }

@@ -1,7 +1,7 @@
 // Typed access to the companion half of the preload bridge (electron/preload.js).
 
-import type { CompanionMessage } from "./brain";
-import type { Strip } from "./behaviour";
+import type { CompanionMessage, Personality } from "./brain";
+import type { Activity, Strip } from "./behaviour";
 
 export interface CompanionPosition {
   x: number;
@@ -18,7 +18,8 @@ export interface CompanionPosition {
 export interface CompanionSettings {
   speak: boolean;
   scale: 2 | 3 | 4;
-  walk: boolean;
+  activity: Activity;
+  personality: Personality;
   sleepMinutes: number;
   wakeWord: boolean;
 }
@@ -26,7 +27,8 @@ export interface CompanionSettings {
 export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   speak: true,
   scale: 3,
-  walk: true,
+  activity: "lively",
+  personality: "playful",
   sleepMinutes: 5,
   wakeWord: false,
 };

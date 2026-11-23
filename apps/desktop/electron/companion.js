@@ -11,7 +11,9 @@ const placement = require('./companionPlacement');
 const { isReservedHotkey } = require('./companionGuards');
 
 const TICK_MS = 33;
-const WALK_PX_PER_TICK = 2;
+const WALK_PX_BY_SPEED = { slow: 1, normal: 2, fast: 4 };
+const ACTIVITIES = ['lively', 'calm', 'still'];
+const PERSONALITIES = ['playful', 'neutral', 'detailed'];
 const FALL_PX_PER_TICK = 8;
 const MAX_LOAD_RETRIES = 20;
 const POSITION_SAVE_INTERVAL_MS = 30000;
@@ -53,10 +55,14 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   });
   const notify = () => { if (onStatusChange) onStatusChange(status()); };
 
+  const walkStep = () => WALK_PX_BY_SPEED[settings.miniMeSpeed] || WALK_PX_BY_SPEED.normal;
+
   const rendererSettings = () => ({
     speak: settings.miniMeSpeak !== false,
     scale: [2, 3, 4].includes(Number(settings.miniMeScale)) ? Number(settings.miniMeScale) : 3,
-    walk: settings.miniMeWalk !== false,
+    // miniMeWalk (a boolean) predates miniMeActivity: false meant "stays put".
+    activity: ACTIVITIES.includes(settings.miniMeActivity) ? settings.miniMeActivity : settings.miniMeWalk === false ? 'still' : 'lively',
+    personality: PERSONALITIES.includes(settings.miniMePersonality) ? settings.miniMePersonality : 'playful',
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
   });
@@ -128,7 +134,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       walkTimer = setInterval(() => {
         if (!alive() || !walkTarget) return stopWalking();
         const [cx, cy] = win.getPosition();
-        const nx = placement.stepToward(cx, walkTarget.x, WALK_PX_PER_TICK);
+        const nx = placement.stepToward(cx, walkTarget.x, walkStep());
         const ny = placement.stepToward(cy, walkTarget.y, FALL_PX_PER_TICK);
         win.setPosition(Math.round(nx), Math.round(ny));
         const [ax, ay] = win.getPosition();
