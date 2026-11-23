@@ -6,13 +6,6 @@
 const MAX_MESSAGE_CHARS = 20000;
 const MAX_MESSAGES = 20;
 
-// Marven's own Listen shortcut; Mini Me's hotkey must not shadow it.
-const RESERVED_HOTKEYS = new Set([
-  'commandorcontrol+shift+m',
-  'cmdorctrl+shift+m',
-  'command+shift+m',
-]);
-
 /**
  * Validate a thread handed over from the companion window. Returns the last
  * MAX_MESSAGES well-formed `{ role, content }` messages (content truncated), or
@@ -31,8 +24,25 @@ function sanitizeThreadMessages(messages) {
   return kept.length ? kept : null;
 }
 
-function isReservedHotkey(accelerator) {
-  return typeof accelerator === 'string' && RESERVED_HOTKEYS.has(accelerator.trim().toLowerCase());
+const CMD_TOKENS = new Set(['cmd', 'command', 'cmdorctrl', 'commandorcontrol']);
+
+/** Canonical form of an accelerator: lowercase, modifiers collapsed and sorted, key last. */
+function normalizeAccelerator(accelerator, platform) {
+  const parts = accelerator.split('+').map((p) => p.trim().toLowerCase()).filter(Boolean);
+  const mapped = parts.map((p) => {
+    if (CMD_TOKENS.has(p)) return 'cmd';
+    if (platform !== 'darwin' && (p === 'ctrl' || p === 'control')) return 'cmd';
+    return p;
+  });
+  const key = mapped.pop() || '';
+  return [...mapped.sort(), key].join('+');
+}
+
+const RESERVED = normalizeAccelerator('CommandOrControl+Shift+M', 'darwin');
+
+/** True for Marven's own Listen shortcut (CommandOrControl+Shift+M), however it is spelled. */
+function isReservedHotkey(accelerator, platform = process.platform) {
+  return typeof accelerator === 'string' && normalizeAccelerator(accelerator, platform) === RESERVED;
 }
 
 module.exports = { sanitizeThreadMessages, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES };

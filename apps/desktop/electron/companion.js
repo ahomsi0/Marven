@@ -156,7 +156,9 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       walkTarget = {
         ...walkTarget,
         x: Math.min(Math.max(walkTarget.x, strip.minX), strip.maxX),
-        y: walkTarget.dock ? strip.y : walkTarget.y,
+        y: walkTarget.dock
+          ? strip.y
+          : Math.min(Math.max(walkTarget.y, display.workArea.y), display.workArea.y + display.workArea.height - size.height),
       };
     }
     sendPosition();
@@ -199,26 +201,40 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const appOrigin = `http://localhost:${appPort}`;
     const blockOffOrigin = (event, target) => {
       let ok = false;
-      try { ok = new URL(target).origin === appOrigin; } catch { ok = false; }
+      try {
+        const u = new URL(target);
+        ok = u.origin === appOrigin && (u.pathname === '/companion' || u.pathname.startsWith('/companion/'));
+      } catch { ok = false; }
       if (!ok) event.preventDefault();
     };
     w.webContents.on('will-navigate', (event, target) => blockOffOrigin(event, target));
     w.webContents.on('will-redirect', (event, target) => blockOffOrigin(event, target));
     w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
+    let loadFailed = false;
+    let retries = 0;
+    const isCompanionUrl = (target) => {
+      try {
+        const u = new URL(target);
+        return u.origin === appOrigin && (u.pathname === '/companion' || u.pathname.startsWith('/companion/'));
+      } catch { return false; }
+    };
+    const load = () => { loadFailed = false; w.loadURL(url); };
+
     // Only show once the real page has loaded (not Chromium's error page).
     w.webContents.on('did-finish-load', () => {
       if (win !== w || w.isDestroyed()) return;
-      if (!w.webContents.getURL().startsWith(url)) return;
+      if (loadFailed || !isCompanionUrl(w.webContents.getURL())) return;
+      retries = 0;
       if (!w.isVisible()) w.showInactive();
       sendPosition();
       notify();
     });
 
     // Same capped, non-overlapping retry as the main window.
-    let retries = 0;
     w.webContents.on('did-fail-load', (_event, _code, _desc, _url, isMainFrame) => {
       if (!isMainFrame || win !== w || w.isDestroyed()) return;
+      loadFailed = true;
       if (retries >= MAX_LOAD_RETRIES) {
         unavailable = true;
         w.hide();
@@ -229,7 +245,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = setTimeout(() => {
         retryTimer = null;
-        if (win === w && !w.isDestroyed()) w.loadURL(url);
+        if (win === w && !w.isDestroyed()) load();
       }, 1500);
     });
     w.webContents.on('render-process-gone', () => {
@@ -243,16 +259,16 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       if (!isQuitting()) event.preventDefault();
     });
     w.on('closed', () => {
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = null;
       if (win === w) {
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = null;
         stopWalking();
         flushPosition();
         win = null;
       }
       notify();
     });
-    w.loadURL(url);
+    load();
   }
 
   function destroy() {
@@ -335,7 +351,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     if (!fromCompanion(event)) return;
     const [x] = win.getPosition();
     const strip = placement.dockStrip(currentDisplay().workArea, size);
-    walkTo({ x: Math.min(Math.max(x, strip.minX), strip.maxX), y: strip.y });
+    walkTo({ x: Math.min(Math.max(x, strip.minX), strip.maxX), y: strip.y, dock: true });
   });
 
   screen.on('display-added', reclamp);

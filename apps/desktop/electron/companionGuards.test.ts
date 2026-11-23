@@ -37,7 +37,19 @@ describe("sanitizeThreadMessages", () => {
 });
 
 describe("isReservedHotkey", () => {
-  it.each(["CommandOrControl+Shift+M", "cmdorctrl+shift+m", "Command+Shift+M", " CommandOrControl+Shift+M "])(
-    "refuses %s", (a) => expect(isReservedHotkey(a)).toBe(true));
-  it.each(["CommandOrControl+Shift+K", "Alt+Space", ""])("allows %s", (a) => expect(isReservedHotkey(a)).toBe(false));
+  it.each(["CommandOrControl+Shift+M", "cmdorctrl+shift+m", "Command+Shift+M", " CommandOrControl+Shift+M ",
+    "Cmd+Shift+M", "Shift+CmdOrCtrl+M", "command+shift+m", "Shift + Cmd + M"])(
+    "refuses %s on darwin", (a) => expect(isReservedHotkey(a, "darwin")).toBe(true));
+  it.each(["Ctrl+Shift+M", "Control+Shift+M", "shift+ctrl+m"])("refuses %s on win32/linux", (a) => {
+    expect(isReservedHotkey(a, "win32")).toBe(true);
+    expect(isReservedHotkey(a, "linux")).toBe(true);
+  });
+  it("does not treat Ctrl+Shift+M as reserved on darwin", () => {
+    expect(isReservedHotkey("Ctrl+Shift+M", "darwin")).toBe(false);
+  });
+  it.each(["CommandOrControl+Shift+K", "CommandOrControl+Shift+Space", "Alt+Space", "", "CommandOrControl+Alt+Shift+M"])(
+    "allows %s", (a) => expect(isReservedHotkey(a, "darwin")).toBe(false));
+  it("defaults to process.platform", () => {
+    expect(isReservedHotkey("CommandOrControl+Shift+M")).toBe(true);
+  });
 });

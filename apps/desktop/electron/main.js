@@ -416,7 +416,13 @@ inAppBrowser.setSearchEngine(readStoredSettings().browserSearchEngine);
 
 ipcMain.handle('get-settings', () => publicSettings(loadSettings()));
 ipcMain.handle('save-settings', (_, settings) => {
-  const next = persistSettings(settings);
+  // The main process owns the Mini Me position; the renderer may not overwrite it.
+  let incoming = settings;
+  if (incoming && typeof incoming === 'object') {
+    incoming = { ...incoming };
+    delete incoming.miniMePosition;
+  }
+  const next = persistSettings(incoming);
   applySettings(next);
   inAppBrowser.setSearchEngine(next.browserSearchEngine);
   if (companion) companion.applySettings(next);
@@ -580,6 +586,7 @@ function createWindow() {
     if (loadRetryTimer) clearTimeout(loadRetryTimer);
     loadRetryTimer = setTimeout(() => {
       loadRetryTimer = null;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
       mainWindow.loadURL(`http://localhost:${appPort}`);
     }, 1500);
   });
@@ -654,6 +661,8 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    if (loadRetryTimer) clearTimeout(loadRetryTimer);
+    loadRetryTimer = null;
     mainWindow = null;
     if (process.platform !== 'darwin') app.quit();
   });
@@ -719,6 +728,7 @@ function createTray() {
   tray.setContextMenu(buildTrayMenu());
 
   tray.on('click', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     if (mainWindow.isVisible() && mainWindow.isFocused()) {
       mainWindow.hide();
     } else {
@@ -1103,6 +1113,18 @@ app.whenReady().then(async () => {
       }
     },
   });
+  // Register Marven's own Listen shortcut first so Mini Me's hotkey can't take it.
+  const ok = globalShortcut.register('CommandOrControl+Shift+M', () => {
+    triggerVoice();
+  });
+
+  if (!ok) {
+    console.warn('[Marven] Global shortcut Cmd+Shift+M could not be registered.');
+    console.warn('[Marven] Another app may already own this shortcut.');
+  } else {
+    console.log('[Marven] Global shortcut registered: Cmd+Shift+M');
+  }
+
   companion.applySettings(loadSettings());
 
   if (!isDev) {
@@ -1192,17 +1214,6 @@ app.whenReady().then(async () => {
 
   // (The Web Speech API Origin fix lives in the single onBeforeSendHeaders
   // listener registered before createWindow(), with the API token.)
-
-  const ok = globalShortcut.register('CommandOrControl+Shift+M', () => {
-    triggerVoice();
-  });
-
-  if (!ok) {
-    console.warn('[Marven] Global shortcut Cmd+Shift+M could not be registered.');
-    console.warn('[Marven] Another app may already own this shortcut.');
-  } else {
-    console.log('[Marven] Global shortcut registered: Cmd+Shift+M');
-  }
 }).catch((err) => {
   console.error('[Marven] Startup failed:', err && err.message ? err.message : err);
   app.quit();
