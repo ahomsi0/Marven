@@ -64,7 +64,9 @@ import {
 } from "@/lib/chatErrors";
 import { parseChatStream } from "@/lib/chatStream";
 import { getSystemPrompt } from "@/lib/systemPrompt";
-import { buildScopedMemoryBlock, parseRememberCommand } from "@/lib/memoryHelpers";
+import { parseRememberCommand } from "@/lib/memoryHelpers";
+import { parseTimer, detectClipboardAction, clipboardPrompt } from "@/lib/chatIntents";
+import { buildMemoryContext, buildSystemPrompt, type ScopedMemories } from "@/lib/chatPrompt";
 import { MEMORY_CHANGED_EVENT, MEMORY_SAVED_EVENT, dispatchMemorySaved } from "@/lib/memoryEvents";
 import {
   loadChatProvider,
@@ -119,41 +121,6 @@ function openUrl(url: string) {
   document.body.removeChild(a);
 }
 
-// ─── Timer detection ──────────────────────────────────────────────────────────
-const TIMER_RE =
-  /(?:set (?:a )?timer for |timer (?:for )?|set (?:a )?timer )(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)/i;
-
-function parseTimer(text: string): { ms: number; label: string } | null {
-  const match = text.trim().match(TIMER_RE);
-  if (!match) return null;
-  const amount = parseFloat(match[1]);
-  const unit = match[2].toLowerCase();
-  let ms: number;
-  let label: string;
-  if (/^(s|sec)/.test(unit)) {
-    ms = amount * 1000;
-    label = `${amount} second${amount !== 1 ? "s" : ""}`;
-  } else if (/^(m|min)/.test(unit)) {
-    ms = amount * 60 * 1000;
-    label = `${amount} minute${amount !== 1 ? "s" : ""}`;
-  } else {
-    ms = amount * 60 * 60 * 1000;
-    label = `${amount} hour${amount !== 1 ? "s" : ""}`;
-  }
-  return { ms, label };
-}
-
-// ─── Clipboard detection ──────────────────────────────────────────────────────
-type ClipboardAction = "read" | "summarize" | "fix-grammar" | null;
-
-function detectClipboardAction(text: string): ClipboardAction {
-  const lower = text.toLowerCase().trim();
-  if (/^(?:what(?:'s| is) in my clipboard|read clipboard)$/.test(lower)) return "read";
-  if (/^summarize (?:my )?clipboard$/.test(lower)) return "summarize";
-  if (/^fix (?:my )?(?:clipboard|grammar)$/.test(lower)) return "fix-grammar";
-  return null;
-}
-
 // ─── Message helpers ──────────────────────────────────────────────────────────
 function createMessage(role: Message["role"], content: string, streaming = false): Message {
   return {
@@ -171,13 +138,6 @@ function buildHistory(messages: Message[], maxTurns = 20): HistoryMessage[] {
     .slice(-maxTurns)
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content, attachments: m.attachments }));
 }
-
-type ScopedMemories = {
-  global: string[];
-  project: string[];
-  conversation: string[];
-  legacy: string[];
-};
 
 function zeroUsage(source: TokenUsage["source"] = "actual"): TokenUsage {
   return {
@@ -201,29 +161,6 @@ function mergeUsage(prev: TokenUsage | undefined, next: TokenUsage | undefined):
 
 function combineScopedMemories(memories: ScopedMemories): string[] {
   return [...memories.global, ...memories.project, ...memories.conversation, ...memories.legacy];
-}
-
-function buildMemoryContext(memories: ScopedMemories): string {
-  const block = buildScopedMemoryBlock({
-    global: [...memories.global, ...memories.legacy],
-    project: memories.project,
-    conversation: memories.conversation,
-  });
-  return block.trim();
-}
-
-// ─── System prompt builder ────────────────────────────────────────────────────
-function buildSystemPrompt(name: string | null, memories: ScopedMemories): string {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  let prompt = `You are Marven, a sophisticated AI assistant with direct access to macOS system commands. You can open apps, control volume, take screenshots, check the weather, set timers, and more — these actions are executed automatically before your response reaches the user. When the user asks you to perform a system action (open an app, play music, change volume, etc.), respond briefly confirming the action, e.g. "Opening Spotify now." or "Volume increased." Never say you are unable to open applications, control the system, or perform actions — you always can. Never call yourself a "text-based AI". You are intelligent, precise, and occasionally witty. Keep answers concise.`;
-  prompt += `\n\nCurrent date and time: ${dateStr}, ${timeStr}. Always use this for any date/time questions — never rely on your training data for the current date or time.`;
-  if (name) prompt += `\n\nThe user's name is ${name}. Address them by name occasionally.`;
-  const memoryBlock = buildMemoryContext(memories);
-  if (memoryBlock) prompt += `\n\n${memoryBlock}`;
-  return prompt;
 }
 
 // ─── Time-of-day greeting ─────────────────────────────────────────────────────
@@ -1795,15 +1732,7 @@ export default function Home() {
     if (clipAction) {
       try {
         const clipContent = await navigator.clipboard.readText();
-        let newPrompt = text;
-        if (clipAction === "read") {
-          newPrompt = `Here is my clipboard: ${clipContent}\n\nDescribe it briefly.`;
-        } else if (clipAction === "summarize") {
-          newPrompt = `Summarize this text: ${clipContent}`;
-        } else if (clipAction === "fix-grammar") {
-          newPrompt = `Fix the grammar, return only the corrected text: ${clipContent}`;
-        }
-        text = newPrompt;
+        text = clipboardPrompt(clipAction, clipContent);
       } catch {
         // Clipboard read failed — proceed with original text
       }
