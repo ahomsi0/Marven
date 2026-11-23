@@ -336,6 +336,9 @@ function saveCompanionPosition(position) {
 function loadSettings() {
   const stored = readStoredSettings();
   const settings = { ...SETTINGS_DEFAULTS, ...stored };
+  // miniMeWalk (boolean) was replaced by miniMeActivity: "walk off" meant "stays put".
+  if (stored.miniMeActivity === undefined && stored.miniMeWalk === false) settings.miniMeActivity = 'still';
+  delete settings.miniMeWalk;
   let migrated = false;
   for (const key of SECRET_SETTING_KEYS) {
     const raw = stored[key];

@@ -60,13 +60,26 @@ describe("idle life", () => {
     expect(state.nextIdleAt).toBe(13_000);
   });
 
+  it("calm: mirrors a stroll that would barely move, and looks if neither way has room", () => {
+    // offset +0.1*160-ish: x=990 clamped to 1000 is only 10 px away -> mirror to the left
+    const mirrored = reduce(initialState(0), tick(5000, seq(0.1, 1, 0), { activity: "calm", x: 990 }));
+    expect(mirrored.effect).toEqual({ walkTo: 830 });
+    const tiny = reduce(initialState(0), tick(5000, seq(0.1, 0.5, 0), { activity: "calm", x: 500 }));
+    expect(tiny.state.anim).toBe("look");
+    expect(tiny.effect).toEqual({});
+    const edgeStrip = { minX: 0, maxX: 30 };
+    const cramped = reduce(initialState(0), tick(5000, seq(0.1, 1, 0), { activity: "calm", x: 0, strip: edgeStrip }));
+    expect(cramped.state.anim).toBe("look");
+    expect(cramped.effect).toEqual({});
+  });
+
   it("calm: strolls within 160 px of where it stands, clamped to the strip", () => {
     const near = reduce(initialState(0), tick(5000, seq(0.1, 1), { activity: "calm", x: 500 }));
     expect(near.state.anim).toBe("walk");
     expect(near.effect).toEqual({ walkTo: 660 });
-    const clamped = reduce(initialState(0), tick(5000, seq(0.1, 0), { activity: "calm", x: 50 }));
+    const clamped = reduce(initialState(0), tick(5000, seq(0.1, 0), { activity: "calm", x: 100 }));
     expect(clamped.effect).toEqual({ walkTo: 0 });
-    const right = reduce(initialState(0), tick(5000, seq(0.1, 1), { activity: "calm", x: 990 }));
+    const right = reduce(initialState(0), tick(5000, seq(0.1, 1), { activity: "calm", x: 900 }));
     expect(right.effect).toEqual({ walkTo: 1000 });
   });
 
@@ -82,7 +95,7 @@ describe("idle life", () => {
     expect(state).toMatchObject({ anim: "idle", nextIdleAt: 17_000 });
   });
 
-  it("still: never walks, alternating idle and look every 6-12 s", () => {
+  it("still: never walks, alternating look and idle", () => {
     let s = initialState(0);
     const anims: string[] = [];
     for (let t = 5000; t < 120_000 && anims.length < 4; t += 1000) {
@@ -92,7 +105,43 @@ describe("idle life", () => {
       s = r.state;
     }
     expect(anims).toEqual(["look", "idle", "look", "idle"]);
-    expect(reduce(initialState(0), tick(5000, seq(0.5), { activity: "still" })).state.nextIdleAt).toBe(14_000);
+  });
+
+  it("still: pauses 6-12 s between picks", () => {
+    expect(reduce(initialState(0), tick(5000, seq(0), { activity: "still" })).state.nextIdleAt).toBe(11_000);
+    expect(reduce(initialState(0), tick(5000, seq(1), { activity: "still" })).state.nextIdleAt).toBe(17_000);
+  });
+
+  it("still: goes idle on arrival with a 6-12 s pause", () => {
+    const { state } = arrive(walking(), 9000, seq(0), "still");
+    expect(state).toMatchObject({ anim: "idle", nextIdleAt: 15_000 });
+    expect(arrive(walking(), 9000, seq(1), "still").state.nextIdleAt).toBe(21_000);
+  });
+
+  it("an unknown strip (not reported yet) makes him look instead of walking", () => {
+    const r = reduce(initialState(0), tick(5000, seq(0.5), { strip: { minX: 0, maxX: 0 } }));
+    expect(r.state.anim).toBe("look");
+    expect(r.effect).toEqual({});
+    const calm = reduce(initialState(0), tick(5000, seq(0.1, 1, 0), { activity: "calm", strip: { minX: 0, maxX: 0 } }));
+    expect(calm.effect).toEqual({});
+  });
+
+  it("lively pauses last 1.5-4 s wherever the next pick is scheduled", () => {
+    const bounds = (n: number) => [n + 1500, n + 4000];
+    const check = (nextIdleAt: number, now: number) => {
+      const [lo, hi] = bounds(now);
+      expect(nextIdleAt).toBeGreaterThanOrEqual(lo);
+      expect(nextIdleAt).toBeLessThanOrEqual(hi);
+    };
+    for (const rand of [0, 0.5, 0.999]) {
+      const r = () => rand;
+      check(reduce(walking(), { type: "interact", now: 6000, rand: r } as BehaviourEvent).state.nextIdleAt, 6000);
+      check(run(initialState(0), { type: "bubble-open", now: 0 }, { type: "bubble-close", now: 7000, rand: r } as BehaviourEvent).state.nextIdleAt, 7000);
+      check(reduce({ ...initialState(0), anim: "stretch" }, { type: "oneshot-done", now: 8000, rand: r } as BehaviourEvent).state.nextIdleAt, 8000);
+      check(arrive(walking(), 9000, seq(0.1, rand)).state.nextIdleAt, 9000);
+      const sat = reduce(initialState(0), tick(120_000, seq(0.1))).state;
+      check(reduce(sat, { type: "interact", now: 130_000, rand: r } as BehaviourEvent).state.nextIdleAt, 130_000);
+    }
   });
 
   it("sits after resting time with no interaction and stays seated", () => {
@@ -116,6 +165,18 @@ describe("idle life", () => {
     const woke = reduce(asleep.state, { type: "interact", now: 301_000 });
     expect(woke.state).toMatchObject({ anim: "stretch", resting: false });
     expect(reduce(woke.state, { type: "oneshot-done", now: 302_000 }).state.anim).toBe("idle");
+  });
+
+  it("sleeps before resting when the sleep time is shorter than the rest time", () => {
+    const r = reduce(initialState(0), tick(60_000, seq(0.1), { sleepAfterMs: 60_000, restAfterMs: 120_000 }));
+    expect(r.state.anim).toBe("sleep");
+  });
+
+  it("stands up on the perch when perched and resting", () => {
+    const perched = run(initialState(0), { type: "drop", now: 0, inDock: false }).state;
+    const sat = reduce(perched, tick(120_000, seq(0.1))).state;
+    expect(sat).toMatchObject({ anim: "sit", resting: true });
+    expect(reduce(sat, { type: "interact", now: 130_000 }).state).toMatchObject({ anim: "idle", mode: "perched", resting: false });
   });
 
   it("stands up when interacted with while resting", () => {
@@ -156,17 +217,18 @@ describe("commands", () => {
 
 describe("never stuck", () => {
   const walking = () => run(initialState(0), tick(5000, seq(0.1, 0.5))).state;
-  it("gives up a walk after 90 seconds", () => {
+  it("gives up a walk after 180 seconds", () => {
     const w = walking();
     expect(w.anim).toBe("walk");
-    expect(w.walkUntil).toBe(95_000);
-    const { state, effect } = reduce(w, tick(95_000, seq(0.5)));
+    expect(w.walkUntil).toBe(185_000);
+    const { state, effect } = reduce(w, tick(185_000, seq(0.5)));
     expect(state.anim).toBe("idle");
     expect(effect).toEqual({ stop: true });
-    expect(state.nextIdleAt).toBe(99_000);
+    expect(state.nextIdleAt).toBeGreaterThanOrEqual(186_500);
+    expect(state.nextIdleAt).toBeLessThanOrEqual(189_000);
   });
   it("keeps walking before the deadline", () => {
-    expect(reduce(walking(), tick(94_999, seq(0.5))).effect).toEqual({});
+    expect(reduce(walking(), tick(184_999, seq(0.5))).effect).toEqual({});
   });
   it("stops walking when the request fails or succeeds or the user interacts", () => {
     const failed = reduce(walking(), { type: "failed", now: 6000 });
@@ -183,7 +245,7 @@ describe("never stuck", () => {
     expect(reduce(perched, { type: "interact", now: 6000 }).state.anim).toBe("sit");
   });
   it("sets a walk deadline on return-home", () => {
-    expect(reduce(initialState(0), { type: "return-home", now: 10 }).state.walkUntil).toBe(90_010);
+    expect(reduce(initialState(0), { type: "return-home", now: 10 }).state.walkUntil).toBe(180_010);
   });
   it("does not stop when not walking", () => {
     expect(reduce(initialState(0), { type: "failed", now: 1 }).effect).toEqual({});

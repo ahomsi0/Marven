@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useT } from "@/lib/i18n";
+import type { Activity } from "@/lib/companion/behaviour";
+import type { Personality } from "@/lib/companion/brain";
+
+type Speed = "slow" | "normal" | "fast";
+const ACTIVITIES: Activity[] = ["lively", "calm", "still"];
+const SPEEDS: Speed[] = ["slow", "normal", "fast"];
+const PERSONALITIES: Personality[] = ["playful", "neutral", "detailed"];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Electron = {
@@ -14,9 +21,9 @@ interface MiniMeState {
   miniMeEnabled: boolean;
   miniMeWakeWord: boolean;
   miniMeSpeak: boolean;
-  miniMeActivity: string;
-  miniMeSpeed: string;
-  miniMePersonality: string;
+  miniMeActivity: Activity;
+  miniMeSpeed: Speed;
+  miniMePersonality: Personality;
   miniMeScale: number;
   miniMeSleepMinutes: number;
   miniMeHotkey: string;
@@ -68,6 +75,10 @@ export function MiniMeSettings({ electron }: { electron: Electron }) {
       for (const key of Object.keys(DEFAULTS) as (keyof MiniMeState)[]) {
         if (typeof s?.[key] === typeof DEFAULTS[key]) (next as any)[key] = s[key];
       }
+      // Only accept values the selects offer; anything else falls back to the default.
+      if (!ACTIVITIES.includes(next.miniMeActivity)) next.miniMeActivity = DEFAULTS.miniMeActivity;
+      if (!SPEEDS.includes(next.miniMeSpeed)) next.miniMeSpeed = DEFAULTS.miniMeSpeed;
+      if (!PERSONALITIES.includes(next.miniMePersonality)) next.miniMePersonality = DEFAULTS.miniMePersonality;
       setState(next);
       setHotkeyDraft(next.miniMeHotkey);
     });

@@ -41,7 +41,7 @@ export default function CompanionPage() {
 
   const dispatch = useCallback(
     (event: BehaviourEvent) => {
-      const { state, effect } = reduce(behaviourRef.current, event);
+      const { state, effect } = reduce(behaviourRef.current, { rand: Math.random, ...event } as BehaviourEvent);
       behaviourRef.current = state;
       setBehaviour(state);
       if (effect.stop) bridge?.stop();
@@ -128,6 +128,13 @@ export default function CompanionPage() {
   useEffect(() => {
     if (!bridge) return;
     void bridge.getSettings().then((s) => s && setSettings(s));
+    // Seed the strip and position now, rather than waiting for the first move.
+    void bridge.getPosition().then((p) => {
+      if (!p) return;
+      stripRef.current = p.strip;
+      xRef.current = p.x;
+      setFacing(p.facing);
+    });
     const offs = [
       bridge.onSettings(setSettings),
       bridge.onPosition((p) => {
@@ -166,7 +173,7 @@ export default function CompanionPage() {
         strip: stripRef.current,
         activity: s.activity,
         x: xRef.current,
-        restAfterMs: REST_AFTER_MS,
+        restAfterMs: Math.min(REST_AFTER_MS, (s.sleepMinutes * 60_000) / 2),
         sleepAfterMs: s.sleepMinutes * 60_000,
       });
     }, 1000);

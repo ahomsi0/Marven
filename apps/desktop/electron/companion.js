@@ -60,8 +60,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   const rendererSettings = () => ({
     speak: settings.miniMeSpeak !== false,
     scale: [2, 3, 4].includes(Number(settings.miniMeScale)) ? Number(settings.miniMeScale) : 3,
-    // miniMeWalk (a boolean) predates miniMeActivity: false meant "stays put".
-    activity: ACTIVITIES.includes(settings.miniMeActivity) ? settings.miniMeActivity : settings.miniMeWalk === false ? 'still' : 'lively',
+    activity: ACTIVITIES.includes(settings.miniMeActivity) ? settings.miniMeActivity : 'lively',
     personality: PERSONALITIES.includes(settings.miniMePersonality) ? settings.miniMePersonality : 'playful',
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
@@ -73,12 +72,12 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     return screen.getAllDisplays().find((d) => d.id === displayId) || screen.getPrimaryDisplay();
   }
 
-  function sendPosition(extra = {}) {
-    if (!alive()) return;
+  function positionPayload(extra = {}) {
+    if (!alive()) return null;
     const [x, y] = win.getPosition();
     const wa = currentDisplay().workArea;
     const strip = placement.dockStrip(wa, size);
-    win.webContents.send('companion:position', {
+    return {
       x,
       y,
       facing,
@@ -86,7 +85,12 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       inDock: placement.isInDockStrip({ x, y, ...size }, wa),
       strip: { minX: strip.minX, maxX: strip.maxX },
       ...extra,
-    });
+    };
+  }
+
+  function sendPosition(extra = {}) {
+    const payload = positionPayload(extra);
+    if (payload) win.webContents.send('companion:position', payload);
   }
 
   function flushPosition() {
@@ -316,6 +320,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   // ── IPC from the companion page only ────────────────────────────────────────
   const fromCompanion = (event) => alive() && event.sender === win.webContents;
 
+  ipcMain.handle('companion:get-position', (event) => (fromCompanion(event) ? positionPayload() : null));
   ipcMain.handle('companion:get-settings', (event) => (fromCompanion(event) ? rendererSettings() : null));
   ipcMain.on('companion:set-interactive', (event, on) => {
     if (fromCompanion(event)) win.setIgnoreMouseEvents(!on, { forward: true });

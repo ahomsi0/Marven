@@ -37,6 +37,7 @@ type Unsubscribe = () => void;
 
 export interface CompanionBridge {
   getSettings(): Promise<CompanionSettings | null>;
+  getPosition(): Promise<CompanionPosition | null>;
   setInteractive(on: boolean): void;
   setFocusable(on: boolean): void;
   walkTo(x: number): void;

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   companion: {
     getSettings: () => ipcRenderer.invoke('companion:get-settings'),
+    getPosition: () => ipcRenderer.invoke('companion:get-position'),
     setInteractive: (on) => ipcRenderer.send('companion:set-interactive', !!on),
     setFocusable: (on) => ipcRenderer.send('companion:set-focusable', !!on),
     walkTo: (x) => ipcRenderer.send('companion:walk-to', x),
