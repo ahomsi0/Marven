@@ -9,6 +9,7 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
+import { MiniMeSettings } from "./MiniMeSettings";
 import { useOverlayGuard } from "@/lib/overlays";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { SearchEnginePicker } from "./SearchEnginePicker";
@@ -1424,6 +1425,8 @@ export function SettingsModal({
                 </button>
               </div>
             </div>
+
+            {electron && <MiniMeSettings electron={electron} />}
 
             {/* Let the agent use the browser toggle (desktop app only) */}
             {browserBridge && (
