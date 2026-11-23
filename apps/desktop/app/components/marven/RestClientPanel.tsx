@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RestRequest, RestMethod, RestHeader } from "@/types";
 import { loadRestRequest, saveRestRequest } from "@/lib/restStorage";
+import { Dropdown } from "./Dropdown";
 
 const REST_METHODS: RestMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -15,6 +16,13 @@ const METHOD_COLORS: Record<RestMethod, string> = {
   HEAD: "text-[var(--m-text-faint)]",
   OPTIONS: "text-[var(--m-text-faint)]",
 };
+
+const BODY_TYPES: { value: RestRequest["bodyType"]; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "json", label: "JSON" },
+  { value: "text", label: "Text" },
+  { value: "form", label: "Form" },
+];
 
 interface RestResponse {
   status: number;
@@ -226,17 +234,14 @@ export function RestClientPanel({ requestId }: Props) {
 
       {/* Request line: Method + URL + Send */}
       <div className="flex items-center gap-2 border-b border-[var(--m-border-subtle)] bg-[var(--m-surface)] px-3 py-2">
-        <select
+        <Dropdown
+          size="sm"
+          aria-label="HTTP method"
           value={request.method}
-          onChange={(e) => updateRequest({ method: e.target.value as RestMethod })}
-          className={`rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-1 text-[11px] font-bold outline-none focus:border-[#d19a66]/60 ${METHOD_COLORS[request.method]}`}
-        >
-          {REST_METHODS.map((m) => (
-            <option key={m} value={m} className={METHOD_COLORS[m]}>
-              {m}
-            </option>
-          ))}
-        </select>
+          onChange={(method) => updateRequest({ method })}
+          options={REST_METHODS.map((m) => ({ value: m, label: m, className: METHOD_COLORS[m] }))}
+          className="shrink-0 font-bold"
+        />
 
         <input
           type="text"
@@ -361,17 +366,14 @@ export function RestClientPanel({ requestId }: Props) {
         ) : (
           <div className="flex flex-col gap-2 p-3" style={{ maxHeight: 200 }}>
             <div className="flex items-center gap-2">
-              <label className="text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">Type</label>
-              <select
+              <span id={`${request.id}-body-type`} className="text-[10px] uppercase tracking-wider text-[var(--m-text-faint)]">Type</span>
+              <Dropdown<RestRequest["bodyType"]>
+                size="sm"
+                aria-labelledby={`${request.id}-body-type`}
                 value={request.bodyType}
-                onChange={(e) => updateRequest({ bodyType: e.target.value as RestRequest["bodyType"] })}
-                className="rounded border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2 py-0.5 text-[11px] text-[var(--m-text-muted)] outline-none focus:border-[#d19a66]/60"
-              >
-                <option value="none">None</option>
-                <option value="json">JSON</option>
-                <option value="text">Text</option>
-                <option value="form">Form</option>
-              </select>
+                onChange={(bodyType) => updateRequest({ bodyType })}
+                options={BODY_TYPES}
+              />
             </div>
             {request.bodyType !== "none" && (
               <textarea

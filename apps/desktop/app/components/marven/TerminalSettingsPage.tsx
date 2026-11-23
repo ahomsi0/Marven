@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
+import { Dropdown } from "./Dropdown";
 import { useTheme } from "@/lib/theme";
 import {
   MATCH_APP,
@@ -175,15 +176,15 @@ export function TerminalSettingsPage() {
         <p className="text-[12px] font-medium text-[var(--m-text-muted)]">{t("settings.terminal.fontAndCursor")}</p>
 
         <div className="flex items-start gap-3">
-          <label htmlFor="terminal-font" className="w-28 shrink-0 pt-1.5 text-[13px] text-[var(--m-text-muted)]">
+          <label id="terminal-font-label" htmlFor="terminal-font" className="w-28 shrink-0 pt-1.5 text-[13px] text-[var(--m-text-muted)]">
             {t("settings.terminal.font")}
           </label>
           <div className="min-w-0 flex-1 space-y-2">
-            <select
+            <Dropdown
               id="terminal-font"
+              aria-labelledby="terminal-font-label"
               value={fontSelectValue}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 if (v === CUSTOM) {
                   setCustomDraft(settings.fontFamily);
                   setCustomOpen(true);
@@ -193,14 +194,13 @@ export function TerminalSettingsPage() {
                 setCustomOpen(false);
                 setTerminalSettings({ fontFamily: v });
               }}
-              className="w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-2.5 py-1.5 text-[13px] text-[var(--m-text)] outline-none focus:border-[var(--m-accent)]/50"
-            >
-              <option value="">{t("settings.terminal.fontDefault")}</option>
-              {FONT_CHOICES.map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-              <option value={CUSTOM}>{t("settings.terminal.fontCustom")}</option>
-            </select>
+              options={[
+                { value: "", label: t("settings.terminal.fontDefault") },
+                ...FONT_CHOICES.map((f) => ({ value: f, label: f })),
+                { value: CUSTOM, label: t("settings.terminal.fontCustom") },
+              ]}
+              className="w-full"
+            />
             {customOpen && (
               <div>
                 <input

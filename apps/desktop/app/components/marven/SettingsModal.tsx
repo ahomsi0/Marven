@@ -15,6 +15,7 @@ import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { SearchEnginePicker } from "./SearchEnginePicker";
 import { ReportProblemPanel } from "./ReportProblemPanel";
 import { MemoryManager } from "./MemoryManager";
+import { Dropdown } from "./Dropdown";
 import {
   OPEN_SETTINGS_EVENT,
   clearPendingSettingsRequest,
@@ -1463,28 +1464,29 @@ export function SettingsModal({
             )}
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
-              <label className="block text-[13px] font-medium text-[var(--m-text)]" htmlFor="agent-safety-profile">
+              <label id="agent-safety-profile-label" className="block text-[13px] font-medium text-[var(--m-text)]" htmlFor="agent-safety-profile">
                 {tr("settings.general.safetyProfile")}
               </label>
               <p className="mt-0.5 text-[11px] text-[var(--m-text-faint)]">
                 {tr("settings.general.safetyProfileHint")}
               </p>
-              <select
+              <Dropdown<AgentSafetyProfile>
                 id="agent-safety-profile"
+                aria-labelledby="agent-safety-profile-label"
                 value={agentSafetyProfile}
-                onChange={async (e) => {
-                  const next = e.target.value as AgentSafetyProfile;
+                onChange={async (next) => {
                   setAgentSafetyProfile(next);
                   await saveBackendSettings({ agentSafetyProfile: next });
                   window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                 }}
-                className="mt-3 w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-2 text-[12px] text-[var(--m-text)] outline-none focus:border-[var(--m-accent)]/60"
-              >
-                <option value="read-only">{tr("settings.general.safetyReadOnly")}</option>
-                <option value="ask-before-write">{tr("settings.general.safetyAskBeforeWrite")}</option>
-                <option value="ask-before-command">{tr("settings.general.safetyAskBeforeCommand")}</option>
-                <option value="trusted">{tr("settings.general.safetyTrusted")}</option>
-              </select>
+                options={[
+                  { value: "read-only", label: tr("settings.general.safetyReadOnly") },
+                  { value: "ask-before-write", label: tr("settings.general.safetyAskBeforeWrite") },
+                  { value: "ask-before-command", label: tr("settings.general.safetyAskBeforeCommand") },
+                  { value: "trusted", label: tr("settings.general.safetyTrusted") },
+                ]}
+                className="mt-3 w-full"
+              />
             </div>
 
             <div className="rounded-lg border border-[var(--m-border-subtle)] bg-[var(--m-surface)] p-4">
@@ -1775,26 +1777,34 @@ export function SettingsModal({
               {inlineCompletionsEnabled && (
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <div>
-                    <label className="block text-[11px] text-[var(--m-text-faint)]">{tr("settings.general.provider")}</label>
-                    <select
-                      className="mt-1 w-full rounded border border-[var(--m-border-subtle)] bg-[var(--m-surface-raised)] px-2 py-1 text-[12px] text-[var(--m-text)]"
+                    <label
+                      id="inline-completion-provider-label"
+                      htmlFor="inline-completion-provider"
+                      className="block text-[11px] text-[var(--m-text-faint)]"
+                    >
+                      {tr("settings.general.provider")}
+                    </label>
+                    <Dropdown
+                      id="inline-completion-provider"
+                      aria-labelledby="inline-completion-provider-label"
                       value={inlineCompletionProvider}
-                      onChange={async (e) => {
-                        const next = e.target.value;
+                      onChange={async (next) => {
                         setInlineCompletionProvider(next);
                         await saveBackendSettings({ inlineCompletionProvider: next });
                         window.dispatchEvent(new CustomEvent("marven:settings-changed"));
                       }}
-                    >
-                      <option value="ollama">{tr("settings.general.localSuffix", { name: "Ollama" })}</option>
-                      <option value="lmstudio">{tr("settings.general.localSuffix", { name: "LM Studio" })}</option>
-                      <option value="llamaserver">{tr("settings.general.localSuffix", { name: "llama-server" })}</option>
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="groq">Groq</option>
-                      <option value="openrouter">OpenRouter</option>
-                      <option value="nim">NVIDIA NIM</option>
-                    </select>
+                      options={[
+                        { value: "ollama", label: tr("settings.general.localSuffix", { name: "Ollama" }) },
+                        { value: "lmstudio", label: tr("settings.general.localSuffix", { name: "LM Studio" }) },
+                        { value: "llamaserver", label: tr("settings.general.localSuffix", { name: "llama-server" }) },
+                        { value: "openai", label: "OpenAI" },
+                        { value: "anthropic", label: "Anthropic" },
+                        { value: "groq", label: "Groq" },
+                        { value: "openrouter", label: "OpenRouter" },
+                        { value: "nim", label: "NVIDIA NIM" },
+                      ]}
+                      className="mt-1 w-full"
+                    />
                   </div>
 
                   <div>

@@ -11,6 +11,7 @@ import {
   type MemoryEntriesByScope,
 } from "@/lib/memoryApi";
 import { MEMORY_CHANGED_EVENT, MEMORY_SAVED_EVENT } from "@/lib/memoryEvents";
+import { Dropdown } from "./Dropdown";
 import {
   memoryExportFileName,
   memoryExportMarkdown,
@@ -89,21 +90,20 @@ export function MemoryManager({ workspaceRoot: openRoot }: { workspaceRoot: stri
         onChanged={reload}
       />
       {!openRoot && recents.length > 0 && (
-        <label className="flex items-center gap-2 text-[11px] text-[var(--m-text-muted)]">
-          {tr("settings.memory.pickProject")}
-          <select
+        <div className="flex items-center gap-2 text-[11px] text-[var(--m-text-muted)]">
+          <span id="memory-project-picker-label">{tr("settings.memory.pickProject")}</span>
+          <Dropdown
+            size="sm"
+            aria-labelledby="memory-project-picker-label"
             value={pickedRoot ?? ""}
-            onChange={(e) => setPickedRoot(e.target.value || null)}
-            className="min-w-0 flex-1 rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-2 py-1 text-[11px] text-[var(--m-text)]"
-          >
-            <option value="">{tr("settings.memory.globalOnly")}</option>
-            {recents.map((root) => (
-              <option key={root} value={root} title={root}>
-                {folderName(root)}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={(root) => setPickedRoot(root || null)}
+            options={[
+              { value: "", label: tr("settings.memory.globalOnly") },
+              ...recents.map((root) => ({ value: root, label: folderName(root), title: root })),
+            ]}
+            className="flex-1"
+          />
+        </div>
       )}
       {workspaceRoot ? (
         <MemorySection
