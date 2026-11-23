@@ -1,6 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useT } from "@/lib/i18n";
+
+/** `t` for keys built from ids, which the typed `t` can't check. */
+export function useTr() {
+  const { t, i18n } = useT();
+  return { tr: t as unknown as (key: string, opts?: Record<string, unknown>) => string, exists: (key: string) => i18n.exists(key) };
+}
 
 /** Settings card: matches the other Settings pages. */
 export function Card({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {

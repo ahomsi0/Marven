@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { useT } from "@/lib/i18n";
+import { useTr } from "./primitives";
 
 interface Props {
   label: string;
@@ -14,7 +14,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** A row of preset swatches plus a custom colour picker. */
 export function ColorField({ label, value, presets, onChange }: Props) {
-  const { t: tr } = useT();
+  const { tr } = useTr();
   const labelId = useId();
   const custom = !presets.some((p) => same(p, value));
 

@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { useT } from "@/lib/i18n";
 import { Dropdown } from "../Dropdown";
 import { CompanionSprite } from "@/app/companion/CompanionSprite";
 import type { AnimState } from "@/lib/companion/behaviour";
 import { COLOR_PRESETS, DEFAULT_LOOK, HAIR_STYLES, randomLook, type ColorKey, type Look } from "@/lib/companion/look";
 import { ColorField } from "./ColorField";
-import { Switch } from "./primitives";
+import { Switch, useTr } from "./primitives";
 
 const POSES = ["idle", "walk", "talk", "happy", "sleep", "sit"] as const satisfies readonly AnimState[];
 type Pose = (typeof POSES)[number];
@@ -22,8 +21,7 @@ const CHECKER = {
 } as const;
 
 function Preview({ look }: { look: Look }) {
-  const { t } = useT();
-  const tr = t as unknown as (key: string) => string;
+  const { tr } = useTr();
   const [pose, setPose] = useState<Pose>("idle");
   // One-shot poses (happy) stop on their last frame; restart them after a beat.
   const [run, setRun] = useState(0);
@@ -73,16 +71,14 @@ function GroupTitle({ children }: { children: string }) {
 const OUTFIT: ColorKey[] = ["shirt", "pants", "shoes"];
 
 export function AppearanceEditor({ look, onChange }: { look: Look; onChange: (next: Look) => void }) {
-  const { t, i18n } = useT();
-  // Keys built from ids (hair styles, colour fields) can't be checked by the typed `t`.
-  const tr = t as unknown as (key: string, opts?: Record<string, unknown>) => string;
+  const { tr, exists } = useTr();
   const glassesId = useId();
   const beardId = useId();
   const set = (patch: Partial<Look>) => onChange({ ...look, ...patch });
 
   const hairStyleLabel = (id: string) => {
     const key = `settings.miniMe.hairStyles.${id}`;
-    return i18n.exists(key) ? tr(key) : id.charAt(0).toUpperCase() + id.slice(1);
+    return exists(key) ? tr(key) : id.charAt(0).toUpperCase() + id.slice(1);
   };
   const colorLabel = (key: ColorKey) => tr(`settings.miniMe.${key}`);
 

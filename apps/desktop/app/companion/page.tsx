@@ -23,7 +23,10 @@ export default function CompanionPage() {
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_COMPANION_SETTINGS);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const look = useMemo(() => (settings.look ? parseLook(settings.look) : DEFAULT_LOOK), [settings.look]);
+  // Keyed on content, not identity: every settings push is a new object.
+  const lookKey = JSON.stringify(settings.look ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const look = useMemo(() => (settings.look ? parseLook(settings.look) : DEFAULT_LOOK), [lookKey]);
   const behaviourRef = useRef<BehaviourState>(initialState(Date.now()));
   const [behaviour, setBehaviour] = useState<BehaviourState>(behaviourRef.current);
   const [facing, setFacing] = useState<1 | -1>(1);

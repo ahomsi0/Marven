@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useT } from "@/lib/i18n";
 import type { Activity } from "@/lib/companion/behaviour";
 import type { Personality } from "@/lib/companion/brain";
 import { DEFAULT_LOOK, parseLook, type Look } from "@/lib/companion/look";
 import { Dropdown } from "../Dropdown";
 import { AppearanceEditor } from "./AppearanceEditor";
-import { Card, Row, Switch } from "./primitives";
+import { Card, Row, Switch, useTr } from "./primitives";
 
 type Speed = "slow" | "normal" | "fast";
 const ACTIVITIES: Activity[] = ["lively", "calm", "still"];
@@ -16,6 +15,8 @@ const PERSONALITIES: Personality[] = ["playful", "neutral", "detailed"];
 const SCALES = [2, 3, 4];
 const SLEEP_MINUTES = [1, 5, 10, 30];
 const LOOK_SAVE_DELAY_MS = 300;
+const ACTIVITY_KEYS: Record<Activity, string> = { lively: "activityLively", calm: "activityCalm", still: "activityStill" };
+const PERSONALITY_KEYS: Record<Personality, string> = { playful: "personalityPlayful", neutral: "personalityNeutral", detailed: "personalityDetailed" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Electron = {
@@ -50,9 +51,7 @@ const DEFAULTS: MiniMeState = {
 
 /** Settings → Mini Me (desktop app only). */
 export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
-  const { t } = useT();
-  // Keys built from ids can't be checked by the typed `t`.
-  const tr = t as unknown as (key: string, opts?: Record<string, unknown>) => string;
+  const { tr } = useTr();
   const [state, setState] = useState<MiniMeState>(DEFAULTS);
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
   const [hotkeyDraft, setHotkeyDraft] = useState(DEFAULTS.miniMeHotkey);
@@ -83,19 +82,30 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
     };
   }, [electron]);
 
+  // The main process merges a patch into the stored settings, so send only what changed.
   const persist = useCallback(
     async (patch: Record<string, unknown>) => {
-      const current = await electron.getSettings();
-      await electron.saveSettings({ ...current, ...patch });
+      await electron.saveSettings(patch);
     },
     [electron],
   );
 
   async function save(patch: Partial<MiniMeState>) {
+    const previous = state;
     setState((prev) => ({ ...prev, ...patch }));
-    await persist(patch);
-    const st = await electron.companionStatus?.();
-    if (st) setHotkeyOk(st.hotkeyOk);
+    try {
+      await persist(patch);
+      const st = await electron.companionStatus?.();
+      if (st) setHotkeyOk(st.hotkeyOk);
+    } catch (err) {
+      console.warn("Mini Me: could not save settings", err);
+      setState((prev) => {
+        const reverted = { ...prev };
+        for (const key of Object.keys(patch) as (keyof MiniMeState)[]) (reverted as any)[key] = previous[key];
+        return reverted;
+      });
+      if ("miniMeHotkey" in patch) setHotkeyDraft(previous.miniMeHotkey);
+    }
   }
 
   // Colour pickers fire continuously: update the preview now, save once things settle.
@@ -104,7 +114,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
     lookTimer.current = null;
     const next = pendingLook.current;
     pendingLook.current = null;
-    if (next) void persist({ miniMeLook: next });
+    if (next) persist({ miniMeLook: next }).catch((err) => console.warn("Mini Me: could not save look", err));
   }, [persist]);
 
   const changeLook = (next: Look) => {
@@ -134,6 +144,16 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
             value={hotkeyDraft}
             spellCheck={false}
             onChange={(e) => setHotkeyDraft(e.target.value)}
+            onKeyDown={(e) => {
+              const el = e.currentTarget;
+              if (e.key === "Enter") el.blur();
+              else if (e.key === "Escape") {
+                e.stopPropagation();
+                setHotkeyDraft(state.miniMeHotkey);
+                // Revert first, then blur: the draft now equals the stored value, so blur saves nothing.
+                requestAnimationFrame(() => el.blur());
+              }
+            }}
             onBlur={() => {
               const next = hotkeyDraft.trim();
               if (next && next !== state.miniMeHotkey) void save({ miniMeHotkey: next });
@@ -161,7 +181,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
             onChange={(v) => void save({ miniMeActivity: v })}
             options={ACTIVITIES.map((v) => ({
               value: v,
-              label: tr(`settings.miniMe.activity${v === "still" ? "Still" : v === "calm" ? "Calm" : "Lively"}`),
+              label: tr(`settings.miniMe.${ACTIVITY_KEYS[v]}`),
             }))}
             className={dropdownWidth}
           />
@@ -203,7 +223,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
         <div role="radiogroup" aria-label={tr("settings.miniMe.cardPersonality")} className="grid gap-2 sm:grid-cols-3">
           {PERSONALITIES.map((p) => {
             const selected = state.miniMePersonality === p;
-            const name = p === "playful" ? "Playful" : p === "neutral" ? "Neutral" : "Detailed";
+            const key = PERSONALITY_KEYS[p];
             return (
               <button
                 key={p}
@@ -218,10 +238,10 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
                 }`}
               >
                 <span className={`block text-[12px] font-medium ${selected ? "text-[var(--m-accent)]" : "text-[var(--m-text)]"}`}>
-                  {tr(`settings.miniMe.personality${name}`)}
+                  {tr(`settings.miniMe.${key}`)}
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-snug text-[var(--m-text-faint)]">
-                  {tr(`settings.miniMe.personality${name}Hint`)}
+                  {tr(`settings.miniMe.${key}Hint`)}
                 </span>
               </button>
             );

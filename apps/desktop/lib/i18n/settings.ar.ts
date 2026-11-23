@@ -233,7 +233,6 @@ const settingsAr = {
     personalityDetailedHint: "شروح أوفى عندما تحتاجها.",
     cardAppearance: "المظهر",
     cardAppearanceHint: "صمّم ميني مي الخاص بك. تظهر التغييرات على سطح المكتب فورًا.",
-    preview: "معاينة",
     previewPose: "الوضعية",
     poses: { idle: "وقوف", walk: "مشي", talk: "كلام", happy: "سعيد", sleep: "نوم", sit: "جلوس" },
     groupHead: "الرأس",

@@ -233,7 +233,6 @@ const settingsEn = {
     personalityDetailedHint: "Fuller explanations when you need them.",
     cardAppearance: "Appearance",
     cardAppearanceHint: "Design your Mini Me. Changes show on your desktop straight away.",
-    preview: "Preview",
     previewPose: "Pose",
     poses: { idle: "Idle", walk: "Walk", talk: "Talk", happy: "Happy", sleep: "Sleep", sit: "Sit" },
     groupHead: "Head",
