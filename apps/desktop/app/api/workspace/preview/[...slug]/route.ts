@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { resolveRequestRoot } from "@/lib/workspaceState";
 import { resolveWorkspacePath } from "@/lib/workspacePaths";
+import { decodePreviewRoot } from "@/lib/previewUrl";
 
 /**
  * Path-based preview server.
@@ -15,8 +16,10 @@ import { resolveWorkspacePath } from "@/lib/workspacePaths";
  * unstyled.
  *
  * Solution: serve the same file through a *path-shaped* URL like
- * `/api/workspace/preview/index.html`. Then `style.css` resolves to
- * `/api/workspace/preview/style.css` and everything Just Works™.
+ * `/api/workspace/preview/@<root>/index.html`, with the workspace root as an
+ * encoded path segment (see lib/previewUrl). Then `style.css` resolves to
+ * `/api/workspace/preview/@<root>/style.css` and keeps the root, which a
+ * `?root=` query would not: relative URLs drop the query string.
  */
 
 const MIME: Record<string, string> = {
@@ -47,14 +50,24 @@ export async function GET(
   { params }: { params: Promise<{ slug: string[] }> },
 ) {
   const { slug } = await params;
-  // `slug` is the array of path segments after /api/workspace/preview/. Glue
-  // them back together so we resolve "src/components/Button.tsx" correctly.
-  const relPath = slug.map(decodeURIComponent).join("/");
+  // `slug` is the array of path segments after /api/workspace/preview/. The
+  // first may be "@<encoded root>"; the rest glue back into the file path so
+  // "src/components/Button.tsx" resolves correctly.
+  let segments = slug;
+  let rootParam = req.nextUrl.searchParams.get("root");
+  if (segments[0]?.startsWith("@")) {
+    const decoded = decodePreviewRoot(segments[0].slice(1));
+    if (!decoded) {
+      return NextResponse.json({ error: "Invalid workspace root" }, { status: 400 });
+    }
+    rootParam = decoded;
+    segments = segments.slice(1);
+  }
+  const relPath = segments.map(decodeURIComponent).join("/");
   if (!relPath) {
     return NextResponse.json({ error: "path required" }, { status: 400 });
   }
 
-  const rootParam = req.nextUrl.searchParams.get("root");
   const root = resolveRequestRoot(rootParam);
   if (!root) {
     return NextResponse.json(

@@ -12,6 +12,7 @@ import { GET as serveGet } from "../serve/route";
 import { GET as previewGet } from "../preview/[...slug]/route";
 import { POST as searchPost } from "../search/route";
 import { POST as replacePost } from "../search-replace/route";
+import { encodePreviewRoot } from "@/lib/previewUrl";
 
 function makeReq(url: string, body?: unknown): NextRequest {
   return {
@@ -124,6 +125,45 @@ describe("/api/workspace/* route handlers", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("Path outside workspace");
+  });
+
+  it("preview route reads the root from the path so relative assets keep it", async () => {
+    await fs.writeFile(path.join(workspaceRoot, "style.css"), "body{color:red}", "utf8");
+    // A different active workspace proves the root comes from the URL path,
+    // not a query string (which relative asset URLs never carry).
+    setActiveWorkspaceRoot(siblingRoot);
+
+    const res = await previewGet(
+      makeReq(`http://x/api/workspace/preview/@${encodePreviewRoot(workspaceRoot)}/style.css`),
+      { params: Promise.resolve({ slug: [`@${encodePreviewRoot(workspaceRoot)}`, "style.css"] }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/css");
+    expect(await res.text()).toBe("body{color:red}");
+  });
+
+  it("preview route rejects a path-encoded root that was never approved", async () => {
+    const unapproved = path.join(parentDir, "never-opened");
+    await fs.mkdir(unapproved, { recursive: true });
+    const seg = `@${encodePreviewRoot(unapproved)}`;
+
+    const res = await previewGet(
+      makeReq(`http://x/api/workspace/preview/${seg}/index.html`),
+      { params: Promise.resolve({ slug: [seg, "index.html"] }) },
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("preview route still blocks escapes with a path-encoded root", async () => {
+    const seg = `@${encodePreviewRoot(workspaceRoot)}`;
+    const res = await previewGet(
+      makeReq(`http://x/api/workspace/preview/${seg}/..%2Frepo-copy%2Foutside.txt`),
+      { params: Promise.resolve({ slug: [seg, "..", "repo-copy", "outside.txt"] }) },
+    );
+
+    expect(res.status).toBe(400);
   });
 
   it("search uses the explicit workspace root", async () => {
