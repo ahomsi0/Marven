@@ -27,6 +27,10 @@ let speakToken = 0;
 
 function cleanupAudio() {
   if (currentAudio) {
+    // Detach first: clearing `src` fires the element's `error` event, which
+    // would otherwise run the fallback and read the reply out a second time.
+    currentAudio.onended = null;
+    currentAudio.onerror = null;
     currentAudio.pause();
     currentAudio.src = "";
     currentAudio = null;
