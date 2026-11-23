@@ -38,7 +38,7 @@ export function MentionChip({ mention, onRemove }: MentionChipProps) {
         alignItems: "center",
         gap: 6,
         padding: "2px 8px",
-        borderRadius: 12,
+        borderRadius: 3,
         fontSize: 12,
         background: "var(--m-surface, rgba(127,127,127,0.12))",
         border: "1px solid var(--m-border, rgba(127,127,127,0.25))",

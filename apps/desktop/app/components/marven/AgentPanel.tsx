@@ -222,7 +222,7 @@ export function AgentPanel({
                   key={s}
                   type="button"
                   onClick={() => onInputChange(s)}
-                  className="rounded-full border border-[var(--m-border)] px-3.5 py-1.5 text-[12px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+                  className="rounded-md border border-[var(--m-border)] px-3.5 py-1.5 text-[12px] text-[var(--m-text-muted)] transition-colors hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
                 >
                   {s}
                 </button>
@@ -237,7 +237,7 @@ export function AgentPanel({
               {msg.isSummary ? (
                 <div className="flex items-center gap-3 py-1">
                   <div className="h-px flex-1 bg-[var(--m-border-subtle)]" />
-                  <div className="flex items-center gap-1.5 rounded-full border border-[var(--m-border)] bg-[var(--m-surface)] px-3 py-1">
+                  <div className="flex items-center gap-1.5 rounded-md border border-[var(--m-border)] bg-[var(--m-surface)] px-3 py-1">
                     <svg className="h-3 w-3 text-[#d19a66]/70" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
                     </svg>
@@ -495,7 +495,7 @@ export function AgentPanel({
               />
               {liteAgentMode === true && (
                 <span
-                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wide text-amber-400"
+                  className="rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wide text-amber-400"
                   title="Lite agent mode is on — reduced tool set, shorter prompt, extra guards. Designed for weak local or small cloud models."
                 >
                   Lite

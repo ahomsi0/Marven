@@ -384,7 +384,7 @@ export function GlobalSearchPanel({ workspaceRoot, onClose, onSelectMatch }: Glo
                     {file.path}
                   </span>
                 </button>
-                <span className="shrink-0 rounded-full bg-[var(--m-surface-3)] px-1.5 py-0.5 text-[9px] text-[var(--m-text-muted)]">
+                <span className="shrink-0 rounded-sm bg-[var(--m-surface-3)] px-1.5 py-0.5 text-[9px] text-[var(--m-text-muted)]">
                   {file.matches.length} {matchCountLabel}
                 </span>
                 {replaceExpanded && (

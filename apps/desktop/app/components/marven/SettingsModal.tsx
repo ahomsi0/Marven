@@ -211,7 +211,7 @@ function VoiceDiagnosticsCard({
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+          className={`shrink-0 rounded-sm px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
             err ? "bg-red-500/15 text-red-300" : micOk ? "bg-[var(--m-accent)]/15 text-[var(--m-accent)]" : "bg-[var(--m-surface-2)] text-[var(--m-text-faint)]"
           }`}
         >
@@ -936,7 +936,7 @@ export function SettingsModal({
                     <span className="text-[16px] font-semibold text-[var(--m-text)]">
                       Marven
                     </span>
-                    <span className="rounded-full border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2 py-0.5 font-mono text-[10px] text-[var(--m-accent)]">
+                    <span className="rounded-sm border border-[var(--m-accent)]/30 bg-[var(--m-accent)]/10 px-2 py-0.5 font-mono text-[10px] text-[var(--m-accent)]">
                       v{packageJson.version}
                     </span>
                   </div>
@@ -3014,7 +3014,7 @@ export function SettingsModal({
                   <h2 className="text-[18px] font-semibold tracking-tight text-[var(--m-text)]">
                     Marven
                   </h2>
-                  <span className="rounded-full border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 font-mono text-[10px] text-[#d19a66]">
+                  <span className="rounded-sm border border-[#d19a66]/30 bg-[#d19a66]/10 px-2 py-0.5 font-mono text-[10px] text-[#d19a66]">
                     v{packageJson.version}
                   </span>
                 </div>

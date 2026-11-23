@@ -121,7 +121,7 @@ function Section({
           <polyline points="6 4 10 8 6 12" />
         </svg>
         <span className="text-[11px] font-medium text-[var(--m-text)]">{title}</span>
-        <span className="rounded-full bg-[var(--m-surface-2)] px-1.5 py-0.5 text-[9px] text-[var(--m-text-muted)]">
+        <span className="rounded-sm bg-[var(--m-surface-2)] px-1.5 py-0.5 text-[9px] text-[var(--m-text-muted)]">
           {count}
         </span>
         <span className="ml-auto" onClick={(e) => e.stopPropagation()}>

@@ -986,7 +986,7 @@ export function AgentWorkspace({
           </svg>
           {t("agent.changes")}
           {checkpoints.length > 0 && (
-            <span className="rounded-full bg-[var(--m-accent-soft)] px-1.5 text-[10px] font-medium text-[var(--m-accent)]">{checkpoints.length}</span>
+            <span className="rounded-sm bg-[var(--m-accent-soft)] px-1.5 text-[10px] font-medium text-[var(--m-accent)]">{checkpoints.length}</span>
           )}
         </button>
         <button

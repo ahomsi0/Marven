@@ -156,7 +156,7 @@ export function MentionPopup({
     overflowY: "auto",
     background: "var(--m-surface, #fff)",
     border: "1px solid var(--m-border, rgba(127,127,127,0.3))",
-    borderRadius: 8,
+    borderRadius: 6,
     boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
     fontSize: 13,
     zIndex: 1000,
@@ -165,7 +165,7 @@ export function MentionPopup({
 
   const rowStyle = (active: boolean): React.CSSProperties => ({
     padding: "6px 10px",
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: "pointer",
     background: active ? "var(--m-accent-bg, rgba(99,102,241,0.15))" : "transparent",
     display: "flex",
@@ -256,7 +256,7 @@ export function MentionPopup({
             style={{
               width: "100%",
               padding: "6px 8px",
-              borderRadius: 4,
+              borderRadius: 3,
               border: "1px solid var(--m-border, rgba(127,127,127,0.3))",
               background: "transparent",
               color: "inherit",

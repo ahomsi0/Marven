@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Tighter corner radii than Tailwind's defaults (which run 4–16px) so buttons,
+   inputs, cards and modals read as a crisp editor UI rather than soft, bubbly
+   pills. Every `rounded-*` class in the app resolves through this scale. */
+@theme {
+  --radius: 3px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 5px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-3xl: 10px;
+  --radius-4xl: 12px;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
