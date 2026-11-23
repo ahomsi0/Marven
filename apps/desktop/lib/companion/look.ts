@@ -24,11 +24,12 @@ export const DEFAULT_LOOK: Look = {
   glasses: false,
   glassesColor: "#1b1b1f",
   beard: false,
-  shirt: "#d19a66",
+  shirt: "#3d6fb6",
   pants: "#2f3a56",
   shoes: "#1f1f24",
 };
 
+// Colours must be 6-digit hex like "#3d6fb6"; 3-digit shorthand is not accepted.
 const HEX = /^#[0-9a-f]{6}$/i;
 const HAIR_STYLES: readonly HairStyle[] = ["short", "long", "curly", "buzz", "bald"];
 type ColorKey = "skin" | "hair" | "eyes" | "glassesColor" | "shirt" | "pants" | "shoes";

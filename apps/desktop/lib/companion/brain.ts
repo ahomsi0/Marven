@@ -14,17 +14,22 @@ export type Route =
 // Jobs Mini Me never does itself: running commands, changing files, driving a
 // browser. They go to Marven's Agent, which asks before acting.
 const AGENT_ONLY: RegExp[] = [
-  /^(?:please\s+)?(?:run|execute)\s+(?:the\s+|a\s+|this\s+|that\s+)?(?:command|script|shell|terminal|npm|npx|yarn|git|python|node)\b/i,
-  /\b(?:create|make|edit|modify|delete|remove|rename|move|write(?:\s+to)?)\s+(?:a\s+|an\s+|the\s+|this\s+|that\s+|my\s+)?(?:new\s+)?(?:file|folder|directory)\b/i,
-  /\b(?:browse|navigate)\s+to\b.*\b(?:and|then)\b/i,
+  /\b(?:run|execute)\s+(?:the\s+|a\s+|this\s+|that\s+)?(?:command|script|shell|terminal|npm|npx|pnpm|yarn|git|python|node|pip|brew|sudo|rm|ls|mkdir|chmod)\b/i,
+  /^\s*(?:sudo|rm|chmod|mkdir|pip|pip3|brew|npm|npx|pnpm|yarn|git)\s/i,
+  /\b(?:create|make|edit|modify|delete|remove|rename|move|write(?:\s+to)?)\s+(?:\S+\s+){0,3}?(?:files?|folders?|director(?:y|ies))\b/i,
+  /\b(?:delete|remove|wipe)\s+(?:all\s+|everything\s+)?(?:in|from)\s+\S/i,
+  /\b(?:browse|navigate|go)\s+to\b.*\b(?:and|then)\b/i,
 ];
+
+// How-to and explanatory questions are answered in chat, never handed off.
+const QUESTION = /^\s*(?:how|what|why|where|when|which|who|is|are|does|do|should|explain)\b/i;
 
 export function routeInput(text: string, opts: { allowCommands: boolean }): Route {
   const timer = parseTimer(text);
   if (timer) return { kind: "timer", ...timer };
   const clip = detectClipboardAction(text);
   if (clip) return { kind: "clipboard", action: clip };
-  if (AGENT_ONLY.some((re) => re.test(text))) return { kind: "agent" };
+  if (!QUESTION.test(text) && AGENT_ONLY.some((re) => re.test(text))) return { kind: "agent" };
   if (opts.allowCommands && parseCommand(text).type !== null) return { kind: "command" };
   return { kind: "chat" };
 }

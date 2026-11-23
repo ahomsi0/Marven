@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ANIMATIONS, OUTLINE, SPRITE_SIZE, renderFrame } from "./sprite";
 import { DEFAULT_LOOK } from "./look";
+import { ONESHOTS, type AnimState } from "./behaviour";
 
 const at = (px: (string | null)[], x: number, y: number) => px[y * SPRITE_SIZE + x];
 
@@ -37,5 +38,28 @@ describe("ANIMATIONS", () => {
     expect(ANIMATIONS.stretch.loop).toBe(false);
     expect(ANIMATIONS.happy.loop).toBe(false);
     expect(ANIMATIONS.confused.loop).toBe(false);
+  });
+  it("loops exactly the states that are not one-shots", () => {
+    for (const s of Object.keys(ANIMATIONS) as AnimState[]) {
+      expect(ANIMATIONS[s].loop, s).toBe(!ONESHOTS.has(s));
+    }
+  });
+});
+
+describe("renderFrame art", () => {
+  it("leaves a gap between arms and torso, filled by the outline", () => {
+    const px = renderFrame(DEFAULT_LOOK, {});
+    expect(at(px, 8, 18)).toBe(DEFAULT_LOOK.shirt);
+    expect(at(px, 10, 18)).toBe(OUTLINE);
+    expect(at(px, 11, 18)).toBe(DEFAULT_LOOK.shirt);
+  });
+  it("draws eyes over glasses lenses and a visible mouth on a beard", () => {
+    const look = { ...DEFAULT_LOOK, glasses: true, beard: true };
+    const px = renderFrame(look, { mouth: "open" });
+    expect(at(px, 13, 9)).toBe(look.eyes);
+    expect(at(px, 12, 9)).toBe("#cfe3f1");
+    expect(at(px, 15, 13)).toBe("#f2e6da");
+    expect(at(px, 15, 12)).toBe(OUTLINE);
+    expect(at(renderFrame(DEFAULT_LOOK, {}), 15, 12)).toBe(OUTLINE);
   });
 });

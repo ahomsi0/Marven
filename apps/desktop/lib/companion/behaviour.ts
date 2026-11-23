@@ -16,6 +16,8 @@ export interface BehaviourState {
   busy: boolean;
   lastInteraction: number;
   nextIdleAt: number;
+  /** A walk that has not arrived by this time is abandoned. */
+  walkUntil: number;
 }
 
 export interface Strip {
@@ -34,7 +36,12 @@ export type BehaviourEvent =
   | { type: "succeeded"; now: number }
   | { type: "failed"; now: number }
   | { type: "oneshot-done"; now: number }
+  /**
+   * The page must send `drop` on pointerup, pointercancel and
+   * lostpointercapture; otherwise the character stays dangling.
+   */
   | { type: "drag-start"; now: number }
+  /** See `drag-start`: sent whenever a drag ends, however it ends. */
   | { type: "drop"; now: number; inDock: boolean }
   | { type: "return-home"; now: number };
 
@@ -49,12 +56,15 @@ export const ONESHOTS: ReadonlySet<AnimState> = new Set<AnimState>(["stretch", "
 
 const IDLE_PAUSE_MS = 4000;
 const IDLE_PAUSE_JITTER_MS = 6000;
+const WALK_TIMEOUT_MS = 90_000;
 
 export function initialState(now: number): BehaviourState {
-  return { anim: "idle", mode: "roam", busy: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS };
+  return { anim: "idle", mode: "roam", busy: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0 };
 }
 
 const resting = (state: BehaviourState): AnimState => (state.mode === "perched" ? "sit" : "idle");
+
+const stopIfWalking = (state: BehaviourState): Effect => (state.anim === "walk" ? { stop: true } : {});
 
 function pickIdle(
   state: BehaviourState,
@@ -65,7 +75,7 @@ function pickIdle(
     if (r < 0.4) {
       const x = Math.round(e.strip.minX + e.rand() * (e.strip.maxX - e.strip.minX));
       const nextIdleAt = e.now + IDLE_PAUSE_MS + e.rand() * IDLE_PAUSE_JITTER_MS;
-      return { state: { ...state, anim: "walk", nextIdleAt }, effect: { walkTo: x } };
+      return { state: { ...state, anim: "walk", nextIdleAt, walkUntil: e.now + WALK_TIMEOUT_MS }, effect: { walkTo: x } };
     }
     const anim: AnimState = r < 0.65 ? "idle" : r < 0.8 ? "look" : r < 0.95 ? "sit" : "stretch";
     const nextIdleAt = e.now + IDLE_PAUSE_MS + e.rand() * IDLE_PAUSE_JITTER_MS;
@@ -80,6 +90,9 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
   const none = { state, effect: {} as Effect };
   switch (e.type) {
     case "tick": {
+      if (state.anim === "walk" && e.now >= state.walkUntil) {
+        return { state: { ...state, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
+      }
       if (state.busy || state.anim === "sleep" || state.anim === "walk" || state.anim === "dangle" || ONESHOTS.has(state.anim)) {
         return none;
       }
@@ -94,7 +107,7 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       return { state: { ...state, anim: "idle", nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
     case "interact": {
       const next = { ...state, lastInteraction: e.now };
-      return { state: state.anim === "sleep" ? { ...next, anim: "stretch" } : next, effect: {} };
+      return { state: state.anim === "sleep" ? { ...next, anim: "stretch" } : next, effect: stopIfWalking(state) };
     }
     case "bubble-open":
       return { state: { ...state, busy: true, anim: "listen", lastInteraction: e.now }, effect: { stop: true } };
@@ -108,9 +121,9 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
     case "talking":
       return { state: { ...state, busy: true, anim: "talk", lastInteraction: e.now }, effect: {} };
     case "succeeded":
-      return { state: { ...state, anim: "happy", lastInteraction: e.now }, effect: {} };
+      return { state: { ...state, anim: "happy", lastInteraction: e.now }, effect: stopIfWalking(state) };
     case "failed":
-      return { state: { ...state, anim: "confused", lastInteraction: e.now }, effect: {} };
+      return { state: { ...state, anim: "confused", lastInteraction: e.now }, effect: stopIfWalking(state) };
     case "oneshot-done":
       if (!ONESHOTS.has(state.anim)) return none;
       return { state: { ...state, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
@@ -124,6 +137,6 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       };
     }
     case "return-home":
-      return { state: { ...state, mode: "roam", anim: "walk", lastInteraction: e.now }, effect: { returnHome: true } };
+      return { state: { ...state, mode: "roam", anim: "walk", lastInteraction: e.now, walkUntil: e.now + WALK_TIMEOUT_MS }, effect: { returnHome: true } };
   }
 }

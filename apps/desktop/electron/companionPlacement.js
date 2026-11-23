@@ -11,15 +11,17 @@ const DOCK_TOLERANCE = 24;   // how close to the strip a drop counts as "on the 
 const SCALES = [2, 3, 4];
 
 function windowSize(scale) {
-  const s = SCALES.includes(scale) ? scale : 3;
+  const n = Number(scale);
+  const s = SCALES.includes(n) ? n : 3;
   return { width: WINDOW_WIDTH, height: BUBBLE_SPACE + SPRITE_SIZE * s };
 }
 
 /** Where the window walks: its bottom edge on the work area's bottom edge (just above the Dock). */
 function dockStrip(workArea, size) {
+  const minX = workArea.x;
   return {
-    minX: workArea.x,
-    maxX: workArea.x + workArea.width - size.width,
+    minX,
+    maxX: Math.max(minX, workArea.x + workArea.width - size.width),
     y: workArea.y + workArea.height - size.height,
   };
 }
@@ -52,7 +54,7 @@ function nearestDisplay(rect, displays) {
 
 function clampToWorkArea(rect, wa) {
   return {
-    x: Math.round(Math.min(Math.max(rect.x, wa.x), wa.x + wa.width - rect.width)),
+    x: Math.round(Math.max(wa.x, Math.min(rect.x, wa.x + wa.width - rect.width))),
     y: Math.round(Math.min(Math.max(rect.y, wa.y), wa.y + wa.height - rect.height)),
   };
 }
@@ -73,13 +75,14 @@ function defaultPosition(primary, size) {
 
 function restorePosition(saved, displays, primaryId, size) {
   const primary = displays.find((d) => d.id === primaryId) || displays[0];
-  if (!saved || typeof saved.x !== 'number' || typeof saved.y !== 'number') return defaultPosition(primary, size);
+  if (!saved || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) return defaultPosition(primary, size);
   const display = displays.find((d) => d.id === saved.displayId);
   if (!display) return defaultPosition(primary, size);
   return { ...clampToWorkArea({ x: saved.x, y: saved.y, ...size }, display.workArea), displayId: display.id };
 }
 
 function stepToward(current, target, maxStep) {
+  maxStep = Math.max(1, maxStep);
   if (Math.abs(target - current) <= maxStep) return target;
   return current + Math.sign(target - current) * maxStep;
 }

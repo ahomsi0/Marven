@@ -36,6 +36,35 @@ describe("routeInput", () => {
       expect(routeInput(text, on), text).toEqual({ kind: "agent" });
     }
   });
+  it("hands more phrasings of shell, file and browser jobs to the Agent", () => {
+    for (const text of [
+      "delete my Downloads folder",
+      "delete all my files",
+      "remove the files in Downloads",
+      "delete everything in ~/Desktop",
+      "execute rm -rf ~",
+      "rm -rf ~/Documents",
+      "run ls",
+      "run brew upgrade",
+      "can you run npm install",
+      "pip install requests",
+      "chmod +x x.sh",
+      "go to amazon.com and buy socks",
+      "can you create a file for me?",
+    ]) {
+      expect(routeInput(text, on), text).toEqual({ kind: "agent" });
+    }
+  });
+  it("sends how-to questions to chat", () => {
+    for (const text of [
+      "how do I create a new file in vim?",
+      "how do i delete a folder on mac",
+      "what's the best way to rename a file in git?",
+      "how do I move a file in python",
+    ]) {
+      expect(routeInput(text, on), text).toEqual({ kind: "chat" });
+    }
+  });
   it("sends everything else to chat", () => {
     for (const text of ["how do I run a marathon?", "tell me a joke", "what are files made of?"]) {
       expect(routeInput(text, on), text).toEqual({ kind: "chat" });

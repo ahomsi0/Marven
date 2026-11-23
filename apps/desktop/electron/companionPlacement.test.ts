@@ -79,3 +79,28 @@ describe("stepToward", () => {
     expect(P.stepToward(10, 0, 4)).toBe(6);
   });
 });
+
+describe("edge cases", () => {
+  const narrow = { x: 10, y: 20, width: 300, height: 200 };
+  const size = P.windowSize(3);
+  it("keeps maxX >= minX on a narrow work area", () => {
+    const s = P.dockStrip(narrow, size);
+    expect(s.maxX).toBe(s.minX);
+  });
+  it("clamps x to the work area's left edge when the window is wider", () => {
+    const r = P.clampToDisplays({ x: 500, y: 0, ...size }, [{ id: 1, workArea: narrow }]);
+    expect(r.x).toBe(narrow.x);
+  });
+  it("falls back to default for NaN saved positions", () => {
+    const d = { id: 1, workArea: { x: 0, y: 0, width: 1440, height: 900 } };
+    expect(P.restorePosition({ x: NaN, y: 5, displayId: 1 }, [d], 1, size)).toEqual(P.restorePosition(null, [d], 1, size));
+    expect(P.restorePosition({ x: 5, y: Infinity, displayId: 1 }, [d], 1, size)).toEqual(P.restorePosition(null, [d], 1, size));
+  });
+  it("always steps at least 1", () => {
+    expect(P.stepToward(0, 10, 0)).toBe(1);
+    expect(P.stepToward(0, 10, -3)).toBe(1);
+  });
+  it("coerces numeric-string scales", () => {
+    expect(P.windowSize("4")).toEqual(P.windowSize(4));
+  });
+});

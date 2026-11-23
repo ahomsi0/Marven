@@ -74,6 +74,36 @@ describe("commands", () => {
   });
 });
 
+describe("never stuck", () => {
+  const walking = () => run(initialState(0), tick(5000, seq(0.1, 0.5))).state;
+  it("gives up a walk after 90 seconds", () => {
+    const w = walking();
+    expect(w.anim).toBe("walk");
+    expect(w.walkUntil).toBe(95_000);
+    const { state, effect } = reduce(w, tick(95_000, seq(0.5)));
+    expect(state.anim).toBe("idle");
+    expect(effect).toEqual({ stop: true });
+    expect(state.nextIdleAt).toBe(99_000);
+  });
+  it("keeps walking before the deadline", () => {
+    expect(reduce(walking(), tick(94_999, seq(0.5))).effect).toEqual({});
+  });
+  it("stops walking when the request fails or succeeds or the user interacts", () => {
+    const failed = reduce(walking(), { type: "failed", now: 6000 });
+    expect(failed.state.anim).toBe("confused");
+    expect(failed.effect).toEqual({ stop: true });
+    expect(reduce(walking(), { type: "succeeded", now: 6000 }).effect).toEqual({ stop: true });
+    expect(reduce(walking(), { type: "interact", now: 6000 }).effect).toEqual({ stop: true });
+  });
+  it("sets a walk deadline on return-home", () => {
+    expect(reduce(initialState(0), { type: "return-home", now: 10 }).state.walkUntil).toBe(90_010);
+  });
+  it("does not stop when not walking", () => {
+    expect(reduce(initialState(0), { type: "failed", now: 1 }).effect).toEqual({});
+    expect(reduce(initialState(0), { type: "interact", now: 1 }).effect).toEqual({});
+  });
+});
+
 describe("dragging", () => {
   it("dangles while dragged and sits where dropped off the Dock", () => {
     const { state } = run(initialState(0), { type: "drag-start", now: 1 }, { type: "drop", now: 2, inDock: false });

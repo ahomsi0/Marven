@@ -93,12 +93,6 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
   const rect = (x0: number, y0: number, x1: number, y1: number, c: string) => {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) set(x, y, c);
   };
-  const box = (x0: number, y0: number, x1: number, y1: number, c: string) => {
-    rect(x0, y0, x1, y0, c);
-    rect(x0, y1, x1, y1, c);
-    rect(x0, y0, x0, y1, c);
-    rect(x1, y0, x1, y1, c);
-  };
 
   const legs = spec.legs ?? "stand";
   const d = (spec.dy ?? 0) + (legs === "sit" ? 5 : 0);
@@ -113,10 +107,10 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
     rect(9, 30, 12, 31, look.shoes);
     rect(19, 30, 22, 31, look.shoes);
   } else if (legs === "walk3") {
-    rect(13, 24, 15, 29, look.pants);
-    rect(16, 24, 18, 29, look.pants);
-    rect(13, 30, 16, 31, look.shoes);
-    rect(16, 30, 19, 31, look.shoes);
+    rect(11, 24, 13, 28, look.pants);
+    rect(10, 29, 13, 30, look.shoes);
+    rect(17, 24, 19, 29, look.pants);
+    rect(17, 30, 20, 31, look.shoes);
   } else {
     rect(12, 24, 14, 29, look.pants);
     rect(17, 24, 19, 29, look.pants);
@@ -130,33 +124,34 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
   // Arms (sleeves in shirt colour, hands in skin)
   const arms = spec.arms ?? "down";
   const leftDown = () => {
-    rect(9, 16 + d, 10, 21 + d, look.shirt);
-    rect(9, 22 + d, 10, 22 + d, look.skin);
+    rect(8, 16 + d, 9, 21 + d, look.shirt);
+    rect(8, 22 + d, 9, 22 + d, look.skin);
   };
   const rightDown = () => {
-    rect(21, 16 + d, 22, 21 + d, look.shirt);
-    rect(21, 22 + d, 22, 22 + d, look.skin);
+    rect(22, 16 + d, 23, 21 + d, look.shirt);
+    rect(22, 22 + d, 23, 22 + d, look.skin);
   };
   if (arms === "up") {
-    rect(9, 8 + d, 10, 15 + d, look.shirt);
-    rect(9, 7 + d, 10, 7 + d, look.skin);
-    rect(21, 8 + d, 22, 15 + d, look.shirt);
-    rect(21, 7 + d, 22, 7 + d, look.skin);
+    rect(8, 8 + d, 9, 15 + d, look.shirt);
+    rect(8, 7 + d, 9, 7 + d, look.skin);
+    rect(22, 8 + d, 23, 15 + d, look.shirt);
+    rect(22, 7 + d, 23, 7 + d, look.skin);
   } else if (arms === "ear") {
     leftDown();
-    rect(21, 12 + d, 22, 17 + d, look.shirt);
-    rect(21, 10 + d, 22, 11 + d, look.skin);
+    rect(22, 12 + d, 23, 17 + d, look.shirt);
+    rect(22, 10 + d, 23, 11 + d, look.skin);
   } else if (arms === "chin") {
     leftDown();
-    rect(21, 16 + d, 22, 19 + d, look.shirt);
-    rect(18, 17 + d, 20, 18 + d, look.skin);
+    rect(22, 16 + d, 23, 17 + d, look.shirt);
+    rect(20, 16 + d, 21, 17 + d, look.shirt);
+    rect(17, 15 + d, 19, 16 + d, look.skin);
   } else if (arms === "shrug") {
-    rect(9, 16 + d, 10, 17 + d, look.shirt);
-    rect(7, 14 + d, 8, 16 + d, look.shirt);
-    rect(7, 13 + d, 8, 13 + d, look.skin);
-    rect(21, 16 + d, 22, 17 + d, look.shirt);
-    rect(23, 14 + d, 24, 16 + d, look.shirt);
-    rect(23, 13 + d, 24, 13 + d, look.skin);
+    rect(8, 16 + d, 9, 17 + d, look.shirt);
+    rect(6, 14 + d, 7, 16 + d, look.shirt);
+    rect(6, 13 + d, 7, 13 + d, look.skin);
+    rect(22, 16 + d, 23, 17 + d, look.shirt);
+    rect(24, 14 + d, 25, 16 + d, look.shirt);
+    rect(24, 13 + d, 25, 13 + d, look.skin);
   } else {
     leftDown();
     rightDown();
@@ -164,7 +159,11 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
 
   // Head, beard, hair
   rect(11, 5 + d, 20, 14 + d, look.skin);
-  if (look.beard) rect(11, 12 + d, 20, 14 + d, look.hair);
+  if (look.beard) {
+    rect(11, 13 + d, 20, 14 + d, look.hair);
+    rect(11, 10 + d, 11, 12 + d, look.hair);
+    rect(20, 10 + d, 20, 12 + d, look.hair);
+  }
   const shortHair = () => {
     rect(11, 4 + d, 20, 6 + d, look.hair);
     rect(10, 5 + d, 10, 9 + d, look.hair);
@@ -184,6 +183,15 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
     rect(11, 4 + d, 20, 5 + d, look.hair);
   }
 
+  // Glasses: frame and lenses, drawn under the eyes
+  if (look.glasses) {
+    rect(11, 8 + d, 20, 8 + d, look.glassesColor);
+    set(11, 9 + d, look.glassesColor);
+    set(20, 9 + d, look.glassesColor);
+    rect(12, 9 + d, 14, 10 + d, "#cfe3f1");
+    rect(17, 9 + d, 19, 10 + d, "#cfe3f1");
+  }
+
   // Eyes
   const eyes = spec.eyes ?? "open";
   if (eyes === "closed") {
@@ -198,24 +206,25 @@ export function renderFrame(look: Look, spec: FrameSpec): (string | null)[] {
     rect(18 + shift, 9 + d, 18 + shift, 10 + d, look.eyes);
   }
 
-  // Mouth
+  // Mouth: outline colour, but light where it sits on the beard so it stays visible
+  const mset = (x: number, y: number) => {
+    const onBeard = look.beard && px[y * N + x] === look.hair;
+    set(x, y, onBeard ? "#f2e6da" : OUTLINE);
+  };
+  const mrect = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) mset(x, y);
+  };
   const mouth = spec.mouth ?? "closed";
   if (mouth === "smile") {
-    set(14, 12 + d, OUTLINE); rect(15, 13 + d, 16, 13 + d, OUTLINE); set(17, 12 + d, OUTLINE);
+    mset(14, 12 + d); mrect(15, 13 + d, 16, 13 + d); mset(17, 12 + d);
   } else if (mouth === "open") {
-    rect(14, 12 + d, 17, 13 + d, OUTLINE);
+    mrect(14, 12 + d, 17, 13 + d);
   } else if (mouth === "o") {
-    rect(15, 12 + d, 16, 13 + d, OUTLINE);
+    mrect(15, 12 + d, 16, 13 + d);
   } else if (mouth === "frown") {
-    set(14, 13 + d, OUTLINE); rect(15, 12 + d, 16, 12 + d, OUTLINE); set(17, 13 + d, OUTLINE);
+    mset(14, 13 + d); mrect(15, 12 + d, 16, 12 + d); mset(17, 13 + d);
   } else {
-    rect(15, 12 + d, 16, 12 + d, OUTLINE);
-  }
-
-  // Glasses: two frames around the eyes, touching in the middle
-  if (look.glasses) {
-    box(11, 8 + d, 15, 11 + d, look.glassesColor);
-    box(16, 8 + d, 20, 11 + d, look.glassesColor);
+    mrect(15, 12 + d, 16, 12 + d);
   }
 
   // Effects (fixed position, above the head)
