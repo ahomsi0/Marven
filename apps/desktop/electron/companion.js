@@ -345,7 +345,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const onDock = placement.isInDockStrip({ x: c.x, y: c.y, ...size }, display.workArea);
     win.setPosition(c.x, onDock ? placement.dockStrip(display.workArea, size).y : c.y);
     recordPosition({ immediate: true });
-    sendPosition();
+    sendPosition({ dropped: true });
   });
   ipcMain.on('companion:return-home', (event) => {
     if (!fromCompanion(event)) return;

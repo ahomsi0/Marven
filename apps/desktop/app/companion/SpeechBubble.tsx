@@ -10,10 +10,14 @@ interface Props {
   /** A voice problem (e.g. mic permission denied); typing still works. */
   notice: string | null;
   draft: string;
+  /** Live speech-to-text while listening; shown as the input placeholder. */
+  interim: string;
   inputRef: RefObject<HTMLInputElement | null>;
   onDraftChange: (text: string) => void;
   onSubmit: () => void;
   onClose: () => void;
+  /** The user pressed inside the bubble: make the window focusable so they can type. */
+  onEngage: () => void;
   onAction: (action: Exclude<BubbleAction, null>) => void;
 }
 
@@ -21,13 +25,15 @@ const ACTION_LABELS: Record<Exclude<BubbleAction, null>, string> = {
   retry: "Retry",
   "open-in-marven": "Open in Marven",
   "open-settings": "Open settings",
+  "retry-or-settings": "Retry",
 };
 
-export function SpeechBubble({ reply, busy, listening, notice, draft, inputRef, onDraftChange, onSubmit, onClose, onAction }: Props) {
+export function SpeechBubble({ reply, busy, listening, notice, draft, interim, inputRef, onDraftChange, onSubmit, onClose, onEngage, onAction }: Props) {
   const text = reply?.text || (busy ? "…" : "");
   return (
     <div
       data-hit
+      onPointerDown={onEngage}
       className="relative w-[320px] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface)] p-3 text-[13px] text-[var(--m-text)] shadow-lg"
     >
       {text && (
@@ -37,11 +43,20 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, inputRef, 
         <div className="mb-2 flex gap-2">
           <button
             type="button"
-            onClick={() => onAction(reply.action as Exclude<BubbleAction, null>)}
+            onClick={() => onAction(reply.action === "retry-or-settings" ? "retry" : (reply.action as Exclude<BubbleAction, null>))}
             className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
           >
             {ACTION_LABELS[reply.action]}
           </button>
+          {reply.action === "retry-or-settings" && (
+            <button
+              type="button"
+              onClick={() => onAction("open-settings")}
+              className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
+            >
+              {ACTION_LABELS["open-settings"]}
+            </button>
+          )}
           {reply.action === "open-in-marven" && (
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[12px] text-[var(--m-text-faint)]">
               Not now
@@ -62,14 +77,14 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, inputRef, 
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
           }}
-          placeholder={listening ? "Listening…" : "Tell me what to do…"}
+          placeholder={listening ? interim || "Listening…" : "Tell me what to do…"}
           className="w-full rounded-md border border-[var(--m-border-subtle)] bg-transparent px-2 py-1.5 outline-none focus:border-[var(--m-accent)]"
           aria-label="Message Mini Me"
         />
       </form>
       {notice && (
         <p className="mt-1.5 text-[11px] text-[var(--m-text-faint)]">
-          Voice isn&apos;t available ({notice}). Allow microphone access for Marven in System Settings → Privacy &amp; Security, or just type.
+          {notice}
         </p>
       )}
       {/* tail pointing down at the character */}

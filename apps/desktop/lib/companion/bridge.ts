@@ -11,6 +11,8 @@ export interface CompanionPosition {
   inDock: boolean;
   strip: Strip;
   arrived?: boolean;
+  /** Sent once after a drag ends, with the final dock state. */
+  dropped?: boolean;
 }
 
 export interface CompanionSettings {

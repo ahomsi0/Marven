@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CompanionSprite } from "./CompanionSprite";
 import { SpeechBubble } from "./SpeechBubble";
+import { useCompanionPointer } from "./useCompanionPointer";
 import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/useCompanionBrain";
 import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
+import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook, type Look } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
+/** A voice-opened bubble that heard nothing closes itself after this. */
+const VOICE_IDLE_CLOSE_MS = 4000;
 
 export default function CompanionPage() {
   const bridge = useMemo(getCompanionBridge, []);
@@ -23,13 +27,14 @@ export default function CompanionPage() {
   const [facing, setFacing] = useState<1 | -1>(1);
   const stripRef = useRef<Strip>({ minX: 0, maxX: 0 });
   const [bubbleOpen, setBubbleOpen] = useState(false);
+  const bubbleOpenRef = useRef(false);
+  bubbleOpenRef.current = bubbleOpen;
   const [draft, setDraft] = useState("");
-  const [hovered, setHovered] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeShownRef = useRef(false);
+  const openedByVoiceRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const interactiveRef = useRef(false);
-  const hoveredRef = useRef(false);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const pendingDropRef = useRef(false);
 
   const dispatch = useCallback(
     (event: BehaviourEvent) => {
@@ -43,15 +48,6 @@ export default function CompanionPage() {
     [bridge],
   );
 
-  const setInteractive = useCallback(
-    (on: boolean) => {
-      if (on === interactiveRef.current) return;
-      interactiveRef.current = on;
-      bridge?.setInteractive(on);
-    },
-    [bridge],
-  );
-
   // ── Brain and voice ────────────────────────────────────────────────────────
   const voiceRef = useRef<{ pause: () => void; resume: () => void }>({ pause: () => {}, resume: () => {} });
   // Destructured so the callbacks below depend on the hook's stable functions,
@@ -60,25 +56,31 @@ export default function CompanionPage() {
     speakReplies: settings.speak,
     onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
     onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
+    onNotify: () => openBubble(false),
   });
 
+  const focusInput = useCallback(() => {
+    bridge?.setFocusable(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [bridge]);
+
   const openBubble = useCallback(
-    (focus: boolean) => {
+    (focus: boolean, viaVoice = false) => {
       setBubbleOpen(true);
+      noticeShownRef.current = false;
+      openedByVoiceRef.current = viaVoice;
       dispatch({ type: "interact", now: Date.now() });
       dispatch({ type: "bubble-open", now: Date.now() });
-      setInteractive(true);
-      if (focus) {
-        bridge?.setFocusable(true);
-        setTimeout(() => inputRef.current?.focus(), 50);
-      }
+      if (focus) focusInput();
     },
-    [bridge, dispatch, setInteractive],
+    [dispatch, focusInput],
   );
 
   const closeBubble = useCallback(() => {
     setBubbleOpen(false);
     setDraft("");
+    setNotice(null);
+    openedByVoiceRef.current = false;
     dismiss();
     bridge?.setFocusable(false);
     dispatch({ type: "bubble-close", now: Date.now() });
@@ -94,15 +96,16 @@ export default function CompanionPage() {
     resumeWakeWord,
   } = useVoice(
     (text) => {
-      openBubble(false);
+      openBubble(false, true);
       setDraft("");
       void send(text);
     },
     () => {
       stopSpeaking();
-      openBubble(false);
+      openBubble(false, true);
     },
-    (interim) => setDraft(interim),
+    // Empty updates just mean "capture ended"; keep the last text out of the draft entirely.
+    (text) => text && setInterim(text),
   );
   voiceRef.current = { pause: pauseVoiceCapture, resume: resumeWakeWord };
   // useVoice recreates startManualListen every render; keep the latest in a ref
@@ -127,14 +130,11 @@ export default function CompanionPage() {
         stripRef.current = p.strip;
         setFacing(p.facing);
         if (p.arrived) dispatch({ type: "arrived", now: Date.now() });
-        if (pendingDropRef.current) {
-          pendingDropRef.current = false;
-          dispatch({ type: "drop", now: Date.now(), inDock: p.inDock });
-        }
+        if (p.dropped) dispatch({ type: "drop", now: Date.now(), inDock: p.inDock });
       }),
       bridge.onOpenInput(() => openBubble(true)),
       bridge.onListen(() => {
-        openBubble(false);
+        openBubble(false, true);
         startListenRef.current();
       }),
     ];
@@ -166,29 +166,30 @@ export default function CompanionPage() {
     return () => clearInterval(timer);
   }, [dispatch]);
 
-  // Click-through: take the mouse only over the character or the bubble.
+  const { hovered, handlers } = useCompanionPointer({
+    bridge,
+    dispatch,
+    onClick: () => (bubbleOpenRef.current ? closeBubble() : openBubble(true)),
+    onDoubleClick: () => {
+      if (bubbleOpenRef.current) closeBubble();
+      dispatch({ type: "return-home", now: Date.now() });
+    },
+  });
+
+  // Show a voice problem once per bubble opening.
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const hit = !!(e.target as Element | null)?.closest?.("[data-hit]");
-      setInteractive(hit || !!dragRef.current);
-      if (hit !== hoveredRef.current) {
-        hoveredRef.current = hit;
-        setHovered(hit);
-        if (hit) dispatch({ type: "interact", now: Date.now() });
-      }
-    };
-    const onLeave = () => {
-      if (!dragRef.current) setInteractive(false);
-      hoveredRef.current = false;
-      setHovered(false);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.documentElement.addEventListener("mouseleave", onLeave);
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.documentElement.removeEventListener("mouseleave", onLeave);
-    };
-  }, [dispatch, setInteractive]);
+    if (!bubbleOpen || !voiceError || noticeShownRef.current) return;
+    noticeShownRef.current = true;
+    setNotice(voiceNotice(voiceError));
+  }, [bubbleOpen, voiceError]);
+
+  // A bubble opened by voice that heard nothing shouldn't linger.
+  useEffect(() => {
+    if (!bubbleOpen || !openedByVoiceRef.current) return;
+    if (voiceState !== "idle" || draft || reply || busy) return;
+    const timer = setTimeout(closeBubble, VOICE_IDLE_CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [bubbleOpen, voiceState, draft, reply, busy, closeBubble]);
 
   // Fade the bubble after a finished reply unless the user is engaged with it.
   useEffect(() => {
@@ -208,19 +209,6 @@ export default function CompanionPage() {
     }
   };
 
-  const endPointer = (clicked: boolean) => {
-    const d = dragRef.current;
-    if (!d) return; // already ended (e.g. lostpointercapture right after pointerup)
-    dragRef.current = null;
-    if (d.moved) {
-      pendingDropRef.current = true;
-      bridge?.drop();
-    } else if (clicked) {
-      if (bubbleOpen) closeBubble();
-      else openBubble(true);
-    }
-  };
-
   return (
     <main className="flex h-screen w-screen select-none flex-col items-center justify-end overflow-hidden">
       <style>{`html,body{background:transparent!important;overflow:hidden}`}</style>
@@ -230,8 +218,9 @@ export default function CompanionPage() {
             reply={reply}
             busy={busy}
             listening={voiceState === "command-listening"}
-            notice={voiceError}
+            notice={notice}
             draft={draft}
+            interim={interim}
             inputRef={inputRef}
             onDraftChange={setDraft}
             onSubmit={() => {
@@ -240,6 +229,10 @@ export default function CompanionPage() {
               void send(text);
             }}
             onClose={closeBubble}
+            onEngage={() => {
+              openedByVoiceRef.current = false;
+              focusInput();
+            }}
             onAction={onAction}
           />
         </div>
@@ -247,31 +240,7 @@ export default function CompanionPage() {
       <div
         data-hit
         className="cursor-grab active:cursor-grabbing"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          dragRef.current = { x: e.screenX, y: e.screenY, moved: false };
-        }}
-        onPointerMove={(e) => {
-          const d = dragRef.current;
-          if (!d) return;
-          const dx = e.screenX - d.x;
-          const dy = e.screenY - d.y;
-          if (!d.moved && Math.hypot(dx, dy) < 4) return;
-          if (!d.moved) {
-            d.moved = true;
-            dispatch({ type: "drag-start", now: Date.now() });
-          }
-          d.x = e.screenX;
-          d.y = e.screenY;
-          bridge?.drag(dx, dy);
-        }}
-        onPointerUp={() => endPointer(true)}
-        onPointerCancel={() => endPointer(false)}
-        onLostPointerCapture={() => endPointer(false)}
-        onDoubleClick={() => {
-          if (bubbleOpen) closeBubble();
-          dispatch({ type: "return-home", now: Date.now() });
-        }}
+        {...handlers}
       >
         <CompanionSprite
           look={look}

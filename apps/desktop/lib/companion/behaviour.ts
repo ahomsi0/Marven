@@ -107,6 +107,10 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       return { state: { ...state, anim: "idle", nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: {} };
     case "interact": {
       const next = { ...state, lastInteraction: e.now };
+      // Hovering a walker stops him; leave him resting rather than frozen mid-stride.
+      if (state.anim === "walk") {
+        return { state: { ...next, anim: resting(state), nextIdleAt: e.now + IDLE_PAUSE_MS }, effect: { stop: true } };
+      }
       return { state: state.anim === "sleep" ? { ...next, anim: "stretch" } : next, effect: stopIfWalking(state) };
     }
     case "bubble-open":

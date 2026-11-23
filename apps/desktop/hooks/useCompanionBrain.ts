@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatRequest } from "@/types";
 import { parseChatStream } from "@/lib/chatStream";
-import { chatErrorMessage, providerErrorMessage, readChatReply } from "@/lib/chatErrors";
+import { ChatStreamInterruptedError, chatErrorMessage, providerErrorMessage, readChatReply } from "@/lib/chatErrors";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { loadChatModelMap, loadChatProvider } from "@/lib/modelPrefs";
 import { loadMemories, loadProfile } from "@/lib/userProfile";
@@ -25,7 +25,7 @@ import {
 } from "@/lib/companion/brain";
 
 export type BrainEvent = "thinking" | "talking" | "succeeded" | "failed";
-export type BubbleAction = "retry" | "open-in-marven" | "open-settings" | null;
+export type BubbleAction = "retry" | "open-in-marven" | "open-settings" | "retry-or-settings" | null;
 
 export interface BrainReply {
   text: string;
@@ -37,7 +37,12 @@ interface Options {
   speakReplies: boolean;
   onEvent: (event: BrainEvent) => void;
   onSpeakingChange?: (speaking: boolean) => void;
+  /** A timer fired. The brain has put the text in `reply`; the host should show the bubble. */
+  onNotify?: (text: string) => void;
 }
+
+const EMPTY_REPLY = "I didn't get an answer. Try again?";
+const DROPPED_NOTE = "(The connection dropped.)";
 
 async function loadGlobalMemories(): Promise<string[]> {
   try {
@@ -57,6 +62,10 @@ export function useCompanionBrain(options: Options) {
   const abortRef = useRef<AbortController | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  const pendingNotesRef = useRef<string[]>([]);
 
   useEffect(() => {
     historyRef.current = loadHistory(localStorage);
@@ -69,6 +78,33 @@ export function useCompanionBrain(options: Options) {
     void speak(text, () => optionsRef.current.onSpeakingChange?.(false));
   }, []);
 
+  // Fired timers wait here while a request is in flight, so they never overwrite its reply.
+  const notify = useCallback(
+    (text: string) => {
+      setReply({ text, action: null, done: true });
+      optionsRef.current.onNotify?.(text);
+      optionsRef.current.onEvent("succeeded");
+      say(text);
+    },
+    [say],
+  );
+
+  useEffect(() => {
+    if (busy) return;
+    if (pendingNotesRef.current.length === 0) return;
+    const text = pendingNotesRef.current.join("\n");
+    pendingNotesRef.current = [];
+    notify(text);
+  }, [busy, notify]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
+
   const send = useCallback(async (raw: string) => {
     const text = raw.trim();
     if (!text) return;
@@ -77,11 +113,13 @@ export function useCompanionBrain(options: Options) {
     abortRef.current = controller;
     lastInputRef.current = text;
     stopSpeaking();
+    optionsRef.current.onSpeakingChange?.(false);
     setBusy(true);
 
     const emit = (e: BrainEvent) => optionsRef.current.onEvent(e);
     const show = (t: string, action: BubbleAction, done: boolean) => setReply({ text: t, action, done });
     const remember = (answer: string) => {
+      if (!answer.trim()) return;
       historyRef.current = appendHistory(
         historyRef.current,
         { role: "user", content: text },
@@ -108,12 +146,13 @@ export function useCompanionBrain(options: Options) {
 
     try {
       if (route.kind === "timer") {
-        setTimeout(() => {
+        const id = setTimeout(() => {
+          timersRef.current.delete(id);
           const done = `Timer done! (${route.label})`;
-          show(done, null, true);
-          emit("succeeded");
-          say(done);
+          if (busyRef.current) pendingNotesRef.current.push(done);
+          else notify(done);
         }, route.ms);
+        timersRef.current.add(id);
         succeed(`Timer set for ${route.label}.`);
         return;
       }
@@ -126,18 +165,23 @@ export function useCompanionBrain(options: Options) {
       let prompt = text;
       if (route.kind === "clipboard") {
         try {
-          prompt = clipboardPrompt(route.action, await navigator.clipboard.readText());
+          const clip = await navigator.clipboard.readText();
+          if (controller.signal.aborted) return;
+          prompt = clipboardPrompt(route.action, clip);
         } catch {
           /* no clipboard access: send the request as typed */
         }
+        if (controller.signal.aborted) return;
       }
 
       emit("thinking");
       show("", null, false);
       const provider = loadChatProvider() ?? "groq";
       const model = loadChatModelMap()?.[provider] ?? "";
+      const globalMemories = await loadGlobalMemories();
+      if (controller.signal.aborted) return;
       const base = buildSystemPrompt(loadProfile()?.name ?? null, {
-        global: await loadGlobalMemories(),
+        global: globalMemories,
         project: [],
         conversation: [],
         legacy: loadMemories(),
@@ -161,7 +205,7 @@ export function useCompanionBrain(options: Options) {
         // JSON: a command result, or a setup error the route caught before streaming (e.g. no API key).
         const data = await readChatReply(res);
         if (data.commandExecuted) succeed(data.reply);
-        else fail(data.reply, route.kind === "command" ? null : "open-settings");
+        else fail(data.reply, route.kind === "command" ? null : "retry-or-settings");
         return;
       }
 
@@ -170,16 +214,28 @@ export function useCompanionBrain(options: Options) {
       const decoder = new TextDecoder();
       let rawText = "";
       let talking = false;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        rawText += decoder.decode(value, { stream: true });
-        const { text: partial } = parseChatStream(rawText);
-        if (partial && !talking) {
-          talking = true;
-          emit("talking");
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          rawText += decoder.decode(value, { stream: true });
+          const { text: partial } = parseChatStream(rawText);
+          if (partial && !talking) {
+            talking = true;
+            emit("talking");
+          }
+          show(partial, null, false);
         }
-        show(partial, null, false);
+      } catch (readErr) {
+        if (controller.signal.aborted) return;
+        const { text: partial } = parseChatStream(rawText);
+        fail(
+          partial.trim()
+            ? `${partial}\n\n${DROPPED_NOTE}`
+            : chatErrorMessage(new ChatStreamInterruptedError(readErr)),
+          "retry",
+        );
+        return;
       }
       rawText += decoder.decode();
       const { text: full, error } = parseChatStream(rawText, true);
@@ -188,12 +244,16 @@ export function useCompanionBrain(options: Options) {
         fail(full ? `${full}\n\n${why}` : why, "retry");
         return;
       }
+      if (!full.trim()) {
+        fail(EMPTY_REPLY, "retry");
+        return;
+      }
       succeed(full);
     } catch (err) {
       if (controller.signal.aborted) return;
       fail(chatErrorMessage(err), "retry");
     }
-  }, [say]);
+  }, [say, notify]);
 
   const retry = useCallback(() => send(lastInputRef.current), [send]);
 

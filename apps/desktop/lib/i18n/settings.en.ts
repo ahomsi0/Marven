@@ -156,7 +156,6 @@ const settingsEn = {
       "The agent can open pages in tabs of its own and read them. Clicking and typing on a site, and submitting forms, ask you first. It never fills in passwords or payment details.",
     miniMe: "Mini Me",
     miniMeHint: "A tiny you that lives on your desktop and does what you tell it.",
-    miniMeShow: "Show Mini Me",
     miniMeWake: "Listen for \"Hey Marven\"",
     miniMeWakeHint: "Mini Me takes over the wake word while it's on screen.",
     miniMeSpeak: "Speak replies",

@@ -74,7 +74,7 @@ export function CompanionSprite({ look, anim, facing, scale, onOneshotDone }: Pr
       draw();
     }, 1000 / animation.fps);
     return () => clearInterval(timer);
-  }, [anim, facing, framesFor]);
+  }, [anim, facing, framesFor, scale]);
 
   const px = SPRITE_SIZE * scale;
   return (

@@ -95,6 +95,13 @@ describe("never stuck", () => {
     expect(reduce(walking(), { type: "succeeded", now: 6000 }).effect).toEqual({ stop: true });
     expect(reduce(walking(), { type: "interact", now: 6000 }).effect).toEqual({ stop: true });
   });
+  it("rests instead of freezing mid-walk when hovered", () => {
+    const { state, effect } = reduce(walking(), { type: "interact", now: 6000 });
+    expect(state.anim).toBe("idle");
+    expect(effect).toEqual({ stop: true });
+    const perched = { ...walking(), mode: "perched" as const };
+    expect(reduce(perched, { type: "interact", now: 6000 }).state.anim).toBe("sit");
+  });
   it("sets a walk deadline on return-home", () => {
     expect(reduce(initialState(0), { type: "return-home", now: 10 }).state.walkUntil).toBe(90_010);
   });
