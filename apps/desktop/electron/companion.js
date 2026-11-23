@@ -8,11 +8,13 @@
 const { BrowserWindow, screen, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const placement = require('./companionPlacement');
+const { isReservedHotkey } = require('./companionGuards');
 
 const TICK_MS = 33;
 const WALK_PX_PER_TICK = 2;
 const FALL_PX_PER_TICK = 8;
 const MAX_LOAD_RETRIES = 20;
+const POSITION_SAVE_INTERVAL_MS = 30000;
 
 function placementDisplays() {
   return screen.getAllDisplays().map((d) => ({ id: d.id, workArea: d.workArea }));
@@ -21,11 +23,12 @@ function placementDisplays() {
 /**
  * @param {{
  *   appPort: number,
- *   saveSettings: (patch: object) => object,
+ *   savePosition: (position: { x: number, y: number, displayId: number }) => void,
+ *   isQuitting?: () => boolean,
  *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, unavailable: boolean, wakeWord: boolean }) => void,
  * }} options
  */
-function createCompanion({ appPort, saveSettings, onStatusChange }) {
+function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange }) {
   let win = null;
   let settings = {};
   let size = placement.windowSize(3);
@@ -35,6 +38,10 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
   let hotkey = null;
   let hotkeyOk = true;
   let unavailable = false;
+  let retryTimer = null;
+  let savePending = false;
+  let lastSaveAt = 0;
+  let saveTimer = null;
   const url = `http://localhost:${appPort}/companion`;
 
   const alive = () => !!win && !win.isDestroyed();
@@ -48,7 +55,7 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
 
   const rendererSettings = () => ({
     speak: settings.miniMeSpeak !== false,
-    scale: [2, 3, 4].includes(settings.miniMeScale) ? settings.miniMeScale : 3,
+    scale: [2, 3, 4].includes(Number(settings.miniMeScale)) ? Number(settings.miniMeScale) : 3,
     walk: settings.miniMeWalk !== false,
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
@@ -76,12 +83,32 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     });
   }
 
-  function savePosition() {
+  function flushPosition() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
+    if (!savePending) return;
+    savePending = false;
+    lastSaveAt = Date.now();
+    const pos = settings.miniMePosition;
+    if (pos && typeof savePosition === 'function') {
+      try { savePosition(pos); } catch { /* best effort */ }
+    }
+  }
+
+  /**
+   * Remember the current position in memory every time; persist it right away
+   * on a drop, and at most once per POSITION_SAVE_INTERVAL_MS after walks.
+   */
+  function recordPosition({ immediate }) {
     if (!alive()) return;
     const [x, y] = win.getPosition();
-    const miniMePosition = { x, y, displayId: currentDisplay().id };
-    saveSettings({ miniMePosition });
-    settings = { ...settings, miniMePosition };
+    settings = { ...settings, miniMePosition: { x, y, displayId: currentDisplay().id } };
+    savePending = true;
+    if (immediate) return flushPosition();
+    if (saveTimer) return;
+    const wait = Math.max(0, lastSaveAt + POSITION_SAVE_INTERVAL_MS - Date.now());
+    if (wait === 0) return flushPosition();
+    saveTimer = setTimeout(flushPosition, wait);
   }
 
   function stopWalking() {
@@ -94,7 +121,9 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     if (!alive()) return;
     const [x] = win.getPosition();
     if (target.x !== x) facing = target.x > x ? 1 : -1;
-    walkTarget = target;
+    const wa = currentDisplay().workArea;
+    const [, y] = win.getPosition();
+    walkTarget = { ...target, dock: placement.isInDockStrip({ x, y, ...size }, wa) || !!target.dock };
     if (!walkTimer) {
       walkTimer = setInterval(() => {
         if (!alive() || !walkTarget) return stopWalking();
@@ -102,9 +131,12 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
         const nx = placement.stepToward(cx, walkTarget.x, WALK_PX_PER_TICK);
         const ny = placement.stepToward(cy, walkTarget.y, FALL_PX_PER_TICK);
         win.setPosition(Math.round(nx), Math.round(ny));
-        if (nx === walkTarget.x && ny === walkTarget.y) {
+        const [ax, ay] = win.getPosition();
+        // Arrived, or the window didn't move at all (blocked): stop either way.
+        const reached = nx === walkTarget.x && ny === walkTarget.y;
+        if (reached || (ax === cx && ay === cy)) {
           stopWalking();
-          savePosition();
+          recordPosition({ immediate: false });
           sendPosition({ arrived: true });
         }
       }, TICK_MS);
@@ -116,9 +148,16 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     if (!alive()) return;
     const [x, y] = win.getPosition();
     const c = placement.clampToDisplays({ x, y, ...size }, placementDisplays());
-    if (c.x !== x || c.y !== y) {
-      stopWalking();
-      win.setPosition(c.x, c.y);
+    if (c.x !== x || c.y !== y) win.setPosition(c.x, c.y);
+    if (walkTarget) {
+      // Keep walking, now along the strip of whichever display the window landed on.
+      const display = screen.getAllDisplays().find((d) => d.id === c.displayId) || screen.getPrimaryDisplay();
+      const strip = placement.dockStrip(display.workArea, size);
+      walkTarget = {
+        ...walkTarget,
+        x: Math.min(Math.max(walkTarget.x, strip.minX), strip.maxX),
+        y: walkTarget.dock ? strip.y : walkTarget.y,
+      };
     }
     sendPosition();
   }
@@ -126,7 +165,7 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
   function create() {
     size = placement.windowSize(settings.miniMeScale);
     const pos = placement.restorePosition(settings.miniMePosition, placementDisplays(), screen.getPrimaryDisplay().id, size);
-    win = new BrowserWindow({
+    const w = new BrowserWindow({
       ...size,
       x: pos.x,
       y: pos.y,
@@ -148,28 +187,41 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
-        preload: path.join(__dirname, 'preload.js'),
+        preload: path.join(__dirname, 'companionPreload.js'),
       },
     });
+    win = w;
     win.setAlwaysOnTop(true, 'floating');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
     win.setIgnoreMouseEvents(true, { forward: true });
 
-    win.once('ready-to-show', () => {
-      if (!alive()) return;
-      win.showInactive();
+    // Never let the companion page leave the app origin.
+    const appOrigin = `http://localhost:${appPort}`;
+    const blockOffOrigin = (event, target) => {
+      let ok = false;
+      try { ok = new URL(target).origin === appOrigin; } catch { ok = false; }
+      if (!ok) event.preventDefault();
+    };
+    w.webContents.on('will-navigate', (event, target) => blockOffOrigin(event, target));
+    w.webContents.on('will-redirect', (event, target) => blockOffOrigin(event, target));
+    w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+    // Only show once the real page has loaded (not Chromium's error page).
+    w.webContents.on('did-finish-load', () => {
+      if (win !== w || w.isDestroyed()) return;
+      if (!w.webContents.getURL().startsWith(url)) return;
+      if (!w.isVisible()) w.showInactive();
+      sendPosition();
       notify();
     });
-    win.webContents.on('did-finish-load', () => sendPosition());
 
     // Same capped, non-overlapping retry as the main window.
     let retries = 0;
-    let retryTimer = null;
-    win.webContents.on('did-fail-load', (_event, _code, _desc, _url, isMainFrame) => {
-      if (!isMainFrame || !alive()) return;
+    w.webContents.on('did-fail-load', (_event, _code, _desc, _url, isMainFrame) => {
+      if (!isMainFrame || win !== w || w.isDestroyed()) return;
       if (retries >= MAX_LOAD_RETRIES) {
         unavailable = true;
-        win.hide();
+        w.hide();
         notify();
         return;
       }
@@ -177,30 +229,44 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = setTimeout(() => {
         retryTimer = null;
-        if (alive()) win.loadURL(url);
+        if (win === w && !w.isDestroyed()) w.loadURL(url);
       }, 1500);
     });
-    win.webContents.on('render-process-gone', () => {
+    w.webContents.on('render-process-gone', () => {
+      if (win !== w) return;
       unavailable = true;
       destroy();
     });
-    win.on('closed', () => {
-      stopWalking();
-      win = null;
+    // Veto accidental closes (Cmd+W, Alt+F4) unless the app is quitting.
+    // Mini Me is turned off through applySettings, which uses destroy() and skips this.
+    w.on('close', (event) => {
+      if (!isQuitting()) event.preventDefault();
+    });
+    w.on('closed', () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      if (win === w) {
+        stopWalking();
+        flushPosition();
+        win = null;
+      }
       notify();
     });
-    win.loadURL(url);
+    w.loadURL(url);
   }
 
   function destroy() {
     stopWalking();
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    flushPosition();
     if (alive()) win.destroy();
     win = null;
     notify();
   }
 
   function openInput() {
-    if (!alive()) return;
+    if (!alive() || unavailable) return;
     if (!win.isVisible()) win.showInactive();
     win.webContents.send('companion:open-input');
   }
@@ -213,6 +279,10 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     hotkeyOk = true;
     const accel = typeof settings.miniMeHotkey === 'string' ? settings.miniMeHotkey.trim() : '';
     if (!accel || !settings.miniMeEnabled) return;
+    if (isReservedHotkey(accel)) {
+      hotkeyOk = false; // Marven's own Listen shortcut
+      return;
+    }
     try {
       hotkeyOk = globalShortcut.register(accel, openInput);
     } catch {
@@ -246,7 +316,7 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     sendPosition();
   });
   ipcMain.on('companion:drag', (event, dx, dy) => {
-    if (!fromCompanion(event) || typeof dx !== 'number' || typeof dy !== 'number') return;
+    if (!fromCompanion(event) || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
     stopWalking();
     const [x, y] = win.getPosition();
     win.setPosition(Math.round(x + dx), Math.round(y + dy));
@@ -258,7 +328,7 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
     const display = screen.getAllDisplays().find((d) => d.id === c.displayId) || screen.getPrimaryDisplay();
     const onDock = placement.isInDockStrip({ x: c.x, y: c.y, ...size }, display.workArea);
     win.setPosition(c.x, onDock ? placement.dockStrip(display.workArea, size).y : c.y);
-    savePosition();
+    recordPosition({ immediate: true });
     sendPosition();
   });
   ipcMain.on('companion:return-home', (event) => {
@@ -276,7 +346,10 @@ function createCompanion({ appPort, saveSettings, onStatusChange }) {
   function applySettings(next) {
     const prev = settings;
     settings = { ...next };
+    // A not-yet-saved position is newer than whatever the caller loaded from disk.
+    if (savePending && prev.miniMePosition) settings.miniMePosition = prev.miniMePosition;
     const enabled = !!settings.miniMeEnabled;
+    if (!enabled) unavailable = false;
     if (enabled && !alive()) {
       unavailable = false;
       create();

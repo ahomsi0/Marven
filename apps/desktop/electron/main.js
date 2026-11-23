@@ -11,6 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
+const { sanitizeThreadMessages } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -300,6 +301,36 @@ function writeStoredSettings(settings) {
   }
 }
 
+/**
+ * Persist only the Mini Me position. Reads the raw file (never decrypting or
+ * re-encrypting secrets), refuses to write if the file is unreadable, and
+ * replaces it atomically.
+ */
+function saveCompanionPosition(position) {
+  if (!position || typeof position !== 'object') return;
+  const p = settingsPath();
+  let raw = {};
+  try {
+    if (fs.existsSync(p)) {
+      raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    }
+  } catch (err) {
+    console.warn('[Marven] Not saving Mini Me position, settings unreadable:', err && err.message);
+    return;
+  }
+  const tmp = `${p}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({ ...raw, miniMePosition: position }, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, p);
+    try { fs.chmodSync(p, 0o600); } catch {}
+  } catch (err) {
+    console.error('[Marven] Could not save Mini Me position:', err.message);
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+
 function loadSettings() {
   const stored = readStoredSettings();
   const settings = { ...SETTINGS_DEFAULTS, ...stored };
@@ -399,14 +430,16 @@ function fromCompanionWindow(event) {
 }
 
 ipcMain.on('companion:open-in-marven', (event, messages) => {
-  if (!fromCompanionWindow(event) || !Array.isArray(messages) || !mainWindow) return;
+  if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
+  const safe = sanitizeThreadMessages(messages);
+  if (!safe) return;
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('companion-open-thread', messages.slice(-20));
+  mainWindow.webContents.send('companion-open-thread', safe);
 });
 
 ipcMain.on('companion:open-settings', (event) => {
-  if (!fromCompanionWindow(event) || !mainWindow) return;
+  if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.send('companion-open-settings');
@@ -619,10 +652,16 @@ function createWindow() {
       mainWindow.hide();
     }
   });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (process.platform !== 'darwin') app.quit();
+  });
 }
 
 function triggerVoice() {
   if (companion && companion.triggerListen()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.send('trigger-voice');
@@ -633,7 +672,11 @@ function buildTrayMenu() {
   return Menu.buildFromTemplate([
     {
       label: 'Show Marven',
-      click() { mainWindow.show(); mainWindow.focus(); },
+      click() {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.show();
+        mainWindow.focus();
+      },
     },
     {
       label: 'Listen  (Cmd+Shift+M)',
@@ -1051,7 +1094,8 @@ app.whenReady().then(async () => {
   createTray();
   companion = createCompanion({
     appPort: APP_PORT,
-    saveSettings: (patch) => persistSettings(patch),
+    savePosition: saveCompanionPosition,
+    isQuitting: () => isQuitting,
     onStatusChange: (s) => {
       rebuildTrayMenu();
       if (mainWindow && !mainWindow.isDestroyed()) {
