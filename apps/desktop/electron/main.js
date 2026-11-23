@@ -10,6 +10,7 @@ const { terminalEnv } = require('./envSanitize');
 const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
+const { createCompanion } = require('./companion');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -200,6 +201,7 @@ app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http:/
 
 let mainWindow = null;
 let tray = null;
+let companion = null;
 let isQuitting = false;
 let updateReady = false;
 
@@ -226,6 +228,14 @@ const SETTINGS_DEFAULTS = {
   workspaceTrustRequired: true,
   indexExcludePatterns: '',
   browserSearchEngine: 'brave',
+  miniMeEnabled: false,
+  miniMeHotkey: 'CommandOrControl+Shift+Space',
+  miniMeSpeak: true,
+  miniMeScale: 3,
+  miniMeWalk: true,
+  miniMeSleepMinutes: 5,
+  miniMeWakeWord: false,
+  miniMePosition: null,
 };
 
 const SECRET_SETTING_KEYS = [
@@ -378,7 +388,28 @@ ipcMain.handle('save-settings', (_, settings) => {
   const next = persistSettings(settings);
   applySettings(next);
   inAppBrowser.setSearchEngine(next.browserSearchEngine);
+  if (companion) companion.applySettings(next);
   return publicSettings(next);
+});
+ipcMain.handle('companion-status', () =>
+  companion ? companion.status() : { visible: false, hotkeyOk: true, unavailable: false, wakeWord: false });
+
+function fromCompanionWindow(event) {
+  return !!companion && companion.webContentsId() === event.sender.id;
+}
+
+ipcMain.on('companion:open-in-marven', (event, messages) => {
+  if (!fromCompanionWindow(event) || !Array.isArray(messages) || !mainWindow) return;
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send('companion-open-thread', messages.slice(-20));
+});
+
+ipcMain.on('companion:open-settings', (event) => {
+  if (!fromCompanionWindow(event) || !mainWindow) return;
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send('companion-open-settings');
 });
 ipcMain.handle('get-version', () => app.getVersion());
 // Recent log lines for the "Report a problem" preview. Only Marven's own
@@ -591,9 +622,42 @@ function createWindow() {
 }
 
 function triggerVoice() {
+  if (companion && companion.triggerListen()) return;
   if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.send('trigger-voice');
+}
+
+function buildTrayMenu() {
+  const companionStatus = companion ? companion.status() : null;
+  return Menu.buildFromTemplate([
+    {
+      label: 'Show Marven',
+      click() { mainWindow.show(); mainWindow.focus(); },
+    },
+    {
+      label: 'Listen  (Cmd+Shift+M)',
+      click() { triggerVoice(); },
+    },
+    {
+      label: companionStatus && companionStatus.unavailable ? 'Mini Me (unavailable)' : 'Show Mini Me',
+      type: 'checkbox',
+      checked: !!readStoredSettings().miniMeEnabled,
+      click(item) {
+        const next = persistSettings({ miniMeEnabled: item.checked });
+        if (companion) companion.applySettings(next);
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit Marven',
+      click() { isQuitting = true; app.quit(); },
+    },
+  ]);
+}
+
+function rebuildTrayMenu() {
+  if (tray) tray.setContextMenu(buildTrayMenu());
 }
 
 function createTray() {
@@ -609,23 +673,7 @@ function createTray() {
 
   tray.setToolTip('Marven — right-click for options');
 
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Show Marven',
-      click() { mainWindow.show(); mainWindow.focus(); },
-    },
-    {
-      label: 'Listen  (Cmd+Shift+M)',
-      click() { triggerVoice(); },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit Marven',
-      click() { isQuitting = true; app.quit(); },
-    },
-  ]);
-
-  tray.setContextMenu(menu);
+  tray.setContextMenu(buildTrayMenu());
 
   tray.on('click', () => {
     if (mainWindow.isVisible() && mainWindow.isFocused()) {
@@ -988,7 +1036,9 @@ app.whenReady().then(async () => {
     port: APP_PORT,
     token: API_TOKEN,
     speechOrigin: `http://localhost:${APP_PORT}`,
-    isAppWebContents: (id) => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === id,
+    isAppWebContents: (id) =>
+      (!!mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === id) ||
+      (!!companion && companion.webContentsId() === id),
   });
   session.defaultSession.webRequest.onBeforeSendHeaders(requestHeaders.filter, requestHeaders.listener);
 
@@ -999,6 +1049,17 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  companion = createCompanion({
+    appPort: APP_PORT,
+    saveSettings: (patch) => persistSettings(patch),
+    onStatusChange: (s) => {
+      rebuildTrayMenu();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('companion-visibility', { visible: s.visible, wakeWord: s.wakeWord });
+      }
+    },
+  });
+  companion.applySettings(loadSettings());
 
   if (!isDev) {
     // Keep automatic downloads enabled by design. electron-updater verifies

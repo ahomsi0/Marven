@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Subscribe to a main → renderer channel; returns an unsubscribe function.
+const subscribe = (channel) => (cb) => {
+  const handler = (_e, data) => cb(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+};
+
 contextBridge.exposeInMainWorld('marvenElectron', {
   onTriggerVoice: (cb) => {
     const handler = () => cb();
@@ -31,6 +38,29 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     const handler = (_event, data) => cb(data);
     ipcRenderer.on('update-status', handler);
     return () => ipcRenderer.removeListener('update-status', handler);
+  },
+  // ── Mini Me ────────────────────────────────────────────────────────────────
+  // Main window side: status, wake-word hand-over, threads and settings requests.
+  companionStatus: () => ipcRenderer.invoke('companion-status'),
+  onCompanionVisibility: subscribe('companion-visibility'),
+  onCompanionOpenThread: subscribe('companion-open-thread'),
+  onCompanionOpenSettings: subscribe('companion-open-settings'),
+  // Companion window side (main ignores these from any other window).
+  companion: {
+    getSettings: () => ipcRenderer.invoke('companion:get-settings'),
+    setInteractive: (on) => ipcRenderer.send('companion:set-interactive', !!on),
+    setFocusable: (on) => ipcRenderer.send('companion:set-focusable', !!on),
+    walkTo: (x) => ipcRenderer.send('companion:walk-to', x),
+    stop: () => ipcRenderer.send('companion:stop'),
+    drag: (dx, dy) => ipcRenderer.send('companion:drag', dx, dy),
+    drop: () => ipcRenderer.send('companion:drop'),
+    returnHome: () => ipcRenderer.send('companion:return-home'),
+    openInMarven: (messages) => ipcRenderer.send('companion:open-in-marven', messages),
+    openSettings: () => ipcRenderer.send('companion:open-settings'),
+    onPosition: subscribe('companion:position'),
+    onOpenInput: subscribe('companion:open-input'),
+    onListen: subscribe('companion:listen'),
+    onSettings: subscribe('companion:settings'),
   },
 
   // ── Interactive terminal (node-pty) ────────────────────────────────────────
