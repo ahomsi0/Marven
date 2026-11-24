@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "path";
-import { expandHome, isStrictlyInside, pickUniqueName, projectSlug } from "./projectFolder";
+import { expandHome, isStrictlyInside, parentRejection, pickUniqueName, projectSlug } from "./projectFolder";
 
 describe("projectSlug", () => {
   it("lowercases and joins words with dashes", () => {
@@ -19,6 +19,13 @@ describe("projectSlug", () => {
     expect(projectSlug("")).toBe("project");
     expect(projectSlug("!!!")).toBe("project");
     expect(projectSlug("متجر")).toBe("project");
+  });
+  it("avoids Windows reserved device names", () => {
+    for (const n of ["con", "PRN", "aux", "nul", "com1", "COM9", "lpt1", "lpt9"]) {
+      expect(projectSlug(n), n).toBe(`${n.toLowerCase()}-project`);
+    }
+    expect(projectSlug("console")).toBe("console");
+    expect(projectSlug("com10")).toBe("com10");
   });
   it("only ever produces [a-z0-9-]", () => {
     expect(projectSlug("../../etc/passwd")).toMatch(/^[a-z0-9-]+$/);
@@ -68,5 +75,25 @@ describe("isStrictlyInside", () => {
   });
   it("rejects relative paths", () => {
     expect(isStrictlyInside("Marven Projects", "/Users/me")).toBe(false);
+  });
+});
+
+describe("parentRejection", () => {
+  const home = "/Users/me";
+  it("accepts ordinary folders under home", () => {
+    expect(parentRejection("/Users/me/Marven Projects", home)).toBeNull();
+    expect(parentRejection("/Users/me/Documents/Code/projects", home)).toBeNull();
+  });
+  it("rejects hidden segments under home", () => {
+    expect(parentRejection("/Users/me/.ssh", home)).toMatch(/hidden/i);
+    expect(parentRejection("/Users/me/Work/.config/x", home)).toMatch(/hidden/i);
+  });
+  it("rejects ~/Library", () => {
+    expect(parentRejection("/Users/me/Library", home)).toMatch(/Library/);
+    expect(parentRejection("/Users/me/library/Application Support", home)).toMatch(/Library/);
+  });
+  it("rejects paths outside home", () => {
+    expect(parentRejection("/etc", home)).toMatch(/home/i);
+    expect(parentRejection("/Users/me", home)).toMatch(/home/i);
   });
 });

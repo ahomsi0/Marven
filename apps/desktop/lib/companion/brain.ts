@@ -31,10 +31,15 @@ export { projectSlug };
 // "create a cafe menu", "can you build me a todo app": an imperative build verb,
 // then an object whose head noun is something you can build as a project.
 const BUILD_VERB = String.raw`(?:create|build|make|design|code|generate|scaffold|set\s+up|start)`;
+// Desire phrasing counts too: "I want a website for my cafe", "give me a quiz".
+const DESIRE = String.raw`(?:i\s+want|i\s+need|i(?:'|\u2019)d\s+like|i\s+would\s+like|i(?:'|\u2019)m\s+looking\s+for|give\s+me|get\s+me)`;
 const BUILD_REQUEST = new RegExp(
-  String.raw`^\s*(?:(?:please|can\s+you|could\s+you|would\s+you)\s+)*${BUILD_VERB}\s+(?:(?:me|us)\s+)?(.+?)\s*[.!]*\s*$`,
+  String.raw`^\s*(?:(?:please|can\s+you|could\s+you|would\s+you)\s+)*(?:${BUILD_VERB}\s+(?:(?:me|us)\s+)?|${DESIRE}\s+)(.+?)\s*[.!]*\s*$`,
   "i",
 );
+// A head that is only one of these says little about the project, so words after the cut help name it.
+const GENERIC_NOUNS = new Set(["app", "website", "site", "page", "game", "project", "tool", "bot", "script"]);
+const NAME_STOPWORDS = new Set(["lets", "let", "can", "will", "would", "should", "is", "are", "be", "that", "which", "who", "where", "with", "using", "it", "its", "i", "you", "they", "helps", "help", "allows", "allow", "so", "like", "by", "from", "all", "also", "very"]);
 const BUILDABLE =
   /(?:web\s*sites?|sites?|web\s*pages?|pages?|apps?|applications?|games?|menus?|portfolios?|blogs?|dashboards?|forms?|calculators?|tools?|extensions?|scripts?|bots?|chatbots?|apis?|servers?|projects?|prototypes?|templates?|resumes?|cvs?|invitations?|quizz?es|quiz|to-?\s?do\s+lists?|shops?|stores?|galleries|gallery)$/i;
 // Where the object's head noun phrase ends ("a landing page | for my bakery").
@@ -57,7 +62,15 @@ function detectBuild(text: string): string | null {
   if (headWords.length === 0 || !BUILDABLE.test(headWords.join(" "))) return null;
   // "a game called Snake" is named Snake; "a landing page for my bakery" becomes "landing page bakery".
   const named = /^(?:called|named)\s+(.+)$/i.exec(tail);
-  const tailWords = named ? words(named[1]) : /^(?:for|about)\b/i.test(tail) ? words(tail.replace(/^\S+\s*/, "")) : [];
+  const afterCut = words(tail.replace(/^\S+\s*/, ""));
+  const generic = headWords.length === 1 && GENERIC_NOUNS.has(headWords[0].toLowerCase());
+  const tailWords = named
+    ? words(named[1])
+    : /^(?:for|about)\b/i.test(tail)
+      ? afterCut
+      : generic
+        ? afterCut.filter((w) => !NAME_FILLER.has(w.toLowerCase()) && !NAME_STOPWORDS.has(w.toLowerCase())).slice(0, 3)
+        : [];
   const nameWords = named && tailWords.length
     ? tailWords
     : [...headWords, ...tailWords.filter((w) => !NAME_FILLER.has(w.toLowerCase()))];

@@ -6,7 +6,7 @@ import { approveWorkspaceRoot } from "@/lib/workspaceState";
 import {
   DEFAULT_PROJECTS_DIR,
   expandHome,
-  isStrictlyInside,
+  parentRejection,
   pickUniqueName,
   projectSlug,
 } from "@/lib/companion/projectFolder";
@@ -55,15 +55,13 @@ export async function POST(req: NextRequest) {
     }
     // Resolve symlinks in the part that exists, so a link can't lead out of home.
     const parent = await resolveExisting(requested);
-    if (!isStrictlyInside(parent, home)) {
-      return NextResponse.json({ error: "parent must be inside your home folder" }, { status: 400 });
-    }
+    const rejected = parentRejection(parent, home);
+    if (rejected) return NextResponse.json({ error: rejected }, { status: 400 });
     await fs.mkdir(parent, { recursive: true });
     // Re-check after creating, in case something swapped in a link meanwhile.
     const realParent = await fs.realpath(parent);
-    if (!isStrictlyInside(realParent, home)) {
-      return NextResponse.json({ error: "parent must be inside your home folder" }, { status: 400 });
-    }
+    const rejectedAfter = parentRejection(realParent, home);
+    if (rejectedAfter) return NextResponse.json({ error: rejectedAfter }, { status: 400 });
 
     const base = projectSlug(name);
     const taken = await fs.readdir(realParent);

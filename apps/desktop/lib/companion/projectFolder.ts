@@ -16,8 +16,12 @@ export function projectSlug(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, SLUG_MAX)
     .replace(/-+$/g, "");
-  return slug || "project";
+  const result = slug || "project";
+  return WINDOWS_RESERVED.test(result) ? `${result}-project` : result;
 }
+
+/** Folder names Windows refuses (with or without an extension). */
+const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 
 /** `base`, or `base-2`, `base-3`… when `taken` (compared case-insensitively) already has it. */
 export function pickUniqueName(base: string, taken: Iterable<string>): string {
@@ -42,4 +46,17 @@ export function isStrictlyInside(child: string, parent: string): boolean {
   if (!path.isAbsolute(child) || !path.isAbsolute(parent)) return false;
   const rel = path.relative(path.resolve(parent), path.resolve(child));
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+/**
+ * Why a projects parent folder is not acceptable, or null when it is fine.
+ * `parent` must already be resolved (realpath of its existing part). Keeps new
+ * projects out of dotfolders (~/.ssh) and ~/Library, which are never a good home for them.
+ */
+export function parentRejection(parent: string, home: string): string | null {
+  if (!isStrictlyInside(parent, home)) return "parent must be inside your home folder";
+  const segments = path.relative(path.resolve(home), path.resolve(parent)).split(path.sep);
+  if (segments.some((s) => s.startsWith("."))) return "parent can't be a hidden folder (one starting with a dot)";
+  if (segments[0].toLowerCase() === "library") return "parent can't be inside your Library folder";
+  return null;
 }

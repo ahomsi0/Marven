@@ -82,6 +82,7 @@ export function useCompanionBrain(options: Options) {
   const [busy, setBusy] = useState(false);
   const historyRef = useRef<CompanionMessage[]>([]);
   const lastInputRef = useRef("");
+  const lastSkipBuildRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -135,6 +136,7 @@ export function useCompanionBrain(options: Options) {
     const controller = new AbortController();
     abortRef.current = controller;
     lastInputRef.current = text;
+    lastSkipBuildRef.current = !!sendOpts?.skipBuild;
     stopSpeaking();
     optionsRef.current.onSpeakingChange?.(false);
     setBusy(true);
@@ -287,7 +289,7 @@ export function useCompanionBrain(options: Options) {
     }
   }, [say, notify]);
 
-  const retry = useCallback(() => send(lastInputRef.current), [send]);
+  const retry = useCallback(() => send(lastInputRef.current, { skipBuild: lastSkipBuildRef.current }), [send]);
 
   const dismiss = useCallback(() => {
     abortRef.current?.abort();

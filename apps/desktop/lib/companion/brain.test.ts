@@ -115,6 +115,40 @@ describe("build routing", () => {
   });
 });
 
+describe("build routing: desire phrasing and generic names", () => {
+  const on = { allowCommands: true };
+  it("accepts desire phrasing with a buildable noun", () => {
+    const cases: [string, string][] = [
+      ["I want a website for my cafe", "website cafe"],
+      ["I need a todo app", "todo app"],
+      ["I'd like a landing page", "landing page"],
+      ["I would like an online store", "online store"],
+      ["I'm looking for a portfolio website", "portfolio website"],
+      ["give me a quiz about space", "quiz space"],
+      ["get me a calculator", "calculator"],
+      ["please give me a dashboard", "dashboard"],
+    ];
+    for (const [text, name] of cases) expect(routeInput(text, on), text).toEqual({ kind: "build", name });
+  });
+  it("keeps non-buildable desires in chat", () => {
+    for (const text of ["I want a coffee", "I need a break", "give me a joke", "get me some water", "I want to know about apps", "I need help with my app"]) {
+      expect(routeInput(text, on), text).toEqual({ kind: "chat" });
+    }
+  });
+  it("adds meaningful words when only a generic noun is left", () => {
+    expect(routeInput("make an app that tracks habits", on)).toEqual({ kind: "build", name: "app tracks habits" });
+    expect(routeInput("build a website with react", on)).toEqual({ kind: "build", name: "website react" });
+    expect(routeInput("create a game that lets me practise typing speed daily", on)).toEqual({
+      kind: "build",
+      name: "game practise typing speed",
+    });
+    expect(routeInput("make a tool", on)).toEqual({ kind: "build", name: "tool" });
+  });
+  it("leaves specific names alone", () => {
+    expect(routeInput("create a cafe menu that is printable", on)).toEqual({ kind: "build", name: "cafe menu" });
+  });
+});
+
 describe("projectSlug (re-export)", () => {
   it("is available from brain", () => {
     expect(projectSlug("Cafe Menu")).toBe("cafe-menu");
