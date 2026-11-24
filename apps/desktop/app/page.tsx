@@ -175,6 +175,9 @@ function getGreeting(): string {
 // ─── Screen awareness regex ───────────────────────────────────────────────────
 const SCREEN_RE = /^(?:what(?:'s| is) on (?:my )?(?:screen|display)|analyze (?:my )?screen|look at (?:my )?screen|describe (?:my )?screen)/i;
 
+/** How long a Mini Me hand-off waits for its conversation to settle before falling back to filling in the input. */
+const AUTOSTART_TIMEOUT_MS = 15_000;
+
 // ─── Weather detection regex ──────────────────────────────────────────────────
 const WEATHER_RE = /what(?:'s| is) the weather|how(?:'s| is) the weather|weather today/i;
 
@@ -1578,7 +1581,7 @@ export default function Home() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
     if (!electron?.onCompanionOpenThread) return;
-    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown; workspaceRoot?: unknown } | null) => {
+    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown; workspaceRoot?: unknown; autostart?: unknown } | null) => {
       const raw = payload?.messages;
       if (!Array.isArray(raw)) return;
       const messages = raw.filter(
@@ -1589,11 +1592,26 @@ export default function Home() {
       if (payload?.mode === "agent" && typeof payload.workspaceRoot === "string" && payload.workspaceRoot) {
         // A project Mini Me built (main checked the folder is in the projects
         // folder): continue it here, on that folder, with the thread so far.
-        // Nothing is sent; the user carries on from the input.
+        // Nothing is sent; the user carries on from the input. With
+        // `autostart` (main allows it only on such a folder) the request is
+        // sent for them instead.
         const root = payload.workspaceRoot;
         const request = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
-        const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
         setWorkspaceTrusted(root, true);
+        if (payload.autostart === true) {
+          // "Open in Marven" on a build request: a fresh Agent conversation on
+          // the new folder, and the request sent as if the user pressed Send
+          // once the switch has settled (see the autostart effect below).
+          const agentConv: Conversation = { ...createConversationWithMode("New agent", "agent"), workspaceRoot: root };
+          agentMessagesByConvRef.current.set(agentConv.id, []);
+          queueAutostart({ convId: agentConv.id, root, prompt: request });
+          setConversations((prev) => [...prev, agentConv]);
+          setActiveConversationId(agentConv.id);
+          setAgentInput("");
+          setAgentAttachments([]);
+          return;
+        }
+        const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
         agentMessagesByConvRef.current.set(
           agentConv.id,
           messages.map((m, i): AgentMessage => ({ id: `minime-${Date.now()}-${i}`, role: m.role, content: m.content })),
@@ -1632,6 +1650,63 @@ export default function Home() {
       offSettings?.();
     };
   }, []);
+
+  // ─── Mini Me hand-off that starts by itself ("Open in Marven" on a build) ──
+  // The request waits here until the new conversation has fully settled, then
+  // goes out through the same send the Send button uses. useAgentStream's send
+  // closes over the render's provider / workspace / conversation / safety
+  // profile, and the conversation-switch effect re-opens the workspace
+  // asynchronously (aborting any run), so sending from the IPC handler would
+  // use the previous conversation's values.
+  const pendingAutostartRef = useRef<{ convId: string; root: string; prompt: string; activated: boolean; expired: boolean } | null>(null);
+  const [autostartCheck, setAutostartCheck] = useState(0);
+
+  function queueAutostart(next: { convId: string; root: string; prompt: string }) {
+    const pending = { ...next, activated: false, expired: false };
+    pendingAutostartRef.current = pending;
+    // If the folder never opens (or something keeps running), stop waiting and
+    // leave the request in the input instead, like the plain Agent hand-off.
+    setTimeout(() => {
+      if (pendingAutostartRef.current !== pending) return;
+      pending.expired = true;
+      setAutostartCheck((n) => n + 1);
+    }, AUTOSTART_TIMEOUT_MS);
+  }
+
+  useEffect(() => {
+    const pending = pendingAutostartRef.current;
+    if (!pending) return;
+    if (activeConversationId !== pending.convId) {
+      // The user went to another conversation first: don't send it behind their back.
+      if (pending.activated || pending.expired) pendingAutostartRef.current = null;
+      return;
+    }
+    pending.activated = true;
+    if (pending.expired) {
+      pendingAutostartRef.current = null;
+      if (agentStreamMessages.length === 0) setAgentInput(pending.prompt);
+      return;
+    }
+    // Settled: the switch effect has swapped this conversation in, its folder
+    // is the open workspace, that folder is trusted (so the run isn't forced
+    // read-only) and no run is going.
+    if (activeMode !== "agent" || lastAgentConvIdRef.current !== pending.convId) return;
+    if (workspaceRoot !== pending.root || !workspaceTrusted || !isWorkspaceTrusted(pending.root)) return;
+    if (agentStreamIsRunning) return;
+    // Something is already in the thread: the user started it themselves.
+    // (Checked only once the folder is open, well after the switch has loaded
+    // this conversation's empty thread.)
+    if (agentStreamMessages.length > 0) {
+      pendingAutostartRef.current = null;
+      return;
+    }
+    // Cleared before sending, so a re-run of this effect (StrictMode, the
+    // re-renders the send itself causes) can never send it twice.
+    pendingAutostartRef.current = null;
+    autoRenameConversation(pending.convId, pending.prompt);
+    void agentStreamSend(pending.prompt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId, activeMode, workspaceRoot, workspaceTrusted, agentStreamIsRunning, agentStreamMessages.length, agentStreamSend, autostartCheck]);
 
   // Turning "Hey Marven" on while Mini Me is on screen and already listening for it
   // would open the mic twice, so say so instead. Turning it off always works.

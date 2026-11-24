@@ -11,7 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
-const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeSettingsPage, projectFolderInside } = require('./companionGuards');
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeSettingsPage } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -443,20 +443,20 @@ function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
 }
 
-ipcMain.on('companion:open-in-marven', (event, messages, mode, options) => {
-  if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
+// Resolves true when the thread reached the main window, false when refused.
+ipcMain.handle('companion:open-in-marven', (event, messages, mode, options) => {
+  if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return false;
   const safe = sanitizeThreadMessages(messages);
-  if (!safe) return;
-  const payload = { messages: safe, mode: sanitizeOpenMode(mode) };
-  // A project Mini Me built: only a folder inside the projects folder is passed on.
-  const requestedRoot = options && typeof options === 'object' ? options.workspaceRoot : undefined;
-  if (requestedRoot !== undefined) {
-    const root = projectFolderInside(requestedRoot, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
-    if (root) payload.workspaceRoot = root;
-  }
+  if (!safe) return false;
+  const openMode = sanitizeOpenMode(mode);
+  // A project Mini Me made: only a folder inside the projects folder is passed
+  // on, and the Agent starts by itself only on such a folder.
+  const extras = sanitizeOpenOptions(options, openMode, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
+  if (!extras) return false;
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('companion-open-thread', payload);
+  mainWindow.webContents.send('companion-open-thread', { messages: safe, mode: openMode, ...extras });
+  return true;
 });
 
 ipcMain.on('companion:open-settings', (event, page) => {

@@ -58,9 +58,12 @@ export interface CompanionBridge {
    * Hand the thread to the main window: as a chat, or (agent) as a new Agent
    * conversation with the last request pre-filled. With `workspaceRoot` (a
    * project Mini Me built; main checks it is inside the projects folder) the
-   * Agent conversation opens on that folder with the thread loaded instead.
+   * Agent conversation opens on that folder with the thread loaded instead;
+   * with `autostart` too, the request is sent straight away (main refuses an
+   * autostart without a valid project folder). Resolves true when Marven took
+   * the hand-off, false when main refused it.
    */
-  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string }): void;
+  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string; autostart?: boolean }): Promise<boolean>;
   /** Open a folder or file inside the projects folder (main refuses anything else); resolves to "" or an error. */
   openPath(target: string): Promise<string>;
   /** Open a dev server address on this machine in the default browser (main refuses anything else). */

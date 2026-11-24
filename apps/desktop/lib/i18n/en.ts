@@ -333,6 +333,8 @@ const en = {
       stoppedHint: "Whatever I made so far is in the folder.",
       failedTitle: "I couldn't finish {{name}}.",
       readOnly: "Your Agent is set to read-only, so I can't build anything. You can change that in Settings → General.",
+      inMarven: "Building it in Marven.",
+      handOffRefused: "Marven wouldn't open that project, so nothing started.",
       error: {
         folderSetting: "I couldn't make the project folder. Check the projects folder in Settings → Mini Me.",
         folder: "I couldn't make the project folder: {{detail}}",

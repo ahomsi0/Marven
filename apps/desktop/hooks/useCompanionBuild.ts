@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentEvent, AIProvider } from "@/types";
 import i18n from "@/lib/i18n";
 import { consumeSse } from "@/lib/agent/sse";
-import { normalizeAgentSafetyProfile } from "@/lib/agent/safety";
+import { normalizeAgentSafetyProfile, type AgentSafetyProfile } from "@/lib/agent/safety";
 import {
   approvalSummary,
   extractLiveUrl,
@@ -101,6 +101,47 @@ async function readAgentSettings(): Promise<{ agentSafetyProfile?: unknown; lite
   } catch {
     return null;
   }
+}
+
+export type FolderPrep =
+  | {
+      ok: true;
+      root: string;
+      settings: { agentSafetyProfile?: unknown; liteAgentMode?: unknown } | null;
+      profile: AgentSafetyProfile;
+    }
+  | { ok: false; message: string; settingsPage: CompanionSettingsPage | null; blocked: boolean };
+
+/**
+ * Gets a project ready for the Agent, for "Build it here" and "Open in Marven"
+ * alike: checks the user's real safety profile (read-only means no building at
+ * all), makes a fresh folder under the projects folder, and marks it trusted
+ * (Mini Me made it; the main window agrees when it opens it). Network errors throw.
+ */
+export async function prepareProjectFolder(name: string, parent: string, signal?: AbortSignal): Promise<FolderPrep> {
+  const settings = await readAgentSettings();
+  const profile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
+  if (profile === "read-only") {
+    return { ok: false, message: i18n.t("companion.build.readOnly"), settingsPage: "general", blocked: true };
+  }
+  const res = await fetch("/api/workspace/new-project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parent }),
+    signal,
+  });
+  const folder = (await res.json().catch(() => ({}))) as { root?: unknown; error?: unknown };
+  if (!res.ok || typeof folder.root !== "string") {
+    if (res.status === 400) return { ok: false, message: i18n.t("companion.build.error.folderSetting"), settingsPage: "mini-me", blocked: false };
+    return {
+      ok: false,
+      message: i18n.t("companion.build.error.folder", { detail: typeof folder.error === "string" ? folder.error : String(res.status) }),
+      settingsPage: null,
+      blocked: false,
+    };
+  }
+  setWorkspaceTrusted(folder.root, true);
+  return { ok: true, root: folder.root, settings, profile };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -231,36 +272,18 @@ export function useCompanionBuild(options: Options) {
       };
 
       try {
-        // The user's real safety profile: read-only means no building at all.
-        const settings = await readAgentSettings();
+        const prep = await prepareProjectFolder(name, optionsRef.current.projectsDir, controller.signal);
         if (!alive()) return;
-        const userProfile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
-        if (userProfile === "read-only") {
-          fail(i18n.t("companion.build.readOnly"), "general", "blocked");
+        if (!prep.ok) {
+          fail(prep.message, prep.settingsPage, prep.blocked ? "blocked" : "failed");
           return;
         }
+        const { root, settings } = prep;
         // A background build never runs commands unattended: "trusted" becomes
         // "ask-before-command" here, so every command (and git, fetch, MCP,
         // global memory) still asks in the bubble. Writes inside the new folder
         // are approved by shouldAutoApprove, so building stays hands-free.
-        const safetyProfile = userProfile === "trusted" ? "ask-before-command" : userProfile;
-
-        const folderRes = await fetch("/api/workspace/new-project", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, parent: optionsRef.current.projectsDir }),
-          signal: controller.signal,
-        });
-        const folder = (await folderRes.json().catch(() => ({}))) as { root?: unknown; error?: unknown };
-        if (!alive()) return;
-        if (!folderRes.ok || typeof folder.root !== "string") {
-          if (folderRes.status === 400) fail(i18n.t("companion.build.error.folderSetting"), "mini-me");
-          else fail(i18n.t("companion.build.error.folder", { detail: typeof folder.error === "string" ? folder.error : String(folderRes.status) }));
-          return;
-        }
-        const root = folder.root;
-        // Mini Me made this folder, so it is trusted (the main window agrees when it opens it).
-        setWorkspaceTrusted(root, true);
+        const safetyProfile = prep.profile === "trusted" ? "ask-before-command" : prep.profile;
         patch(runId, { root, phase: "running", label: { key: "companion.build.planning" } });
 
         const provider: AIProvider = loadAgentProvider() ?? "groq";

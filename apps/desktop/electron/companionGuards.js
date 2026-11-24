@@ -95,6 +95,34 @@ function projectFolderInside(target, projectsDir, { home, realpath, lstat }) {
   }
 }
 
+/**
+ * The extras an "Open in Marven" hand-off may carry, checked: `workspaceRoot`
+ * only when it is a project folder Mini Me made (see projectFolderInside), and
+ * `autostart` only as a real `true`, for the Agent, on such a folder. Returns
+ * the fields to pass on, or null to refuse the hand-off (autostart asked for
+ * but not allowed: better to open nothing than to start the Agent elsewhere).
+ * A folder that fails the check on its own is dropped and the thread still opens.
+ *
+ * @param {unknown} options
+ * @param {'agent' | 'chat'} mode the already-sanitized mode
+ * @param {unknown} projectsDir
+ * @param {Parameters<typeof projectFolderInside>[2]} deps
+ * @returns {{ workspaceRoot?: string, autostart?: true } | null}
+ */
+function sanitizeOpenOptions(options, mode, projectsDir, deps) {
+  if (!options || typeof options !== 'object') return {};
+  const out = {};
+  if (options.workspaceRoot !== undefined) {
+    const root = projectFolderInside(options.workspaceRoot, projectsDir, deps);
+    if (root) out.workspaceRoot = root;
+  }
+  if (options.autostart === true) {
+    if (mode !== 'agent' || !out.workspaceRoot) return null;
+    out.autostart = true;
+  }
+  return out;
+}
+
 const LOOPBACK_HOST = /^(localhost|[a-z0-9-]+\.localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
 
 /** True for an http(s) URL on this machine (a dev server the Agent started), without credentials. */
@@ -121,6 +149,7 @@ module.exports = {
   sanitizeSettingsPage,
   sanitizeThreadMessages,
   sanitizeOpenMode,
+  sanitizeOpenOptions,
   isReservedHotkey,
   projectFolderInside,
   isLoopbackHttpUrl,

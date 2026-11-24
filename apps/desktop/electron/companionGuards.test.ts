@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -64,6 +64,44 @@ describe("sanitizeOpenMode", () => {
     expect(sanitizeOpenMode(undefined)).toBe("chat");
     expect(sanitizeOpenMode("shell")).toBe("chat");
     expect(sanitizeOpenMode({})).toBe("chat");
+  });
+});
+
+describe("sanitizeOpenOptions", () => {
+  const home = "/Users/me";
+  const dir = { isDirectory: () => true, isSymbolicLink: () => false };
+  const deps = { home, realpath: (p: string) => p, lstat: () => dir };
+  const root = "/Users/me/Marven Projects/cafe-menu";
+
+  it("passes nothing on when there are no options", () => {
+    expect(sanitizeOpenOptions(undefined, "agent", "~/Marven Projects", deps)).toEqual({});
+    expect(sanitizeOpenOptions(null, "chat", "~/Marven Projects", deps)).toEqual({});
+    expect(sanitizeOpenOptions("x", "agent", "~/Marven Projects", deps)).toEqual({});
+    expect(sanitizeOpenOptions({}, "agent", "~/Marven Projects", deps)).toEqual({});
+  });
+
+  it("keeps a project folder and, for the Agent, autostart", () => {
+    expect(sanitizeOpenOptions({ workspaceRoot: root }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root });
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root, autostart: true });
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: false }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root });
+  });
+
+  it("only a real boolean true starts anything", () => {
+    for (const autostart of ["true", 1, "yes", {}, [true]]) {
+      expect(sanitizeOpenOptions({ workspaceRoot: root, autostart }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root });
+    }
+  });
+
+  it("drops a folder outside the projects folder but still opens the thread", () => {
+    expect(sanitizeOpenOptions({ workspaceRoot: "/etc" }, "agent", "~/Marven Projects", deps)).toEqual({});
+    expect(sanitizeOpenOptions({ workspaceRoot: 42 }, "agent", "~/Marven Projects", deps)).toEqual({});
+  });
+
+  it("refuses autostart without a valid project folder or outside the Agent", () => {
+    expect(sanitizeOpenOptions({ autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
+    expect(sanitizeOpenOptions({ workspaceRoot: "/etc", autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
+    expect(sanitizeOpenOptions({ workspaceRoot: "/Users/me/Elsewhere/x", autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "chat", "~/Marven Projects", deps)).toBeNull();
   });
 });
 

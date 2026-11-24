@@ -5,11 +5,12 @@ import { CompanionSprite } from "./CompanionSprite";
 import { SpeechBubble } from "./SpeechBubble";
 import { useCompanionPointer } from "./useCompanionPointer";
 import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/useCompanionBrain";
-import { isBuildActive, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
+import { isBuildActive, prepareProjectFolder, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
 import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
 import { useT } from "@/lib/i18n";
+import { chatErrorMessage } from "@/lib/chatErrors";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
@@ -63,13 +64,14 @@ export default function CompanionPage() {
   const voiceRef = useRef<{ pause: () => void; resume: () => void }>({ pause: () => {}, resume: () => {} });
   // Destructured so the callbacks below depend on the hook's stable functions,
   // not on the object it returns (which is new every render).
-  const { reply, busy, send, retry, dismiss, history, chooseBuild } = useCompanionBrain({
+  const { reply, busy, send, retry, dismiss, history, chooseBuild, announce } = useCompanionBrain({
     speakReplies: settings.speak,
     personality: settings.personality,
     onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
     onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
     onNotify: () => openBubble(false),
     onBuildHere: (request, name) => void buildStart(request, name),
+    onBuildInMarven: (request, name) => void buildInMarven(request, name),
   });
 
   // ── Building projects ("Build it here") ────────────────────────────────────
@@ -137,6 +139,39 @@ export default function CompanionPage() {
     bridge?.setFocusable(false);
     dispatch({ type: "bubble-close", now: Date.now() });
   }, [dismiss, buildClear, bridge, dispatch]);
+
+  // ── "Open in Marven" on a build request ────────────────────────────────────
+  // Same folder as "Build it here" (fresh, trusted, read-only profile refused),
+  // then Marven's main window opens an Agent conversation on it and starts it.
+  const handOffRunRef = useRef(0);
+  const buildInMarven = useCallback(
+    async (request: string, name: string) => {
+      const run = ++handOffRunRef.current;
+      const show = (text: string, outcome: "succeeded" | "failed", opts?: Parameters<typeof announce>[1]) => {
+        if (run !== handOffRunRef.current) return;
+        if (!bubbleOpenRef.current) openBubble(false);
+        announce(text, opts);
+        dispatch({ type: outcome, now: Date.now() });
+      };
+      announce(t("companion.build.preparing", { name }), { done: false });
+      dispatch({ type: "thinking", now: Date.now() });
+      try {
+        const prep = await prepareProjectFolder(name, settingsRef.current.projectsDir);
+        if (!prep.ok) {
+          show(prep.message, "failed", prep.settingsPage ? { action: "open-settings", settingsPage: prep.settingsPage } : undefined);
+          return;
+        }
+        const taken = bridge
+          ? await bridge.openInMarven([{ role: "user", content: request }], "agent", { workspaceRoot: prep.root, autostart: true })
+          : false;
+        if (taken) show(t("companion.build.inMarven"), "succeeded", { speak: true });
+        else show(t("companion.build.handOffRefused"), "failed");
+      } catch (err) {
+        show(chatErrorMessage(err), "failed");
+      }
+    },
+    [announce, bridge, dispatch, openBubble, t],
+  );
 
   const {
     voiceState,
@@ -303,7 +338,7 @@ export default function CompanionPage() {
     onOpenInMarven: () => {
       if (!build?.root) return;
       const summary = build.summary || t("companion.build.emptySummary");
-      bridge?.openInMarven(
+      void bridge?.openInMarven(
         [
           { role: "user", content: build.request },
           { role: "assistant", content: summary },
@@ -330,10 +365,10 @@ export default function CompanionPage() {
     if (action === "build-choice") return;
     if (action === "retry") void retry();
     else if (action === "open-in-marven" || action === "open-in-agent") {
-      bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");
+      void bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");
       closeBubble();
     } else {
-      bridge?.openSettings();
+      bridge?.openSettings(reply?.settingsPage);
       closeBubble();
     }
   };

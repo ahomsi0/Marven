@@ -15,7 +15,7 @@ import { buildSystemPrompt } from "@/lib/chatPrompt";
 import { clipboardPrompt } from "@/lib/chatIntents";
 import { speak, stopSpeaking } from "@/lib/speak";
 import { useT } from "@/lib/i18n";
-import { getCompanionBridge } from "@/lib/companion/bridge";
+import { getCompanionBridge, type CompanionSettingsPage } from "@/lib/companion/bridge";
 import {
   appendHistory,
   buildCompanionPrompt,
@@ -36,6 +36,8 @@ export interface BrainReply {
   done: boolean;
   /** Set with the "build-choice" action: the request and the project name to build under. */
   build?: { request: string; name: string };
+  /** With "open-settings": the Settings page that fixes the problem (default: AI keys). */
+  settingsPage?: CompanionSettingsPage;
 }
 
 export type BuildChoice = "here" | "marven" | "chat";
@@ -301,6 +303,20 @@ export function useCompanionBrain(options: Options) {
 
   const history = useCallback(() => historyRef.current, []);
 
+  /**
+   * Show a line from outside the chat (e.g. how a hand-off went), not recorded
+   * in the history. `done: false` keeps it up without buttons while work goes on.
+   */
+  const announce = useCallback(
+    (text: string, opts?: { action?: BubbleAction; settingsPage?: CompanionSettingsPage; done?: boolean; speak?: boolean }) => {
+      abortRef.current?.abort();
+      setBusy(false);
+      setReply({ text, action: opts?.action ?? null, done: opts?.done ?? true, settingsPage: opts?.settingsPage });
+      if (opts?.speak) say(text);
+    },
+    [say],
+  );
+
   const chooseBuild = useCallback(
     (choice: BuildChoice) => {
       const build = reply?.build;
@@ -316,5 +332,5 @@ export function useCompanionBrain(options: Options) {
     [reply, send],
   );
 
-  return { reply, busy, send, retry, dismiss, history, chooseBuild };
+  return { reply, busy, send, retry, dismiss, history, chooseBuild, announce };
 }

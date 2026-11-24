@@ -23,7 +23,9 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     drag: (dx, dy) => ipcRenderer.send('companion:drag', dx, dy),
     drop: () => ipcRenderer.send('companion:drop'),
     returnHome: () => ipcRenderer.send('companion:return-home'),
-    openInMarven: (messages, mode, options) => ipcRenderer.send('companion:open-in-marven', messages, mode, options),
+    // Resolves true when Marven took the hand-off; false when main refused it (or failed).
+    openInMarven: (messages, mode, options) =>
+      ipcRenderer.invoke('companion:open-in-marven', messages, mode, options).then((ok) => ok === true, () => false),
     openPath: (target) => ipcRenderer.invoke('companion:open-path', target),
     openUrl: (url) => ipcRenderer.invoke('companion:open-url', url),
     readClipboard: () => ipcRenderer.invoke('companion:read-clipboard'),
