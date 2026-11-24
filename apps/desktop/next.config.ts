@@ -7,6 +7,9 @@ import type { NextConfig } from "next";
 const appRoot = __dirname;
 
 const nextConfig: NextConfig = {
+  // Hide the floating Next.js "N" dev badge: in dev it sat next to Mini Me in
+  // his transparent window and in the corner of the main window.
+  devIndicators: false,
   output: "standalone",
   outputFileTracingRoot: appRoot,
   // Keep heavy native deps out of the SSR bundle. transformers.js drags in

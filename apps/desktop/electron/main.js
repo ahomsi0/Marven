@@ -10,6 +10,7 @@ const { terminalEnv } = require('./envSanitize');
 const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
+const { withAppCsp } = require('./appCsp');
 const { createCompanion } = require('./companion');
 const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, sanitizeSettingsPage } = require('./companionGuards');
 
@@ -1252,16 +1253,11 @@ app.whenReady().then(async () => {
     "frame-ancestors 'none'",
     "form-action 'self'",
   ].join('; ');
+  // Workspace previews keep their own sandbox policy and may be framed by the
+  // app window; see electron/appCsp.js.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (!details.url.startsWith(APP_ORIGIN)) {
-      callback({ responseHeaders: details.responseHeaders });
-      return;
-    }
     callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [CSP],
-      },
+      responseHeaders: withAppCsp(details.url, details.responseHeaders, { appOrigin: APP_ORIGIN, csp: CSP }),
     });
   });
 
