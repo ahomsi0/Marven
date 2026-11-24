@@ -3,7 +3,9 @@ import { DownloadCta } from "@/components/DownloadButton";
 import { HeroWindow } from "@/components/HeroWindow";
 import { ArrowRight } from "@/components/Icons";
 import { Logo } from "@/components/Logo";
+import { MiniMeSprite } from "@/components/MiniMeSprite";
 import { Features } from "@/components/landing/Features";
+import { MiniMe } from "@/components/landing/MiniMe";
 import { Models } from "@/components/landing/Models";
 import { Privacy } from "@/components/landing/Privacy";
 import { Em, Eyebrow } from "@/components/landing/Section";
@@ -59,6 +61,16 @@ export default async function Home() {
               aria-hidden="true"
               className="pointer-events-none absolute -inset-x-10 -bottom-10 top-10 rounded-[3rem] bg-[radial-gradient(closest-side,var(--glow),transparent)] blur-2xl"
             />
+            {/* Mini Me, sitting on the window's edge */}
+            <a
+              href="#mini-me"
+              className="group absolute bottom-full right-3 z-10 flex items-end gap-1.5 sm:right-10"
+            >
+              <span className="mb-3 whitespace-nowrap rounded-full border border-line-2 bg-panel/80 px-2.5 py-1 font-mono text-[11px] text-mute backdrop-blur transition group-hover:border-amber/50 group-hover:text-ink">
+                <span className="text-amber">New in 2.18:</span> meet Mini Me
+              </span>
+              <MiniMeSprite state="sit" className="[--mm-scale:1] sm:[--mm-scale:2]" />
+            </a>
             <HeroWindow />
           </div>
         </div>
@@ -77,6 +89,7 @@ export default async function Home() {
       </section>
 
       <Features />
+      <MiniMe />
 
       {/* Video tour */}
       <section className="px-4 pb-8 sm:px-6 lg:px-10">

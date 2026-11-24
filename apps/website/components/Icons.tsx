@@ -132,3 +132,34 @@ export const ChatIcon = ({ className, size = 18 }: P) => (
     <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4A8 8 0 1 1 20 12Z" />
   </svg>
 );
+/** A little pixel person, for Mini Me. */
+export const MiniMeIcon = ({ className, size = 18 }: P) => (
+  <svg {...base(size)} className={className}>
+    <rect x="7.5" y="3" width="9" height="8" rx="2" />
+    <path d="M10.5 7h.01M13.5 7h.01M8 14h8v4H8zM10 18v3M14 18v3M8 14l-2 3M16 14l2 3" />
+  </svg>
+);
+export const ClockIcon = ({ className, size = 18 }: P) => (
+  <svg {...base(size)} className={className}>
+    <circle cx="12" cy="13" r="8" />
+    <path d="M12 9v4l2.5 2M9.5 2.5h5" />
+  </svg>
+);
+export const LockIcon = ({ className, size = 18 }: P) => (
+  <svg {...base(size)} className={className}>
+    <rect x="5" y="10.5" width="14" height="10" rx="2.5" />
+    <path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3" />
+  </svg>
+);
+export const FolderIcon = ({ className, size = 18 }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M3.5 7.5a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z" />
+  </svg>
+);
+export const MusicIcon = ({ className, size = 18 }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M9 18V5.5l11-2V16" />
+    <circle cx="6.5" cy="18" r="2.5" />
+    <circle cx="17.5" cy="16" r="2.5" />
+  </svg>
+);

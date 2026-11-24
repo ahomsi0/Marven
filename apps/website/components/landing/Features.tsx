@@ -1,5 +1,17 @@
 import type { ReactNode } from "react";
-import { BranchIcon, CodeIcon, GlobeIcon, LanguagesIcon, MicIcon, PlugIcon, SparkIcon, TerminalIcon } from "../Icons";
+import {
+  ArrowRight,
+  BranchIcon,
+  CodeIcon,
+  GlobeIcon,
+  LanguagesIcon,
+  MicIcon,
+  MiniMeIcon,
+  PlugIcon,
+  SparkIcon,
+  TerminalIcon,
+} from "../Icons";
+import { MiniMeSprite } from "../MiniMeSprite";
 import { Em, SectionHeading } from "./Section";
 
 function Card({
@@ -173,6 +185,38 @@ export function Features() {
           <Card className="md:col-span-2" icon={<BranchIcon />} title="Git, built in">
             Status, diff, branch and commit from the agent, each one waiting for your approval first.
           </Card>
+
+          <a
+            href="#mini-me"
+            className="group relative flex flex-col gap-6 overflow-hidden rounded-2xl border border-amber/25 bg-panel p-6 transition duration-300 hover:border-amber/50 md:col-span-6 md:flex-row md:items-end md:justify-between"
+          >
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-[radial-gradient(closest-side,var(--amber-soft),transparent)]"
+            />
+            <div className="relative max-w-xl">
+              <span className="flex items-center gap-3">
+                <span className="grid size-9 place-items-center rounded-lg border border-line-2 bg-panel-2 text-amber">
+                  <MiniMeIcon />
+                </span>
+                <span className="rounded-full bg-amber-soft px-2 py-0.5 font-mono text-[10.5px] text-amber">New in 2.18</span>
+              </span>
+              <h3 className="mt-5 text-lg font-semibold tracking-tight text-ink">Mini Me, a tiny you on your desktop</h3>
+              <p className="mt-2 text-[0.95rem] leading-relaxed text-mute">
+                A pixel-art companion that walks above the Dock. Click it or press{" "}
+                <span className="kbd">⌘⇧Space</span>, and it opens apps, sets timers and passes bigger jobs to the agent.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-ink group-hover:text-amber">
+                Meet Mini Me
+                <ArrowRight className="rotate-90 transition group-hover:translate-y-0.5" />
+              </span>
+            </div>
+            <div aria-hidden="true" className="relative flex items-end gap-1 self-center md:self-end">
+              <MiniMeSprite look="auburn" state="idle" scale={2} delay={300} />
+              <MiniMeSprite look="you" state="walk" scale={2} />
+              <MiniMeSprite look="curly" state="idle" scale={2} delay={900} className="max-sm:hidden" />
+            </div>
+          </a>
         </div>
 
         <p className="mt-6 flex items-center gap-2 text-sm text-dim">

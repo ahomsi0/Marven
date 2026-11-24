@@ -10,6 +10,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { href: "/#features", label: "Features" },
+  { href: "/#mini-me", label: "Mini Me" },
   { href: "/#models", label: "Models" },
   { href: "/#privacy", label: "Privacy" },
   { href: "/download", label: "Download" },

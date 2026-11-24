@@ -1,0 +1,1 @@
+`render-mini-me.mjs` renders the Mini Me sprite sheets in `public/mini-me/` and `lib/miniMeArt.ts` from the desktop app's art (`node scripts/render-mini-me.mjs`; needs `apps/desktop` dependencies installed). Not shipped.
