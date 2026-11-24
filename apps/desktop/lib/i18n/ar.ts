@@ -352,6 +352,11 @@ const ar: Shape<typeof en> = {
   },
   settings: settingsAr,
   agent: {
+    previewSite: "معاينة الموقع",
+    previewTab: "معاينة",
+    previewTabTitle: "معاينة هذه الصفحة داخل التطبيق",
+    noFileOpen: "لا يوجد ملف مفتوح",
+    noFileHint: "اختر ملفًا من الشجرة، أو:",
     files: "المحرر",
     changes: "التغييرات",
     terminal: "الطرفية",
@@ -386,7 +391,7 @@ const ar: Shape<typeof en> = {
     layoutFull: "المحرر فقط",
   },
   browser: {
-    open: "المتصفح",
+    open: "متصفح الويب",
     tabs: "علامات التبويب",
     newTab: "علامة تبويب جديدة",
     closeTab: "إغلاق علامة التبويب",

@@ -17,6 +17,7 @@ import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { TerminalView } from "./TerminalView";
 import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
+import { findSiteEntry } from "@/lib/siteEntry";
 import { SettingsModal } from "./SettingsModal";
 import { QuickOpenModal } from "./QuickOpenModal";
 import type { PaletteCommand } from "./CommandPalette";
@@ -333,6 +334,8 @@ interface AgentWorkspaceProps {
   onPlanModeChange?: (v: boolean) => void;
   liteAgentMode?: boolean;
   onOpenPreviewTab?: (url: string) => void;
+  /** Opens the site's index.html and its preview tab. */
+  onPreviewSite?: () => void;
   onOpenRestTab?: () => void;
   onJumpToLine?: (path: string, line: number) => void;
   conversationId?: string | null;
@@ -418,6 +421,7 @@ export function AgentWorkspace({
   onPlanModeChange,
   liteAgentMode,
   onOpenPreviewTab,
+  onPreviewSite,
   onOpenRestTab,
   onJumpToLine,
   conversationId,
@@ -1131,6 +1135,8 @@ export function AgentWorkspace({
             provider={provider as import("@/types").AIProvider}
             model={model}
             onOpenPreview={onOpenPreviewTab}
+            siteEntry={findSiteEntry(files)}
+            onPreviewSite={onPreviewSite}
           />
         </div>
 

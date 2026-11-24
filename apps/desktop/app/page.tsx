@@ -90,6 +90,8 @@ import {
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
+import { findSiteEntry } from "@/lib/siteEntry";
+import { workspacePreviewUrl } from "@/lib/previewUrl";
 import { autostartDecision, type PendingAutostart } from "@/lib/companion/autostart";
 import {
   attachPendingVersion,
@@ -1635,6 +1637,8 @@ export default function Home() {
           const agentConv: Conversation = { ...createConversationWithMode("New agent", "agent"), workspaceRoot: root };
           agentMessagesByConvRef.current.set(agentConv.id, []);
           queueAutostart({ convId: agentConv.id, root, prompt: request });
+          // ...and once that run has finished and left an index.html, show it.
+          queueSiteOpen({ convId: agentConv.id, root, gate: "run" });
           setConversations((prev) => [...prev, agentConv]);
           setActiveConversationId(agentConv.id);
           setAgentInput("");
@@ -1647,6 +1651,9 @@ export default function Home() {
           agentConv.id,
           messages.map((m, i): AgentMessage => ({ id: `minime-${Date.now()}-${i}`, role: m.role, content: m.content })),
         );
+        // Show the finished site: once the folder has loaded, open its
+        // index.html and the preview.
+        queueSiteOpen({ convId: agentConv.id, root, gate: "files" });
         setConversations((prev) => [...prev, agentConv]);
         setActiveConversationId(agentConv.id);
         setAgentInput("");
@@ -1687,6 +1694,60 @@ export default function Home() {
       offSettings?.();
     };
   }, []);
+
+  // ─── Open a built website (index.html + its preview) ──
+  // "files": after the freshly switched-to folder has loaded (Mini Me hand-off
+  // of a finished project). "run": after the Agent run on it has finished
+  // (auto-started hand-off, the folder was empty). "now": immediately (the
+  // "Preview site" button). One shot each: the ref is cleared as it fires.
+  // Two phases because openFileTab / openPreviewTab both append to the tab
+  // list they closed over: the preview is opened on the render after the file.
+  type SiteOpen = {
+    convId: string | null;
+    root: string | null;
+    gate: "files" | "run" | "now";
+    filesAtQueue: WorkspaceFile[];
+    ran: boolean;
+    phase: "file" | "preview";
+  };
+  const pendingSiteRef = useRef<SiteOpen | null>(null);
+  const [siteOpenTick, setSiteOpenTick] = useState(0);
+
+  function queueSiteOpen(next: { convId: string | null; root: string | null; gate: SiteOpen["gate"] }) {
+    pendingSiteRef.current = { ...next, filesAtQueue: workspaceFilesRef.current, ran: false, phase: "file" };
+    setSiteOpenTick((n) => n + 1);
+  }
+
+  useEffect(() => {
+    const p = pendingSiteRef.current;
+    if (!p || !workspaceRoot || workspaceRoot !== p.root) return;
+    if (activeMode !== "agent" || activeConversationId !== p.convId) return;
+    if (p.phase === "preview") {
+      pendingSiteRef.current = null;
+      const entry = findSiteEntry(workspaceFiles);
+      if (entry) openPreviewTab(workspacePreviewUrl(workspaceRoot, entry));
+      return;
+    }
+    if (p.gate !== "now") {
+      // Wait for the conversation switch to settle (it resets the tabs) and
+      // for the folder's file list to be the freshly loaded one.
+      if (lastAgentConvIdRef.current !== p.convId || workspaceFiles === p.filesAtQueue) return;
+    }
+    if (p.gate === "run") {
+      if (agentStreamIsRunning) p.ran = true;
+      if (!p.ran || agentStreamIsRunning) return;
+    }
+    if (!findSiteEntry(workspaceFiles)) {
+      // A loaded folder without an index.html has nothing to show; only a
+      // finished run may still produce one.
+      if (p.gate !== "run") pendingSiteRef.current = null;
+      return;
+    }
+    p.phase = "preview";
+    openFileTab(findSiteEntry(workspaceFiles)!);
+    setSiteOpenTick((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteOpenTick, workspaceFiles, workspaceRoot, agentStreamIsRunning, activeConversationId, activeMode]);
 
   // ─── Mini Me hand-off that starts by itself ("Open in Marven" on a build) ──
   // The request waits here until the new conversation has fully settled, then
@@ -2762,6 +2823,7 @@ export default function Home() {
         onReorderTabs={reorderTabs}
         onOpenSettings={openSettingsTab}
         onOpenPreviewTab={openPreviewTab}
+        onPreviewSite={() => queueSiteOpen({ convId: activeConversationId, root: workspaceRoot, gate: "now" })}
         onOpenRestTab={openRestTab}
         conversationId={activeConversationId}
         folders={folders}

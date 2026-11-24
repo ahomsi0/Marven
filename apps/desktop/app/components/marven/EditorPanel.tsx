@@ -10,6 +10,7 @@ import { ImagePreview } from "./ImagePreview";
 import { PdfPreview } from "./PdfPreview";
 import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
+import { useT } from "@/lib/i18n";
 import { workspacePreviewUrl } from "@/lib/previewUrl";
 import { RestClientPanel } from "./RestClientPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
@@ -89,6 +90,10 @@ interface EditorPanelProps {
   model?: string;
   // Preview tab
   onOpenPreview?: (url: string) => void;
+  /** Root-relative path of the workspace's top-level index.html, when it has one. */
+  siteEntry?: string | null;
+  /** Opens that page in an editor tab and its preview tab. */
+  onPreviewSite?: () => void;
   /** When true, shows a scroll progress indicator on the right edge of the code editor. */
   showMinimap?: boolean;
   /** LSP diagnostics aggregated for the Problems tab. */
@@ -256,6 +261,8 @@ export function EditorPanel({
   provider = "groq",
   model = "",
   onOpenPreview,
+  siteEntry = null,
+  onPreviewSite,
   showMinimap = false,
   problems = [],
   onProblemSelect,
@@ -264,6 +271,7 @@ export function EditorPanel({
   onBottomTabChange,
 }: EditorPanelProps) {
   const { theme } = useTheme();
+  const { t } = useT();
   const editorActionsRef = useRef<CodeEditorActions | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -655,12 +663,14 @@ export function EditorPanel({
                       );
                     }
                   }}
-                  title="Preview in-app"
-                  className="ml-auto rounded p-1 text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
+                  title={t("agent.previewTabTitle")}
+                  aria-label={t("agent.previewTabTitle")}
+                  className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text-muted)]"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253M3.284 14.253A8.959 8.959 0 0 1 3 12c0-1.512.372-2.935 1.034-4.189" />
                   </svg>
+                  {t("agent.previewTab")}
                 </button>
               )}
             </div>
@@ -908,9 +918,21 @@ export function EditorPanel({
             /* Empty editor state — what to do next, with real shortcuts */
             <div className="flex flex-1 flex-col items-center justify-center bg-[var(--m-surface)]">
               <div className="w-64">
-                <p className="text-[13px] font-medium text-[var(--m-text-muted)]">No file open</p>
-                <p className="mt-1 text-[12px] text-[var(--m-text-faint)]">Pick a file in the tree, or:</p>
-                <div className="mt-3 space-y-0.5 text-[12px] text-[var(--m-text-muted)]">
+                <p className="text-[13px] font-medium text-[var(--m-text-muted)]">{t("agent.noFileOpen")}</p>
+                <p className="mt-1 text-[12px] text-[var(--m-text-faint)]">{t("agent.noFileHint")}</p>
+                {siteEntry && onPreviewSite && (
+                  <button
+                    type="button"
+                    onClick={onPreviewSite}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--m-text)] px-3 py-2 text-[12px] font-medium text-[var(--m-bg)] transition-opacity hover:opacity-90"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3 7.5 7.03 7.5 12s2.015 9 4.5 9ZM3.6 9h16.8M3.6 15h16.8" />
+                    </svg>
+                    {t("agent.previewSite")}
+                  </button>
+                )}
+                <div className="mt-2 space-y-0.5 text-[12px] text-[var(--m-text-muted)]">
                   {([
                     onToggleChat ? { label: "Show chat", keys: isWindows ? "Ctrl+Alt+I" : "⌃⌘I", onClick: onToggleChat } : null,
                     { label: "Show all commands", keys: isWindows ? "Ctrl+Shift+P" : "⇧⌘P", onClick: onCommandPalette },

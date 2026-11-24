@@ -149,6 +149,7 @@ interface ChatLayoutProps {
   onDeleteFolder: (id: string) => void;
   onMoveConversation: (convId: string, folderId: string | null) => void;
   onOpenPreviewTab?: (url: string) => void;
+  onPreviewSite?: () => void;
   onOpenRestTab?: () => void;
   /** Persist code editor scroll position for the active agent file tab. */
   onAgentEditorScroll?: (scrollTop: number) => void;
@@ -278,6 +279,7 @@ export function ChatLayout({
   onDeleteFolder,
   onMoveConversation,
   onOpenPreviewTab,
+  onPreviewSite,
   onOpenRestTab,
   onAgentEditorScroll,
   onEditAgentUserMessage,
@@ -802,6 +804,7 @@ export function ChatLayout({
                 onWorkspaceTrustChange={onWorkspaceTrustChange}
                 conversationId={conversationId}
                 onOpenPreviewTab={onOpenPreviewTab}
+                onPreviewSite={onPreviewSite}
                 onOpenRestTab={onOpenRestTab}
                 onEditorScroll={onAgentEditorScroll}
                 onEditAgentUserMessage={onEditAgentUserMessage}

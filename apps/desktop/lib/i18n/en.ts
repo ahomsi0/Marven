@@ -350,6 +350,11 @@ const en = {
   },
   settings: settingsEn,
   agent: {
+    previewSite: "Preview site",
+    previewTab: "Preview",
+    previewTabTitle: "Preview this page in-app",
+    noFileOpen: "No file open",
+    noFileHint: "Pick a file in the tree, or:",
     files: "Editor",
     changes: "Changes",
     terminal: "Terminal",
@@ -384,7 +389,7 @@ const en = {
     layoutFull: "Editor only",
   },
   browser: {
-    open: "Browser",
+    open: "Web browser",
     tabs: "Tabs",
     newTab: "New tab",
     closeTab: "Close tab",
