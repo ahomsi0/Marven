@@ -37,7 +37,7 @@ export function VideoTour() {
               <PlayIcon size={18} className="translate-x-px" />
             </span>
             Watch the tour
-            <span className="font-mono text-xs text-white/60">1:44</span>
+            <span className="font-mono text-xs text-white/60">1:58</span>
           </span>
         </button>
       )}

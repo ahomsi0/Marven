@@ -6,10 +6,10 @@ Your editor. Your terminal. Your browser. Your AI chat.
 00:06.239 --> 00:10.002
 Four windows, and none of them talk to each other.
 
-00:12.500 --> 00:13.556
+00:12.500 --> 00:13.630
 Meet Marven.
 
-00:13.956 --> 00:18.717
+00:14.030 --> 00:18.791
 An AI coding agent and a full code editor, in one desktop app.
 
 00:21.000 --> 00:26.670
@@ -39,8 +39,14 @@ It can even use a browser, and it asks before every new site and every form it s
 01:23.500 --> 01:31.442
 Talk to it with “Hey Marven”, plug in MCP servers, commit with git, and teach it your project’s rules.
 
-01:34.200 --> 01:34.878
+01:34.300 --> 01:39.590
+New in 2.18: Mini Me, a tiny you above your Dock.
+
+01:39.990 --> 01:44.810
+Tell it what to do: small jobs it handles, big ones go to the agent.
+
+01:47.400 --> 01:48.078
 Marven.
 
-01:35.478 --> 01:39.769
+01:48.678 --> 01:52.969
 Free and open source, for Mac, Windows and Linux.
