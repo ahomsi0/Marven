@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { BrainReply, BubbleAction } from "@/hooks/useCompanionBrain";
+import type { BrainReply, BubbleAction, BuildChoice } from "@/hooks/useCompanionBrain";
 import { useT } from "@/lib/i18n";
 
 interface Props {
@@ -20,9 +20,11 @@ interface Props {
   /** The user pressed inside the bubble: make the window focusable so they can type. */
   onEngage: () => void;
   onAction: (action: Exclude<BubbleAction, null>) => void;
+  onBuildChoice: (choice: BuildChoice) => void;
 }
 
 const ACTION_LABEL_KEYS: Record<Exclude<BubbleAction, null>, string> = {
+  "build-choice": "companion.buildHere",
   retry: "companion.retry",
   "open-in-marven": "companion.openInMarven",
   "open-in-agent": "companion.openInAgent",
@@ -30,7 +32,7 @@ const ACTION_LABEL_KEYS: Record<Exclude<BubbleAction, null>, string> = {
   "retry-or-settings": "companion.retry",
 };
 
-export function SpeechBubble({ reply, busy, listening, notice, draft, interim, inputRef, onDraftChange, onSubmit, onClose, onEngage, onAction }: Props) {
+export function SpeechBubble({ reply, busy, listening, notice, draft, interim, inputRef, onDraftChange, onSubmit, onClose, onEngage, onAction, onBuildChoice }: Props) {
   const { t: typedT } = useT();
   // Keys here are looked up dynamically, which the typed translator rejects.
   const t = typedT as unknown as (key: string) => string;
@@ -45,7 +47,28 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
       {text && (
         <p className="mb-2 max-h-[84px] overflow-y-auto whitespace-pre-wrap leading-snug">{text}</p>
       )}
-      {reply?.done && reply.action && (
+      {reply?.done && reply.action === "build-choice" && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onBuildChoice("here")}
+            className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
+          >
+            {t("companion.buildHere")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onBuildChoice("marven")}
+            className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
+          >
+            {t("companion.buildInMarven")}
+          </button>
+          <button type="button" onClick={() => onBuildChoice("chat")} className="rounded-md px-2 py-1 text-[12px] text-[var(--m-text-faint)]">
+            {t("companion.justTellMe")}
+          </button>
+        </div>
+      )}
+      {reply?.done && reply.action && reply.action !== "build-choice" && (
         <div className="mb-2 flex gap-2">
           <button
             type="button"

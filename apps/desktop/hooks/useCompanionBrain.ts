@@ -27,14 +27,18 @@ import {
 } from "@/lib/companion/brain";
 
 export type BrainEvent = "thinking" | "talking" | "succeeded" | "failed";
-/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat. */
-export type BubbleAction = "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
+/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat; "build-choice" offers to build the request as a project. */
+export type BubbleAction = "build-choice" | "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
 
 export interface BrainReply {
   text: string;
   action: BubbleAction;
   done: boolean;
+  /** Set with the "build-choice" action: the request and the project name to build under. */
+  build?: { request: string; name: string };
 }
+
+export type BuildChoice = "here" | "marven" | "chat";
 
 interface Options {
   speakReplies: boolean;
@@ -43,6 +47,10 @@ interface Options {
   onSpeakingChange?: (speaking: boolean) => void;
   /** A timer fired. The brain has put the text in `reply`; the host should show the bubble. */
   onNotify?: (text: string) => void;
+  /** "Build it here" was chosen (Task 17B fills this in). */
+  onBuildHere?: (request: string, name: string) => void;
+  /** "Open in Marven" was chosen on a build request (Task 17C fills this in). */
+  onBuildInMarven?: (request: string, name: string) => void;
 }
 
 /** The clipboard's text via Marven's main process (the page has no clipboard permission), or "" when unreadable. */
@@ -120,7 +128,7 @@ export function useCompanionBrain(options: Options) {
     };
   }, []);
 
-  const send = useCallback(async (raw: string) => {
+  const send = useCallback(async (raw: string, sendOpts?: { skipBuild?: boolean }) => {
     const text = raw.trim();
     if (!text) return;
     abortRef.current?.abort();
@@ -157,7 +165,7 @@ export function useCompanionBrain(options: Options) {
     };
 
     const custom = getSystemPrompt().trim();
-    const route = routeInput(text, { allowCommands: !custom });
+    const route = routeInput(text, { allowCommands: !custom, allowBuild: !sendOpts?.skipBuild });
 
     try {
       if (route.kind === "timer") {
@@ -169,6 +177,15 @@ export function useCompanionBrain(options: Options) {
         }, route.ms);
         timersRef.current.add(id);
         succeed(tRef.current("companion.timerSet", { label: route.label }));
+        return;
+      }
+      if (route.kind === "build") {
+        // Not remembered yet: history only gets the exchange once the user picks "Just tell me".
+        const ask = tRef.current("companion.buildAsk");
+        setReply({ text: ask, action: "build-choice", done: true, build: { request: text, name: route.name } });
+        emit("talking");
+        say(ask);
+        setBusy(false);
         return;
       }
       if (route.kind === "agent") {
@@ -282,5 +299,20 @@ export function useCompanionBrain(options: Options) {
 
   const history = useCallback(() => historyRef.current, []);
 
-  return { reply, busy, send, retry, dismiss, history };
+  const chooseBuild = useCallback(
+    (choice: BuildChoice) => {
+      const build = reply?.build;
+      if (!build) return;
+      if (choice === "chat") {
+        void send(build.request, { skipBuild: true });
+        return;
+      }
+      setReply(null);
+      const { onBuildHere, onBuildInMarven } = optionsRef.current;
+      (choice === "here" ? onBuildHere : onBuildInMarven)?.(build.request, build.name);
+    },
+    [reply, send],
+  );
+
+  return { reply, busy, send, retry, dismiss, history, chooseBuild };
 }

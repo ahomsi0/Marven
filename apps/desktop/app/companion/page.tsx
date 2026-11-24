@@ -60,7 +60,7 @@ export default function CompanionPage() {
   const voiceRef = useRef<{ pause: () => void; resume: () => void }>({ pause: () => {}, resume: () => {} });
   // Destructured so the callbacks below depend on the hook's stable functions,
   // not on the object it returns (which is new every render).
-  const { reply, busy, send, retry, dismiss, history } = useCompanionBrain({
+  const { reply, busy, send, retry, dismiss, history, chooseBuild } = useCompanionBrain({
     speakReplies: settings.speak,
     personality: settings.personality,
     onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
@@ -210,12 +210,14 @@ export default function CompanionPage() {
 
   // Fade the bubble after a finished reply unless the user is engaged with it.
   useEffect(() => {
-    if (!bubbleOpen || !reply?.done || hovered || draft) return;
+    // A pending build choice waits for the user rather than fading away.
+    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || hovered || draft) return;
     const timer = setTimeout(closeBubble, AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
   }, [bubbleOpen, reply, hovered, draft, closeBubble]);
 
   const onAction = (action: Exclude<BubbleAction, null>) => {
+    if (action === "build-choice") return;
     if (action === "retry") void retry();
     else if (action === "open-in-marven" || action === "open-in-agent") {
       bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");
@@ -251,6 +253,7 @@ export default function CompanionPage() {
               focusInput();
             }}
             onAction={onAction}
+            onBuildChoice={chooseBuild}
           />
         </div>
       )}

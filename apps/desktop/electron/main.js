@@ -239,6 +239,8 @@ const SETTINGS_DEFAULTS = {
   miniMePersonality: 'playful',
   miniMeSleepMinutes: 5,
   miniMeWakeWord: false,
+  // Where Mini Me creates new projects (a leading ~ is the home folder).
+  miniMeProjectsDir: '~/Marven Projects',
   miniMePosition: null,
 };
 

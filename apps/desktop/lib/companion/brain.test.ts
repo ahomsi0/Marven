@@ -5,6 +5,7 @@ import {
   appendHistory,
   buildCompanionPrompt,
   loadHistory,
+  projectSlug,
   routeInput,
   saveHistory,
   type CompanionMessage,
@@ -69,6 +70,54 @@ describe("routeInput", () => {
     for (const text of ["how do I run a marathon?", "tell me a joke", "what are files made of?"]) {
       expect(routeInput(text, on), text).toEqual({ kind: "chat" });
     }
+  });
+});
+
+describe("build routing", () => {
+  const on = { allowCommands: true };
+  it("recognises build requests and names the project", () => {
+    const cases: [string, string][] = [
+      ["create a cafe menu", "cafe menu"],
+      ["build me a todo app", "todo app"],
+      ["make a landing page for my bakery", "landing page bakery"],
+      ["can you create a portfolio website", "portfolio website"],
+      ["Please build us a simple blog.", "simple blog"],
+      ["could you make me a to-do list", "to-do list"],
+      ["scaffold a React dashboard", "react dashboard"],
+      ["set up a new API", "api"],
+      ["generate a quiz about space", "quiz space"],
+      ["create a game called Snake", "snake"],
+    ];
+    for (const [text, name] of cases) {
+      expect(routeInput(text, on), text).toEqual({ kind: "build", name });
+    }
+  });
+  it("keeps non-build creative and how-to requests in chat", () => {
+    for (const text of [
+      "make a joke",
+      "create a poem about cats",
+      "how do I build a website?",
+      "write me an email",
+      "what is a todo app",
+      "make me a sandwich",
+    ]) {
+      expect(routeInput(text, on), text).toEqual({ kind: "chat" });
+    }
+  });
+  it("lets agent-only file jobs win over build", () => {
+    expect(routeInput("create a new file called menu.html", on)).toEqual({ kind: "agent" });
+    expect(routeInput("create a project folder", on)).toEqual({ kind: "agent" });
+  });
+  it("keeps timers and commands ahead of build, and can be turned off", () => {
+    expect(routeInput("set a timer for 2 minutes", on)).toEqual({ kind: "timer", ms: 120_000, label: "2 minutes" });
+    expect(routeInput("open spotify", on)).toEqual({ kind: "command" });
+    expect(routeInput("create a cafe menu", { allowCommands: true, allowBuild: false })).toEqual({ kind: "chat" });
+  });
+});
+
+describe("projectSlug (re-export)", () => {
+  it("is available from brain", () => {
+    expect(projectSlug("Cafe Menu")).toBe("cafe-menu");
   });
 });
 

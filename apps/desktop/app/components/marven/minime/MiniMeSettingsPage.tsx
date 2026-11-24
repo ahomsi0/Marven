@@ -36,6 +36,7 @@ interface MiniMeState {
   miniMeScale: number;
   miniMeSleepMinutes: number;
   miniMeHotkey: string;
+  miniMeProjectsDir: string;
 }
 
 const DEFAULTS: MiniMeState = {
@@ -48,6 +49,7 @@ const DEFAULTS: MiniMeState = {
   miniMeScale: 3,
   miniMeSleepMinutes: 5,
   miniMeHotkey: "CommandOrControl+Shift+Space",
+  miniMeProjectsDir: "~/Marven Projects",
 };
 
 function problemOf(st: { hotkeyOk: boolean; hotkeyReason?: "reserved" | "taken" | null }): "reserved" | "taken" | null {
@@ -61,6 +63,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
   const [state, setState] = useState<MiniMeState>(DEFAULTS);
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
   const [hotkeyDraft, setHotkeyDraft] = useState(DEFAULTS.miniMeHotkey);
+  const [projectsDraft, setProjectsDraft] = useState(DEFAULTS.miniMeProjectsDir);
   const [hotkeyProblem, setHotkeyProblem] = useState<"reserved" | "taken" | null>(null);
   const pendingLook = useRef<Look | null>(null);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,6 +84,8 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
       if (!SLEEP_MINUTES.includes(next.miniMeSleepMinutes)) next.miniMeSleepMinutes = DEFAULTS.miniMeSleepMinutes;
       setState(next);
       setHotkeyDraft(next.miniMeHotkey);
+      if (!next.miniMeProjectsDir.trim()) next.miniMeProjectsDir = DEFAULTS.miniMeProjectsDir;
+      setProjectsDraft(next.miniMeProjectsDir);
       setLook(s?.miniMeLook ? parseLook(s.miniMeLook) : DEFAULT_LOOK);
     });
     void electron.companionStatus?.().then((st) => !cancelled && setHotkeyProblem(problemOf(st)));
@@ -119,6 +124,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
         return reverted;
       });
       if ("miniMeHotkey" in patch) setHotkeyDraft(previous.miniMeHotkey);
+      if ("miniMeProjectsDir" in patch) setProjectsDraft(previous.miniMeProjectsDir);
     }
   }
 
@@ -264,6 +270,37 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
               </button>
             );
           })}
+        </div>
+      </Card>
+
+      <Card title={tr("settings.miniMe.cardProjects")} hint={tr("settings.miniMe.cardProjectsHint")}>
+        <div>
+          <label htmlFor="mini-me-projects-dir" className="text-[12px] text-[var(--m-text)]">
+            {tr("settings.miniMe.projectsDir")}
+          </label>
+          <input
+            id="mini-me-projects-dir"
+            value={projectsDraft}
+            spellCheck={false}
+            dir="ltr"
+            onChange={(e) => setProjectsDraft(e.target.value)}
+            onKeyDown={(e) => {
+              const el = e.currentTarget;
+              if (e.key === "Enter") el.blur();
+              else if (e.key === "Escape") {
+                e.stopPropagation();
+                setProjectsDraft(state.miniMeProjectsDir);
+                requestAnimationFrame(() => el.blur());
+              }
+            }}
+            onBlur={() => {
+              const next = projectsDraft.trim();
+              if (next && next !== state.miniMeProjectsDir) void save({ miniMeProjectsDir: next });
+              else setProjectsDraft(state.miniMeProjectsDir);
+            }}
+            className="mt-1 w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-1.5 font-mono text-[12px] text-[var(--m-text)] outline-none transition-colors hover:border-[var(--m-text-faint)] focus-visible:border-[var(--m-accent)]/60 focus-visible:ring-2 focus-visible:ring-[var(--m-accent-soft)]"
+          />
+          <p className="mt-1 text-[11px] text-[var(--m-text-faint)]">{tr("settings.miniMe.projectsDirHint")}</p>
         </div>
       </Card>
 

@@ -22,6 +22,8 @@ export interface CompanionSettings {
   personality: Personality;
   sleepMinutes: number;
   wakeWord: boolean;
+  /** Where new projects are created (a leading ~ is the home folder). */
+  projectsDir: string;
   /** The saved appearance (unvalidated; run it through parseLook), or null for the default. */
   look: unknown | null;
 }
@@ -33,6 +35,7 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   personality: "playful",
   sleepMinutes: 5,
   wakeWord: false,
+  projectsDir: "~/Marven Projects",
   look: null,
 };
 

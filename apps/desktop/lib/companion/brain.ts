@@ -2,12 +2,14 @@
 // short rolling history it keeps. Pure, so it can be unit-tested.
 
 import { parseCommand } from "@/lib/commandParser";
+import { projectSlug } from "@/lib/companion/projectFolder";
 import { detectClipboardAction, parseTimer, type ClipboardAction } from "@/lib/chatIntents";
 
 export type Route =
   | { kind: "timer"; ms: number; label: string }
   | { kind: "clipboard"; action: Exclude<ClipboardAction, null> }
   | { kind: "agent" }
+  | { kind: "build"; name: string }
   | { kind: "command" }
   | { kind: "chat" };
 
@@ -24,12 +26,54 @@ const AGENT_ONLY: RegExp[] = [
 // How-to and explanatory questions are answered in chat, never handed off.
 const QUESTION = /^\s*(?:how|what|why|where|when|which|who|is|are|does|do|should|explain)\b/i;
 
-export function routeInput(text: string, opts: { allowCommands: boolean }): Route {
+export { projectSlug };
+
+// "create a cafe menu", "can you build me a todo app": an imperative build verb,
+// then an object whose head noun is something you can build as a project.
+const BUILD_VERB = String.raw`(?:create|build|make|design|code|generate|scaffold|set\s+up|start)`;
+const BUILD_REQUEST = new RegExp(
+  String.raw`^\s*(?:(?:please|can\s+you|could\s+you|would\s+you)\s+)*${BUILD_VERB}\s+(?:(?:me|us)\s+)?(.+?)\s*[.!]*\s*$`,
+  "i",
+);
+const BUILDABLE =
+  /(?:web\s*sites?|sites?|web\s*pages?|pages?|apps?|applications?|games?|menus?|portfolios?|blogs?|dashboards?|forms?|calculators?|tools?|extensions?|scripts?|bots?|chatbots?|apis?|servers?|projects?|prototypes?|templates?|resumes?|cvs?|invitations?|quizz?es|quiz|to-?\s?do\s+lists?|shops?|stores?|galleries|gallery)$/i;
+// Where the object's head noun phrase ends ("a landing page | for my bakery").
+const HEAD_END = /\s+(?:about|for|that|which|who|where|with|to|in|on|using|from|by|so|like|called|named|of|and)(?=\s)/i;
+const NAME_FILLER = new Set(["a", "an", "the", "my", "our", "your", "some", "new", "me", "us", "of", "to", "in", "on", "and"]);
+const NAME_MAX_WORDS = 6;
+
+function words(s: string): string[] {
+  return s.split(/\s+/).map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean);
+}
+
+function detectBuild(text: string): string | null {
+  const m = BUILD_REQUEST.exec(text);
+  if (!m) return null;
+  const object = m[1];
+  const splitAt = HEAD_END.exec(object);
+  const head = splitAt ? object.slice(0, splitAt.index) : object;
+  const tail = splitAt ? object.slice(splitAt.index).trim() : "";
+  const headWords = words(head).filter((w) => !NAME_FILLER.has(w.toLowerCase()));
+  if (headWords.length === 0 || !BUILDABLE.test(headWords.join(" "))) return null;
+  // "a game called Snake" is named Snake; "a landing page for my bakery" becomes "landing page bakery".
+  const named = /^(?:called|named)\s+(.+)$/i.exec(tail);
+  const tailWords = named ? words(named[1]) : /^(?:for|about)\b/i.test(tail) ? words(tail.replace(/^\S+\s*/, "")) : [];
+  const nameWords = named && tailWords.length
+    ? tailWords
+    : [...headWords, ...tailWords.filter((w) => !NAME_FILLER.has(w.toLowerCase()))];
+  return nameWords.slice(0, NAME_MAX_WORDS).join(" ").toLowerCase();
+}
+
+export function routeInput(text: string, opts: { allowCommands: boolean; allowBuild?: boolean }): Route {
   const timer = parseTimer(text);
   if (timer) return { kind: "timer", ...timer };
   const clip = detectClipboardAction(text);
   if (clip) return { kind: "clipboard", action: clip };
   if (!QUESTION.test(text) && AGENT_ONLY.some((re) => re.test(text))) return { kind: "agent" };
+  if (opts.allowBuild !== false && !QUESTION.test(text)) {
+    const name = detectBuild(text);
+    if (name) return { kind: "build", name };
+  }
   if (opts.allowCommands && parseCommand(text).type !== null) return { kind: "command" };
   return { kind: "chat" };
 }

@@ -62,6 +62,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     hotkeyReason,
     unavailable,
     wakeWord: !!settings.miniMeWakeWord,
+    projectsDir: typeof settings.miniMeProjectsDir === 'string' && settings.miniMeProjectsDir.trim() ? settings.miniMeProjectsDir.trim() : '~/Marven Projects',
   });
   const notify = () => { if (onStatusChange) onStatusChange(status()); };
 
