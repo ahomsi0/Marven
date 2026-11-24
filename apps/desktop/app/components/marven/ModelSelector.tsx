@@ -101,7 +101,10 @@ export function ModelSelector({
       : "absolute top-full start-0 mt-1.5";
 
   return (
-    <div ref={ref} className="relative">
+    // min-w-0 on both: as a flex item the picker must be able to shrink below
+    // its label's width, or a long model name pushes the row's buttons (Send)
+    // out of a narrow panel instead of truncating.
+    <div ref={ref} className="relative min-w-0">
       {/* Trigger pill — sized to its label, capped so long model names truncate */}
       <button
         type="button"
@@ -109,7 +112,7 @@ export function ModelSelector({
         aria-haspopup="dialog"
         aria-expanded={open}
         title={t("input.modelPicker")}
-        className="flex max-w-[240px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-all hover:bg-[var(--m-surface-3)]"
+        className="flex min-w-0 max-w-[240px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-all hover:bg-[var(--m-surface-3)]"
       >
         <span className={`shrink-0 text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
         <span className="shrink-0 text-[var(--m-text-faint)]">·</span>

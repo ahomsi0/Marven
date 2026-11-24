@@ -487,7 +487,7 @@ export function AgentPanel({
             </div>
 
             {/* Footer — model, mode and usage on the start side; actions on the end side */}
-            <div className="flex items-center gap-1 px-2 pb-2">
+            <div className="flex min-w-0 items-center gap-1 px-2 pb-2">
               <ModelSelector
                 provider={provider}
                 selectedModel={selectedModel}
@@ -495,7 +495,7 @@ export function AgentPanel({
               />
               {liteAgentMode === true && (
                 <span
-                  className="rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wide text-amber-400"
+                  className="shrink-0 rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wide text-amber-400"
                   title="Lite agent mode is on — reduced tool set, shorter prompt, extra guards. Designed for weak local or small cloud models."
                 >
                   Lite
