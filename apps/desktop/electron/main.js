@@ -11,7 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
-const { sanitizeThreadMessages } = require('./companionGuards');
+const { sanitizeThreadMessages, sanitizeOpenMode } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -435,19 +435,19 @@ ipcMain.handle('save-settings', (_, settings) => {
   return publicSettings(next);
 });
 ipcMain.handle('companion-status', () =>
-  companion ? companion.status() : { visible: false, hotkeyOk: true, unavailable: false, wakeWord: false });
+  companion ? companion.status() : { visible: false, hotkeyOk: true, hotkeyReason: null, unavailable: false, wakeWord: false });
 
 function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
 }
 
-ipcMain.on('companion:open-in-marven', (event, messages) => {
+ipcMain.on('companion:open-in-marven', (event, messages, mode) => {
   if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
   const safe = sanitizeThreadMessages(messages);
   if (!safe) return;
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('companion-open-thread', safe);
+  mainWindow.webContents.send('companion-open-thread', { messages: safe, mode: sanitizeOpenMode(mode) });
 });
 
 ipcMain.on('companion:open-settings', (event) => {

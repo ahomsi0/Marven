@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import type { AgentSafetyProfile, CustomShortcut, MCPServer, PromptTemplate } from "@/types";
 import { BoltIcon, SparkleIcon, CubeIcon, CheckIcon, CloudIcon, HexagonIcon } from "./Icons";
 import packageJson from "@/package.json";
@@ -9,7 +10,6 @@ import { useTheme } from "@/lib/theme";
 import { getFormatOnSave, setFormatOnSave } from "@/lib/formatOnSave";
 import { getSystemPrompt, setSystemPrompt } from "@/lib/systemPrompt";
 import { useT } from "@/lib/i18n";
-import { MiniMeSettingsPage } from "./minime/MiniMeSettingsPage";
 import { useOverlayGuard } from "@/lib/overlays";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { SearchEnginePicker } from "./SearchEnginePicker";
@@ -36,6 +36,9 @@ import {
 import { readStats as readInlineStats, resetStats as resetInlineStats } from "@/lib/completion/telemetry";
 import type { VoiceState } from "@/hooks/useVoice";
 import { TerminalSettingsPage } from "@/app/components/marven/TerminalSettingsPage";
+
+// Loaded on demand: it pulls in the Mini Me art (~530 KB of JSON) that nothing else in this window needs.
+const MiniMeSettingsPage = dynamic(() => import("./minime/MiniMeSettingsPage").then((m) => m.MiniMeSettingsPage), { ssr: false });
 
 type SttProviderId = "local" | "groq";
 type TtsProviderId = "system" | "elevenlabs";

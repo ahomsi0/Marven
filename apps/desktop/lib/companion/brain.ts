@@ -34,8 +34,6 @@ export function routeInput(text: string, opts: { allowCommands: boolean }): Rout
   return { kind: "chat" };
 }
 
-export const AGENT_HANDOFF_REPLY = "That's a job for Marven's Agent. Want to open it there?";
-
 export type Personality = "playful" | "neutral" | "detailed";
 
 export const PERSONAS: Record<Personality, string> = {
@@ -46,8 +44,6 @@ export const PERSONAS: Record<Personality, string> = {
   detailed:
     "You are Mini Me, a small assistant that lives on the user's screen. Give complete, well-organised answers when the question needs it; keep simple answers short. Avoid long preambles.",
 };
-
-export const COMPANION_PERSONA = PERSONAS.playful;
 
 /** Marven's base prompt plus the Mini Me persona, with the user's custom instructions first and last (as the main chat does). */
 export function buildCompanionPrompt(base: string, extra: string, personality: Personality = "playful"): string {

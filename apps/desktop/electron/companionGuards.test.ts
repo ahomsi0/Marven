@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -51,5 +51,15 @@ describe("isReservedHotkey", () => {
     "allows %s", (a) => expect(isReservedHotkey(a, "darwin")).toBe(false));
   it("defaults to process.platform", () => {
     expect(isReservedHotkey("CommandOrControl+Shift+M")).toBe(true);
+  });
+});
+
+describe("sanitizeOpenMode", () => {
+  it("accepts agent and falls back to chat for anything else", () => {
+    expect(sanitizeOpenMode("agent")).toBe("agent");
+    expect(sanitizeOpenMode("chat")).toBe("chat");
+    expect(sanitizeOpenMode(undefined)).toBe("chat");
+    expect(sanitizeOpenMode("shell")).toBe("chat");
+    expect(sanitizeOpenMode({})).toBe("chat");
   });
 });

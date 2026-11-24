@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import type { BrainReply, BubbleAction } from "@/hooks/useCompanionBrain";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   reply: BrainReply | null;
@@ -21,14 +22,19 @@ interface Props {
   onAction: (action: Exclude<BubbleAction, null>) => void;
 }
 
-const ACTION_LABELS: Record<Exclude<BubbleAction, null>, string> = {
-  retry: "Retry",
-  "open-in-marven": "Open in Marven",
-  "open-settings": "Open settings",
-  "retry-or-settings": "Retry",
+const ACTION_LABEL_KEYS: Record<Exclude<BubbleAction, null>, string> = {
+  retry: "companion.retry",
+  "open-in-marven": "companion.openInMarven",
+  "open-in-agent": "companion.openInAgent",
+  "open-settings": "companion.openSettings",
+  "retry-or-settings": "companion.retry",
 };
 
 export function SpeechBubble({ reply, busy, listening, notice, draft, interim, inputRef, onDraftChange, onSubmit, onClose, onEngage, onAction }: Props) {
+  const { t: typedT } = useT();
+  // Keys here are looked up dynamically, which the typed translator rejects.
+  const t = typedT as unknown as (key: string) => string;
+  const label = (action: Exclude<BubbleAction, null>) => t(ACTION_LABEL_KEYS[action]);
   const text = reply?.text || (busy ? "…" : "");
   return (
     <div
@@ -46,7 +52,7 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
             onClick={() => onAction(reply.action === "retry-or-settings" ? "retry" : (reply.action as Exclude<BubbleAction, null>))}
             className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
           >
-            {ACTION_LABELS[reply.action]}
+            {label(reply.action)}
           </button>
           {reply.action === "retry-or-settings" && (
             <button
@@ -54,12 +60,12 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
               onClick={() => onAction("open-settings")}
               className="rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white"
             >
-              {ACTION_LABELS["open-settings"]}
+              {label("open-settings")}
             </button>
           )}
-          {reply.action === "open-in-marven" && (
+          {(reply.action === "open-in-marven" || reply.action === "open-in-agent") && (
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[12px] text-[var(--m-text-faint)]">
-              Not now
+              {t("companion.notNow")}
             </button>
           )}
         </div>
@@ -77,9 +83,9 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
           }}
-          placeholder={listening ? interim || "Listening…" : "Tell me what to do…"}
+          placeholder={listening ? interim || t("companion.listening") : t("companion.placeholder")}
           className="w-full rounded-md border border-[var(--m-border-subtle)] bg-transparent px-2 py-1.5 outline-none focus:border-[var(--m-accent)]"
-          aria-label="Message Mini Me"
+          aria-label={t("companion.inputLabel")}
         />
       </form>
       {notice && (

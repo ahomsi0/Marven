@@ -5,7 +5,7 @@
 // keeping it on screen and remembering where it was. Geometry lives in
 // companionPlacement.js.
 
-const { BrowserWindow, screen, globalShortcut, ipcMain } = require('electron');
+const { BrowserWindow, screen, globalShortcut, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const placement = require('./companionPlacement');
 const { isReservedHotkey } = require('./companionGuards');
@@ -17,6 +17,7 @@ const PERSONALITIES = ['playful', 'neutral', 'detailed'];
 const FALL_PX_PER_TICK = 8;
 const MAX_LOAD_RETRIES = 20;
 const POSITION_SAVE_INTERVAL_MS = 30000;
+const MAX_CLIPBOARD_CHARS = 20000;
 
 function placementDisplays() {
   return screen.getAllDisplays().map((d) => ({ id: d.id, workArea: d.workArea }));
@@ -34,7 +35,7 @@ const sameSize = (a, b) => a.width === b.width && a.height === b.height;
  *   appPort: number,
  *   savePosition: (position: { x: number, y: number, displayId: number }) => void,
  *   isQuitting?: () => boolean,
- *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, unavailable: boolean, wakeWord: boolean }) => void,
+ *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, hotkeyReason: 'reserved' | 'taken' | null, unavailable: boolean, wakeWord: boolean }) => void,
  * }} options
  */
 function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange }) {
@@ -46,6 +47,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   let facing = 1;
   let hotkey = null;
   let hotkeyOk = true;
+  let hotkeyReason = null;
   let unavailable = false;
   let retryTimer = null;
   let savePending = false;
@@ -57,6 +59,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   const status = () => ({
     visible: alive() && win.isVisible(),
     hotkeyOk,
+    hotkeyReason,
     unavailable,
     wakeWord: !!settings.miniMeWakeWord,
   });
@@ -257,6 +260,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       if (retries >= MAX_LOAD_RETRIES) {
         unavailable = true;
         w.hide();
+        registerHotkey(); // no window to open: free the shortcut
         notify();
         return;
       }
@@ -271,6 +275,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       if (win !== w) return;
       unavailable = true;
       destroy();
+      registerHotkey();
     });
     // Veto accidental closes (Cmd+W, Alt+F4) unless the app is quitting.
     // Mini Me is turned off through applySettings, which uses destroy() and skips this.
@@ -312,10 +317,12 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       hotkey = null;
     }
     hotkeyOk = true;
+    hotkeyReason = null;
     const accel = typeof settings.miniMeHotkey === 'string' ? settings.miniMeHotkey.trim() : '';
-    if (!accel || !settings.miniMeEnabled) return;
+    if (!accel || !settings.miniMeEnabled || unavailable) return;
     if (isReservedHotkey(accel)) {
       hotkeyOk = false; // Marven's own Listen shortcut
+      hotkeyReason = 'reserved';
       return;
     }
     try {
@@ -324,6 +331,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       hotkeyOk = false;
     }
     if (hotkeyOk) hotkey = accel;
+    else hotkeyReason = 'taken';
   }
 
   // ── IPC from the companion page only ────────────────────────────────────────
@@ -331,6 +339,14 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
 
   ipcMain.handle('companion:get-position', (event) => (fromCompanion(event) ? positionPayload() : null));
   ipcMain.handle('companion:get-settings', (event) => (fromCompanion(event) ? rendererSettings() : null));
+  ipcMain.handle('companion:read-clipboard', (event) => {
+    if (!fromCompanion(event)) return '';
+    try {
+      return clipboard.readText().slice(0, MAX_CLIPBOARD_CHARS);
+    } catch {
+      return '';
+    }
+  });
   ipcMain.on('companion:set-interactive', (event, on) => {
     if (fromCompanion(event)) win.setIgnoreMouseEvents(!on, { forward: true });
   });
@@ -381,6 +397,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   /** Apply the full settings object (call on launch and after every save). */
   function applySettings(next) {
     const prev = settings;
+    const wasUnavailable = unavailable;
     settings = { ...next };
     // A not-yet-saved position is newer than whatever the caller loaded from disk.
     if (savePending && prev.miniMePosition) settings.miniMePosition = prev.miniMePosition;
@@ -400,7 +417,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       win.setBounds({ x, y: y + oldHeight - size.height, ...size });
       reclamp();
     }
-    if (enabled !== !!prev.miniMeEnabled || settings.miniMeHotkey !== prev.miniMeHotkey) registerHotkey();
+    if (enabled !== !!prev.miniMeEnabled || settings.miniMeHotkey !== prev.miniMeHotkey || unavailable !== wasUnavailable) registerHotkey();
     if (alive()) win.webContents.send('companion:settings', rendererSettings());
     notify();
     return status();

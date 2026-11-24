@@ -206,6 +206,7 @@ const settingsEn = {
     hotkey: "Shortcut",
     hotkeyHint: "Opens Mini Me's bubble from anywhere, e.g. CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "Shortcut unavailable: another app is using it.",
+    hotkeyReserved: "That's Marven's own Listen shortcut (⌘⇧M) — pick another.",
     wake: "Listen for \"Hey Marven\"",
     wakeHint: "Mini Me takes over the wake word while it's on screen.",
     speak: "Speak replies",

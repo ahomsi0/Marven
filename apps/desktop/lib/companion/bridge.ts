@@ -1,4 +1,4 @@
-// Typed access to the companion half of the preload bridge (electron/preload.js).
+// Typed access to the companion half of the preload bridge (electron/companionPreload.js).
 
 import type { CompanionMessage, Personality } from "./brain";
 import type { Activity, Strip } from "./behaviour";
@@ -48,7 +48,10 @@ export interface CompanionBridge {
   drag(dx: number, dy: number): void;
   drop(): void;
   returnHome(): void;
-  openInMarven(messages: CompanionMessage[]): void;
+  /** Hand the thread to the main window: as a chat, or (agent) as a new Agent conversation with the last request pre-filled. */
+  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat"): void;
+  /** The clipboard's text, read by the main process (capped); "" when empty. */
+  readClipboard(): Promise<string>;
   openSettings(): void;
   onPosition(cb: (p: CompanionPosition) => void): Unsubscribe;
   onOpenInput(cb: () => void): Unsubscribe;

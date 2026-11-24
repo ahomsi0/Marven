@@ -14,8 +14,9 @@ import { loadMemories, loadProfile } from "@/lib/userProfile";
 import { buildSystemPrompt } from "@/lib/chatPrompt";
 import { clipboardPrompt } from "@/lib/chatIntents";
 import { speak, stopSpeaking } from "@/lib/speak";
+import { useT } from "@/lib/i18n";
+import { getCompanionBridge } from "@/lib/companion/bridge";
 import {
-  AGENT_HANDOFF_REPLY,
   appendHistory,
   buildCompanionPrompt,
   type Personality,
@@ -26,7 +27,8 @@ import {
 } from "@/lib/companion/brain";
 
 export type BrainEvent = "thinking" | "talking" | "succeeded" | "failed";
-export type BubbleAction = "retry" | "open-in-marven" | "open-settings" | "retry-or-settings" | null;
+/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat. */
+export type BubbleAction = "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
 
 export interface BrainReply {
   text: string;
@@ -43,8 +45,16 @@ interface Options {
   onNotify?: (text: string) => void;
 }
 
-const EMPTY_REPLY = "I didn't get an answer. Try again?";
-const DROPPED_NOTE = "(The connection dropped.)";
+/** The clipboard's text via Marven's main process (the page has no clipboard permission), or "" when unreadable. */
+async function readClipboardText(): Promise<string> {
+  try {
+    const bridge = getCompanionBridge();
+    const text = bridge ? await bridge.readClipboard() : await navigator.clipboard.readText();
+    return typeof text === "string" ? text : "";
+  } catch {
+    return "";
+  }
+}
 
 async function loadGlobalMemories(): Promise<string[]> {
   try {
@@ -57,6 +67,9 @@ async function loadGlobalMemories(): Promise<string[]> {
 }
 
 export function useCompanionBrain(options: Options) {
+  const { t } = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [reply, setReply] = useState<BrainReply | null>(null);
   const [busy, setBusy] = useState(false);
   const historyRef = useRef<CompanionMessage[]>([]);
@@ -150,30 +163,30 @@ export function useCompanionBrain(options: Options) {
       if (route.kind === "timer") {
         const id = setTimeout(() => {
           timersRef.current.delete(id);
-          const done = `Timer done! (${route.label})`;
+          const done = tRef.current("companion.timerDone", { label: route.label });
           if (busyRef.current) pendingNotesRef.current.push(done);
           else notify(done);
         }, route.ms);
         timersRef.current.add(id);
-        succeed(`Timer set for ${route.label}.`);
+        succeed(tRef.current("companion.timerSet", { label: route.label }));
         return;
       }
       if (route.kind === "agent") {
-        remember(AGENT_HANDOFF_REPLY);
-        fail(AGENT_HANDOFF_REPLY, "open-in-marven");
+        const handoff = tRef.current("companion.agentHandoff");
+        remember(handoff);
+        fail(handoff, "open-in-agent");
         return;
       }
 
       let prompt = text;
       if (route.kind === "clipboard") {
-        try {
-          const clip = await navigator.clipboard.readText();
-          if (controller.signal.aborted) return;
-          prompt = clipboardPrompt(route.action, clip);
-        } catch {
-          /* no clipboard access: send the request as typed */
-        }
+        const clip = await readClipboardText();
         if (controller.signal.aborted) return;
+        if (!clip.trim()) {
+          fail(tRef.current("companion.clipboardFailed"), null);
+          return;
+        }
+        prompt = clipboardPrompt(route.action, clip);
       }
 
       emit("thinking");
@@ -233,7 +246,7 @@ export function useCompanionBrain(options: Options) {
         const { text: partial } = parseChatStream(rawText);
         fail(
           partial.trim()
-            ? `${partial}\n\n${DROPPED_NOTE}`
+            ? `${partial}\n\n${tRef.current("companion.droppedNote")}`
             : chatErrorMessage(new ChatStreamInterruptedError(readErr)),
           "retry",
         );
@@ -247,7 +260,7 @@ export function useCompanionBrain(options: Options) {
         return;
       }
       if (!full.trim()) {
-        fail(EMPTY_REPLY, "retry");
+        fail(tRef.current("companion.emptyReply"), "retry");
         return;
       }
       succeed(full);

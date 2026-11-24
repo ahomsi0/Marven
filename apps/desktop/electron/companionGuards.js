@@ -24,6 +24,11 @@ function sanitizeThreadMessages(messages) {
   return kept.length ? kept : null;
 }
 
+/** Where an "Open in Marven" hand-off goes. Anything but 'agent' is a plain chat thread. */
+function sanitizeOpenMode(mode) {
+  return mode === 'agent' ? 'agent' : 'chat';
+}
+
 const CMD_TOKENS = new Set(['cmd', 'command', 'cmdorctrl', 'commandorcontrol']);
 
 /** Canonical form of an accelerator: lowercase, modifiers collapsed and sorted, key last. */
@@ -45,4 +50,4 @@ function isReservedHotkey(accelerator, platform = process.platform) {
   return typeof accelerator === 'string' && normalizeAccelerator(accelerator, platform) === RESERVED;
 }
 
-module.exports = { sanitizeThreadMessages, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES };
+module.exports = { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES };

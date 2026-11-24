@@ -1553,12 +1553,17 @@ export default function Home() {
   const toggleWakeWordRef = useRef(toggleWakeWord);
   toggleWakeWordRef.current = toggleWakeWord;
   const restoreWakeRef = useRef(false);
+  const companionListensRef = useRef(false);
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
     if (!electron?.onCompanionVisibility) return;
+    void electron.companionStatus?.().then((st: { visible: boolean; wakeWord: boolean }) => {
+      companionListensRef.current = !!st?.visible && !!st?.wakeWord;
+    });
     return electron.onCompanionVisibility(({ visible, wakeWord }: { visible: boolean; wakeWord: boolean }) => {
       const companionListens = visible && wakeWord;
+      companionListensRef.current = companionListens;
       if (companionListens && wakeEnabledNowRef.current) {
         restoreWakeRef.current = true;
         toggleWakeWordRef.current();
@@ -1573,13 +1578,25 @@ export default function Home() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
     if (!electron?.onCompanionOpenThread) return;
-    const offThread = electron.onCompanionOpenThread((raw: unknown) => {
+    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown } | null) => {
+      const raw = payload?.messages;
       if (!Array.isArray(raw)) return;
       const messages = raw.filter(
         (m): m is { role: "user" | "assistant"; content: string } =>
           !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
       );
       if (messages.length === 0) return;
+      if (payload?.mode === "agent") {
+        // An Agent hand-off: a fresh Agent conversation with the request in the input.
+        // Not sent: the user reviews it and presses send, so the Agent's approvals still apply.
+        const request = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+        const agentConv = createConversationWithMode("New agent", "agent");
+        setConversations((prev) => [...prev, agentConv]);
+        setActiveConversationId(agentConv.id);
+        setAgentInput(request);
+        setAgentAttachments([]);
+        return;
+      }
       const firstUser = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
       const conv: Conversation = {
         ...createConversation(firstUser),
@@ -1588,12 +1605,23 @@ export default function Home() {
       setConversations((prev) => [...prev, conv]);
       setActiveConversationId(conv.id);
     });
-    const offSettings = electron.onCompanionOpenSettings(() => openSettingsPage({ page: "general" }));
+    const offSettings = electron.onCompanionOpenSettings(() => openSettingsPage({ page: "keys-ai" }));
     return () => {
       offThread?.();
       offSettings?.();
     };
   }, []);
+
+  // Turning "Hey Marven" on while Mini Me is on screen and already listening for it
+  // would open the mic twice, so say so instead. Turning it off always works.
+  function requestToggleWakeWord() {
+    if (!wakeEnabledNowRef.current && companionListensRef.current) {
+      const convId = ensureActiveConversation("voice");
+      addMessageToConversation(convId, createMessage("assistant", i18n.t("companion.wakeInMiniMe")));
+      return;
+    }
+    toggleWakeWord();
+  }
 
   function toggleSpeech() {
     const next = !speechEnabledRef.current;
@@ -2337,7 +2365,7 @@ export default function Home() {
         break;
       }
       case "/voice":
-        toggleWakeWord();
+        requestToggleWakeWord();
         break;
       case "/speech":
         toggleSpeech();
@@ -2552,7 +2580,7 @@ export default function Home() {
           setWorkspaceTrustedState(trusted);
         }}
         onModelSelect={handleModelSelect}
-        onToggleWakeWord={toggleWakeWord}
+        onToggleWakeWord={requestToggleWakeWord}
         onToggleSpeech={toggleSpeech}
         onNewChat={handleNewChat}
         onNewAgent={handleNewAgent}

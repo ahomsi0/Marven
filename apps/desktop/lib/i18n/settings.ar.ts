@@ -206,6 +206,7 @@ const settingsAr = {
     hotkey: "الاختصار",
     hotkeyHint: "يفتح فقاعة ميني مي من أي مكان، مثل CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "الاختصار غير متاح: يستخدمه تطبيق آخر.",
+    hotkeyReserved: "هذا هو اختصار الاستماع الخاص بـ Marven (⌘⇧M) — اختر اختصارًا آخر.",
     wake: "الاستماع إلى \"Hey Marven\"",
     wakeHint: "يتولى ميني مي كلمة التنبيه ما دام ظاهرًا على الشاشة.",
     speak: "قراءة الردود بصوت عالٍ",

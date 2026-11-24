@@ -1,9 +1,11 @@
 // The line Mini Me shows when voice fails. Typing always still works.
 
-export function voiceNotice(error: string): string {
-  const base = `Voice isn't available: ${error}`;
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+export function voiceNotice(error: string, t: Translate): string {
+  const base = t("companion.voiceUnavailable", { error });
   if (/permission|NotAllowed|mic-denied/i.test(error)) {
-    return `${base}. Allow microphone access for Marven in System Settings → Privacy & Security, or just type.`;
+    return `${base}. ${t("companion.voiceMicHint")}`;
   }
   return base;
 }

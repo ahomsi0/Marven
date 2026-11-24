@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  COMPANION_PERSONA,
   PERSONAS,
   HISTORY_KEY,
   appendHistory,
@@ -75,10 +74,9 @@ describe("routeInput", () => {
 
 describe("buildCompanionPrompt", () => {
   it("adds the persona after the base prompt", () => {
-    expect(buildCompanionPrompt("BASE", "")).toBe(`BASE\n\n${COMPANION_PERSONA}`);
+    expect(buildCompanionPrompt("BASE", "")).toBe(`BASE\n\n${PERSONAS.playful}`);
   });
-  it("keeps the playful persona as COMPANION_PERSONA and the default", () => {
-    expect(COMPANION_PERSONA).toBe(PERSONAS.playful);
+  it("uses the playful persona when asked for it explicitly", () => {
     expect(buildCompanionPrompt("BASE", "", "playful")).toBe(`BASE\n\n${PERSONAS.playful}`);
   });
   it("uses the neutral persona", () => {
@@ -99,7 +97,7 @@ describe("buildCompanionPrompt", () => {
     const prompt = buildCompanionPrompt("BASE", " Speak Arabic ");
     expect(prompt.startsWith("### PRIORITY INSTRUCTIONS (always follow these):\nSpeak Arabic")).toBe(true);
     expect(prompt.endsWith("REMINDER: Speak Arabic")).toBe(true);
-    expect(prompt).toContain(COMPANION_PERSONA);
+    expect(prompt).toContain(PERSONAS.playful);
   });
 });
 

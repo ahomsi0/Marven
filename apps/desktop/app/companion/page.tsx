@@ -8,6 +8,7 @@ import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/u
 import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
+import { useT } from "@/lib/i18n";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
@@ -19,6 +20,7 @@ const REST_AFTER_MS = 120_000;
 const VOICE_IDLE_CLOSE_MS = 4000;
 
 export default function CompanionPage() {
+  const { t } = useT();
   const bridge = useMemo(getCompanionBridge, []);
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_COMPANION_SETTINGS);
   const settingsRef = useRef(settings);
@@ -193,7 +195,9 @@ export default function CompanionPage() {
   useEffect(() => {
     if (!bubbleOpen || !voiceError || noticeShownRef.current) return;
     noticeShownRef.current = true;
-    setNotice(voiceNotice(voiceError));
+    setNotice(voiceNotice(voiceError, t as unknown as (key: string, opts?: Record<string, unknown>) => string));
+    // t changes with the language; the notice is shown once per opening either way.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubbleOpen, voiceError]);
 
   // A bubble opened by voice that heard nothing shouldn't linger.
@@ -213,8 +217,8 @@ export default function CompanionPage() {
 
   const onAction = (action: Exclude<BubbleAction, null>) => {
     if (action === "retry") void retry();
-    else if (action === "open-in-marven") {
-      bridge?.openInMarven(history());
+    else if (action === "open-in-marven" || action === "open-in-agent") {
+      bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");
       closeBubble();
     } else {
       bridge?.openSettings();

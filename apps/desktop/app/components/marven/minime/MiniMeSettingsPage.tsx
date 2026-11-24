@@ -22,7 +22,8 @@ const PERSONALITY_KEYS: Record<Personality, string> = { playful: "personalityPla
 type Electron = {
   getSettings: () => Promise<any>;
   saveSettings: (s: any) => Promise<any>;
-  companionStatus?: () => Promise<{ hotkeyOk: boolean }>;
+  companionStatus?: () => Promise<{ hotkeyOk: boolean; hotkeyReason?: "reserved" | "taken" | null }>;
+  onCompanionVisibility?: (cb: () => void) => (() => void) | void;
 };
 
 interface MiniMeState {
@@ -49,13 +50,18 @@ const DEFAULTS: MiniMeState = {
   miniMeHotkey: "CommandOrControl+Shift+Space",
 };
 
+function problemOf(st: { hotkeyOk: boolean; hotkeyReason?: "reserved" | "taken" | null }): "reserved" | "taken" | null {
+  if (st.hotkeyOk) return null;
+  return st.hotkeyReason === "reserved" ? "reserved" : "taken";
+}
+
 /** Settings → Mini Me (desktop app only). */
 export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
   const { tr } = useTr();
   const [state, setState] = useState<MiniMeState>(DEFAULTS);
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
   const [hotkeyDraft, setHotkeyDraft] = useState(DEFAULTS.miniMeHotkey);
-  const [hotkeyOk, setHotkeyOk] = useState(true);
+  const [hotkeyProblem, setHotkeyProblem] = useState<"reserved" | "taken" | null>(null);
   const pendingLook = useRef<Look | null>(null);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,13 +78,21 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
       if (!SPEEDS.includes(next.miniMeSpeed)) next.miniMeSpeed = DEFAULTS.miniMeSpeed;
       if (!PERSONALITIES.includes(next.miniMePersonality)) next.miniMePersonality = DEFAULTS.miniMePersonality;
       if (!SCALES.includes(next.miniMeScale)) next.miniMeScale = DEFAULTS.miniMeScale;
+      if (!SLEEP_MINUTES.includes(next.miniMeSleepMinutes)) next.miniMeSleepMinutes = DEFAULTS.miniMeSleepMinutes;
       setState(next);
       setHotkeyDraft(next.miniMeHotkey);
       setLook(s?.miniMeLook ? parseLook(s.miniMeLook) : DEFAULT_LOOK);
     });
-    void electron.companionStatus?.().then((st) => !cancelled && setHotkeyOk(st.hotkeyOk));
+    void electron.companionStatus?.().then((st) => !cancelled && setHotkeyProblem(problemOf(st)));
+    // The tray's "Show Mini Me" toggle changes the saved setting behind this page's back.
+    const off = electron.onCompanionVisibility?.(() => {
+      void electron.getSettings().then((s: any) => {
+        if (!cancelled && typeof s?.miniMeEnabled === "boolean") setState((prev) => ({ ...prev, miniMeEnabled: s.miniMeEnabled }));
+      });
+    });
     return () => {
       cancelled = true;
+      off?.();
     };
   }, [electron]);
 
@@ -96,7 +110,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
     try {
       await persist(patch);
       const st = await electron.companionStatus?.();
-      if (st) setHotkeyOk(st.hotkeyOk);
+      if (st) setHotkeyProblem(problemOf(st));
     } catch (err) {
       console.warn("Mini Me: could not save settings", err);
       setState((prev) => {
@@ -161,8 +175,12 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
             }}
             className="mt-1 w-full rounded-md border border-[var(--m-border)] bg-[var(--m-surface-2)] px-3 py-1.5 font-mono text-[12px] text-[var(--m-text)] outline-none transition-colors hover:border-[var(--m-text-faint)] focus-visible:border-[var(--m-accent)]/60 focus-visible:ring-2 focus-visible:ring-[var(--m-accent-soft)]"
           />
-          <p className={`mt-1 text-[11px] ${hotkeyOk ? "text-[var(--m-text-faint)]" : "text-red-400"}`}>
-            {hotkeyOk ? tr("settings.miniMe.hotkeyHint") : tr("settings.miniMe.hotkeyUnavailable")}
+          <p className={`mt-1 text-[11px] ${hotkeyProblem ? "text-red-400" : "text-[var(--m-text-faint)]"}`}>
+            {hotkeyProblem === "reserved"
+              ? tr("settings.miniMe.hotkeyReserved")
+              : hotkeyProblem
+                ? tr("settings.miniMe.hotkeyUnavailable")
+                : tr("settings.miniMe.hotkeyHint")}
           </p>
         </div>
         <Row id="mini-me-wake" label={tr("settings.miniMe.wake")} hint={tr("settings.miniMe.wakeHint")}>
