@@ -43,19 +43,23 @@ describe("ANIMATIONS", () => {
 describe("art data", () => {
   it("has square grids of the declared size and only known slot codes", () => {
     const known = new Set([".", "_", ...Object.keys(buildSlots({ skin: "#000000", hair: "#000000", eyes: "#000000", shirt: "#000000", pants: "#000000", shoes: "#000000" }))]);
+    // Collect problems and assert once: an expect() per pixel (~280k of them)
+    // is slow enough to time out on CI's Windows runners.
+    const problems: string[] = [];
     for (const id of ART_STYLE_IDS) {
       const art = ART_STYLES[id];
       const grids: (readonly string[])[] = [art.beard, art.glasses];
       for (const h of Object.values(art.hair)) if (h) grids.push(h.front, ...(h.back ? [h.back] : []));
       for (const s of STATES) for (const f of art.frames[s]) grids.push(f.body, ...(f.front ? [f.front] : []), ...(f.effect ? [f.effect] : []));
-      for (const g of grids) {
-        expect(g.length, id).toBe(art.size);
-        for (const row of g) {
-          expect(row.length, id).toBe(art.size);
-          for (const ch of row) expect(known.has(ch), `${id} '${ch}'`).toBe(true);
-        }
-      }
+      grids.forEach((g, gi) => {
+        if (g.length !== art.size) problems.push(`${id} grid ${gi}: ${g.length} rows`);
+        g.forEach((row, y) => {
+          if (row.length !== art.size) problems.push(`${id} grid ${gi} row ${y}: ${row.length} columns`);
+          for (const ch of row) if (!known.has(ch)) problems.push(`${id} grid ${gi} row ${y}: unknown slot '${ch}'`);
+        });
+      });
     }
+    expect(problems).toEqual([]);
   });
 });
 
