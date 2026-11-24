@@ -354,7 +354,10 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     if (!fromCompanion(event)) return;
     win.setFocusable(!!on);
     if (on) win.focus();
-    else win.blur();
+    // On macOS, blur() orders the window out and straight back in, which shows
+    // as Mini Me blinking off and on when the bubble closes. Making the window
+    // non-focusable is enough there; elsewhere blur() just drops focus.
+    else if (process.platform !== 'darwin') win.blur();
   });
   ipcMain.on('companion:walk-to', (event, x) => {
     if (!fromCompanion(event) || typeof x !== 'number' || !Number.isFinite(x)) return;
