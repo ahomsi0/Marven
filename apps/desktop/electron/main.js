@@ -11,7 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
-const { sanitizeThreadMessages, sanitizeOpenMode } = require('./companionGuards');
+const { sanitizeThreadMessages, sanitizeOpenMode, projectPathInside } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -443,13 +443,20 @@ function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
 }
 
-ipcMain.on('companion:open-in-marven', (event, messages, mode) => {
+ipcMain.on('companion:open-in-marven', (event, messages, mode, options) => {
   if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
   const safe = sanitizeThreadMessages(messages);
   if (!safe) return;
+  const payload = { messages: safe, mode: sanitizeOpenMode(mode) };
+  // A project Mini Me built: only a folder inside the projects folder is passed on.
+  const requestedRoot = options && typeof options === 'object' ? options.workspaceRoot : undefined;
+  if (requestedRoot !== undefined) {
+    const root = projectPathInside(requestedRoot, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync });
+    if (root) payload.workspaceRoot = root;
+  }
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('companion-open-thread', { messages: safe, mode: sanitizeOpenMode(mode) });
+  mainWindow.webContents.send('companion-open-thread', payload);
 });
 
 ipcMain.on('companion:open-settings', (event) => {

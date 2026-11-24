@@ -3,7 +3,12 @@
 // Small pure validators for Mini Me, kept free of Electron imports so they can
 // be unit-tested.
 
+const path = require('path');
+
 const MAX_MESSAGE_CHARS = 20000;
+const MAX_PATH_CHARS = 4096;
+const MAX_URL_CHARS = 2048;
+const DEFAULT_PROJECTS_DIR = '~/Marven Projects';
 const MAX_MESSAGES = 20;
 
 /**
@@ -50,4 +55,64 @@ function isReservedHotkey(accelerator, platform = process.platform) {
   return typeof accelerator === 'string' && normalizeAccelerator(accelerator, platform) === RESERVED;
 }
 
-module.exports = { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES };
+/** Expands a leading "~" / "~/" against `home`. */
+function expandHome(p, home) {
+  if (p === '~') return home;
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(home, p.slice(2));
+  return p;
+}
+
+function isStrictlyInside(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+/**
+ * The real path of `target` when it exists strictly inside Mini Me's projects
+ * folder (the `miniMeProjectsDir` setting, `~` expanded), else null. Both sides
+ * go through `realpath`, so a symlink can't lead out of the folder.
+ *
+ * @param {unknown} target
+ * @param {unknown} projectsDir
+ * @param {{ home: string, realpath: (p: string) => string }} deps
+ */
+function projectPathInside(target, projectsDir, { home, realpath }) {
+  if (typeof target !== 'string' || !target || target.length > MAX_PATH_CHARS || target.includes('\0')) return null;
+  if (!path.isAbsolute(target)) return null;
+  const setting = typeof projectsDir === 'string' && projectsDir.trim() ? projectsDir.trim() : DEFAULT_PROJECTS_DIR;
+  const dir = expandHome(setting, home);
+  if (!path.isAbsolute(dir)) return null;
+  try {
+    const realDir = realpath(path.resolve(dir));
+    const realTarget = realpath(path.resolve(target));
+    return isStrictlyInside(realTarget, realDir) ? realTarget : null;
+  } catch {
+    return null;
+  }
+}
+
+const LOOPBACK_HOST = /^(localhost|[a-z0-9-]+\.localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
+
+/** True for an http(s) URL on this machine (a dev server the Agent started), without credentials. */
+function isLoopbackHttpUrl(url) {
+  if (typeof url !== 'string' || url.length > MAX_URL_CHARS) return false;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    if (u.username || u.password) return false;
+    return LOOPBACK_HOST.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = {
+  sanitizeThreadMessages,
+  sanitizeOpenMode,
+  isReservedHotkey,
+  projectPathInside,
+  isLoopbackHttpUrl,
+  DEFAULT_PROJECTS_DIR,
+  MAX_MESSAGE_CHARS,
+  MAX_MESSAGES,
+};

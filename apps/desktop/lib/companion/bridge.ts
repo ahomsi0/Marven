@@ -51,8 +51,17 @@ export interface CompanionBridge {
   drag(dx: number, dy: number): void;
   drop(): void;
   returnHome(): void;
-  /** Hand the thread to the main window: as a chat, or (agent) as a new Agent conversation with the last request pre-filled. */
-  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat"): void;
+  /**
+   * Hand the thread to the main window: as a chat, or (agent) as a new Agent
+   * conversation with the last request pre-filled. With `workspaceRoot` (a
+   * project Mini Me built; main checks it is inside the projects folder) the
+   * Agent conversation opens on that folder with the thread loaded instead.
+   */
+  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string }): void;
+  /** Open a folder or file inside the projects folder (main refuses anything else); resolves to "" or an error. */
+  openPath(target: string): Promise<string>;
+  /** Open a dev server address on this machine in the default browser (main refuses anything else). */
+  openUrl(url: string): Promise<boolean>;
   /** The clipboard's text, read by the main process (capped); "" when empty. */
   readClipboard(): Promise<string>;
   openSettings(): void;

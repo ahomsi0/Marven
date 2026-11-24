@@ -5,10 +5,12 @@
 // keeping it on screen and remembering where it was. Geometry lives in
 // companionPlacement.js.
 
-const { BrowserWindow, screen, globalShortcut, ipcMain, clipboard } = require('electron');
+const { BrowserWindow, screen, globalShortcut, ipcMain, clipboard, shell } = require('electron');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const placement = require('./companionPlacement');
-const { isReservedHotkey } = require('./companionGuards');
+const { isReservedHotkey, projectPathInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
 
 const TICK_MS = 33;
 const WALK_PX_BY_SPEED = { slow: 1, normal: 2, fast: 4 };
@@ -18,6 +20,11 @@ const FALL_PX_PER_TICK = 8;
 const MAX_LOAD_RETRIES = 20;
 const POSITION_SAVE_INTERVAL_MS = 30000;
 const MAX_CLIPBOARD_CHARS = 20000;
+
+/** The configured projects folder, as typed (a leading ~ is the home folder). */
+function projectsDirSetting(s) {
+  return typeof s.miniMeProjectsDir === 'string' && s.miniMeProjectsDir.trim() ? s.miniMeProjectsDir.trim() : DEFAULT_PROJECTS_DIR;
+}
 
 function placementDisplays() {
   return screen.getAllDisplays().map((d) => ({ id: d.id, workArea: d.workArea }));
@@ -62,7 +69,6 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     hotkeyReason,
     unavailable,
     wakeWord: !!settings.miniMeWakeWord,
-    projectsDir: typeof settings.miniMeProjectsDir === 'string' && settings.miniMeProjectsDir.trim() ? settings.miniMeProjectsDir.trim() : '~/Marven Projects',
   });
   const notify = () => { if (onStatusChange) onStatusChange(status()); };
 
@@ -75,6 +81,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     personality: PERSONALITIES.includes(settings.miniMePersonality) ? settings.miniMePersonality : 'playful',
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
+    projectsDir: projectsDirSetting(settings),
     // Passed through as-is; the renderer validates it (parseLook).
     look: settings.miniMeLook && typeof settings.miniMeLook === 'object' && !Array.isArray(settings.miniMeLook) ? settings.miniMeLook : null,
   });
@@ -347,6 +354,19 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     } catch {
       return '';
     }
+  });
+  // Open a finished project's folder: only paths inside the projects folder.
+  ipcMain.handle('companion:open-path', async (event, target) => {
+    if (!fromCompanion(event)) return 'not allowed';
+    const real = projectPathInside(target, settings.miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync });
+    if (!real) return 'not allowed';
+    return shell.openPath(real);
+  });
+  // Open the dev server a build started: http(s) on this machine only.
+  ipcMain.handle('companion:open-url', async (event, url) => {
+    if (!fromCompanion(event) || !isLoopbackHttpUrl(url)) return false;
+    await shell.openExternal(url);
+    return true;
   });
   ipcMain.on('companion:set-interactive', (event, on) => {
     if (fromCompanion(event)) win.setIgnoreMouseEvents(!on, { forward: true });

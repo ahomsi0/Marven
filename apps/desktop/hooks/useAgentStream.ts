@@ -10,6 +10,7 @@ import { dispatchMemorySaved, parseRememberToolResult } from "@/lib/memoryEvents
 import { getAgentBrowsing } from "@/lib/agentSettings";
 import { getBrowserBridge } from "@/lib/inAppBrowser";
 import { setBrowserApprovalWaiting } from "@/lib/browserApprovalWait";
+import { consumeSse } from "@/lib/agent/sse";
 
 const STOP_CANCEL_NOTE = "Stopped before this finished.";
 
@@ -128,41 +129,6 @@ export function useAgentStream({
     const trimmed = text.trim();
     if (!trimmed) return 0;
     return Math.max(1, Math.ceil(trimmed.length / 4));
-  }, []);
-
-  const consumeSse = useCallback(async (
-    res: Response,
-    onEvent: (event: AgentEvent) => void | Promise<void>,
-  ) => {
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error("No response body");
-
-    const dec = new TextDecoder();
-    let buf = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? "";
-
-      for (const part of parts) {
-        const lines = part.trim().split("\n");
-        let eventType = "";
-        let dataLine = "";
-        for (const line of lines) {
-          if (line.startsWith("event: ")) eventType = line.slice(7);
-          if (line.startsWith("data: ")) dataLine = line.slice(6);
-        }
-        if (!eventType || !dataLine) continue;
-
-        let event: AgentEvent;
-        try { event = JSON.parse(dataLine); } catch { continue; }
-        await onEvent(event);
-      }
-    }
   }, []);
 
   const send = useCallback(async (
@@ -583,7 +549,7 @@ export function useAgentStream({
         setIsRunning(false);
       }
     }
-  }, [provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, consumeSse, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
+  }, [provider, model, workspaceRoot, conversationId, memory, mcpServers, planMode, liteAgentMode, safetyProfile, autoVerifyCommands, autoVerifyEnabled, parseCommandList, estimateTokens, onUsage]);
 
   const stop = useCallback(() => {
     const wasRunning = isRunningRef.current;

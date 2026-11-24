@@ -1578,7 +1578,7 @@ export default function Home() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
     if (!electron?.onCompanionOpenThread) return;
-    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown } | null) => {
+    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown; workspaceRoot?: unknown } | null) => {
       const raw = payload?.messages;
       if (!Array.isArray(raw)) return;
       const messages = raw.filter(
@@ -1586,6 +1586,24 @@ export default function Home() {
           !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
       );
       if (messages.length === 0) return;
+      if (payload?.mode === "agent" && typeof payload.workspaceRoot === "string" && payload.workspaceRoot) {
+        // A project Mini Me built (main checked the folder is in the projects
+        // folder): continue it here, on that folder, with the thread so far.
+        // Nothing is sent; the user carries on from the input.
+        const root = payload.workspaceRoot;
+        const request = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
+        const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
+        setWorkspaceTrusted(root, true);
+        agentMessagesByConvRef.current.set(
+          agentConv.id,
+          messages.map((m, i): AgentMessage => ({ id: `minime-${Date.now()}-${i}`, role: m.role, content: m.content })),
+        );
+        setConversations((prev) => [...prev, agentConv]);
+        setActiveConversationId(agentConv.id);
+        setAgentInput("");
+        setAgentAttachments([]);
+        return;
+      }
       if (payload?.mode === "agent") {
         // An Agent hand-off: a fresh Agent conversation with the request in the input.
         // Not sent: the user reviews it and presses send, so the Agent's approvals still apply.

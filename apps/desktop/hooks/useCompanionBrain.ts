@@ -64,7 +64,7 @@ async function readClipboardText(): Promise<string> {
   }
 }
 
-async function loadGlobalMemories(): Promise<string[]> {
+export async function loadGlobalMemories(): Promise<string[]> {
   try {
     const data = await (await fetch("/api/memory")).json();
     const global = data?.scopes?.global;

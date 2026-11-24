@@ -5,6 +5,7 @@ import { CompanionSprite } from "./CompanionSprite";
 import { SpeechBubble } from "./SpeechBubble";
 import { useCompanionPointer } from "./useCompanionPointer";
 import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/useCompanionBrain";
+import { isBuildActive, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
 import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
@@ -14,6 +15,8 @@ import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
+/** A finished build's result stays up longer: it has buttons worth reaching for. */
+const BUILD_RESULT_CLOSE_MS = 45_000;
 /** Left alone this long, Mini Me sits down and stays seated. */
 const REST_AFTER_MS = 120_000;
 /** A voice-opened bubble that heard nothing closes itself after this. */
@@ -66,7 +69,44 @@ export default function CompanionPage() {
     onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
     onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
     onNotify: () => openBubble(false),
+    onBuildHere: (request, name) => void buildStart(request, name),
   });
+
+  // ── Building projects ("Build it here") ────────────────────────────────────
+  const {
+    view: build,
+    start: buildStart,
+    stop: buildStop,
+    answer: buildAnswer,
+    keepGoing: buildKeepGoing,
+    clear: buildClear,
+  } = useCompanionBuild({
+    projectsDir: settings.projectsDir,
+    speakReplies: settings.speak,
+    onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
+    onAttention: (reason: BuildAttention) => {
+      // Bring the bubble up without stealing focus, then react.
+      if (!bubbleOpenRef.current) openBubble(false);
+      // A result replaces a chat reply that's already finished (one still
+      // streaming keeps the bubble; the result waits for the next opening).
+      if ((reason === "done" || reason === "failed") && replyRef.current?.done && !busyRef.current) dismiss();
+      const now = Date.now();
+      if (reason === "done") dispatch({ type: "succeeded", now });
+      else if (reason === "failed" || reason === "blocked") dispatch({ type: "failed", now });
+      else dispatch({ type: "talking", now });
+    },
+  });
+  const buildNeedsUser = !!build && (!!build.approval || !!build.conflict);
+  // The build takes the bubble when it needs the user, or when there's no reply to show.
+  const showBuild = !!build && (buildNeedsUser || (!reply && !busy));
+  const buildWorking = showBuild && isBuildActive(build) && !buildNeedsUser;
+  const buildFinished = showBuild && !isBuildActive(build);
+  const replyRef = useRef(reply);
+  replyRef.current = reply;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const showBuildRef = useRef(showBuild);
+  showBuildRef.current = showBuild;
 
   const focusInput = useCallback(() => {
     bridge?.setFocusable(true);
@@ -91,9 +131,11 @@ export default function CompanionPage() {
     setNotice(null);
     openedByVoiceRef.current = false;
     dismiss();
+    // Forget a build result once it has been seen; a running build carries on.
+    if (showBuildRef.current) buildClear();
     bridge?.setFocusable(false);
     dispatch({ type: "bubble-close", now: Date.now() });
-  }, [dismiss, bridge, dispatch]);
+  }, [dismiss, buildClear, bridge, dispatch]);
 
   const {
     voiceState,
@@ -203,18 +245,59 @@ export default function CompanionPage() {
   // A bubble opened by voice that heard nothing shouldn't linger.
   useEffect(() => {
     if (!bubbleOpen || !openedByVoiceRef.current) return;
-    if (voiceState !== "idle" || draft || reply || busy) return;
+    if (voiceState !== "idle" || draft || reply || busy || build) return;
     const timer = setTimeout(closeBubble, VOICE_IDLE_CLOSE_MS);
     return () => clearTimeout(timer);
-  }, [bubbleOpen, voiceState, draft, reply, busy, closeBubble]);
+  }, [bubbleOpen, voiceState, draft, reply, busy, build, closeBubble]);
 
   // Fade the bubble after a finished reply unless the user is engaged with it.
   useEffect(() => {
     // A pending build choice waits for the user rather than fading away.
-    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || hovered || draft) return;
+    // So does a build that's asking something.
+    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || buildNeedsUser || hovered || draft) return;
     const timer = setTimeout(closeBubble, AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
-  }, [bubbleOpen, reply, hovered, draft, closeBubble]);
+  }, [bubbleOpen, reply, buildNeedsUser, hovered, draft, closeBubble]);
+
+  // A build's result fades too, just later.
+  useEffect(() => {
+    if (!bubbleOpen || !buildFinished || hovered || draft) return;
+    const timer = setTimeout(closeBubble, BUILD_RESULT_CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [bubbleOpen, buildFinished, hovered, draft, closeBubble]);
+
+  // Mini Me thinks while a build runs in front of the user; with the bubble
+  // closed he goes about his day. (Closing the bubble clears "busy" as usual.)
+  useEffect(() => {
+    if (bubbleOpen && buildWorking) dispatch({ type: "thinking", now: Date.now() });
+  }, [bubbleOpen, buildWorking, dispatch]);
+
+  const buildHandlers = {
+    onStop: buildStop,
+    onAnswer: (accept: boolean) => void buildAnswer(accept),
+    onKeepGoing: buildKeepGoing,
+    onOpenFolder: () => {
+      if (build?.root) void bridge?.openPath(build.root);
+    },
+    onOpenInMarven: () => {
+      if (!build?.root) return;
+      const summary = build.summary || t("companion.build.emptySummary");
+      bridge?.openInMarven(
+        [
+          { role: "user", content: build.request },
+          { role: "assistant", content: summary },
+        ],
+        "agent",
+        { workspaceRoot: build.root },
+      );
+      closeBubble();
+    },
+    onOpenUrl: (url: string) => void bridge?.openUrl(url),
+    onOpenSettings: () => {
+      bridge?.openSettings();
+      closeBubble();
+    },
+  };
 
   const onAction = (action: Exclude<BubbleAction, null>) => {
     if (action === "build-choice") return;
@@ -254,6 +337,8 @@ export default function CompanionPage() {
             }}
             onAction={onAction}
             onBuildChoice={chooseBuild}
+            build={showBuild ? build : null}
+            buildHandlers={buildHandlers}
           />
         </div>
       )}

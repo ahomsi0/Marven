@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "module";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, projectPathInside, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -61,5 +64,74 @@ describe("sanitizeOpenMode", () => {
     expect(sanitizeOpenMode(undefined)).toBe("chat");
     expect(sanitizeOpenMode("shell")).toBe("chat");
     expect(sanitizeOpenMode({})).toBe("chat");
+  });
+});
+
+describe("projectPathInside", () => {
+  const home = "/Users/me";
+  const identity = (p: string) => p;
+  const deps = { home, realpath: identity };
+
+  it("returns the real path of a folder inside the projects dir", () => {
+    expect(projectPathInside("/Users/me/Marven Projects/cafe-menu", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
+    expect(projectPathInside("/Users/me/Marven Projects/cafe-menu/index.html", "/Users/me/Marven Projects", deps)).toBe(
+      "/Users/me/Marven Projects/cafe-menu/index.html",
+    );
+  });
+
+  it("falls back to the default projects dir when the setting is empty", () => {
+    expect(projectPathInside("/Users/me/Marven Projects/x", "", deps)).toBe("/Users/me/Marven Projects/x");
+    expect(projectPathInside("/Users/me/Marven Projects/x", undefined, deps)).toBe("/Users/me/Marven Projects/x");
+  });
+
+  it("rejects the projects dir itself, siblings, escapes and non-strings", () => {
+    expect(projectPathInside("/Users/me/Marven Projects", "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside("/Users/me/Marven Projects-2/x", "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside("/Users/me/Marven Projects/../.ssh", "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside("/etc", "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside("Marven Projects/x", "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside(42, "~/Marven Projects", deps)).toBeNull();
+    expect(projectPathInside("/Users/me/Marven Projects/a\u0000b", "~/Marven Projects", deps)).toBeNull();
+  });
+
+  it("returns null when the path doesn't exist", () => {
+    const realpath = () => {
+      throw new Error("ENOENT");
+    };
+    expect(projectPathInside("/Users/me/Marven Projects/x", "~/Marven Projects", { home, realpath })).toBeNull();
+  });
+
+  it("follows symlinks, so a link out of the projects dir is refused", () => {
+    const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "minime-guard-")));
+    try {
+      const projects = path.join(tmp, "projects");
+      const outside = path.join(tmp, "outside");
+      fs.mkdirSync(path.join(projects, "real"), { recursive: true });
+      fs.mkdirSync(outside);
+      fs.symlinkSync(outside, path.join(projects, "link"));
+      const real = { home: tmp, realpath: fs.realpathSync };
+      expect(projectPathInside(path.join(projects, "real"), projects, real)).toBe(path.join(projects, "real"));
+      expect(projectPathInside(path.join(projects, "link"), projects, real)).toBeNull();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("isLoopbackHttpUrl", () => {
+  it("accepts http(s) on this machine", () => {
+    expect(isLoopbackHttpUrl("http://localhost:5173")).toBe(true);
+    expect(isLoopbackHttpUrl("https://127.0.0.1:8443/app")).toBe(true);
+    expect(isLoopbackHttpUrl("http://[::1]:3000/")).toBe(true);
+    expect(isLoopbackHttpUrl("http://app.localhost:3000")).toBe(true);
+  });
+  it("rejects other hosts, schemes and junk", () => {
+    expect(isLoopbackHttpUrl("https://example.com")).toBe(false);
+    expect(isLoopbackHttpUrl("http://localhost.evil.com")).toBe(false);
+    expect(isLoopbackHttpUrl("file:///etc/passwd")).toBe(false);
+    expect(isLoopbackHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isLoopbackHttpUrl("http://user:pw@localhost:3000")).toBe(false);
+    expect(isLoopbackHttpUrl(42)).toBe(false);
+    expect(isLoopbackHttpUrl("x".repeat(3000))).toBe(false);
   });
 });
