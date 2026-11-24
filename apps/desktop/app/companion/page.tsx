@@ -12,7 +12,7 @@ import { initialState, reduce, type BehaviourEvent, type BehaviourState, type St
 import { useT } from "@/lib/i18n";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
-import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings } from "@/lib/companion/bridge";
+import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
 /** A finished build's result stays up longer: it has buttons worth reaching for. */
@@ -79,6 +79,7 @@ export default function CompanionPage() {
     stop: buildStop,
     answer: buildAnswer,
     keepGoing: buildKeepGoing,
+    switchTo: buildSwitchTo,
     clear: buildClear,
   } = useCompanionBuild({
     projectsDir: settings.projectsDir,
@@ -89,7 +90,7 @@ export default function CompanionPage() {
       if (!bubbleOpenRef.current) openBubble(false);
       // A result replaces a chat reply that's already finished (one still
       // streaming keeps the bubble; the result waits for the next opening).
-      if ((reason === "done" || reason === "failed") && replyRef.current?.done && !busyRef.current) dismiss();
+      if (reason !== "approval" && reason !== "conflict" && replyRef.current?.done && !busyRef.current) dismiss();
       const now = Date.now();
       if (reason === "done") dispatch({ type: "succeeded", now });
       else if (reason === "failed" || reason === "blocked") dispatch({ type: "failed", now });
@@ -272,12 +273,32 @@ export default function CompanionPage() {
     if (bubbleOpen && buildWorking) dispatch({ type: "thinking", now: Date.now() });
   }, [bubbleOpen, buildWorking, dispatch]);
 
+  // Escape closes the bubble from anywhere in it (cards and results have no text input).
+  useEffect(() => {
+    if (!bubbleOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeBubble();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [bubbleOpen, closeBubble]);
+
   const buildHandlers = {
-    onStop: buildStop,
+    onStop: () => {
+      buildStop();
+      // Leave the thinking pose: a small shrug, then back to standing.
+      dispatch({ type: "failed", now: Date.now() });
+    },
+    onSwitch: buildSwitchTo,
+    onClose: closeBubble,
     onAnswer: (accept: boolean) => void buildAnswer(accept),
     onKeepGoing: buildKeepGoing,
     onOpenFolder: () => {
-      if (build?.root) void bridge?.openPath(build.root);
+      if (!build?.root || !bridge) return;
+      void bridge.openPath(build.root).then(
+        (error) => error && setNotice(t("companion.build.openFolderFailed")),
+        () => setNotice(t("companion.build.openFolderFailed")),
+      );
     },
     onOpenInMarven: () => {
       if (!build?.root) return;
@@ -292,9 +313,15 @@ export default function CompanionPage() {
       );
       closeBubble();
     },
-    onOpenUrl: (url: string) => void bridge?.openUrl(url),
-    onOpenSettings: () => {
-      bridge?.openSettings();
+    onOpenUrl: (url: string) => {
+      if (!bridge) return;
+      void bridge.openUrl(url).then(
+        (ok) => !ok && setNotice(t("companion.build.openUrlFailed")),
+        () => setNotice(t("companion.build.openUrlFailed")),
+      );
+    },
+    onOpenSettings: (page: CompanionSettingsPage) => {
+      bridge?.openSettings(page);
       closeBubble();
     },
   };

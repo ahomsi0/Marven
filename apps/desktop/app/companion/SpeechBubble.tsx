@@ -110,9 +110,6 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
             ref={inputRef}
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
-            }}
             placeholder={listening ? interim || t("companion.listening") : t("companion.placeholder")}
             className="w-full rounded-md border border-[var(--m-border-subtle)] bg-transparent px-2 py-1.5 outline-none focus:border-[var(--m-accent)]"
             aria-label={t("companion.inputLabel")}

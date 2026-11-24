@@ -39,6 +39,9 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   look: null,
 };
 
+/** Settings pages Mini Me may open: AI keys, General (the Agent's safety profile), Mini Me. */
+export type CompanionSettingsPage = "keys-ai" | "general" | "mini-me";
+
 type Unsubscribe = () => void;
 
 export interface CompanionBridge {
@@ -64,7 +67,8 @@ export interface CompanionBridge {
   openUrl(url: string): Promise<boolean>;
   /** The clipboard's text, read by the main process (capped); "" when empty. */
   readClipboard(): Promise<string>;
-  openSettings(): void;
+  /** Open Marven's Settings on one of the pages Mini Me may point to (main checks it; default "keys-ai"). */
+  openSettings(page?: CompanionSettingsPage): void;
   onPosition(cb: (p: CompanionPosition) => void): Unsubscribe;
   onOpenInput(cb: () => void): Unsubscribe;
   onListen(cb: () => void): Unsubscribe;

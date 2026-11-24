@@ -62,30 +62,34 @@ function expandHome(p, home) {
   return p;
 }
 
-function isStrictlyInside(child, parent) {
-  const rel = path.relative(parent, child);
-  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
-}
+/** Names macOS would launch rather than show (apps, scripts, installers, links). */
+const BUNDLE_NAME = /\.(app|bundle|command|tool|workflow|terminal|pkg|mpkg|webloc)$/i;
 
 /**
- * The real path of `target` when it exists strictly inside Mini Me's projects
- * folder (the `miniMeProjectsDir` setting, `~` expanded), else null. Both sides
- * go through `realpath`, so a symlink can't lead out of the folder.
+ * The real path of `target` when it is a project folder Mini Me could have made:
+ * a real directory (not a symlink, not a bundle-like name) whose parent is
+ * exactly Mini Me's projects folder (the `miniMeProjectsDir` setting, `~`
+ * expanded). Anything else is null. Both sides go through `realpath`.
  *
  * @param {unknown} target
  * @param {unknown} projectsDir
- * @param {{ home: string, realpath: (p: string) => string }} deps
+ * @param {{ home: string, realpath: (p: string) => string, lstat: (p: string) => { isDirectory(): boolean, isSymbolicLink(): boolean } }} deps
  */
-function projectPathInside(target, projectsDir, { home, realpath }) {
+function projectFolderInside(target, projectsDir, { home, realpath, lstat }) {
   if (typeof target !== 'string' || !target || target.length > MAX_PATH_CHARS || target.includes('\0')) return null;
   if (!path.isAbsolute(target)) return null;
   const setting = typeof projectsDir === 'string' && projectsDir.trim() ? projectsDir.trim() : DEFAULT_PROJECTS_DIR;
   const dir = expandHome(setting, home);
   if (!path.isAbsolute(dir)) return null;
+  const resolved = path.resolve(target);
+  if (BUNDLE_NAME.test(path.basename(resolved))) return null;
   try {
+    const stat = lstat(resolved);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
     const realDir = realpath(path.resolve(dir));
-    const realTarget = realpath(path.resolve(target));
-    return isStrictlyInside(realTarget, realDir) ? realTarget : null;
+    const realTarget = realpath(resolved);
+    if (BUNDLE_NAME.test(path.basename(realTarget))) return null;
+    return path.dirname(realTarget) === realDir ? realTarget : null;
   } catch {
     return null;
   }
@@ -106,11 +110,19 @@ function isLoopbackHttpUrl(url) {
   }
 }
 
+const SETTINGS_PAGES = ['keys-ai', 'general', 'mini-me'];
+
+/** The Settings page Mini Me asked for: one of the few it has a reason to open, else the AI keys page. */
+function sanitizeSettingsPage(page) {
+  return SETTINGS_PAGES.includes(page) ? page : 'keys-ai';
+}
+
 module.exports = {
+  sanitizeSettingsPage,
   sanitizeThreadMessages,
   sanitizeOpenMode,
   isReservedHotkey,
-  projectPathInside,
+  projectFolderInside,
   isLoopbackHttpUrl,
   DEFAULT_PROJECTS_DIR,
   MAX_MESSAGE_CHARS,

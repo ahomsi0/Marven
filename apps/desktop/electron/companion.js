@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const placement = require('./companionPlacement');
-const { isReservedHotkey, projectPathInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
+const { isReservedHotkey, projectFolderInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
 
 const TICK_MS = 33;
 const WALK_PX_BY_SPEED = { slow: 1, normal: 2, fast: 4 };
@@ -358,7 +358,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   // Open a finished project's folder: only paths inside the projects folder.
   ipcMain.handle('companion:open-path', async (event, target) => {
     if (!fromCompanion(event)) return 'not allowed';
-    const real = projectPathInside(target, settings.miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync });
+    const real = projectFolderInside(target, settings.miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
     if (!real) return 'not allowed';
     return shell.openPath(real);
   });

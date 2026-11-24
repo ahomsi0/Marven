@@ -11,7 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
-const { sanitizeThreadMessages, sanitizeOpenMode, projectPathInside } = require('./companionGuards');
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeSettingsPage, projectFolderInside } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -451,7 +451,7 @@ ipcMain.on('companion:open-in-marven', (event, messages, mode, options) => {
   // A project Mini Me built: only a folder inside the projects folder is passed on.
   const requestedRoot = options && typeof options === 'object' ? options.workspaceRoot : undefined;
   if (requestedRoot !== undefined) {
-    const root = projectPathInside(requestedRoot, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync });
+    const root = projectFolderInside(requestedRoot, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
     if (root) payload.workspaceRoot = root;
   }
   mainWindow.show();
@@ -459,11 +459,11 @@ ipcMain.on('companion:open-in-marven', (event, messages, mode, options) => {
   mainWindow.webContents.send('companion-open-thread', payload);
 });
 
-ipcMain.on('companion:open-settings', (event) => {
+ipcMain.on('companion:open-settings', (event, page) => {
   if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send('companion-open-settings');
+  mainWindow.webContents.send('companion-open-settings', { page: sanitizeSettingsPage(page) });
 });
 ipcMain.handle('get-version', () => app.getVersion());
 // Recent log lines for the "Report a problem" preview. Only Marven's own

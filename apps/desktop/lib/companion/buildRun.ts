@@ -169,3 +169,45 @@ export function plainSummary(text: string): string {
     .replace(/\n\s*\n+/g, "\n")
     .trim();
 }
+
+// Commands that execute code from the project (package scripts, install hooks,
+// files the Agent wrote). Each piece of a chained command is checked.
+const PROJECT_CODE_PATTERNS: RegExp[] = [
+  /^(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|run|start|dev|test|build|exec)\b/,
+  /^(?:yarn|pnpm|bun)$/, // bare yarn installs
+  /^pnpm\s+dlx\b/,
+  /^(?:npx|bunx)\s+\S/,
+  /^node\s+[^-\s]/,
+  /^python3?\s+[^-\s]/,
+  /^(?:sh|bash|zsh)\s+[^-\s]/,
+  /^\.{1,2}\/\S/,
+  /^make\b/,
+];
+
+/** True when `command` runs code from the project (so its approval card says so). */
+export function runsProjectCode(command: string): boolean {
+  if (typeof command !== "string") return false;
+  return command
+    .split(/&&|\|\||;|\||\n/)
+    .map((part) => part.trim().replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, ""))
+    .some((part) => PROJECT_CODE_PATTERNS.some((re) => re.test(part)));
+}
+
+const SCRIPTS_MAX_LINES = 30;
+
+/** The `scripts` block of a package.json as "name: command" lines, or null when there is none. */
+export function packageScripts(packageJson: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(packageJson);
+  } catch {
+    return null;
+  }
+  const scripts = (parsed as { scripts?: unknown } | null)?.scripts;
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return null;
+  const lines = Object.entries(scripts as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    .map(([name, cmd]) => `${name}: ${cmd}`);
+  if (lines.length === 0) return null;
+  return lines.length > SCRIPTS_MAX_LINES ? [...lines.slice(0, SCRIPTS_MAX_LINES), "…"].join("\n") : lines.join("\n");
+}

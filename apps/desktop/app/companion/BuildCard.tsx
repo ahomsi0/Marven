@@ -5,16 +5,21 @@
 // result with ways to open it.
 
 import type { BuildView } from "@/hooks/useCompanionBuild";
+import type { CompanionSettingsPage } from "@/lib/companion/bridge";
 import { useT } from "@/lib/i18n";
 
 export interface BuildCardHandlers {
   onStop: () => void;
   onAnswer: (accept: boolean) => void;
   onKeepGoing: () => void;
+  /** Stop this build and start the one asked for meanwhile. */
+  onSwitch: () => void;
   onOpenFolder: () => void;
   onOpenInMarven: () => void;
   onOpenUrl: (url: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (page: CompanionSettingsPage) => void;
+  /** Close the bubble (the × on a result). */
+  onClose: () => void;
 }
 
 const primary = "rounded-md bg-[var(--m-accent)] px-2 py-1 text-[12px] font-medium text-white disabled:opacity-60";
@@ -36,6 +41,22 @@ function hostLabel(url: string): string {
   }
 }
 
+function CloseButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="-me-1 -mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] hover:text-[var(--m-text)]"
+    >
+      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden>
+        <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
 /** The bubble's text input is hidden while the card asks something or shows a result, to keep the bubble small. */
 export function buildCardTakesInput(view: BuildView): boolean {
   return (view.phase === "preparing" || view.phase === "running") && !view.approval && !view.conflict;
@@ -52,8 +73,11 @@ export function BuildCard({ view, handlers }: { view: BuildView; handlers: Build
     return (
       <div>
         <p className="mb-2 leading-snug">{t("companion.build.conflict", { name })}</p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={handlers.onStop} className={primary}>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={handlers.onSwitch} className={`${primary} max-w-full truncate`}>
+            {t("companion.build.switchTo", { name: conflict.name })}
+          </button>
+          <button type="button" onClick={handlers.onStop} className={secondary}>
             {t("companion.build.stop")}
           </button>
           <button type="button" onClick={handlers.onKeepGoing} className={quiet}>
@@ -72,21 +96,34 @@ export function BuildCard({ view, handlers }: { view: BuildView; handlers: Build
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--m-accent)] opacity-40" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--m-accent)]" />
           </span>
-          <span className="min-w-0 flex-1 truncate font-medium">{t("companion.build.building", { name })}</span>
+          {/* While asking, the question takes the title's place: the bubble has little height to spare. */}
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {approval ? t(`companion.build.ask.${approval.kind}`) : t("companion.build.building", { name })}
+          </span>
           {view.steps > 0 && (
             <span className="shrink-0 text-[11px] tabular-nums text-[var(--m-text-faint)]">{t("companion.build.stepCount", { n: view.steps })}</span>
           )}
         </div>
         {approval ? (
           <>
-            <p className="mb-1 leading-snug">{t(`companion.build.ask.${approval.kind}`)}</p>
+            {approval.runsProjectCode && (
+              <p className="mb-1 text-[11px] leading-snug text-[var(--m-text-muted)]">{t("companion.build.runsProjectCode")}</p>
+            )}
             {approval.detail && (
-              <p
+              <div
                 dir="ltr"
-                className="mb-2 max-h-[40px] overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-[var(--m-surface-2)] px-2 py-1 font-mono text-[11.5px] leading-snug"
+                className="mb-1.5 max-h-[64px] overflow-y-auto rounded-md bg-[var(--m-surface-2)] px-2 py-1 font-mono text-[11.5px] leading-snug"
               >
-                {approval.detail}
-              </p>
+                <p className="whitespace-pre-wrap break-all">{approval.detail}</p>
+                {approval.scripts && (
+                  <>
+                    <p className="mt-1 border-t border-[var(--m-border-subtle)] pt-1 font-sans text-[10.5px] text-[var(--m-text-faint)]">
+                      {t("companion.build.scriptsLabel")}
+                    </p>
+                    <p className="whitespace-pre-wrap break-all text-[var(--m-text-muted)]">{approval.scripts}</p>
+                  </>
+                )}
+              </div>
             )}
             <div className="flex items-center gap-2">
               <button type="button" disabled={approval.sending} onClick={() => handlers.onAnswer(true)} className={primary}>
@@ -110,6 +147,7 @@ export function BuildCard({ view, handlers }: { view: BuildView; handlers: Build
             </button>
           </div>
         )}
+        {!approval && view.note && <p className="mt-1 text-[11px] leading-snug text-[var(--m-text-muted)]">{view.note}</p>}
       </div>
     );
   }
@@ -120,7 +158,10 @@ export function BuildCard({ view, handlers }: { view: BuildView; handlers: Build
   if (phase === "done") {
     return (
       <div>
-        <p className="truncate font-medium leading-snug">{t("companion.build.doneTitle", { name })}</p>
+        <div className="flex items-start gap-2">
+          <p className="min-w-0 flex-1 truncate font-medium leading-snug">{t("companion.build.doneTitle", { name })}</p>
+          <CloseButton label={t("companion.build.close")} onClick={handlers.onClose} />
+        </div>
         <div className="mb-1 flex items-center gap-1.5 text-[11px] text-[var(--m-text-faint)]">
           {where && <span className="min-w-0 truncate">{where}</span>}
           {where && view.liveUrl && <span aria-hidden>·</span>}
@@ -152,22 +193,25 @@ export function BuildCard({ view, handlers }: { view: BuildView; handlers: Build
 
   // failed, stopped, blocked
   const title =
-    phase === "stopped" ? t("companion.build.stoppedTitle", { name }) : phase === "failed" ? t("companion.build.failedTitle", { name }) : "";
+    phase === "stopped" ? t("companion.build.stoppedTitle", { name }) : phase === "failed" ? t("companion.build.failedTitle", { name }) : t("companion.build.blockedTitle");
   const body = phase === "stopped" ? (canOpenProject ? t("companion.build.stoppedHint") : "") : view.error ?? "";
   return (
     <div>
-      {title && <p className="font-medium leading-snug">{title}</p>}
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 font-medium leading-snug">{title}</p>
+        <CloseButton label={t("companion.build.close")} onClick={handlers.onClose} />
+      </div>
       {body && <p className="mb-2 max-h-[50px] overflow-y-auto whitespace-pre-wrap text-[12px] leading-snug">{body}</p>}
-      {(view.settingsHint || canOpenProject) && (
+      {(view.settingsPage || canOpenProject) && (
         <div className="flex flex-wrap gap-1.5">
-          {view.settingsHint && (
-            <button type="button" onClick={handlers.onOpenSettings} className={primary}>
+          {view.settingsPage && (
+            <button type="button" onClick={() => handlers.onOpenSettings(view.settingsPage!)} className={primary}>
               {t("companion.openSettings")}
             </button>
           )}
           {canOpenProject && (
             <>
-              <button type="button" onClick={handlers.onOpenFolder} className={view.settingsHint ? secondary : primary}>
+              <button type="button" onClick={handlers.onOpenFolder} className={view.settingsPage ? secondary : primary}>
                 {t("companion.build.openFolder")}
               </button>
               <button type="button" onClick={handlers.onOpenInMarven} className={secondary}>

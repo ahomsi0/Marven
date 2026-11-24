@@ -15,8 +15,10 @@ import { normalizeAgentSafetyProfile } from "@/lib/agent/safety";
 import {
   approvalSummary,
   extractLiveUrl,
+  packageScripts,
   plainSummary,
   progressLabel,
+  runsProjectCode,
   shouldAutoApprove,
   type ApprovalKind,
   type ProgressLabel,
@@ -28,6 +30,7 @@ import { loadMemories } from "@/lib/userProfile";
 import { chatErrorMessage, classifyProviderError, providerErrorMessage } from "@/lib/chatErrors";
 import { speak } from "@/lib/speak";
 import { loadGlobalMemories } from "@/hooks/useCompanionBrain";
+import type { CompanionSettingsPage } from "@/lib/companion/bridge";
 
 export type BuildPhase = "preparing" | "running" | "done" | "failed" | "stopped" | "blocked";
 
@@ -35,6 +38,10 @@ export interface BuildApproval {
   callId: string;
   kind: ApprovalKind;
   detail: string;
+  /** A command that runs code from the project (install hooks, scripts, files the Agent wrote). */
+  runsProjectCode: boolean;
+  /** The project's package.json scripts, when the command runs project code and there are any. */
+  scripts: string | null;
   /** The answer is on its way to the server. */
   sending: boolean;
 }
@@ -51,13 +58,15 @@ export interface BuildView {
   /** Something only the user may answer. */
   approval: BuildApproval | null;
   /** Another build was asked for while this one runs. */
-  conflict: { name: string } | null;
+  conflict: { request: string; name: string } | null;
   summary: string;
   liveUrl: string | null;
   /** Why it failed (or is blocked), in plain words. */
   error: string | null;
-  /** The error is fixed in Settings: offer to open them. */
-  settingsHint: boolean;
+  /** The Settings page that fixes the error, offered as a button. */
+  settingsPage: CompanionSettingsPage | null;
+  /** A short note under the progress line (e.g. an approval that timed out). */
+  note: string | null;
 }
 
 /** Why the bubble should come up: the host opens it (unfocused) and reacts. */
@@ -74,6 +83,8 @@ interface Options {
 const APPROVE_RETRIES = 8;
 const APPROVE_RETRY_MS = 250;
 const ERROR_DETAIL_MAX = 160;
+const NOTE_MS = 8000;
+const PACKAGE_JSON_MAX = 64_000;
 
 export const isBuildActive = (view: BuildView | null) => !!view && (view.phase === "preparing" || view.phase === "running");
 
@@ -99,8 +110,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * hasn't registered it yet, so that is retried; afterwards it means the
  * approval is gone (answered, timed out, or the run ended). True when accepted by the server.
  */
-async function postApproval(callId: string, accept: boolean, retries = 0): Promise<boolean> {
+async function postApproval(callId: string, accept: boolean, retries = 0, keepTrying: () => boolean = () => true): Promise<boolean> {
   for (let attempt = 0; ; attempt++) {
+    if (attempt > 0 && !keepTrying()) return false;
     try {
       const res = await fetch("/api/agent/approve", {
         method: "POST",
@@ -116,24 +128,41 @@ async function postApproval(callId: string, accept: boolean, retries = 0): Promi
   }
 }
 
+/** The project's package.json scripts, via the read-only file API (approved roots only; the active workspace is untouched). */
+async function readProjectScripts(root: string): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ root, path: "package.json" });
+    const res = await fetch(`/api/workspace/files/raw?${params}`);
+    if (!res.ok) return null;
+    const text = await res.text();
+    return text.length > PACKAGE_JSON_MAX ? null : packageScripts(text);
+  } catch {
+    return null;
+  }
+}
+
 /** Plain words for an `error` event from the Agent, and whether Settings fixes it. */
-function describeAgentError(event: Extract<AgentEvent, { type: "error" }>, provider: AIProvider, model: string): { message: string; settings: boolean } {
+function describeAgentError(
+  event: Extract<AgentEvent, { type: "error" }>,
+  provider: AIProvider,
+  model: string,
+): { message: string; settingsPage: CompanionSettingsPage | null } {
   switch (event.code) {
     case "workspace_not_set":
-      return { message: i18n.t("companion.build.error.workspace"), settings: false };
+      return { message: i18n.t("companion.build.error.workspace"), settingsPage: null };
     case "tools_not_supported":
-      return { message: i18n.t("companion.build.error.tools"), settings: true };
+      return { message: i18n.t("companion.build.error.tools"), settingsPage: "keys-ai" };
     case "max_iterations":
-      return { message: i18n.t("companion.build.error.steps"), settings: false };
+      return { message: i18n.t("companion.build.error.steps"), settingsPage: null };
     case "provider_error": {
       const err = { provider, model: model || undefined, message: event.message };
       const kind = classifyProviderError(err);
-      return { message: providerErrorMessage(err), settings: kind === "auth" || kind === "model" };
+      return { message: providerErrorMessage(err), settingsPage: kind === "auth" || kind === "model" ? "keys-ai" : null };
     }
     default:
       return {
         message: i18n.t("companion.build.error.unexpected", { detail: (event.message || event.code).slice(0, ERROR_DETAIL_MAX) }),
-        settings: false,
+        settingsPage: null,
       };
   }
 }
@@ -171,7 +200,7 @@ export function useCompanionBuild(options: Options) {
   const start = useCallback(
     async (request: string, name: string) => {
       if (isBuildActive(viewRef.current)) {
-        commit({ ...viewRef.current!, conflict: { name } });
+        commit({ ...viewRef.current!, conflict: { request, name } });
         optionsRef.current.onAttention("conflict");
         return;
       }
@@ -191,12 +220,13 @@ export function useCompanionBuild(options: Options) {
         summary: "",
         liveUrl: null,
         error: null,
-        settingsHint: false,
+        settingsPage: null,
+        note: null,
       });
 
-      const fail = (message: string, settingsHint = false, phase: BuildPhase = "failed") => {
+      const fail = (message: string, settingsPage: CompanionSettingsPage | null = null, phase: BuildPhase = "failed") => {
         if (runId !== runIdRef.current) return;
-        patch(runId, { phase, error: message, settingsHint, approval: null, conflict: null });
+        patch(runId, { phase, error: message, settingsPage, approval: null, conflict: null, note: null });
         optionsRef.current.onAttention(phase === "blocked" ? "blocked" : "failed");
       };
 
@@ -204,11 +234,16 @@ export function useCompanionBuild(options: Options) {
         // The user's real safety profile: read-only means no building at all.
         const settings = await readAgentSettings();
         if (!alive()) return;
-        const safetyProfile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
-        if (safetyProfile === "read-only") {
-          fail(i18n.t("companion.build.readOnly"), true, "blocked");
+        const userProfile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
+        if (userProfile === "read-only") {
+          fail(i18n.t("companion.build.readOnly"), "general", "blocked");
           return;
         }
+        // A background build never runs commands unattended: "trusted" becomes
+        // "ask-before-command" here, so every command (and git, fetch, MCP,
+        // global memory) still asks in the bubble. Writes inside the new folder
+        // are approved by shouldAutoApprove, so building stays hands-free.
+        const safetyProfile = userProfile === "trusted" ? "ask-before-command" : userProfile;
 
         const folderRes = await fetch("/api/workspace/new-project", {
           method: "POST",
@@ -219,7 +254,7 @@ export function useCompanionBuild(options: Options) {
         const folder = (await folderRes.json().catch(() => ({}))) as { root?: unknown; error?: unknown };
         if (!alive()) return;
         if (!folderRes.ok || typeof folder.root !== "string") {
-          if (folderRes.status === 400) fail(i18n.t("companion.build.error.folderSetting"), true);
+          if (folderRes.status === 400) fail(i18n.t("companion.build.error.folderSetting"), "mini-me");
           else fail(i18n.t("companion.build.error.folder", { detail: typeof folder.error === "string" ? folder.error : String(folderRes.status) }));
           return;
         }
@@ -278,7 +313,16 @@ export function useCompanionBuild(options: Options) {
             case "tool_result": {
               const liveUrl = extractLiveUrl(event.output);
               const changes: Partial<BuildView> = {};
-              if (current.approval?.callId === event.callId) changes.approval = null; // answered, or timed out on the server
+              if (current.approval?.callId === event.callId) {
+                changes.approval = null;
+                // Still on screen and unanswered: the server's 60 s timeout said no.
+                if (!current.approval.sending) {
+                  changes.note = i18n.t("companion.build.skipped");
+                  setTimeout(() => {
+                    if (viewRef.current?.note) patch(runId, { note: null });
+                  }, NOTE_MS);
+                }
+              }
               // The step is over; the model is thinking until its next call.
               changes.label = { key: "companion.build.step.next" };
               if (liveUrl) changes.liveUrl = liveUrl;
@@ -287,7 +331,7 @@ export function useCompanionBuild(options: Options) {
             }
             case "pending_approval": {
               if (shouldAutoApprove(event, root)) {
-                if (await postApproval(event.callId, true, APPROVE_RETRIES)) return;
+                if (await postApproval(event.callId, true, APPROVE_RETRIES, alive)) return;
                 if (!alive()) return;
                 // Couldn't answer it: fall through and let the user decide.
               }
@@ -295,7 +339,11 @@ export function useCompanionBuild(options: Options) {
                 void postApproval(event.callId, false); // plan mode is off; never expected
                 return;
               }
-              patch(runId, { approval: { callId: event.callId, ...approvalSummary(event), sending: false } });
+              const asked = approvalSummary(event);
+              const runsCode = asked.kind === "command" && runsProjectCode(asked.detail);
+              const scripts = runsCode ? await readProjectScripts(root) : null;
+              if (!alive()) return;
+              patch(runId, { approval: { callId: event.callId, ...asked, runsProjectCode: runsCode, scripts, sending: false }, note: null });
               optionsRef.current.onAttention("approval");
               return;
             }
@@ -313,8 +361,8 @@ export function useCompanionBuild(options: Options) {
               return;
             case "error": {
               finished = true;
-              const { message, settings: hint } = describeAgentError(event, provider, model);
-              fail(message, hint);
+              const { message, settingsPage } = describeAgentError(event, provider, model);
+              fail(message, settingsPage);
               return;
             }
             case "done": {
@@ -372,6 +420,14 @@ export function useCompanionBuild(options: Options) {
     [patch],
   );
 
+  /** "Stop and build <new>" on the still-building question. */
+  const switchTo = useCallback(() => {
+    const next = viewRef.current?.conflict;
+    if (!next) return;
+    stop();
+    void start(next.request, next.name);
+  }, [stop, start]);
+
   /** "Keep going" on the still-building question. */
   const keepGoing = useCallback(() => {
     if (viewRef.current?.conflict) commit({ ...viewRef.current, conflict: null });
@@ -388,5 +444,5 @@ export function useCompanionBuild(options: Options) {
     commit(null);
   }, [commit]);
 
-  return { view, start, stop, answer, keepGoing, clear };
+  return { view, start, stop, answer, keepGoing, switchTo, clear };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "@/types";
-import { approvalSummary, extractLiveUrl, isInsideRoot, plainSummary, progressLabel, shouldAutoApprove } from "./buildRun";
+import { approvalSummary, extractLiveUrl, isInsideRoot, packageScripts, plainSummary, progressLabel, runsProjectCode, shouldAutoApprove } from "./buildRun";
 
 const ROOT = "/Users/me/Marven Projects/cafe-menu";
 const WIN_ROOT = "C:\\Users\\me\\Marven Projects\\cafe-menu";
@@ -169,5 +169,68 @@ describe("extractLiveUrl", () => {
 describe("plainSummary", () => {
   it("drops markdown decoration and blank lines (the bubble is small)", () => {
     expect(plainSummary("## Done\n\n\n\nI made **index.html** with `styles.css`.\n")).toBe("Done\nI made index.html with styles.css.");
+  });
+});
+
+describe("runsProjectCode", () => {
+  it("spots commands that run code from the project", () => {
+    for (const cmd of [
+      "npm install",
+      "npm i",
+      "npm ci",
+      "npm run dev",
+      "npm start",
+      "npm test",
+      "pnpm install",
+      "pnpm dev",
+      "yarn",
+      "yarn install",
+      "yarn run build",
+      "bun install",
+      "bun run dev",
+      "npx vite",
+      "bunx serve",
+      "node server.js",
+      "python app.py",
+      "python3 manage.py runserver",
+      "sh setup.sh",
+      "bash ./build.sh",
+      "./run.sh",
+      "make",
+      "make build",
+      "cd app && npm install",
+      "NODE_ENV=production node index.js",
+      "ls; npm run build",
+    ]) {
+      expect(runsProjectCode(cmd), cmd).toBe(true);
+    }
+  });
+
+  it("leaves other commands alone", () => {
+    for (const cmd of ["ls -la", "mkdir css", "node -v", "node --version", "python -m http.server 8000", "npm -v", "git status", "cat package.json", "echo make", "", "   "]) {
+      expect(runsProjectCode(cmd), cmd).toBe(false);
+    }
+  });
+});
+
+describe("packageScripts", () => {
+  it("lists the scripts block as name: command lines", () => {
+    const pkg = JSON.stringify({ name: "x", scripts: { dev: "vite", build: "vite build", postinstall: "node evil.js" } });
+    expect(packageScripts(pkg)).toBe("dev: vite\nbuild: vite build\npostinstall: node evil.js");
+  });
+
+  it("is null without usable scripts", () => {
+    expect(packageScripts("{}")).toBeNull();
+    expect(packageScripts(JSON.stringify({ scripts: {} }))).toBeNull();
+    expect(packageScripts(JSON.stringify({ scripts: ["a"] }))).toBeNull();
+    expect(packageScripts("not json")).toBeNull();
+    expect(packageScripts(JSON.stringify({ scripts: { a: 1 } }))).toBeNull();
+  });
+
+  it("caps very long lists", () => {
+    const scripts = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`s${i}`, "x"]));
+    const out = packageScripts(JSON.stringify({ scripts }))!;
+    expect(out.split("\n").length).toBe(31);
+    expect(out.endsWith("…")).toBe(true);
   });
 });

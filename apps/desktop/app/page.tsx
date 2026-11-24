@@ -1623,7 +1623,10 @@ export default function Home() {
       setConversations((prev) => [...prev, conv]);
       setActiveConversationId(conv.id);
     });
-    const offSettings = electron.onCompanionOpenSettings(() => openSettingsPage({ page: "keys-ai" }));
+    const offSettings = electron.onCompanionOpenSettings((payload: { page?: unknown } | null) => {
+      const page = payload?.page;
+      openSettingsPage({ page: page === "general" || page === "mini-me" ? page : "keys-ai" });
+    });
     return () => {
       offThread?.();
       offSettings?.();

@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, projectPathInside, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -67,51 +67,73 @@ describe("sanitizeOpenMode", () => {
   });
 });
 
-describe("projectPathInside", () => {
+describe("projectFolderInside", () => {
   const home = "/Users/me";
   const identity = (p: string) => p;
-  const deps = { home, realpath: identity };
+  const dir = { isDirectory: () => true, isSymbolicLink: () => false };
+  const file = { isDirectory: () => false, isSymbolicLink: () => false };
+  const link = { isDirectory: () => false, isSymbolicLink: () => true };
+  const deps = { home, realpath: identity, lstat: () => dir };
 
-  it("returns the real path of a folder inside the projects dir", () => {
-    expect(projectPathInside("/Users/me/Marven Projects/cafe-menu", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
-    expect(projectPathInside("/Users/me/Marven Projects/cafe-menu/index.html", "/Users/me/Marven Projects", deps)).toBe(
-      "/Users/me/Marven Projects/cafe-menu/index.html",
-    );
+  it("returns the real path of a project folder directly inside the projects dir", () => {
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu/", "/Users/me/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
+  });
+
+  it("refuses files and anything deeper than a direct child", () => {
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu/index.html", "/Users/me/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu/src", "/Users/me/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/notes.txt", "~/Marven Projects", { ...deps, lstat: () => file })).toBeNull();
+  });
+
+  it("refuses a symlink, even one pointing at a folder inside", () => {
+    expect(projectFolderInside("/Users/me/Marven Projects/shortcut", "~/Marven Projects", { ...deps, lstat: () => link })).toBeNull();
+  });
+
+  it("refuses bundle-like names that macOS would launch", () => {
+    for (const name of ["Evil.app", "x.bundle", "run.command", "a.tool", "b.workflow", "c.terminal", "d.pkg", "e.mpkg", "f.webloc", "G.APP"]) {
+      expect(projectFolderInside(`/Users/me/Marven Projects/${name}`, "~/Marven Projects", deps), name).toBeNull();
+    }
+    expect(projectFolderInside("/Users/me/Marven Projects/my-app", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/my-app");
   });
 
   it("falls back to the default projects dir when the setting is empty", () => {
-    expect(projectPathInside("/Users/me/Marven Projects/x", "", deps)).toBe("/Users/me/Marven Projects/x");
-    expect(projectPathInside("/Users/me/Marven Projects/x", undefined, deps)).toBe("/Users/me/Marven Projects/x");
+    expect(projectFolderInside("/Users/me/Marven Projects/x", "", deps)).toBe("/Users/me/Marven Projects/x");
+    expect(projectFolderInside("/Users/me/Marven Projects/x", undefined, deps)).toBe("/Users/me/Marven Projects/x");
   });
 
   it("rejects the projects dir itself, siblings, escapes and non-strings", () => {
-    expect(projectPathInside("/Users/me/Marven Projects", "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside("/Users/me/Marven Projects-2/x", "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside("/Users/me/Marven Projects/../.ssh", "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside("/etc", "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside("Marven Projects/x", "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside(42, "~/Marven Projects", deps)).toBeNull();
-    expect(projectPathInside("/Users/me/Marven Projects/a\u0000b", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects-2/x", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/../.ssh", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/etc", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("Marven Projects/x", "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside(42, "~/Marven Projects", deps)).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/a\u0000b", "~/Marven Projects", deps)).toBeNull();
   });
 
   it("returns null when the path doesn't exist", () => {
-    const realpath = () => {
+    const missing = () => {
       throw new Error("ENOENT");
     };
-    expect(projectPathInside("/Users/me/Marven Projects/x", "~/Marven Projects", { home, realpath })).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/x", "~/Marven Projects", { home, realpath: missing, lstat: () => dir })).toBeNull();
+    expect(projectFolderInside("/Users/me/Marven Projects/x", "~/Marven Projects", { home, realpath: identity, lstat: missing })).toBeNull();
   });
 
-  it("follows symlinks, so a link out of the projects dir is refused", () => {
+  it("on a real disk: a folder passes; a file, a nested folder and a symlink out are refused", () => {
     const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "minime-guard-")));
     try {
       const projects = path.join(tmp, "projects");
       const outside = path.join(tmp, "outside");
-      fs.mkdirSync(path.join(projects, "real"), { recursive: true });
+      fs.mkdirSync(path.join(projects, "real", "src"), { recursive: true });
+      fs.writeFileSync(path.join(projects, "real", "index.html"), "x");
       fs.mkdirSync(outside);
       fs.symlinkSync(outside, path.join(projects, "link"));
-      const real = { home: tmp, realpath: fs.realpathSync };
-      expect(projectPathInside(path.join(projects, "real"), projects, real)).toBe(path.join(projects, "real"));
-      expect(projectPathInside(path.join(projects, "link"), projects, real)).toBeNull();
+      const real = { home: tmp, realpath: fs.realpathSync, lstat: fs.lstatSync };
+      expect(projectFolderInside(path.join(projects, "real"), projects, real)).toBe(path.join(projects, "real"));
+      expect(projectFolderInside(path.join(projects, "real", "index.html"), projects, real)).toBeNull();
+      expect(projectFolderInside(path.join(projects, "real", "src"), projects, real)).toBeNull();
+      expect(projectFolderInside(path.join(projects, "link"), projects, real)).toBeNull();
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -133,5 +155,16 @@ describe("isLoopbackHttpUrl", () => {
     expect(isLoopbackHttpUrl("http://user:pw@localhost:3000")).toBe(false);
     expect(isLoopbackHttpUrl(42)).toBe(false);
     expect(isLoopbackHttpUrl("x".repeat(3000))).toBe(false);
+  });
+});
+
+describe("sanitizeSettingsPage", () => {
+  it("passes the pages Mini Me may open and falls back to keys-ai", () => {
+    expect(sanitizeSettingsPage("general")).toBe("general");
+    expect(sanitizeSettingsPage("mini-me")).toBe("mini-me");
+    expect(sanitizeSettingsPage("keys-ai")).toBe("keys-ai");
+    expect(sanitizeSettingsPage(undefined)).toBe("keys-ai");
+    expect(sanitizeSettingsPage("about")).toBe("keys-ai");
+    expect(sanitizeSettingsPage({ page: "general" })).toBe("keys-ai");
   });
 });

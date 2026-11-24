@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     openPath: (target) => ipcRenderer.invoke('companion:open-path', target),
     openUrl: (url) => ipcRenderer.invoke('companion:open-url', url),
     readClipboard: () => ipcRenderer.invoke('companion:read-clipboard'),
-    openSettings: () => ipcRenderer.send('companion:open-settings'),
+    openSettings: (page) => ipcRenderer.send('companion:open-settings', page),
     onPosition: subscribe('companion:position'),
     onOpenInput: subscribe('companion:open-input'),
     onListen: subscribe('companion:listen'),
