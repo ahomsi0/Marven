@@ -32,6 +32,15 @@
 | `app/api/tts/route.ts` | System voice and ElevenLabs TTS route |
 | `lib/agent/tools.ts` | Agent tool definitions and execution |
 | `lib/index/` | Local semantic codebase index |
+| `electron/companion.js` | Mini Me window: lifecycle, walking, drag/drop, hotkey, sender-checked IPC, position saves |
+| `electron/companionPreload.js` | Mini Me's minimal preload (`getSettings`, `companion.*` only) |
+| `electron/companionPlacement.js` | Pure Mini Me geometry: dock strip, clamping, window size per art style |
+| `app/companion/` | Mini Me page: sprite player, speech bubble, pointer/click-through handling |
+| `hooks/useCompanionBrain.ts` | Runs a Mini Me request (timer / clipboard / Agent hand-off / `/api/chat`), streams and speaks the reply |
+| `lib/companion/` | Mini Me behaviour state machine, routing and personas, look, palette, compositor and art data (`art/*.json`) |
+| `app/components/marven/minime/` | Settings → Mini Me page and appearance editor |
+| `scripts/mini-me-art/` | The art generator: edit poses there and regenerate `lib/companion/art/*.json` (see its README) |
+| `app/components/marven/Dropdown.tsx` | Shared custom dropdown used across Settings |
 
 ## Verification
 

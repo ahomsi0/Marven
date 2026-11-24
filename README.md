@@ -111,6 +111,13 @@ If full privacy matters, use a local provider (Ollama, LM Studio, or llama-serve
 - Speech output can use either the system voice or ElevenLabs in **Settings → General → Speech output**. ElevenLabs sends reply text to ElevenLabs and falls back to the system voice if unavailable.
 - Wake listener pauses automatically while Marven is speaking, so the mic doesn't pick up the TTS audio and re-trigger itself.
 
+### Mini Me (desktop companion)
+- A **pixel-art mini you** that lives above the Dock in its own transparent window: it walks, looks around, sits when you leave it alone and naps after a while. Drag it anywhere; double-click sends it home
+- **Click it or press ⌘⇧Space** and tell it what to do. It answers in a speech bubble (and out loud if you like) using your chat model, opens apps and sites, sets timers and reads your clipboard. Shell, file and browsing jobs are handed to the Agent, which asks before acting
+- Optional **"Hey Marven"** wake word while it's on screen; ⌘⇧M listens through Mini Me when it's showing
+- **Settings → Customization → Mini Me**: three hand-drawn art styles (Chibi, Chibi mini, Detailed) with hair styles, colours, glasses and beard and a live animated preview; activity level (Lively / Calm / Stays put), walk speed, size, nap timer, personality (Playful / Neutral / Detailed) and the shortcut
+- Runs in a locked-down window with its own minimal preload: it can only reach the app's own `/companion` page
+
 ### System
 - **Light + dark themes** with theme-tracked CSS variables
 - **English and Arabic interface** — switch the app language in Settings, with right-to-left layout throughout

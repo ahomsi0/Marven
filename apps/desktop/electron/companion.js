@@ -22,6 +22,13 @@ function placementDisplays() {
   return screen.getAllDisplays().map((d) => ({ id: d.id, workArea: d.workArea }));
 }
 
+/** The window size for the saved size step and the look's art style (validated in companionPlacement). */
+const windowSizeFor = (s) => placement.windowSize(
+  s.miniMeScale,
+  s.miniMeLook && typeof s.miniMeLook === 'object' ? s.miniMeLook.artStyle : undefined,
+);
+const sameSize = (a, b) => a.width === b.width && a.height === b.height;
+
 /**
  * @param {{
  *   appPort: number,
@@ -30,13 +37,6 @@ function placementDisplays() {
  *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, unavailable: boolean, wakeWord: boolean }) => void,
  * }} options
  */
-/** The window size for the saved size step and the look's art style (validated in companionPlacement). */
-const windowSizeFor = (s) => placement.windowSize(
-  s.miniMeScale,
-  s.miniMeLook && typeof s.miniMeLook === 'object' ? s.miniMeLook.artStyle : undefined,
-);
-const sameSize = (a, b) => a.width === b.width && a.height === b.height;
-
 function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange }) {
   let win = null;
   let settings = {};
