@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import type { AIProvider } from "@/types";
 import { CheckIcon, CloudIcon, HexagonIcon } from "./Icons";
 import { useT } from "@/lib/i18n";
 import { CLOUD_PROVIDERS, LOCAL_PROVIDERS, useProviderModels } from "@/hooks/useProviderModels";
+import { fitMenu } from "@/lib/menuFit";
+
+const MENU_WIDTH = 420;
 
 // Re-export so InputBar can keep the same import path for shortModelName
 export function shortModelName(name: string): string {
@@ -73,6 +76,22 @@ export function ModelSelector({
     loadModels(p);
   }
 
+  // Fit the menu to the window: up to MENU_WIDTH wide, and shifted toward the
+  // start side when the picker sits near the far edge (a narrow Agent panel
+  // clipped the model list). Works in RTL via margin-inline-start.
+  const [menuFit, setMenuFit] = useState<{ width: number; shift: number }>({ width: MENU_WIDTH, shift: 0 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = ref.current;
+      if (!el) return;
+      setMenuFit(fitMenu(el.getBoundingClientRect(), window.innerWidth, MENU_WIDTH, getComputedStyle(el).direction === "rtl"));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open]);
+
   // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
@@ -114,11 +133,14 @@ export function ModelSelector({
         aria-haspopup="dialog"
         aria-expanded={open}
         title={t("input.modelPicker")}
-        className="flex min-w-0 max-w-[240px] items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-all hover:bg-[var(--m-surface-3)]"
+        className="flex min-w-0 max-w-[240px] items-center gap-1 overflow-hidden rounded-md px-1.5 py-1 text-[11px] transition-all hover:bg-[var(--m-surface-3)]"
       >
-        <span className={`shrink-0 text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
+        {/* When space is tight both labels truncate, the provider ~4x faster
+            than the model so the model name is the last to go. The button
+            clips (overflow-hidden) so nothing can spill under the Lite badge. */}
+        <span className={`min-w-0 shrink-[4] truncate text-start font-medium ${KIND_TEXT[providerKind(provider)]}`}>{PROVIDER_LABELS[provider]}</span>
         <span className="shrink-0 text-[var(--m-text-faint)]">·</span>
-        <span className="min-w-0 flex-1 truncate text-start text-[var(--m-text-muted)]">
+        <span className="min-w-0 truncate text-start text-[var(--m-text-muted)]">
           {selectedModel ? shortModelName(selectedModel) : "—"}
         </span>
         <svg className={`ms-auto h-2.5 w-2.5 shrink-0 text-[var(--m-text-faint)] transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -130,7 +152,8 @@ export function ModelSelector({
         <div
           role="dialog"
           aria-label={t("input.modelPicker")}
-          className={`${popoverPos} z-50 flex h-[280px] w-[420px] overflow-hidden rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] shadow-2xl`}
+          style={{ width: menuFit.width, marginInlineStart: -menuFit.shift }}
+          className={`${popoverPos} z-50 flex h-[280px] overflow-hidden rounded-xl border border-[var(--m-border)] bg-[var(--m-surface-2)] shadow-2xl`}
         >
           {groups.length === 0 ? (
             <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-[var(--m-text-muted)]">
