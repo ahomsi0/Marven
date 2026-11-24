@@ -104,7 +104,9 @@ export function ModelSelector({
     // min-w-0 on both: as a flex item the picker must be able to shrink below
     // its label's width, or a long model name pushes the row's buttons (Send)
     // out of a narrow panel instead of truncating.
-    <div ref={ref} className="relative min-w-0">
+    // `flex` too: a <button> sizes to its content rather than filling a block
+    // parent, so without a flex wrapper it overflowed under the Lite badge.
+    <div ref={ref} className="relative flex min-w-0">
       {/* Trigger pill — sized to its label, capped so long model names truncate */}
       <button
         type="button"
