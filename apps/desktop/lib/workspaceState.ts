@@ -17,12 +17,15 @@
 
 import path from "path";
 
-let activeWorkspaceRoot: string | null = null;
-
 type WorkspaceRegistry = Set<string>;
 
+// The active root lives on globalThis for the same reason as the registry:
+// a module-scoped variable is per-copy, so a PATCH served by one copy of this
+// module was invisible to a GET served by another, and the file tree of a
+// just-opened folder came back empty.
 const g = globalThis as typeof globalThis & {
   __marvenWorkspaceRoots?: WorkspaceRegistry;
+  __marvenActiveWorkspaceRoot?: string | null;
 };
 
 function registry(): WorkspaceRegistry {
@@ -35,7 +38,7 @@ function normalizeRoot(root: string): string {
 }
 
 export function getActiveWorkspaceRoot(): string | null {
-  return activeWorkspaceRoot;
+  return g.__marvenActiveWorkspaceRoot ?? null;
 }
 
 /**
@@ -49,12 +52,13 @@ export function approveWorkspaceRoot(root: string): void {
 }
 
 export function setActiveWorkspaceRoot(root: string | null): void {
-  activeWorkspaceRoot = root ? normalizeRoot(root) : null;
-  if (activeWorkspaceRoot) {
+  const next = root ? normalizeRoot(root) : null;
+  g.__marvenActiveWorkspaceRoot = next;
+  if (next) {
     // The PATCH endpoint is the only place the renderer legitimately announces
     // a workspace (after the user picked it in the native dialog), and it goes
     // through here — so registering on set keeps every flow working.
-    registry().add(activeWorkspaceRoot);
+    registry().add(next);
   }
 }
 

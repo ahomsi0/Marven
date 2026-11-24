@@ -912,11 +912,24 @@ export default function Home() {
     });
   }, [activeTabIndex]);
 
+  // Latest file list and loader, for the watcher callback below (which is
+  // created once per workspace and would otherwise see stale values).
+  const workspaceFilesRef = useRef(workspaceFiles);
+  workspaceFilesRef.current = workspaceFiles;
+  const loadWorkspaceFilesRef = useRef(loadWorkspaceFiles);
+  loadWorkspaceFilesRef.current = loadWorkspaceFiles;
+
   const flushPendingWatchPaths = useCallback(() => {
     const root = workspaceRoot;
     if (!root) return;
     const paths = [...pendingWatchPathsRef.current];
     pendingWatchPathsRef.current.clear();
+    // A path the tree doesn't know yet means something was created outside
+    // the editor (Mini Me's builds, a terminal, another app): refresh the tree.
+    const known = new Set(workspaceFilesRef.current.map((f) => f.path));
+    if (paths.some((p) => !known.has(p.replace(/\\/g, "/")) && !ignoreWorkspaceEventsRef.current.has(p.replace(/\\/g, "/")))) {
+      loadWorkspaceFilesRef.current(root).catch(() => {});
+    }
     for (const relRaw of paths) {
       const norm = relRaw.replace(/\\/g, "/");
       if (ignoreWorkspaceEventsRef.current.has(norm)) continue;
@@ -1084,18 +1097,22 @@ export default function Home() {
     return first;
   }
 
-  async function loadWorkspaceFiles() {
+  // `rootHint` is the folder the caller just opened: right after
+  // setWorkspaceRoot() this closure still sees the previous root, so the
+  // recovery below would otherwise have nothing to re-announce.
+  async function loadWorkspaceFiles(rootHint?: string) {
+    const knownRoot = rootHint ?? workspaceRoot;
     let res = await fetch("/api/workspace/files");
     let data = await res.json();
 
     // If the server forgot the workspace root (e.g. dev-mode hot reload) but the
     // client still knows it, re-set it server-side and refetch. Keeps the agent
     // workspace from collapsing back to the landing page after agent writes.
-    if (!data.root && workspaceRoot) {
+    if (!data.root && knownRoot) {
       await fetch("/api/workspace/files", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: workspaceRoot }),
+        body: JSON.stringify({ root: knownRoot }),
       });
       res = await fetch("/api/workspace/files");
       data = await res.json();
@@ -1392,7 +1409,7 @@ export default function Home() {
     });
     if (res.ok) {
       setWorkspaceRoot(folderPath);
-      await loadWorkspaceFiles();
+      await loadWorkspaceFiles(folderPath);
       setRecentWorkspaces((prev) => {
         const next = [folderPath, ...prev.filter((p) => p !== folderPath)].slice(0, 25);
         try { localStorage.setItem("marven-recent-workspaces", JSON.stringify(next)); } catch {}
