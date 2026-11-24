@@ -82,12 +82,15 @@ function defaultPosition(primary, size) {
   return { x: Math.max(strip.minX, strip.maxX - 40), y: strip.y, displayId: primary.id };
 }
 
-function restorePosition(saved, displays, primaryId, size) {
+/** With `dockOnly` ("fall back to the Dock" mode) a saved spot off the Dock strip is snapped onto it, same x. */
+function restorePosition(saved, displays, primaryId, size, { dockOnly = false } = {}) {
   const primary = displays.find((d) => d.id === primaryId) || displays[0];
   if (!saved || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) return defaultPosition(primary, size);
   const display = displays.find((d) => d.id === saved.displayId);
   if (!display) return defaultPosition(primary, size);
-  return { ...clampToWorkArea({ x: saved.x, y: saved.y, ...size }, display.workArea), displayId: display.id };
+  const pos = clampToWorkArea({ x: saved.x, y: saved.y, ...size }, display.workArea);
+  if (dockOnly) pos.y = dockStrip(display.workArea, size).y;
+  return { ...pos, displayId: display.id };
 }
 
 function stepToward(current, target, maxStep) {

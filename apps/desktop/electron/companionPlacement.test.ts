@@ -23,6 +23,7 @@ const P = require("./companionPlacement") as {
     displays: Display[],
     primaryId: number,
     size: { width: number; height: number },
+    options?: { dockOnly?: boolean },
   ) => { x: number; y: number; displayId: number };
   stepToward: (current: number, target: number, maxStep: number) => number;
 };
@@ -94,6 +95,17 @@ describe("restorePosition", () => {
   });
   it("restores and clamps a saved position", () => {
     expect(P.restorePosition({ x: 5000, y: 100, displayId: 2 }, [laptop, external], 1, size)).toEqual({ x: 3000, y: 100, displayId: 2 });
+  });
+});
+
+describe("restorePosition with dockOnly", () => {
+  it("snaps an off-Dock saved spot onto the strip, same x, clamped", () => {
+    expect(P.restorePosition({ x: 300, y: 100, displayId: 1 }, [laptop, external], 1, size, { dockOnly: true })).toEqual({ x: 300, y: 545, displayId: 1 });
+    expect(P.restorePosition({ x: 5000, y: 100, displayId: 2 }, [laptop, external], 1, size, { dockOnly: true })).toEqual({ x: 3000, y: P.dockStrip(external.workArea, size).y, displayId: 2 });
+  });
+  it("leaves the spot alone without dockOnly, and falls back to the default for a missing display", () => {
+    expect(P.restorePosition({ x: 300, y: 100, displayId: 1 }, [laptop], 1, size).y).toBe(100);
+    expect(P.restorePosition({ x: 300, y: 100, displayId: 9 }, [laptop], 1, size, { dockOnly: true })).toEqual(P.restorePosition(null, [laptop], 1, size));
   });
 });
 

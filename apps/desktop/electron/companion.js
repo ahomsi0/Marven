@@ -202,7 +202,9 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
 
   function create() {
     size = windowSizeFor(settings);
-    const pos = placement.restorePosition(settings.miniMePosition, placementDisplays(), screen.getPrimaryDisplay().id, size);
+    const pos = placement.restorePosition(settings.miniMePosition, placementDisplays(), screen.getPrimaryDisplay().id, size, {
+      dockOnly: placement.dropMode(settings.miniMeDrop) === 'dock',
+    });
     const w = new BrowserWindow({
       ...size,
       x: pos.x,
