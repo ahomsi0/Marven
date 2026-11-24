@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  BUILD_RULE,
   PERSONAS,
+  looksLikeBuildMarkerPrefix,
+  parseBuildMarker,
+  resolveChatReply,
   HISTORY_KEY,
   appendHistory,
   buildCompanionPrompt,
@@ -157,20 +161,20 @@ describe("projectSlug (re-export)", () => {
 
 describe("buildCompanionPrompt", () => {
   it("adds the persona after the base prompt", () => {
-    expect(buildCompanionPrompt("BASE", "")).toBe(`BASE\n\n${PERSONAS.playful}`);
+    expect(buildCompanionPrompt("BASE", "")).toBe(`BASE\n\n${PERSONAS.playful}\n\n${BUILD_RULE}`);
   });
   it("uses the playful persona when asked for it explicitly", () => {
-    expect(buildCompanionPrompt("BASE", "", "playful")).toBe(`BASE\n\n${PERSONAS.playful}`);
+    expect(buildCompanionPrompt("BASE", "", "playful")).toBe(`BASE\n\n${PERSONAS.playful}\n\n${BUILD_RULE}`);
   });
   it("uses the neutral persona", () => {
     const prompt = buildCompanionPrompt("BASE", "", "neutral");
-    expect(prompt).toBe(`BASE\n\n${PERSONAS.neutral}`);
+    expect(prompt).toBe(`BASE\n\n${PERSONAS.neutral}\n\n${BUILD_RULE}`);
     expect(PERSONAS.neutral).toContain("1–3 short, plain sentences");
     expect(prompt).not.toContain(PERSONAS.playful);
   });
   it("uses the detailed persona", () => {
     const prompt = buildCompanionPrompt("BASE", "", "detailed");
-    expect(prompt).toBe(`BASE\n\n${PERSONAS.detailed}`);
+    expect(prompt).toBe(`BASE\n\n${PERSONAS.detailed}\n\n${BUILD_RULE}`);
     expect(PERSONAS.detailed).toContain("complete, well-organised answers");
   });
   it("applies custom instructions with any personality", () => {
@@ -206,5 +210,44 @@ describe("history", () => {
     expect(loadHistory({ getItem: () => JSON.stringify({ a: 1 }) })).toEqual([]);
     const mixed = JSON.stringify([{ role: "user", content: "ok" }, { role: "system", content: "x" }, { role: "user" }]);
     expect(loadHistory({ getItem: (k: string) => (k === HISTORY_KEY ? mixed : null) })).toEqual([{ role: "user", content: "ok" }]);
+  });
+});
+
+describe("build marker", () => {
+  it("parses the marker in its variants", () => {
+    expect(parseBuildMarker("[[BUILD: ahmad homsi site]]")).toEqual({ name: "ahmad homsi site" });
+    expect(parseBuildMarker("[[build:  Cafe Menu  ]]")).toEqual({ name: "Cafe Menu" });
+    expect(parseBuildMarker("   \n[[Build: snake game]]")).toEqual({ name: "snake game" });
+    expect(parseBuildMarker("```\n[[BUILD: todo app]]\n```")).toEqual({ name: "todo app" });
+    expect(parseBuildMarker("```text\n[[BUILD: todo app]]")).toEqual({ name: "todo app" });
+    expect(parseBuildMarker('"[[BUILD: portfolio]]"')).toEqual({ name: "portfolio" });
+    expect(parseBuildMarker("`[[BUILD: quiz]]`")).toEqual({ name: "quiz" });
+  });
+  it("ignores mid-text, empty and malformed markers", () => {
+    expect(parseBuildMarker("Sure! [[BUILD: site]]")).toBeNull();
+    expect(parseBuildMarker("[[BUILD: ]]")).toBeNull();
+    expect(parseBuildMarker("[[BUILD:]]")).toBeNull();
+    expect(parseBuildMarker("[[BUILD: site")).toBeNull();
+    expect(parseBuildMarker("hello")).toBeNull();
+  });
+  it("detects a streaming prefix", () => {
+    for (const p of ["", "[", "[[", "[[B", "[[build", "[[BUILD:", "[[BUILD: caf", "[[BUILD: cafe]", "[[BUILD: cafe]]", " ```\n[[BU"]) {
+      expect(looksLikeBuildMarkerPrefix(p)).toBe(true);
+    }
+    for (const p of ["Hello", "[1] item", "[[X", "Sure [[BUILD", "[[BUILD: a\nb"]) {
+      expect(looksLikeBuildMarkerPrefix(p)).toBe(false);
+    }
+  });
+  it("puts the rule in every personality's prompt, and omits it when build is disabled", () => {
+    for (const p of ["playful", "neutral", "detailed"] as const) {
+      expect(buildCompanionPrompt("base", "", p)).toContain("[[BUILD:");
+      expect(buildCompanionPrompt("base", "be brief", p)).toContain(BUILD_RULE);
+      expect(buildCompanionPrompt("base", "", p, { allowBuild: false })).not.toContain("BUILD");
+    }
+  });
+  it("resolves a finished reply", () => {
+    expect(resolveChatReply("[[BUILD: site]]", true)).toEqual({ kind: "build", name: "site" });
+    expect(resolveChatReply("[[BUILD: site]]", false)).toEqual({ kind: "text", text: "" });
+    expect(resolveChatReply("Hi there", true)).toEqual({ kind: "text", text: "Hi there" });
   });
 });

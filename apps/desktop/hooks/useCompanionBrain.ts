@@ -19,6 +19,9 @@ import { getCompanionBridge, type CompanionSettingsPage } from "@/lib/companion/
 import {
   appendHistory,
   buildCompanionPrompt,
+  looksLikeBuildMarkerPrefix,
+  resolveChatReply,
+  stripBuildMarker,
   type Personality,
   loadHistory,
   routeInput,
@@ -210,6 +213,8 @@ export function useCompanionBrain(options: Options) {
         prompt = clipboardPrompt(route.action, clip);
       }
 
+      // The model may answer a project request with [[BUILD: name]]; only on plain chat that hasn't opted out.
+      const markerEnabled = route.kind === "chat" && !sendOpts?.skipBuild;
       emit("thinking");
       show("", null, false);
       const provider = loadChatProvider() ?? "groq";
@@ -226,7 +231,7 @@ export function useCompanionBrain(options: Options) {
         messages: [...historyRef.current, { role: "user", content: prompt }],
         model,
         provider,
-        systemPrompt: buildCompanionPrompt(base, custom, optionsRef.current.personality),
+        systemPrompt: buildCompanionPrompt(base, custom, optionsRef.current.personality, { allowBuild: markerEnabled }),
         allowCommands: route.kind === "command",
         commandText: text,
       };
@@ -256,6 +261,7 @@ export function useCompanionBrain(options: Options) {
           if (done) break;
           rawText += decoder.decode(value, { stream: true });
           const { text: partial } = parseChatStream(rawText);
+          if (markerEnabled && looksLikeBuildMarkerPrefix(partial)) continue;
           if (partial && !talking) {
             talking = true;
             emit("talking");
@@ -265,9 +271,10 @@ export function useCompanionBrain(options: Options) {
       } catch (readErr) {
         if (controller.signal.aborted) return;
         const { text: partial } = parseChatStream(rawText);
+        const shown = markerEnabled && looksLikeBuildMarkerPrefix(partial) ? "" : stripBuildMarker(partial);
         fail(
-          partial.trim()
-            ? `${partial}\n\n${tRef.current("companion.droppedNote")}`
+          shown.trim()
+            ? `${shown}\n\n${tRef.current("companion.droppedNote")}`
             : chatErrorMessage(new ChatStreamInterruptedError(readErr)),
           "retry",
         );
@@ -280,11 +287,21 @@ export function useCompanionBrain(options: Options) {
         fail(full ? `${full}\n\n${why}` : why, "retry");
         return;
       }
-      if (!full.trim()) {
+      const resolved = resolveChatReply(full, markerEnabled);
+      if (resolved.kind === "build") {
+        // Same bubble as the phrase route; the marker is never spoken or remembered.
+        const ask = tRef.current("companion.buildAsk");
+        setReply({ text: ask, action: "build-choice", done: true, build: { request: text, name: resolved.name } });
+        emit("talking");
+        say(ask);
+        setBusy(false);
+        return;
+      }
+      if (!resolved.text) {
         fail(tRef.current("companion.emptyReply"), "retry");
         return;
       }
-      succeed(full);
+      succeed(resolved.text);
     } catch (err) {
       if (controller.signal.aborted) return;
       fail(chatErrorMessage(err), "retry");

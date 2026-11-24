@@ -102,9 +102,47 @@ export const PERSONAS: Record<Personality, string> = {
     "You are Mini Me, a small assistant that lives on the user's screen. Give complete, well-organised answers when the question needs it; keep simple answers short. Avoid long preambles.",
 };
 
-/** Marven's base prompt plus the Mini Me persona, with the user's custom instructions first and last (as the main chat does). */
-export function buildCompanionPrompt(base: string, extra: string, personality: Personality = "playful"): string {
-  const withPersona = `${base}\n\n${PERSONAS[personality] ?? PERSONAS.playful}`;
+/** Tells the model to hand project requests to the build flow instead of writing code in the bubble. */
+export const BUILD_RULE =
+  "If the user asks you to create, build or make something that would be a project of files (a website, web page, app, game, tool, script, menu page, portfolio and similar), do not write the code or explain how to. Reply with exactly [[BUILD: <a short 2-4 word name for it>]] and nothing else. If they clearly only want text (a poem, an email, a list, an explanation), answer normally.";
+
+const MARKER_LEAD = String.raw`(?:\s|\u0060{1,3}[a-z]*|["'\u201c\u201d\u2018\u2019>*])*`;
+const BUILD_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*build\s*:([^\]\n]*)\]\]`, "i");
+const BUILD_MARKER_PREFIX = new RegExp(
+  String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:b(?:u(?:i(?:l(?:d(?:\s*(?::[^\]\n]*\]?)?)?)?)?)?)?)?)?$`,
+  "i",
+);
+
+/** A reply that starts with [[BUILD: name]] (fences and quotes tolerated) asks Mini Me to offer a build; markers after real content don't count. */
+export function parseBuildMarker(text: string): { name: string } | null {
+  const m = BUILD_MARKER.exec(text);
+  const name = m?.[1].trim().slice(0, 60).trim();
+  return name ? { name } : null;
+}
+
+/** True while streamed text could still turn into a build marker, so it is held back from the bubble. */
+export function looksLikeBuildMarkerPrefix(partial: string): boolean {
+  return partial.trim() === "" || BUILD_MARKER_PREFIX.test(partial) || parseBuildMarker(partial) !== null;
+}
+
+/** The text with a leading build marker removed. */
+export function stripBuildMarker(text: string): string {
+  return text.replace(BUILD_MARKER, "").trim();
+}
+
+/** What to do with a finished chat reply: offer a build, or show the text (with any stray marker removed). */
+export function resolveChatReply(full: string, buildEnabled: boolean): { kind: "build"; name: string } | { kind: "text"; text: string } {
+  if (buildEnabled) {
+    const marker = parseBuildMarker(full);
+    if (marker) return { kind: "build", name: marker.name };
+  }
+  return { kind: "text", text: stripBuildMarker(full) };
+}
+
+/** Marven's base prompt plus the Mini Me persona (and the build rule unless `allowBuild` is false), with the user's custom instructions first and last (as the main chat does). */
+export function buildCompanionPrompt(base: string, extra: string, personality: Personality = "playful", opts: { allowBuild?: boolean } = {}): string {
+  const persona = PERSONAS[personality] ?? PERSONAS.playful;
+  const withPersona = `${base}\n\n${persona}${opts.allowBuild === false ? "" : `\n\n${BUILD_RULE}`}`;
   const e = extra.trim();
   return e
     ? `### PRIORITY INSTRUCTIONS (always follow these):\n${e}\n\n---\n\n${withPersona}\n\n---\n\nREMINDER: ${e}`
