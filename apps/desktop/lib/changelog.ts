@@ -12,6 +12,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.18.0",
+    items: [
+      { tag: "new", label: "Mini Me: a pixel-art mini you that lives above the Dock. Click it or press ⌘⇧Space and tell it what to do; it answers in a speech bubble (and out loud if you like), opens apps and sites, sets timers and reads your clipboard" },
+      { tag: "new", label: "Mini Me walks, looks around, sits when you leave it alone and naps after a while; drag it anywhere, double-click to send it home, or say \"Hey Marven\" while it's on screen" },
+      { tag: "new", label: "A Mini Me page in Settings: three hand-drawn art styles with hair styles, colours, glasses and a beard, a live animated preview, plus activity level, walk speed, size, nap timer, personality and shortcut" },
+      { tag: "new", label: "Jobs that need your files, the terminal or the browser open in a new Agent chat with your request filled in, so the Agent's approvals still apply" },
+      { tag: "imp", label: "Custom dropdowns throughout Settings" },
+      { tag: "fix", label: "Spoken replies are no longer read out twice" },
+      { tag: "fix", label: "Closing the main window on Windows and Linux quits Marven" },
+    ],
+  },
+  {
     version: "2.17.0",
     items: [
       { tag: "new", label: "Two editor layouts, switched from the top bar: the editor with the agent chat beside it, or the editor on its own" },
