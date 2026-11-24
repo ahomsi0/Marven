@@ -16,6 +16,8 @@ const P = require("./companionPlacement") as {
   dockStrip: (wa: Rect, size: { width: number; height: number }) => { minX: number; maxX: number; y: number };
   clampToDisplays: (rect: Rect, displays: Display[]) => { x: number; y: number; displayId: number };
   isInDockStrip: (rect: Rect, wa: Rect) => boolean;
+  dropMode: (v: unknown) => "stay" | "dock";
+  fallSpeed: (tick: number, o?: { start?: number; accel?: number; max?: number }) => number;
   restorePosition: (
     saved: unknown,
     displays: Display[],
@@ -127,3 +129,23 @@ describe("edge cases", () => {
     expect(P.windowSize("4", "chibi")).toEqual(P.windowSize(4, "chibi"));
   });
 });
+
+describe("drop mode and falling", () => {
+  it("only accepts dock; everything else stays", () => {
+    expect(P.dropMode("dock")).toBe("dock");
+    for (const v of ["stay", "", "DOCK", null, undefined, 1, {}]) expect(P.dropMode(v)).toBe("stay");
+  });
+  it("accelerates and caps", () => {
+    expect(P.fallSpeed(0)).toBe(6);
+    expect(P.fallSpeed(1)).toBeGreaterThan(P.fallSpeed(0));
+    expect(P.fallSpeed(1000)).toBe(40);
+    expect(P.fallSpeed(-5)).toBe(6);
+  });
+  it("lands on the dock strip y, same x, on the nearest display", () => {
+    const d = { id: 1, workArea: { x: 0, y: 0, width: 1440, height: 900 } };
+    const c = P.clampToDisplays({ x: 2000, y: 100, ...size }, [d]);
+    expect(c.x).toBe(1440 - size.width);
+    expect(P.dockStrip(d.workArea, size).y).toBe(900 - size.height);
+  });
+});
+

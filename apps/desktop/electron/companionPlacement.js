@@ -96,7 +96,19 @@ function stepToward(current, target, maxStep) {
   return current + Math.sign(target - current) * maxStep;
 }
 
+/** What a drop away from the Dock does: "stay" (perch there) or "dock" (fall back). Anything else is "stay". */
+function dropMode(value) {
+  return value === 'dock' ? 'dock' : 'stay';
+}
+
+/** Pixels to fall on the nth tick (0-based) of a fall: starts gentle, accelerates, capped. */
+function fallSpeed(tick, { start = 6, accel = 2, max = 40 } = {}) {
+  return Math.min(max, start + Math.max(0, tick) * accel);
+}
+
 module.exports = {
+  dropMode,
+  fallSpeed,
   ART_SIZES,
   DEFAULT_ART_STYLE,
   pixelScale,

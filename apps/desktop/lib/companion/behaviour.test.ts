@@ -276,6 +276,42 @@ describe("dragging", () => {
     expect(state).toMatchObject({ anim: "idle", mode: "roam" });
   });
 
+  it("falls with the dangle pose when dropped with the Dock-fall setting, staying in roam mode", () => {
+    const { state, effect } = run(initialState(0), { type: "drag-start", now: 1 }, { type: "drop", now: 2, inDock: false, falling: true });
+    expect(state).toMatchObject({ anim: "dangle", mode: "roam", falling: true });
+    expect(effect).toEqual({});
+  });
+
+  it("does not idle-pick or sleep while falling", () => {
+    const falling = run(initialState(0), { type: "drop", now: 0, inDock: false, falling: true }).state;
+    expect(reduce(falling, tick(400_000, seq(0.1))).state).toBe(falling);
+  });
+
+  it("lands, stands and roams when the fall arrives", () => {
+    const falling = run(initialState(0), { type: "drop", now: 0, inDock: false, falling: true }).state;
+    const { state } = reduce(falling, { type: "arrived", now: 500, rand: seq(0.5) });
+    expect(state).toMatchObject({ anim: "idle", mode: "roam", falling: false, nextIdleAt: 500 + 4000 });
+    expect(reduce(state, tick(5000, seq(0.5))).state.anim).toBe("walk");
+  });
+
+  it("keeps the bubble's pose when a fall lands while it is open", () => {
+    const falling = run(initialState(0), { type: "drop", now: 0, inDock: false, falling: true }).state;
+    const open = reduce(falling, { type: "bubble-open", now: 100 }).state;
+    expect(open.falling).toBe(true);
+    const { state } = reduce(open, { type: "arrived", now: 500, rand: seq(0.5) });
+    expect(state).toMatchObject({ anim: "listen", busy: true, falling: false });
+  });
+
+  it("a new drag cancels a fall", () => {
+    const falling = run(initialState(0), { type: "drop", now: 0, inDock: false, falling: true }).state;
+    expect(reduce(falling, { type: "drag-start", now: 5 }).state).toMatchObject({ anim: "dangle", falling: false });
+  });
+
+  it("a drop in the Dock never falls, even if flagged", () => {
+    const { state } = run(initialState(0), { type: "drop", now: 2, inDock: true, falling: true });
+    expect(state).toMatchObject({ anim: "idle", mode: "roam", falling: false });
+  });
+
   it("walks home on double-click", () => {
     const perched = run(initialState(0), { type: "drop", now: 0, inDock: false }).state;
     const { state, effect } = reduce(perched, { type: "return-home", now: 1 });

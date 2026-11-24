@@ -236,6 +236,8 @@ const SETTINGS_DEFAULTS = {
   miniMeScale: 3,
   miniMeActivity: 'lively',
   miniMeSpeed: 'normal',
+  // What happens when Mini Me is dropped away from the Dock: 'stay' (perch) or 'dock' (fall back). Validated in companionPlacement.dropMode.
+  miniMeDrop: 'stay',
   miniMePersonality: 'playful',
   miniMeSleepMinutes: 5,
   miniMeWakeWord: false,

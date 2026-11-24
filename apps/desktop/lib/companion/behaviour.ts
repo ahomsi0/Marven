@@ -20,6 +20,8 @@ export interface BehaviourState {
   nextIdleAt: number;
   /** A walk that has not arrived by this time is abandoned. */
   walkUntil: number;
+  /** Dropped off the Dock with "fall back to the Dock": plunging until the next "arrived". */
+  falling: boolean;
 }
 
 export interface Strip {
@@ -58,7 +60,7 @@ export type BehaviourEvent =
    */
   | { type: "drag-start"; now: number }
   /** See `drag-start`: sent whenever a drag ends, however it ends. */
-  | { type: "drop"; now: number; inDock: boolean }
+  | { type: "drop"; now: number; inDock: boolean; /** Main is dropping him to the Dock; "arrived" follows when he lands. */ falling?: boolean }
   | { type: "return-home"; now: number };
 
 export interface Effect {
@@ -85,7 +87,7 @@ const STILL_PAUSE_MS = 6000;
 const STILL_PAUSE_JITTER_MS = 6000;
 
 export function initialState(now: number): BehaviourState {
-  return { anim: "idle", mode: "roam", busy: false, resting: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0 };
+  return { anim: "idle", mode: "roam", busy: false, resting: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0, falling: false };
 }
 
 /** How long a lively Mini Me waits before his next pick (events without a rand use the midpoint). */
@@ -152,6 +154,11 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       return pickIdle(state, e);
     }
     case "arrived":
+      if (state.falling) {
+        // Landed. If the bubble opened mid-fall, keep its pose; otherwise stand and roam.
+        const landed = { ...state, falling: false, mode: "roam" as const, nextIdleAt: e.now + IDLE_PAUSE_MS };
+        return { state: state.busy ? landed : { ...landed, anim: "idle" as const, lastInteraction: e.now }, effect: {} };
+      }
       if (state.anim !== "walk") return none;
       if ((e.activity ?? "lively") === "lively") {
         const r = e.rand();
@@ -197,11 +204,17 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       if (!ONESHOTS.has(state.anim)) return none;
       return { state: { ...state, anim: standing(state), nextIdleAt: livelyPause(e.now, e.rand) }, effect: {} };
     case "drag-start":
-      return { state: { ...state, anim: "dangle", resting: false, lastInteraction: e.now }, effect: { stop: true } };
+      return { state: { ...state, anim: "dangle", falling: false, resting: false, lastInteraction: e.now }, effect: { stop: true } };
     case "drop": {
+      if (e.falling && !e.inDock) {
+        return {
+          state: { ...state, mode: "roam", resting: false, anim: "dangle", falling: true, lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
+          effect: {},
+        };
+      }
       const mode: Mode = e.inDock ? "roam" : "perched";
       return {
-        state: { ...state, mode, resting: false, anim: e.inDock ? "idle" : "sit", lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
+        state: { ...state, mode, resting: false, falling: false, anim: e.inDock ? "idle" : "sit", lastInteraction: e.now, nextIdleAt: e.now + IDLE_PAUSE_MS },
         effect: {},
       };
     }

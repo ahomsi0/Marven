@@ -13,12 +13,16 @@ export interface CompanionPosition {
   arrived?: boolean;
   /** Sent once after a drag ends, with the final dock state. */
   dropped?: boolean;
+  /** With `dropped`: the main process is dropping him to the Dock; `arrived` follows when he lands. */
+  falling?: boolean;
 }
 
 export interface CompanionSettings {
   speak: boolean;
   scale: 2 | 3 | 4;
   activity: Activity;
+  /** Dropped away from the Dock: stay perched there, or fall back to the Dock. */
+  drop: "stay" | "dock";
   personality: Personality;
   sleepMinutes: number;
   wakeWord: boolean;
@@ -32,6 +36,7 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   speak: true,
   scale: 3,
   activity: "lively",
+  drop: "stay",
   personality: "playful",
   sleepMinutes: 5,
   wakeWord: false,

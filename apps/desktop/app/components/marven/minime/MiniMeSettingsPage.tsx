@@ -9,8 +9,10 @@ import { AppearanceEditor } from "./AppearanceEditor";
 import { Card, Row, Switch, useTr } from "./primitives";
 
 type Speed = "slow" | "normal" | "fast";
+type DropMode = "stay" | "dock";
 const ACTIVITIES: Activity[] = ["lively", "calm", "still"];
 const SPEEDS: Speed[] = ["slow", "normal", "fast"];
+const DROP_MODES: DropMode[] = ["stay", "dock"];
 const PERSONALITIES: Personality[] = ["playful", "neutral", "detailed"];
 const SCALES = [2, 3, 4];
 const SLEEP_MINUTES = [1, 5, 10, 30];
@@ -32,6 +34,7 @@ interface MiniMeState {
   miniMeSpeak: boolean;
   miniMeActivity: Activity;
   miniMeSpeed: Speed;
+  miniMeDrop: DropMode;
   miniMePersonality: Personality;
   miniMeScale: number;
   miniMeSleepMinutes: number;
@@ -45,6 +48,7 @@ const DEFAULTS: MiniMeState = {
   miniMeSpeak: true,
   miniMeActivity: "lively",
   miniMeSpeed: "normal",
+  miniMeDrop: "stay",
   miniMePersonality: "playful",
   miniMeScale: 3,
   miniMeSleepMinutes: 5,
@@ -79,6 +83,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
       // Only accept values the dropdowns offer; anything else falls back to the default.
       if (!ACTIVITIES.includes(next.miniMeActivity)) next.miniMeActivity = DEFAULTS.miniMeActivity;
       if (!SPEEDS.includes(next.miniMeSpeed)) next.miniMeSpeed = DEFAULTS.miniMeSpeed;
+      if (!DROP_MODES.includes(next.miniMeDrop)) next.miniMeDrop = DEFAULTS.miniMeDrop;
       if (!PERSONALITIES.includes(next.miniMePersonality)) next.miniMePersonality = DEFAULTS.miniMePersonality;
       if (!SCALES.includes(next.miniMeScale)) next.miniMeScale = DEFAULTS.miniMeScale;
       if (!SLEEP_MINUTES.includes(next.miniMeSleepMinutes)) next.miniMeSleepMinutes = DEFAULTS.miniMeSleepMinutes;
@@ -219,6 +224,18 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
               { value: "slow", label: tr("settings.miniMe.speedSlow") },
               { value: "normal", label: tr("settings.miniMe.speedNormal") },
               { value: "fast", label: tr("settings.miniMe.speedFast") },
+            ]}
+            className={dropdownWidth}
+          />
+        </Row>
+        <Row id="mini-me-drop" label={tr("settings.miniMe.drop")} hint={tr("settings.miniMe.dropHint")}>
+          <Dropdown<DropMode>
+            aria-labelledby="mini-me-drop"
+            value={state.miniMeDrop}
+            onChange={(v) => void save({ miniMeDrop: v })}
+            options={[
+              { value: "stay", label: tr("settings.miniMe.dropStay") },
+              { value: "dock", label: tr("settings.miniMe.dropDock") },
             ]}
             className={dropdownWidth}
           />

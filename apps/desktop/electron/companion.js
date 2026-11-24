@@ -51,6 +51,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   let size = placement.windowSize(3);
   let walkTarget = null;
   let walkTimer = null;
+  let fallTicks = 0;
   let facing = 1;
   let hotkey = null;
   let hotkeyOk = true;
@@ -79,6 +80,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     scale: [2, 3, 4].includes(Number(settings.miniMeScale)) ? Number(settings.miniMeScale) : 3,
     activity: ACTIVITIES.includes(settings.miniMeActivity) ? settings.miniMeActivity : 'lively',
     personality: PERSONALITIES.includes(settings.miniMePersonality) ? settings.miniMePersonality : 'playful',
+    drop: placement.dropMode(settings.miniMeDrop),
     sleepMinutes: Number(settings.miniMeSleepMinutes) > 0 ? Number(settings.miniMeSleepMinutes) : 5,
     wakeWord: !!settings.miniMeWakeWord,
     projectsDir: projectsDirSetting(settings),
@@ -147,8 +149,11 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     walkTarget = null;
   }
 
+  const isFalling = () => !!walkTarget && !!walkTarget.fall;
+
   function walkTo(target) {
     if (!alive()) return;
+    if (target.fall && !isFalling()) fallTicks = 0;
     const [x] = win.getPosition();
     if (target.x !== x) facing = target.x > x ? 1 : -1;
     const wa = currentDisplay().workArea;
@@ -159,14 +164,15 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
         if (!alive() || !walkTarget) return stopWalking();
         const [cx, cy] = win.getPosition();
         const nx = placement.stepToward(cx, walkTarget.x, walkStep());
-        const ny = placement.stepToward(cy, walkTarget.y, FALL_PX_PER_TICK);
+        const ny = placement.stepToward(cy, walkTarget.y, walkTarget.fall ? placement.fallSpeed(fallTicks++) : FALL_PX_PER_TICK);
         win.setPosition(Math.round(nx), Math.round(ny));
         const [ax, ay] = win.getPosition();
         // Arrived, or the window didn't move at all (blocked): stop either way.
         const reached = nx === walkTarget.x && ny === walkTarget.y;
         if (reached || (ax === cx && ay === cy)) {
+          const landed = !!walkTarget.fall;
           stopWalking();
-          recordPosition({ immediate: false });
+          recordPosition({ immediate: landed });
           sendPosition({ arrived: true });
         }
       }, TICK_MS);
@@ -381,13 +387,14 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     else if (process.platform !== 'darwin') win.blur();
   });
   ipcMain.on('companion:walk-to', (event, x) => {
-    if (!fromCompanion(event) || typeof x !== 'number' || !Number.isFinite(x)) return;
+    if (!fromCompanion(event) || typeof x !== 'number' || !Number.isFinite(x) || isFalling()) return;
     const [, y] = win.getPosition();
     const strip = placement.dockStrip(currentDisplay().workArea, size);
     walkTo({ x: Math.round(Math.min(Math.max(x, strip.minX), strip.maxX)), y });
   });
   ipcMain.on('companion:stop', (event) => {
-    if (!fromCompanion(event)) return;
+    // A fall can't be interrupted (the bubble opening mid-fall asks for a stop): he lands first.
+    if (!fromCompanion(event) || isFalling()) return;
     stopWalking();
     sendPosition();
   });
@@ -403,12 +410,19 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const c = placement.clampToDisplays({ x, y, ...size }, placementDisplays());
     const display = screen.getAllDisplays().find((d) => d.id === c.displayId) || screen.getPrimaryDisplay();
     const onDock = placement.isInDockStrip({ x: c.x, y: c.y, ...size }, display.workArea);
-    win.setPosition(c.x, onDock ? placement.dockStrip(display.workArea, size).y : c.y);
+    const strip = placement.dockStrip(display.workArea, size);
+    win.setPosition(c.x, onDock ? strip.y : c.y);
+    if (!onDock && placement.dropMode(settings.miniMeDrop) === 'dock') {
+      // Fall straight down to the Dock strip; the walk timer reports "arrived" and saves on landing.
+      walkTo({ x: c.x, y: strip.y, dock: true, fall: true });
+      sendPosition({ dropped: true, falling: true });
+      return;
+    }
     recordPosition({ immediate: true });
     sendPosition({ dropped: true });
   });
   ipcMain.on('companion:return-home', (event) => {
-    if (!fromCompanion(event)) return;
+    if (!fromCompanion(event) || isFalling()) return;
     const [x] = win.getPosition();
     const strip = placement.dockStrip(currentDisplay().workArea, size);
     walkTo({ x: Math.min(Math.max(x, strip.minX), strip.maxX), y: strip.y, dock: true });
@@ -440,6 +454,15 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       stopWalking();
       win.setBounds({ x, y: y + oldHeight - size.height, ...size });
       reclamp();
+    }
+    // Switched to "fall back to the Dock" while perched somewhere else: drop him now.
+    if (alive() && placement.dropMode(settings.miniMeDrop) === 'dock' && placement.dropMode(prev.miniMeDrop) !== 'dock' && !isFalling()) {
+      const [x, y] = win.getPosition();
+      const display = currentDisplay();
+      if (!placement.isInDockStrip({ x, y, ...size }, display.workArea)) {
+        walkTo({ x, y: placement.dockStrip(display.workArea, size).y, dock: true, fall: true });
+        sendPosition({ dropped: true, falling: true });
+      }
     }
     if (enabled !== !!prev.miniMeEnabled || settings.miniMeHotkey !== prev.miniMeHotkey || unavailable !== wasUnavailable) registerHotkey();
     if (alive()) win.webContents.send('companion:settings', rendererSettings());

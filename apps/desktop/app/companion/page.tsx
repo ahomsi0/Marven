@@ -228,7 +228,7 @@ export default function CompanionPage() {
         xRef.current = p.x;
         setFacing(p.facing);
         if (p.arrived) dispatch({ type: "arrived", now: Date.now(), rand: Math.random, activity: settingsRef.current.activity });
-        if (p.dropped) dispatch({ type: "drop", now: Date.now(), inDock: p.inDock });
+        if (p.dropped) dispatch({ type: "drop", now: Date.now(), inDock: p.inDock, falling: p.falling });
       }),
       bridge.onOpenInput(() => openBubble(true)),
       bridge.onListen(() => {
