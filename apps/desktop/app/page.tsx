@@ -90,6 +90,7 @@ import {
 } from "@/lib/agentSession";
 import { DiskConflictModal } from "@/app/components/marven/DiskConflictModal";
 import { isWorkspaceTrusted, setWorkspaceTrusted } from "@/lib/workspaceTrust";
+import { autostartDecision, type PendingAutostart } from "@/lib/companion/autostart";
 import {
   attachPendingVersion,
   beginNewVersion,
@@ -391,6 +392,8 @@ export default function Home() {
   const [planMode, setPlanModeState] = useState<boolean>(() => getPlanMode());
   const [liteAgentMode, setLiteAgentModeLocal] = useState<boolean | undefined>(undefined);
   const [agentSafetyProfile, setAgentSafetyProfile] = useState<AgentSafetyProfile>("ask-before-write");
+  // The user's agent settings (safety profile, lite mode) have been read once.
+  const [agentSettingsLoaded, setAgentSettingsLoaded] = useState(false);
   const [workspaceTrusted, setWorkspaceTrustedState] = useState(false);
 
   useEffect(() => {
@@ -429,6 +432,9 @@ export default function Home() {
     autoVerifyCommands: agentAutoVerifyCommands,
     onUsage: (usage) => addAgentTokens(activeConversationId, usage),
   });
+  // For the Mini Me hand-off listener, which is registered once.
+  const agentRunningRef = useRef(false);
+  agentRunningRef.current = agentStreamIsRunning;
 
   // ─── Speech ─────────────────────────────────────────────────────────────────
   const [speechEnabled, setSpeechEnabled] = useState(false);
@@ -781,6 +787,7 @@ export default function Home() {
           if (s.agentSafetyProfile === "read-only" || s.agentSafetyProfile === "ask-before-write" || s.agentSafetyProfile === "ask-before-command" || s.agentSafetyProfile === "trusted") {
             setAgentSafetyProfile(s.agentSafetyProfile);
           }
+          setAgentSettingsLoaded(true);
         })
         .catch(() => {});
     };
@@ -1581,27 +1588,33 @@ export default function Home() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const electron = (window as any).marvenElectron;
     if (!electron?.onCompanionOpenThread) return;
-    const offThread = electron.onCompanionOpenThread((payload: { messages?: unknown; mode?: unknown; workspaceRoot?: unknown; autostart?: unknown } | null) => {
+    type HandOff = { id?: unknown; messages?: unknown; mode?: unknown; workspaceRoot?: unknown; autostart?: unknown };
+    type HandOffAck = { ok: true } | { ok: false; reason: "busy" | "invalid" };
+    const openThread = (payload: HandOff | null): HandOffAck => {
       const raw = payload?.messages;
-      if (!Array.isArray(raw)) return;
+      if (!Array.isArray(raw)) return { ok: false, reason: "invalid" };
       const messages = raw.filter(
         (m): m is { role: "user" | "assistant"; content: string } =>
           !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
       );
-      if (messages.length === 0) return;
+      if (messages.length === 0) return { ok: false, reason: "invalid" };
       if (payload?.mode === "agent" && typeof payload.workspaceRoot === "string" && payload.workspaceRoot) {
         // A project Mini Me built (main checked the folder is in the projects
         // folder): continue it here, on that folder, with the thread so far.
         // Nothing is sent; the user carries on from the input. With
-        // `autostart` (main allows it only on such a folder) the request is
-        // sent for them instead.
+        // `autostart` (main allows it only on a fresh such folder) the request
+        // is sent for them instead.
         const root = payload.workspaceRoot;
         const request = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
-        setWorkspaceTrusted(root, true);
         if (payload.autostart === true) {
+          // Never interrupt a running Agent (switching conversations would
+          // abort it), and one auto-started hand-off at a time: Mini Me offers
+          // to build it himself instead.
+          if (agentRunningRef.current || pendingAutostartRef.current) return { ok: false, reason: "busy" };
           // "Open in Marven" on a build request: a fresh Agent conversation on
           // the new folder, and the request sent as if the user pressed Send
           // once the switch has settled (see the autostart effect below).
+          setWorkspaceTrusted(root, true);
           const agentConv: Conversation = { ...createConversationWithMode("New agent", "agent"), workspaceRoot: root };
           agentMessagesByConvRef.current.set(agentConv.id, []);
           queueAutostart({ convId: agentConv.id, root, prompt: request });
@@ -1609,8 +1622,9 @@ export default function Home() {
           setActiveConversationId(agentConv.id);
           setAgentInput("");
           setAgentAttachments([]);
-          return;
+          return { ok: true };
         }
+        setWorkspaceTrusted(root, true);
         const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
         agentMessagesByConvRef.current.set(
           agentConv.id,
@@ -1620,7 +1634,7 @@ export default function Home() {
         setActiveConversationId(agentConv.id);
         setAgentInput("");
         setAgentAttachments([]);
-        return;
+        return { ok: true };
       }
       if (payload?.mode === "agent") {
         // An Agent hand-off: a fresh Agent conversation with the request in the input.
@@ -1631,7 +1645,7 @@ export default function Home() {
         setActiveConversationId(agentConv.id);
         setAgentInput(request);
         setAgentAttachments([]);
-        return;
+        return { ok: true };
       }
       const firstUser = messages.find((m) => m.role === "user")?.content ?? "Mini Me";
       const conv: Conversation = {
@@ -1640,6 +1654,12 @@ export default function Home() {
       };
       setConversations((prev) => [...prev, conv]);
       setActiveConversationId(conv.id);
+      return { ok: true };
+    };
+    const offThread = electron.onCompanionOpenThread((payload: HandOff | null) => {
+      const ack = openThread(payload);
+      // Main waits for this before telling Mini Me the hand-off worked.
+      if (typeof payload?.id === "string") electron.ackCompanionOpenThread?.({ id: payload.id, ...ack });
     });
     const offSettings = electron.onCompanionOpenSettings((payload: { page?: unknown } | null) => {
       const page = payload?.page;
@@ -1658,55 +1678,49 @@ export default function Home() {
   // profile, and the conversation-switch effect re-opens the workspace
   // asynchronously (aborting any run), so sending from the IPC handler would
   // use the previous conversation's values.
-  const pendingAutostartRef = useRef<{ convId: string; root: string; prompt: string; activated: boolean; expired: boolean } | null>(null);
+  const pendingAutostartRef = useRef<(PendingAutostart & { prompt: string }) | null>(null);
   const [autostartCheck, setAutostartCheck] = useState(0);
 
   function queueAutostart(next: { convId: string; root: string; prompt: string }) {
-    const pending = { ...next, activated: false, expired: false };
+    const pending = { ...next, activated: false, expiresAt: Date.now() + AUTOSTART_TIMEOUT_MS };
     pendingAutostartRef.current = pending;
     // If the folder never opens (or something keeps running), stop waiting and
     // leave the request in the input instead, like the plain Agent hand-off.
+    // (The timer only re-runs the effect; autostartDecision sees the expiry.)
     setTimeout(() => {
-      if (pendingAutostartRef.current !== pending) return;
-      pending.expired = true;
-      setAutostartCheck((n) => n + 1);
-    }, AUTOSTART_TIMEOUT_MS);
+      if (pendingAutostartRef.current === pending) setAutostartCheck((n) => n + 1);
+    }, AUTOSTART_TIMEOUT_MS + 50);
   }
 
   useEffect(() => {
     const pending = pendingAutostartRef.current;
     if (!pending) return;
-    if (activeConversationId !== pending.convId) {
-      // The user went to another conversation first: don't send it behind their back.
-      if (pending.activated || pending.expired) pendingAutostartRef.current = null;
-      return;
-    }
-    pending.activated = true;
-    if (pending.expired) {
-      pendingAutostartRef.current = null;
-      if (agentStreamMessages.length === 0) setAgentInput(pending.prompt);
-      return;
-    }
-    // Settled: the switch effect has swapped this conversation in, its folder
-    // is the open workspace, that folder is trusted (so the run isn't forced
-    // read-only) and no run is going.
-    if (activeMode !== "agent" || lastAgentConvIdRef.current !== pending.convId) return;
-    if (workspaceRoot !== pending.root || !workspaceTrusted || !isWorkspaceTrusted(pending.root)) return;
-    if (agentStreamIsRunning) return;
-    // Something is already in the thread: the user started it themselves.
-    // (Checked only once the folder is open, well after the switch has loaded
-    // this conversation's empty thread.)
-    if (agentStreamMessages.length > 0) {
-      pendingAutostartRef.current = null;
-      return;
-    }
-    // Cleared before sending, so a re-run of this effect (StrictMode, the
-    // re-renders the send itself causes) can never send it twice.
+    const decision = autostartDecision({
+      pending,
+      now: Date.now(),
+      activeConversationId,
+      lastAgentConvId: lastAgentConvIdRef.current,
+      mode: activeMode,
+      workspaceRoot,
+      workspaceTrusted: workspaceTrusted && isWorkspaceTrusted(pending.root),
+      settingsLoaded: agentSettingsLoaded,
+      running: agentStreamIsRunning,
+      messageCount: agentStreamMessages.length,
+    });
+    if (activeConversationId === pending.convId) pending.activated = true;
+    if (decision === "wait") return;
+    // Cleared before anything else, so a re-run of this effect (StrictMode,
+    // the re-renders the send itself causes) can never send it twice.
     pendingAutostartRef.current = null;
-    autoRenameConversation(pending.convId, pending.prompt);
-    void agentStreamSend(pending.prompt);
+    if (decision === "fallback") {
+      // Never over what the user has typed meanwhile.
+      setAgentInput((current) => current || pending.prompt);
+    } else if (decision === "send") {
+      autoRenameConversation(pending.convId, pending.prompt);
+      void agentStreamSend(pending.prompt);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversationId, activeMode, workspaceRoot, workspaceTrusted, agentStreamIsRunning, agentStreamMessages.length, agentStreamSend, autostartCheck]);
+  }, [activeConversationId, activeMode, workspaceRoot, workspaceTrusted, agentSettingsLoaded, agentStreamIsRunning, agentStreamMessages.length, agentStreamSend, autostartCheck]);
 
   // Turning "Hey Marven" on while Mini Me is on screen and already listening for it
   // would open the mic twice, so say so instead. Turning it off always works.

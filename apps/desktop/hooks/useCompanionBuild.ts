@@ -58,7 +58,7 @@ export interface BuildView {
   /** Something only the user may answer. */
   approval: BuildApproval | null;
   /** Another build was asked for while this one runs. */
-  conflict: { request: string; name: string } | null;
+  conflict: { request: string; name: string; root?: string } | null;
   summary: string;
   liveUrl: string | null;
   /** Why it failed (or is blocked), in plain words. */
@@ -118,11 +118,17 @@ export type FolderPrep =
  * all), makes a fresh folder under the projects folder, and marks it trusted
  * (Mini Me made it; the main window agrees when it opens it). Network errors throw.
  */
-export async function prepareProjectFolder(name: string, parent: string, signal?: AbortSignal): Promise<FolderPrep> {
+export async function prepareProjectFolder(name: string, parent: string, signal?: AbortSignal, existingRoot?: string): Promise<FolderPrep> {
   const settings = await readAgentSettings();
   const profile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
   if (profile === "read-only") {
     return { ok: false, message: i18n.t("companion.build.readOnly"), settingsPage: "general", blocked: true };
+  }
+  if (existingRoot) {
+    // A folder this flow already made (e.g. Marven's Agent was busy, so the
+    // user chose to build here instead): reuse it rather than make another.
+    setWorkspaceTrusted(existingRoot, true);
+    return { ok: true, root: existingRoot, settings, profile };
   }
   const res = await fetch("/api/workspace/new-project", {
     method: "POST",
@@ -239,9 +245,10 @@ export function useCompanionBuild(options: Options) {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const start = useCallback(
-    async (request: string, name: string) => {
+    /** `existingRoot`: a fresh project folder made for this request already (reused instead of making another). */
+    async (request: string, name: string, existingRoot?: string) => {
       if (isBuildActive(viewRef.current)) {
-        commit({ ...viewRef.current!, conflict: { request, name } });
+        commit({ ...viewRef.current!, conflict: { request, name, root: existingRoot } });
         optionsRef.current.onAttention("conflict");
         return;
       }
@@ -272,7 +279,7 @@ export function useCompanionBuild(options: Options) {
       };
 
       try {
-        const prep = await prepareProjectFolder(name, optionsRef.current.projectsDir, controller.signal);
+        const prep = await prepareProjectFolder(name, optionsRef.current.projectsDir, controller.signal, existingRoot);
         if (!alive()) return;
         if (!prep.ok) {
           fail(prep.message, prep.settingsPage, prep.blocked ? "blocked" : "failed");
@@ -448,7 +455,7 @@ export function useCompanionBuild(options: Options) {
     const next = viewRef.current?.conflict;
     if (!next) return;
     stop();
-    void start(next.request, next.name);
+    void start(next.request, next.name, next.root);
   }, [stop, start]);
 
   /** "Keep going" on the still-building question. */

@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -70,7 +70,7 @@ describe("sanitizeOpenMode", () => {
 describe("sanitizeOpenOptions", () => {
   const home = "/Users/me";
   const dir = { isDirectory: () => true, isSymbolicLink: () => false };
-  const deps = { home, realpath: (p: string) => p, lstat: () => dir };
+  const deps = { home, realpath: (p: string) => p, lstat: () => dir, readdir: () => [] as string[] };
   const root = "/Users/me/Marven Projects/cafe-menu";
 
   it("passes nothing on when there are no options", () => {
@@ -97,11 +97,41 @@ describe("sanitizeOpenOptions", () => {
     expect(sanitizeOpenOptions({ workspaceRoot: 42 }, "agent", "~/Marven Projects", deps)).toEqual({});
   });
 
+  it("starts only in a fresh folder (a .DS_Store doesn't count)", () => {
+    const withFiles = { ...deps, readdir: () => ["index.html"] };
+    const finderOnly = { ...deps, readdir: () => [".DS_Store"] };
+    const unreadable = {
+      ...deps,
+      readdir: () => {
+        throw new Error("EACCES");
+      },
+    };
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "agent", "~/Marven Projects", withFiles)).toBeNull();
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "agent", "~/Marven Projects", unreadable)).toBeNull();
+    expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "agent", "~/Marven Projects", finderOnly)).toEqual({ workspaceRoot: root, autostart: true });
+    // Continuing a project that has files (no autostart) is fine.
+    expect(sanitizeOpenOptions({ workspaceRoot: root }, "agent", "~/Marven Projects", withFiles)).toEqual({ workspaceRoot: root });
+  });
+
   it("refuses autostart without a valid project folder or outside the Agent", () => {
     expect(sanitizeOpenOptions({ autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
     expect(sanitizeOpenOptions({ workspaceRoot: "/etc", autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
     expect(sanitizeOpenOptions({ workspaceRoot: "/Users/me/Elsewhere/x", autostart: true }, "agent", "~/Marven Projects", deps)).toBeNull();
     expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "chat", "~/Marven Projects", deps)).toBeNull();
+  });
+});
+
+describe("sanitizeHandOffAck", () => {
+  it("is ok only for a real true", () => {
+    expect(sanitizeHandOffAck({ id: "h1", ok: true })).toEqual({ ok: true });
+    expect(sanitizeHandOffAck({ id: "h1", ok: "true" })).toEqual({ ok: false, reason: "refused" });
+    expect(sanitizeHandOffAck(null)).toEqual({ ok: false, reason: "refused" });
+  });
+  it("keeps a known reason and nothing else", () => {
+    expect(sanitizeHandOffAck({ ok: false, reason: "busy" })).toEqual({ ok: false, reason: "busy" });
+    expect(sanitizeHandOffAck({ ok: false, reason: "invalid" })).toEqual({ ok: false, reason: "invalid" });
+    expect(sanitizeHandOffAck({ ok: false, reason: "<script>" })).toEqual({ ok: false, reason: "refused" });
+    expect(sanitizeHandOffAck({ ok: true, reason: "busy", extra: 1 })).toEqual({ ok: true });
   });
 });
 

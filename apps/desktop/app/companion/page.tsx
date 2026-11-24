@@ -161,10 +161,13 @@ export default function CompanionPage() {
           show(prep.message, "failed", prep.settingsPage ? { action: "open-settings", settingsPage: prep.settingsPage } : undefined);
           return;
         }
-        const taken = bridge
+        const result = bridge
           ? await bridge.openInMarven([{ role: "user", content: request }], "agent", { workspaceRoot: prep.root, autostart: true })
-          : false;
-        if (taken) show(t("companion.build.inMarven"), "succeeded", { speak: true });
+          : { ok: false };
+        if (result.ok) show(t("companion.build.inMarven"), "succeeded", { speak: true });
+        else if (result.reason === "busy")
+          // Marven's Agent is on something else: offer to build it here, in the folder just made.
+          show(t("companion.build.agentBusy"), "failed", { action: "build-here", build: { request, name, root: prep.root }, speak: true });
         else show(t("companion.build.handOffRefused"), "failed");
       } catch (err) {
         show(chatErrorMessage(err), "failed");
@@ -288,9 +291,9 @@ export default function CompanionPage() {
 
   // Fade the bubble after a finished reply unless the user is engaged with it.
   useEffect(() => {
-    // A pending build choice waits for the user rather than fading away.
-    // So does a build that's asking something.
-    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || buildNeedsUser || hovered || draft) return;
+    // A pending build choice (or "build it here instead?") waits for the user
+    // rather than fading away. So does a build that's asking something.
+    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || reply.action === "build-here" || buildNeedsUser || hovered || draft) return;
     const timer = setTimeout(closeBubble, AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
   }, [bubbleOpen, reply, buildNeedsUser, hovered, draft, closeBubble]);
@@ -363,6 +366,14 @@ export default function CompanionPage() {
 
   const onAction = (action: Exclude<BubbleAction, null>) => {
     if (action === "build-choice") return;
+    if (action === "build-here") {
+      const b = reply?.build;
+      if (!b) return;
+      // The question goes; the build takes the bubble.
+      dismiss();
+      void buildStart(b.request, b.name, b.root);
+      return;
+    }
     if (action === "retry") void retry();
     else if (action === "open-in-marven" || action === "open-in-agent") {
       void bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");

@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   companionStatus: () => ipcRenderer.invoke('companion-status'),
   onCompanionVisibility: subscribe('companion-visibility'),
   onCompanionOpenThread: subscribe('companion-open-thread'),
+  // The answer to a companion-open-thread hand-off: { id, ok, reason? }.
+  ackCompanionOpenThread: (ack) => ipcRenderer.send('companion-open-thread:ack', ack),
   onCompanionOpenSettings: subscribe('companion-open-settings'),
 
   // ── Interactive terminal (node-pty) ────────────────────────────────────────

@@ -335,6 +335,7 @@ const en = {
       readOnly: "Your Agent is set to read-only, so I can't build anything. You can change that in Settings → General.",
       inMarven: "Building it in Marven.",
       handOffRefused: "Marven wouldn't open that project, so nothing started.",
+      agentBusy: "Marven's Agent is busy right now. Want me to build it here instead?",
       error: {
         folderSetting: "I couldn't make the project folder. Check the projects folder in Settings → Mini Me.",
         folder: "I couldn't make the project folder: {{detail}}",

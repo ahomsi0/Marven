@@ -30,6 +30,7 @@ interface Props {
 
 const ACTION_LABEL_KEYS: Record<Exclude<BubbleAction, null>, string> = {
   "build-choice": "companion.buildHere",
+  "build-here": "companion.buildHere",
   retry: "companion.retry",
   "open-in-marven": "companion.openInMarven",
   "open-in-agent": "companion.openInAgent",
@@ -92,7 +93,7 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
               {label("open-settings")}
             </button>
           )}
-          {(reply.action === "open-in-marven" || reply.action === "open-in-agent") && (
+          {(reply.action === "open-in-marven" || reply.action === "open-in-agent" || reply.action === "build-here") && (
             <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[12px] text-[var(--m-text-faint)]">
               {t("companion.notNow")}
             </button>

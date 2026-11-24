@@ -27,15 +27,15 @@ import {
 } from "@/lib/companion/brain";
 
 export type BrainEvent = "thinking" | "talking" | "succeeded" | "failed";
-/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat; "build-choice" offers to build the request as a project. */
-export type BubbleAction = "build-choice" | "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
+/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat; "build-choice" offers to build the request as a project; "build-here" offers to build `build` right here. */
+export type BubbleAction = "build-choice" | "build-here" | "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
 
 export interface BrainReply {
   text: string;
   action: BubbleAction;
   done: boolean;
-  /** Set with the "build-choice" action: the request and the project name to build under. */
-  build?: { request: string; name: string };
+  /** Set with the "build-choice" / "build-here" actions: the request, the project name, and (build-here) the folder already made for it. */
+  build?: { request: string; name: string; root?: string };
   /** With "open-settings": the Settings page that fixes the problem (default: AI keys). */
   settingsPage?: CompanionSettingsPage;
 }
@@ -308,10 +308,13 @@ export function useCompanionBrain(options: Options) {
    * in the history. `done: false` keeps it up without buttons while work goes on.
    */
   const announce = useCallback(
-    (text: string, opts?: { action?: BubbleAction; settingsPage?: CompanionSettingsPage; done?: boolean; speak?: boolean }) => {
+    (
+      text: string,
+      opts?: { action?: BubbleAction; settingsPage?: CompanionSettingsPage; build?: BrainReply["build"]; done?: boolean; speak?: boolean },
+    ) => {
       abortRef.current?.abort();
       setBusy(false);
-      setReply({ text, action: opts?.action ?? null, done: opts?.done ?? true, settingsPage: opts?.settingsPage });
+      setReply({ text, action: opts?.action ?? null, done: opts?.done ?? true, settingsPage: opts?.settingsPage, build: opts?.build });
       if (opts?.speak) say(text);
     },
     [say],

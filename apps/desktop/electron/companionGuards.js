@@ -95,18 +95,29 @@ function projectFolderInside(target, projectsDir, { home, realpath, lstat }) {
   }
 }
 
+/** True for a folder with nothing in it but a .DS_Store; false when unreadable. */
+function isFreshFolder(dir, readdir) {
+  try {
+    return readdir(dir).every((name) => name === '.DS_Store');
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The extras an "Open in Marven" hand-off may carry, checked: `workspaceRoot`
  * only when it is a project folder Mini Me made (see projectFolderInside), and
- * `autostart` only as a real `true`, for the Agent, on such a folder. Returns
- * the fields to pass on, or null to refuse the hand-off (autostart asked for
- * but not allowed: better to open nothing than to start the Agent elsewhere).
- * A folder that fails the check on its own is dropped and the thread still opens.
+ * `autostart` only as a real `true`, for the Agent, on such a folder that is
+ * still empty (a Finder .DS_Store aside) — a fresh project, not someone's
+ * files. Returns the fields to pass on, or null to refuse the hand-off
+ * (autostart asked for but not allowed: better to open nothing than to start
+ * the Agent elsewhere). A folder that fails the check on its own is dropped
+ * and the thread still opens.
  *
  * @param {unknown} options
  * @param {'agent' | 'chat'} mode the already-sanitized mode
  * @param {unknown} projectsDir
- * @param {Parameters<typeof projectFolderInside>[2]} deps
+ * @param {Parameters<typeof projectFolderInside>[2] & { readdir: (p: string) => string[] }} deps
  * @returns {{ workspaceRoot?: string, autostart?: true } | null}
  */
 function sanitizeOpenOptions(options, mode, projectsDir, deps) {
@@ -117,10 +128,24 @@ function sanitizeOpenOptions(options, mode, projectsDir, deps) {
     if (root) out.workspaceRoot = root;
   }
   if (options.autostart === true) {
-    if (mode !== 'agent' || !out.workspaceRoot) return null;
+    if (mode !== 'agent' || !out.workspaceRoot || !isFreshFolder(out.workspaceRoot, deps.readdir)) return null;
     out.autostart = true;
   }
   return out;
+}
+
+const ACK_REASONS = ['busy', 'invalid'];
+
+/**
+ * The main window's answer to a hand-off, as passed back to Mini Me:
+ * `{ ok: true }`, or `{ ok: false, reason }` with a reason Mini Me knows
+ * ("busy": the Agent is running or another hand-off is waiting; "invalid";
+ * anything else is "refused").
+ */
+function sanitizeHandOffAck(ack) {
+  if (ack && typeof ack === 'object' && ack.ok === true) return { ok: true };
+  const reason = ack && typeof ack === 'object' && ACK_REASONS.includes(ack.reason) ? ack.reason : 'refused';
+  return { ok: false, reason };
 }
 
 const LOOPBACK_HOST = /^(localhost|[a-z0-9-]+\.localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
@@ -150,6 +175,7 @@ module.exports = {
   sanitizeThreadMessages,
   sanitizeOpenMode,
   sanitizeOpenOptions,
+  sanitizeHandOffAck,
   isReservedHotkey,
   projectFolderInside,
   isLoopbackHttpUrl,

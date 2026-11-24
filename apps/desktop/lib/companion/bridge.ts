@@ -60,10 +60,10 @@ export interface CompanionBridge {
    * project Mini Me built; main checks it is inside the projects folder) the
    * Agent conversation opens on that folder with the thread loaded instead;
    * with `autostart` too, the request is sent straight away (main refuses an
-   * autostart without a valid project folder). Resolves true when Marven took
-   * the hand-off, false when main refused it.
+   * autostart unless the folder is a fresh project folder). Resolves ok only
+   * once Marven's window has received and accepted it.
    */
-  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string; autostart?: boolean }): Promise<boolean>;
+  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string; autostart?: boolean }): Promise<HandOffResult>;
   /** Open a folder or file inside the projects folder (main refuses anything else); resolves to "" or an error. */
   openPath(target: string): Promise<string>;
   /** Open a dev server address on this machine in the default browser (main refuses anything else). */
@@ -76,6 +76,17 @@ export interface CompanionBridge {
   onOpenInput(cb: () => void): Unsubscribe;
   onListen(cb: () => void): Unsubscribe;
   onSettings(cb: (s: CompanionSettings) => void): Unsubscribe;
+}
+
+/**
+ * How an "Open in Marven" hand-off went. "busy": Marven's Agent is running (or
+ * another hand-off is waiting); "refused": main's checks said no; "timeout" /
+ * "unavailable": the main window didn't answer or wasn't ready; "invalid": the
+ * main window couldn't use the thread.
+ */
+export interface HandOffResult {
+  ok: boolean;
+  reason?: "busy" | "refused" | "timeout" | "unavailable" | "invalid";
 }
 
 export function getCompanionBridge(): CompanionBridge | null {

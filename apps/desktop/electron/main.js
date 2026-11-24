@@ -11,7 +11,7 @@ const { createBrowserManager } = require('./browser/manager');
 const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { createCompanion } = require('./companion');
-const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeSettingsPage } = require('./companionGuards');
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, sanitizeSettingsPage } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
 // Where Marven's own UI and API are served (next dev in development, the
@@ -443,20 +443,56 @@ function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
 }
 
-// Resolves true when the thread reached the main window, false when refused.
-ipcMain.handle('companion:open-in-marven', (event, messages, mode, options) => {
-  if (!fromCompanionWindow(event) || !mainWindow || mainWindow.isDestroyed()) return false;
+// Hand-offs waiting for the main window to say it took them: id → settle.
+const pendingHandOffs = new Map();
+let handOffSeq = 0;
+const HANDOFF_ACK_MS = 3000;
+
+// Resolves { ok: true } only once the main window has received and accepted
+// the thread (it answers on companion-open-thread:ack); otherwise
+// { ok: false, reason } — "busy" from the page, "refused" by the checks here,
+// "unavailable" with no ready main window, "timeout" with no answer in time.
+ipcMain.handle('companion:open-in-marven', async (event, messages, mode, options) => {
+  if (!fromCompanionWindow(event)) return { ok: false, reason: 'refused' };
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) return { ok: false, reason: 'unavailable' };
   const safe = sanitizeThreadMessages(messages);
-  if (!safe) return false;
+  if (!safe) return { ok: false, reason: 'refused' };
   const openMode = sanitizeOpenMode(mode);
   // A project Mini Me made: only a folder inside the projects folder is passed
-  // on, and the Agent starts by itself only on such a folder.
-  const extras = sanitizeOpenOptions(options, openMode, loadSettings().miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
-  if (!extras) return false;
-  mainWindow.show();
-  mainWindow.focus();
-  mainWindow.webContents.send('companion-open-thread', { messages: safe, mode: openMode, ...extras });
-  return true;
+  // on, and the Agent starts by itself only on such a folder that is still empty.
+  const extras = sanitizeOpenOptions(options, openMode, loadSettings().miniMeProjectsDir, {
+    home: os.homedir(),
+    realpath: fs.realpathSync.native,
+    lstat: fs.lstatSync,
+    readdir: (p) => fs.readdirSync(p),
+  });
+  if (!extras) return { ok: false, reason: 'refused' };
+  const id = `handoff-${Date.now()}-${++handOffSeq}`;
+  const target = mainWindow;
+  const result = await new Promise((resolve) => {
+    const timer = setTimeout(() => settle({ ok: false, reason: 'timeout' }), HANDOFF_ACK_MS);
+    function settle(answer) {
+      clearTimeout(timer);
+      pendingHandOffs.delete(id);
+      resolve(answer);
+    }
+    pendingHandOffs.set(id, settle);
+    target.webContents.send('companion-open-thread', { id, messages: safe, mode: openMode, ...extras });
+  });
+  if (result.ok && !target.isDestroyed()) {
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+  }
+  return result;
+});
+
+// The main window's answer to a hand-off (main frame of Marven's own window only).
+ipcMain.on('companion-open-thread:ack', (event, ack) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  if (!event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) return;
+  const settle = ack && typeof ack === 'object' && typeof ack.id === 'string' ? pendingHandOffs.get(ack.id) : undefined;
+  if (settle) settle(sanitizeHandOffAck(ack));
 });
 
 ipcMain.on('companion:open-settings', (event, page) => {
