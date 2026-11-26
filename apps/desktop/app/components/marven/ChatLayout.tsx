@@ -37,6 +37,7 @@ import { LanguageModal } from "@/app/components/marven/LanguageModal";
 import { generateMarkdown } from "@/lib/chatHelpers";
 import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/theme";
 import { useProviderModels } from "@/hooks/useProviderModels";
+import { isLocalProvider } from "@/lib/visionModels";
 import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
 import { getBrowserBridge, hostOf, type Bookmark } from "@/lib/inAppBrowser";
 import { versionControls } from "@/lib/messageVersions";
@@ -628,6 +629,8 @@ export function ChatLayout({
           onOpenSettings={() => setSettingsOpen(true)}
           userName={userName}
           providerLabel={PROVIDER_LABELS[provider]}
+          modelLabel={selectedModel ? shortModelName(selectedModel) : undefined}
+          providerLocal={isLocalProvider(provider)}
           appVersion={appVersion}
           folders={folders}
           onCreateFolder={onCreateFolder}

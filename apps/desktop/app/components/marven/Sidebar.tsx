@@ -21,6 +21,10 @@ interface SidebarProps {
   onOpenSettings: () => void;
   userName?: string;
   providerLabel?: string;
+  /** The active model, short form ("Llama 3.3 70B"). */
+  modelLabel?: string;
+  /** The provider runs on this machine (Ollama, LM Studio, llama-server). */
+  providerLocal?: boolean;
   appVersion?: string;
   folders: ConversationFolder[];
   onCreateFolder: () => void;
@@ -247,6 +251,8 @@ export function Sidebar({
   onOpenSettings,
   userName,
   providerLabel,
+  modelLabel,
+  providerLocal,
   appVersion,
   folders,
   onCreateFolder,
@@ -903,6 +909,8 @@ export function Sidebar({
           <AccountBar
             userName={userName}
             providerLabel={providerLabel}
+            modelLabel={modelLabel}
+            providerLocal={providerLocal}
             appVersion={appVersion}
             onOpenSettings={onOpenSettings}
           />
