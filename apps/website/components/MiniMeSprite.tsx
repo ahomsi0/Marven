@@ -44,7 +44,9 @@ export function MiniMeSprite({
     "--mm-size": size,
     "--mm-cols": SHEET_COLUMNS,
     "--mm-row": st.row,
-    "--mm-steps": once ? st.frames - 1 : st.frames,
+    // A one-shot runs to its last frame with jump-none, which needs one step per
+    // frame (frames - 1 steps would land half a frame off, showing two halves).
+    "--mm-steps": st.frames,
     "--mm-end": once ? st.frames - 1 : st.frames,
     "--mm-dur": `${(st.frames / st.fps).toFixed(3)}s`,
     ...(scale ? { "--mm-scale": scale } : {}),

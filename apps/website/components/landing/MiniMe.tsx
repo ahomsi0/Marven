@@ -19,15 +19,15 @@ import { MINI_ME_LOOKS, MINI_ME_STYLES, type MiniMeLook, type MiniMeState, type 
 import { Em, SectionHeading } from "./Section";
 
 /* ------------------------------------------------------------------ */
-/* The desktop vignette: Mini Me walks in above the Dock, takes three  */
-/* requests (an app, a timer, a job for the Agent), then sits, naps    */
-/* and strolls back. Purely decorative; screen readers get a summary.  */
+/* The desktop vignette: Mini Me walks in above the Dock, opens an     */
+/* app, sets a timer, builds a website (painting while the preview     */
+/* beside his bubble fills in), changes it, then sits, naps and        */
+/* strolls back. Purely decorative; screen readers get a summary.      */
 /* ------------------------------------------------------------------ */
 
-const START_X = 22;
-const MID_X = 52;
-const HANDOFF = "That's a job for Marven's Agent. Want to open it there?";
-const AGENT_TASK = "fix the failing test in my project";
+const START_X = 18;
+const MID_X = 38;
+const SITE = "portfolio website";
 
 type Scene = {
   pose: MiniMeState;
@@ -39,12 +39,18 @@ type Scene = {
   draft: string;
   /** How long the draft takes to type; 0 shows it at once. */
   typeMs: number;
-  handoff: boolean;
-  pressed: boolean;
-  bounce: "music" | "marven" | null;
+  bounce: "music" | null;
   musicOpen: boolean;
   timer: boolean;
-  agent: boolean;
+  /** Building or changing the site: what the bubble's progress line says. */
+  building: string | null;
+  step: number;
+  /** The live preview beside the bubble: 0 hidden, 1 waiting, then 2-4 as sections appear. */
+  preview: number;
+  /** The change asked for: a red background. */
+  red: boolean;
+  /** A finished build: "Show preview" in the bubble. */
+  done: boolean;
 };
 
 const BASE: Scene = {
@@ -55,16 +61,18 @@ const BASE: Scene = {
   reply: null,
   draft: "",
   typeMs: 0,
-  handoff: false,
-  pressed: false,
   bounce: null,
   musicOpen: false,
   timer: false,
-  agent: false,
+  building: null,
+  step: 0,
+  preview: 0,
+  red: false,
+  done: false,
 };
 
-/** What a visitor with reduced motion sees: one finished exchange, standing still. */
-const STILL: Scene = { ...BASE, x: MID_X, bubble: true, reply: "Opening Spotify.", musicOpen: true, timer: true };
+/** What a visitor with reduced motion sees: one finished build, standing still. */
+const STILL: Scene = { ...BASE, x: MID_X, bubble: true, reply: "Your portfolio website is ready.", done: true, preview: 4, musicOpen: true, timer: true };
 
 const STEPS: [number, Partial<Scene>][] = [
   [0, { pose: "walk", x: MID_X, walkMs: 3000 }],
@@ -78,19 +86,24 @@ const STEPS: [number, Partial<Scene>][] = [
   [11700, { pose: "think", draft: "", reply: "…" }],
   [12400, { pose: "talk", reply: "Timer set for 10 minutes.", timer: true }],
   [13600, { pose: "idle" }],
-  [14300, { pose: "listen", draft: AGENT_TASK, typeMs: 1600 }],
-  [16400, { pose: "think", draft: "", reply: "…" }],
-  [17200, { pose: "talk", reply: HANDOFF, handoff: true }],
-  [18700, { pose: "idle" }],
-  [19500, { pressed: true }],
-  [19900, { pose: "happy", bubble: false, handoff: false, pressed: false, reply: null, agent: true, bounce: "marven" }],
-  [20900, { pose: "idle", bounce: null }],
-  [22200, { pose: "sit" }],
-  [24200, { pose: "sleep" }],
-  [27700, { pose: "stretch", agent: false, timer: false }],
-  [28800, { pose: "walk", x: START_X, walkMs: 3000 }],
+  [14300, { pose: "listen", reply: null, draft: `make me a ${SITE}`, typeMs: 1500 }],
+  [16200, { pose: "paint", draft: "", building: `Building ${SITE}`, step: 1, preview: 1 }],
+  [17200, { step: 2, preview: 2 }],
+  [18200, { step: 3, preview: 3 }],
+  [19200, { step: 4, preview: 4 }],
+  [20200, { pose: "happy", building: null, reply: `Your ${SITE} is ready.`, done: true }],
+  [21300, { pose: "idle" }],
+  [21800, { pose: "listen", reply: null, done: false, draft: "make the background red", typeMs: 1200 }],
+  [23400, { pose: "paint", draft: "", building: `Changing ${SITE}`, step: 1 }],
+  [24600, { step: 2, red: true }],
+  [25400, { pose: "happy", building: null, reply: "Done. The background is red now.", done: true }],
+  [26800, { pose: "idle", bubble: false, preview: 0, done: false, reply: null }],
+  [27800, { pose: "sit" }],
+  [29600, { pose: "sleep" }],
+  [32600, { pose: "stretch", timer: false, red: false, musicOpen: false }],
+  [33700, { pose: "walk", x: START_X, walkMs: 3000 }],
 ];
-const LOOP_MS = 32000;
+const LOOP_MS = 37000;
 
 const sceneAt = (step: number) => STEPS.slice(0, step + 1).reduce<Scene>((s, [, u]) => ({ ...s, ...u }), BASE);
 
@@ -181,15 +194,26 @@ function Bubble({ scene }: { scene: Scene }) {
       style={{ animation: "float-in .35s cubic-bezier(.2,.7,.2,1) both" }}
     >
       <div className="relative rounded-xl border border-line-2 bg-panel p-2.5 text-left text-[12.5px] text-ink-2 shadow-[0_18px_40px_-18px_rgba(0,0,0,.55)]">
+        {scene.building && (
+          <div className="mb-2">
+            <p className="flex items-center gap-2 font-medium text-ink">
+              <span className="relative flex size-2 shrink-0">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber opacity-50" />
+                <span className="relative inline-flex size-2 rounded-full bg-amber" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{scene.building}</span>
+              <span className="shrink-0 font-mono text-[10.5px] text-dim">Step {scene.step}</span>
+            </p>
+            <p className="mt-0.5 truncate pl-4 text-[11.5px] text-dim">
+              {["Planning it out…", "Writing index.html…", "Writing style.css…", "Adding the projects…", "Checking it over…"][scene.step] ?? "Working on it…"}
+            </p>
+          </div>
+        )}
         {scene.reply && <p className="mb-2 leading-snug text-ink">{scene.reply}</p>}
-        {scene.handoff && (
+        {scene.done && (
           <div className="mb-2 flex gap-1.5 text-[11.5px]">
-            <span
-              className={`rounded-md bg-brand px-2 py-1 font-medium text-on-brand transition ${scene.pressed ? "scale-95 brightness-90" : ""}`}
-            >
-              Open in Agent
-            </span>
-            <span className="rounded-md px-2 py-1 text-dim">Not now</span>
+            <span className="rounded-md bg-brand px-2 py-1 font-medium text-on-brand">Show preview</span>
+            <span className="rounded-md border border-line-2 px-2 py-1 text-mute">Open in Marven</span>
           </div>
         )}
         <div className="truncate rounded-md border border-line px-2 py-1.5 text-[12px]">
@@ -202,6 +226,54 @@ function Bubble({ scene }: { scene: Scene }) {
           )}
         </div>
         <span className="absolute -bottom-[7px] left-1/2 size-3 -translate-x-1/2 rotate-45 border-b border-r border-line-2 bg-panel" />
+      </div>
+    </div>
+  );
+}
+
+/** The live preview, docked beside Mini Me's bubble: the site fills in as he builds it. */
+function Preview({ scene }: { scene: Scene }) {
+  const shown = (n: number) => (scene.preview >= n ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1");
+  return (
+    <div
+      className={`absolute bottom-full left-1/2 mb-1 ml-[142px] hidden w-[236px] transition duration-300 md:block ${
+        scene.preview ? "opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+      }`}
+    >
+      <div className="overflow-hidden rounded-xl border border-line-2 bg-panel shadow-[0_18px_40px_-18px_rgba(0,0,0,.55)]">
+        <div className="flex h-7 items-center gap-1.5 border-b border-line px-2 font-mono text-[9.5px] text-dim">
+          <span className="text-mute">✕</span>
+          <span className="min-w-0 flex-1 truncate rounded bg-bg-2 px-1.5 py-0.5">
+            <span className="text-ink-2">{SITE}</span> · 127.0.0.1:5173
+          </span>
+          <GlobeIcon size={11} />
+          <FolderIcon size={11} />
+        </div>
+        <div className={`h-[146px] p-2 transition-colors duration-500 ${scene.red ? "bg-[#e24b4a]" : "bg-[#f5f5f0]"}`}>
+          {scene.preview === 1 ? (
+            <p className="grid h-full place-items-center font-mono text-[10px] text-[#8a8a8a]">Waiting for the first page…</p>
+          ) : (
+            <div className="space-y-1.5">
+              <div className={`rounded bg-[#222] px-2 py-2 text-center transition duration-300 ${shown(2)}`}>
+                <p className="text-[11px] font-semibold text-white">Sara Haddad</p>
+                <p className="text-[8px] text-white/70">Designer &amp; developer</p>
+              </div>
+              <div className={`rounded bg-white px-2 py-1.5 transition duration-300 ${shown(3)}`}>
+                <p className="text-[8.5px] font-semibold text-[#333]">About me</p>
+                <div className="mt-1 h-1 w-11/12 rounded bg-[#ddd]" />
+                <div className="mt-0.5 h-1 w-2/3 rounded bg-[#ddd]" />
+              </div>
+              <div className={`grid grid-cols-3 gap-1 transition duration-300 ${shown(4)}`}>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="rounded bg-white p-1">
+                    <div className="h-5 rounded-sm bg-[#cfd8e3]" />
+                    <div className="mt-1 h-1 w-3/4 rounded bg-[#ddd]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -230,8 +302,9 @@ function Desktop({ artStyle, look }: { artStyle: MiniMeStyle; look: MiniMeLook }
       <p className="sr-only">
         Animated example: Mini Me walks along the bottom of a desktop, just above the Dock. Asked to open Spotify, it
         replies &ldquo;Opening Spotify.&rdquo; Asked to set a timer for 10 minutes, it replies &ldquo;Timer set for 10
-        minutes.&rdquo; Asked to fix a failing test, it offers to hand the job to Marven&apos;s Agent, which opens a new chat
-        with the request filled in. Then it sits down, naps, stretches and walks off.
+        minutes.&rdquo; Asked to make a portfolio website, it paints with a roller while a live preview beside its bubble
+        fills in, then says the site is ready. Asked to make the background red, it changes the same site. Then it sits
+        down, naps, stretches and walks off.
       </p>
       <div
         aria-hidden="true"
@@ -261,44 +334,19 @@ function Desktop({ artStyle, look }: { artStyle: MiniMeStyle; look: MiniMeLook }
           </span>
         </div>
 
-        {/* The Agent, opened by Mini Me with the request filled in */}
-        <div
-          className={`absolute left-3 top-11 w-[min(20rem,calc(100%-1.5rem))] rounded-xl border border-line-2 bg-panel shadow-[var(--shadow)] transition duration-500 sm:left-8 sm:top-14 ${
-            scene.agent ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"
-          }`}
-        >
-          <div className="flex h-8 items-center gap-2 border-b border-line bg-panel-2 px-3 rounded-t-xl">
-            <span className="flex gap-1">
-              <span className="size-2 rounded-full bg-[#ff5f57]" />
-              <span className="size-2 rounded-full bg-[#febc2e]" />
-              <span className="size-2 rounded-full bg-[#28c840]" />
-            </span>
-            <span className="flex-1 truncate text-center font-mono text-[10px] text-dim">Agent · New chat</span>
-          </div>
-          <div className="p-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-dim">From Mini Me</p>
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-brand/40 bg-bg-2 px-2.5 py-2 text-[12px] text-ink">
-              <span className="flex-1 truncate">{AGENT_TASK}</span>
-              <span className="kbd">⌘↵</span>
-            </div>
-            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-mute">
-              <ShieldIcon size={12} className="text-local" /> The Agent still asks before it acts.
-            </p>
-          </div>
-        </div>
-
         {/* Mini Me, standing just above the Dock */}
         <div
           className="absolute bottom-[68px] -translate-x-1/2 sm:bottom-[78px]"
           style={{ left: `${scene.x}%`, transition: scene.walkMs ? `left ${scene.walkMs}ms linear` : undefined }}
         >
           {scene.bubble && <Bubble scene={scene} />}
+          <Preview scene={scene} />
           <MiniMeSprite artStyle={artStyle} look={look} state={scene.pose} className="[--mm-scale:2] md:[--mm-scale:3]" />
         </div>
 
         {/* Dock */}
         <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-end gap-1.5 rounded-2xl border border-line-2 bg-panel/70 p-1.5 backdrop-blur-md sm:gap-2 sm:p-2">
-          <DockTile label="Marven" className="bg-brand text-on-brand" running bounce={scene.bounce === "marven"}>
+          <DockTile label="Marven" className="bg-brand text-on-brand" running>
             <Logo size={20} />
           </DockTile>
           <DockTile label="Files" className="bg-cloud-soft text-cloud">
@@ -342,6 +390,7 @@ const POSES: [MiniMeState, string][] = [
   ["talk", "Talk"],
   ["happy", "Happy"],
   ["think", "Think"],
+  ["paint", "Paint"],
   ["sleep", "Sleep"],
 ];
 
@@ -386,7 +435,7 @@ function Customiser({
             label={`Mini Me preview, ${MINI_ME_STYLES[artStyle].label} style: ${LOOK_LABEL[look].toLowerCase()}`}
           />
         </div>
-        <div role="group" aria-label="Pose" className="grid grid-cols-3 gap-1 border-t border-line p-3 sm:grid-cols-6">
+        <div role="group" aria-label="Pose" className="grid grid-cols-4 gap-1 border-t border-line p-3 sm:grid-cols-7">
           {POSES.map(([id, label]) => (
             <button
               key={id}
@@ -484,6 +533,11 @@ const POINTS: { icon: ReactNode; title: string; body: ReactNode }[] = [
     body: "Opens apps and sites, sets timers and reads your clipboard, so you don't have to switch windows.",
   },
   {
+    icon: <GlobeIcon size={17} />,
+    title: "Builds websites for you",
+    body: "Ask for a site and he makes it in its own folder, painting away while a live preview beside his bubble fills in. Ask for changes and he edits the same project; anything you add while he works waits its turn.",
+  },
+  {
     icon: <SparkIcon size={17} />,
     title: "Hands big jobs to the Agent",
     body: "Anything that needs your files, the terminal or the browser opens a new Agent chat with your request filled in, so the Agent's approvals still apply.",
@@ -504,14 +558,14 @@ export function MiniMe() {
       <div className="mx-auto max-w-[88rem]">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <SectionHeading
-            eyebrow="New in 2.18 · Mini Me"
+            eyebrow="New in 2.19 · Mini Me builds websites"
             tone="amber"
             title={
               <>
                 A tiny you that lives <Em>above your Dock.</Em>
               </>
             }
-            lede="Mini Me is a pixel-art version of you that walks along the bottom of your screen. Click it, tell it what to do, and it answers in a speech bubble. Small jobs it does itself; big ones go to the Agent."
+            lede="Mini Me is a pixel-art version of you that walks along the bottom of your screen. Click it, tell it what to do, and it answers in a speech bubble. Ask for a website and it builds one while you watch the preview; small jobs it does itself, and big ones go to the Agent."
           />
           <p className="flex shrink-0 flex-wrap items-center gap-2 font-mono text-xs text-mute lg:pb-2">
             <span className="kbd">⌘⇧Space</span>
@@ -524,9 +578,9 @@ export function MiniMe() {
           <Desktop artStyle={artStyle} look={look} />
         </div>
 
-        <ul className="mt-5 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-5">
-          {POINTS.map((p, i) => (
-            <li key={p.title} className={`bg-panel p-5 ${i === POINTS.length - 1 ? "sm:col-span-2 lg:col-span-1" : ""}`}>
+        <ul className="mt-5 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+          {POINTS.map((p) => (
+            <li key={p.title} className="bg-panel p-5">
               <span className="grid size-8 place-items-center rounded-lg border border-line-2 bg-panel-2 text-amber">{p.icon}</span>
               <h3 className="mt-4 font-semibold tracking-tight text-ink">{p.title}</h3>
               <p className="mt-1.5 text-[0.9rem] leading-relaxed text-mute">{p.body}</p>

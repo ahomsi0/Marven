@@ -199,12 +199,13 @@ export function Features() {
                 <span className="grid size-9 place-items-center rounded-lg border border-line-2 bg-panel-2 text-amber">
                   <MiniMeIcon />
                 </span>
-                <span className="rounded-full bg-amber-soft px-2 py-0.5 font-mono text-[10.5px] text-amber">New in 2.18</span>
+                <span className="rounded-full bg-amber-soft px-2 py-0.5 font-mono text-[10.5px] text-amber">New in 2.19</span>
               </span>
               <h3 className="mt-5 text-lg font-semibold tracking-tight text-ink">Mini Me, a tiny you on your desktop</h3>
               <p className="mt-2 text-[0.95rem] leading-relaxed text-mute">
                 A pixel-art companion that walks above the Dock. Click it or press{" "}
-                <span className="kbd">⌘⇧Space</span>, and it opens apps, sets timers and passes bigger jobs to the agent.
+                <span className="kbd">⌘⇧Space</span>, and it opens apps, sets timers, builds websites while you watch a live preview,
+                and passes bigger jobs to the agent.
               </p>
               <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-ink group-hover:text-amber">
                 Meet Mini Me

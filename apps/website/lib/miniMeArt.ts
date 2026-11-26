@@ -12,11 +12,12 @@ export const MINI_ME_STATES = {
   stretch: { row: 4, frames: 4, fps: 4, loop: false },
   sleep: { row: 5, frames: 2, fps: 1.5, loop: true },
   listen: { row: 6, frames: 2, fps: 2, loop: true },
-  think: { row: 7, frames: 3, fps: 3, loop: true },
-  talk: { row: 8, frames: 4, fps: 8, loop: true },
-  happy: { row: 9, frames: 4, fps: 6, loop: false },
-  confused: { row: 10, frames: 4, fps: 3, loop: false },
-  dangle: { row: 11, frames: 2, fps: 3, loop: true },
+  think: { row: 7, frames: 5, fps: 3, loop: true },
+  paint: { row: 8, frames: 6, fps: 5, loop: true },
+  talk: { row: 9, frames: 4, fps: 8, loop: true },
+  happy: { row: 10, frames: 4, fps: 6, loop: false },
+  confused: { row: 11, frames: 4, fps: 3, loop: false },
+  dangle: { row: 12, frames: 2, fps: 3, loop: true },
 } as const;
 
 export type MiniMeState = keyof typeof MINI_ME_STATES;

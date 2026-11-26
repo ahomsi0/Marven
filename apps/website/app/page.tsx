@@ -67,7 +67,7 @@ export default async function Home() {
               className="group absolute bottom-full right-3 z-10 flex items-end gap-1.5 sm:right-10"
             >
               <span className="mb-3 whitespace-nowrap rounded-full border border-line-2 bg-panel/80 px-2.5 py-1 font-mono text-[11px] text-mute backdrop-blur transition group-hover:border-amber/50 group-hover:text-ink">
-                <span className="text-amber">New in 2.18:</span> meet Mini Me
+                <span className="text-amber">New in 2.19:</span> Mini Me builds websites
               </span>
               <MiniMeSprite state="sit" className="[--mm-scale:1] sm:[--mm-scale:2]" />
             </a>
