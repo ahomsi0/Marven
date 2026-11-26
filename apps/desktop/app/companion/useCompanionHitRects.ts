@@ -9,7 +9,7 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { CompanionBridge, HitRect } from "@/lib/companion/bridge";
-import { sameHitRects, toHitRects } from "@/lib/companion/hitRects";
+import { parseOutset, sameHitRects, toHitRects } from "@/lib/companion/hitRects";
 
 const REPORT_DELAY_MS = 30;
 
@@ -23,7 +23,13 @@ export function useCompanionHitRects(bridge: CompanionBridge | null, enabled: bo
 
     const report = () => {
       timer = null;
-      const rects = toHitRects(Array.from(root.querySelectorAll("[data-hit]"), (el) => el.getBoundingClientRect()));
+      const rects = toHitRects(
+        Array.from(root.querySelectorAll("[data-hit]"), (el) => {
+          const box = el.getBoundingClientRect();
+          // A shadow painted outside the box is declared with data-hit-outset (see lib/companion/hitRects.ts).
+          return { left: box.left, top: box.top, width: box.width, height: box.height, outset: parseOutset(el.getAttribute("data-hit-outset")) };
+        }),
+      );
       if (sameHitRects(last, rects)) return;
       last = rects;
       bridge.setHitRects(rects);
@@ -43,7 +49,7 @@ export function useCompanionHitRects(bridge: CompanionBridge | null, enabled: bo
       syncObserved();
       schedule();
     });
-    mutations.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hit", "class", "style"] });
+    mutations.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hit", "data-hit-outset", "class", "style"] });
     syncObserved();
     // The main process resets the shape when it resizes the window: always resend after a resize.
     const onResize = () => {

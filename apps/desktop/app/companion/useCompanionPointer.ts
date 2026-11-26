@@ -18,9 +18,11 @@ interface Options {
   dispatch: (event: BehaviourEvent) => void;
   onClick: () => void;
   onDoubleClick: () => void;
+  /** Linux: the window shape decides where clicks land, so there's nothing to toggle. */
+  shapeWindow?: boolean;
 }
 
-export function useCompanionPointer({ bridge, dispatch, onClick, onDoubleClick }: Options) {
+export function useCompanionPointer({ bridge, dispatch, onClick, onDoubleClick, shapeWindow = false }: Options) {
   const [hovered, setHovered] = useState(false);
   const hoveredRef = useRef(false);
   const interactiveRef = useRef(false);
@@ -33,9 +35,9 @@ export function useCompanionPointer({ bridge, dispatch, onClick, onDoubleClick }
     (on: boolean) => {
       if (on === interactiveRef.current) return;
       interactiveRef.current = on;
-      bridge?.setInteractive(on);
+      if (!shapeWindow) bridge?.setInteractive(on);
     },
-    [bridge],
+    [bridge, shapeWindow],
   );
 
   // Click-through: take the mouse only over the character or the bubble.

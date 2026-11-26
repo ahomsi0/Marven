@@ -204,6 +204,8 @@ const settingsEn = {
     enabled: "Show Mini Me",
     enabledHint: "Put Mini Me on your desktop. Turn it off to hide it; your choices below are kept.",
     linuxRestart: "On Linux (Wayland), restart Marven so Mini Me can move and be clicked.",
+    linuxRestartNow: "Restart now",
+    linuxXWaylandFailed: "On Linux (Wayland), XWayland couldn't start, so Mini Me can't move here. Marven will try again next time it starts.",
     hotkey: "Shortcut",
     hotkeyHint: "Opens Mini Me's bubble from anywhere, e.g. CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "Shortcut unavailable: another app is using it.",

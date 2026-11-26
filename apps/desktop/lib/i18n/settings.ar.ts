@@ -204,6 +204,8 @@ const settingsAr = {
     enabled: "إظهار ميني مي",
     enabledHint: "ضع ميني مي على سطح المكتب. أوقفه لإخفائه؛ وتبقى اختياراتك أدناه محفوظة.",
     linuxRestart: "على لينكس (Wayland)، أعد تشغيل Marven لكي يتمكّن ميني مي من الحركة واستقبال النقرات.",
+    linuxRestartNow: "إعادة التشغيل الآن",
+    linuxXWaylandFailed: "على لينكس (Wayland)، تعذّر تشغيل XWayland، لذا لا يستطيع ميني مي الحركة هنا. سيحاول Marven مجددًا عند تشغيله في المرة القادمة.",
     hotkey: "الاختصار",
     hotkeyHint: "يفتح فقاعة ميني مي من أي مكان، مثل CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "الاختصار غير متاح: يستخدمه تطبيق آخر.",

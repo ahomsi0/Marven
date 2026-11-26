@@ -26,6 +26,8 @@ type Electron = {
   saveSettings: (s: any) => Promise<any>;
   companionStatus?: () => Promise<CompanionStatus>;
   onCompanionVisibility?: (cb: () => void) => (() => void) | void;
+  /** Linux: restart Marven under XWayland so Mini Me can move (main checks it's waiting for that). */
+  relaunchForMiniMe?: () => Promise<boolean>;
 };
 
 interface MiniMeState {
@@ -61,6 +63,8 @@ interface CompanionStatus {
   hotkeyReason?: "reserved" | "taken" | null;
   /** Linux: Marven runs natively on Wayland, where Mini Me can't move until a restart (under XWayland). */
   needsRestartForLinux?: boolean;
+  /** Linux: the restart under XWayland didn't start, so this launch is on native Wayland. */
+  xwaylandFailed?: boolean;
 }
 
 function problemOf(st: CompanionStatus): "reserved" | "taken" | null {
@@ -77,11 +81,24 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
   const [projectsDraft, setProjectsDraft] = useState(DEFAULTS.miniMeProjectsDir);
   const [hotkeyProblem, setHotkeyProblem] = useState<"reserved" | "taken" | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
+  const [xwaylandFailed, setXwaylandFailed] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const applyStatus = useCallback((st: CompanionStatus | undefined) => {
     if (!st) return;
     setHotkeyProblem(problemOf(st));
     setNeedsRestart(!!st.needsRestartForLinux);
+    setXwaylandFailed(!!st.xwaylandFailed);
   }, []);
+
+  async function restartNow() {
+    setRestarting(true);
+    try {
+      // On success Marven quits and comes back under XWayland.
+      if (!(await electron.relaunchForMiniMe?.())) setRestarting(false);
+    } catch {
+      setRestarting(false);
+    }
+  }
   const pendingLook = useRef<Look | null>(null);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -174,8 +191,23 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
           <Switch labelledBy="mini-me-enabled" checked={state.miniMeEnabled} onChange={(v) => void save({ miniMeEnabled: v })} />
         </Row>
         {state.miniMeEnabled && needsRestart && (
+          <div role="status" className="flex items-center justify-between gap-3">
+            <p className="text-[11px] leading-snug text-amber-400">{tr("settings.miniMe.linuxRestart")}</p>
+            {electron.relaunchForMiniMe && (
+              <button
+                type="button"
+                disabled={restarting}
+                onClick={() => void restartNow()}
+                className="shrink-0 rounded-md border border-[var(--m-border)] px-2.5 py-1 text-[11px] text-[var(--m-text)] outline-none transition-colors hover:border-[var(--m-text-faint)] hover:bg-[var(--m-surface-2)] focus-visible:ring-2 focus-visible:ring-[var(--m-accent-soft)] disabled:opacity-50"
+              >
+                {tr("settings.miniMe.linuxRestartNow")}
+              </button>
+            )}
+          </div>
+        )}
+        {state.miniMeEnabled && xwaylandFailed && (
           <p role="status" className="text-[11px] leading-snug text-amber-400">
-            {tr("settings.miniMe.linuxRestart")}
+            {tr("settings.miniMe.linuxXWaylandFailed")}
           </p>
         )}
         <div>

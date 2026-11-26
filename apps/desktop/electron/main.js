@@ -55,23 +55,66 @@ patchConsole(logCapture);
 // Under native Wayland, Mini Me can't move (setPosition/setBounds are ignored)
 // and click-through isn't reliable; under XWayland both work. The display
 // backend is picked before this script runs (appendSwitch is too late), so
-// relaunch once with --ozone-platform=x11 on the real command line. Skipped if
-// a backend was chosen explicitly (no loop: the relaunch carries the switch),
-// without an X server, or with MARVEN_NATIVE_WAYLAND=1. See linuxDisplay.js.
+// relaunch once with --ozone-platform=x11 on the real command line. The
+// decision and its guards are in linuxDisplay.js. A marker file in userData
+// is written before relaunching and removed once the relaunched process is
+// ready; if it is still there at the next start, that process died early and
+// this launch stays on native Wayland (Settings → Mini Me says so).
 // readStoredSettings works before ready: it only needs app.getPath('userData').
-const linuxDisplayInput = { platform: process.platform, argv: process.argv, env: process.env };
-if (linuxDisplay.shouldUseXWayland({ ...linuxDisplayInput, miniMeEnabled: process.platform === 'linux' && !!readStoredSettings().miniMeEnabled })) {
-  console.log('[Marven] Mini Me is on in a Wayland session: restarting under XWayland (--ozone-platform=x11) so it can move and be clicked. Set MARVEN_NATIVE_WAYLAND=1 to stay on native Wayland.');
-  // An AppImage's own binary lives in a mount that goes away when this process exits: relaunch the AppImage file.
-  app.relaunch({
-    args: linuxDisplay.xwaylandRelaunchArgs(process.argv),
-    ...(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE } : {}),
-  });
-  app.exit(0);
-  return; // CommonJS module scope: stop evaluating the rest of main.js.
+function xwaylandMarkerPath() {
+  return path.join(app.getPath('userData'), 'xwayland-relaunch.pending');
 }
-// Running natively on Wayland where XWayland would be used: turning Mini Me on needs a restart.
-const miniMeNeedsRestartOnLinux = linuxDisplay.needsRestartForMiniMe(linuxDisplayInput);
+
+function removeXWaylandMarker() {
+  try { fs.rmSync(xwaylandMarkerPath(), { force: true }); } catch (err) {
+    console.warn('[Marven] Could not remove the XWayland relaunch marker:', err && err.message);
+  }
+}
+
+/** Arrange a relaunch under XWayland (the caller quits). False if the marker can't be written: no relaunch then. */
+function relaunchIntoXWayland() {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(xwaylandMarkerPath(), new Date().toISOString());
+  } catch (err) {
+    console.warn('[Marven] Not relaunching under XWayland: could not write the relaunch marker:', err && err.message);
+    return false;
+  }
+  process.env[linuxDisplay.RELAUNCH_ENV] = '1'; // inherited by the relaunched process
+  app.relaunch(linuxDisplay.xwaylandRelaunchOptions({
+    argv: process.argv,
+    env: process.env,
+    isPackaged: app.isPackaged,
+    execPath: process.execPath,
+  }));
+  return true;
+}
+
+const relaunchedIntoXWayland = process.env[linuxDisplay.RELAUNCH_ENV] === '1';
+const linuxStartup = process.platform === 'linux'
+  ? linuxDisplay.xwaylandStartup({
+    platform: process.platform,
+    argv: process.argv,
+    env: process.env,
+    exists: (p) => fs.existsSync(p),
+    miniMeEnabled: !!readStoredSettings().miniMeEnabled,
+    markerLeft: fs.existsSync(xwaylandMarkerPath()),
+  })
+  : { relaunch: false, xwaylandFailed: false, needsRestart: false };
+// Read once; don't leak it into terminals and agent processes started from here.
+delete process.env[linuxDisplay.RELAUNCH_ENV];
+if (linuxStartup.xwaylandFailed) {
+  removeXWaylandMarker();
+  console.warn('[Marven] The XWayland relaunch exited before it was ready: staying on native Wayland for this launch (Mini Me can\'t move here).');
+}
+if (linuxStartup.relaunch) {
+  console.log('[Marven] Mini Me is on in a Wayland session: restarting under XWayland (--ozone-platform=x11) so it can move and be clicked. Set MARVEN_NATIVE_WAYLAND=1 to stay on native Wayland.');
+  if (relaunchIntoXWayland()) {
+    app.exit(0);
+    return; // CommonJS module scope: stop evaluating the rest of main.js.
+  }
+  linuxStartup.needsRestart = false; // a restart wouldn't get further
+}
 
 // Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
 // Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
@@ -463,7 +506,21 @@ ipcMain.handle('save-settings', (_, settings) => {
   return publicSettings(next);
 });
 ipcMain.handle('companion-status', () =>
-  companion ? companion.status() : { visible: false, hotkeyOk: true, hotkeyReason: null, unavailable: false, wakeWord: false, needsRestartForLinux: false });
+  companion ? companion.status() : { visible: false, hotkeyOk: true, hotkeyReason: null, unavailable: false, wakeWord: false, needsRestartForLinux: false, xwaylandFailed: false });
+
+// Settings → Mini Me's "Restart now" (main frame of Marven's own window only):
+// relaunch under XWayland when Mini Me is waiting for it.
+ipcMain.handle('mini-me:relaunch-xwayland', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return false;
+  if (!event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) return false;
+  if (!companion || !companion.status().needsRestartForLinux) return false;
+  if (!linuxDisplay.canUseXWayland({ platform: process.platform, argv: process.argv, env: process.env, exists: (p) => fs.existsSync(p) })) return false;
+  console.log('[Marven] Restarting under XWayland for Mini Me (Settings → Restart now).');
+  if (!relaunchIntoXWayland()) return false;
+  isQuitting = true;
+  app.quit();
+  return true;
+});
 
 function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
@@ -1151,6 +1208,8 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(async () => {
+  // The XWayland relaunch made it this far: it worked.
+  if (relaunchedIntoXWayland) removeXWaylandMarker();
   applySettings(loadSettings());
   await startNextServer();
 
@@ -1183,7 +1242,8 @@ app.whenReady().then(async () => {
     appPort: APP_PORT,
     savePosition: saveCompanionPosition,
     isQuitting: () => isQuitting,
-    nativeWayland: miniMeNeedsRestartOnLinux,
+    nativeWayland: linuxStartup.needsRestart,
+    xwaylandFailed: linuxStartup.xwaylandFailed,
     onStatusChange: (s) => {
       rebuildTrayMenu();
       if (mainWindow && !mainWindow.isDestroyed()) {

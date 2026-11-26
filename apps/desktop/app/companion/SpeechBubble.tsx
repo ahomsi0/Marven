@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import type { BrainReply, BubbleAction, BuildChoice } from "@/hooks/useCompanionBrain";
 import type { BuildView } from "@/hooks/useCompanionBuild";
 import { useT } from "@/lib/i18n";
+import { BUBBLE_HIT_OUTSET } from "@/lib/companion/hitRects";
 import { BuildCard, buildCardTakesInput, type BuildCardHandlers } from "./BuildCard";
 
 interface Props {
@@ -47,6 +48,8 @@ export function SpeechBubble({ reply, busy, listening, notice, draft, interim, i
   return (
     <div
       data-hit
+      // Linux window shape: keep room for the shadow-lg below (see BUBBLE_HIT_OUTSET).
+      data-hit-outset={BUBBLE_HIT_OUTSET}
       onPointerDown={onEngage}
       className="relative w-[320px] rounded-xl border border-[var(--m-border)] bg-[var(--m-surface)] p-3 text-[13px] text-[var(--m-text)] shadow-lg"
     >

@@ -30,7 +30,12 @@
 //   so Mini Me couldn't walk or be dragged. main.js relaunches Marven under
 //   XWayland (`--ozone-platform=x11`) while Mini Me is on; see linuxDisplay.js.
 //   MARVEN_NATIVE_WAYLAND=1 opts out. Turning Mini Me on while already running
-//   natively on Wayland needs a restart; status() reports needsRestartForLinux.
+//   natively on Wayland needs a restart: the window isn't created until then
+//   (it couldn't be placed or kept on top), and status() reports
+//   needsRestartForLinux (Settings → Mini Me offers "Restart now"). If the
+//   XWayland relaunch died before it was ready, that launch stays native and
+//   status() reports xwaylandFailed instead; Mini Me shows but can't move.
+// - Display scale changes re-apply the window shape (it's in window DIPs).
 
 const { BrowserWindow, screen, globalShortcut, ipcMain, clipboard, shell } = require('electron');
 const fs = require('fs');
@@ -74,14 +79,17 @@ const sameSize = (a, b) => a.width === b.width && a.height === b.height;
  *   appPort: number,
  *   savePosition: (position: { x: number, y: number, displayId: number }) => void,
  *   isQuitting?: () => boolean,
- *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, hotkeyReason: 'reserved' | 'taken' | null, unavailable: boolean, wakeWord: boolean, needsRestartForLinux: boolean }) => void,
+ *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, hotkeyReason: 'reserved' | 'taken' | null, unavailable: boolean, wakeWord: boolean, needsRestartForLinux: boolean, xwaylandFailed: boolean }) => void,
  *   nativeWayland?: boolean,
+ *   xwaylandFailed?: boolean,
  * }} options
  *
  * `nativeWayland`: this process runs natively on Wayland where XWayland would
- * have been used had Mini Me been on at launch; Mini Me needs a restart to move.
+ * have been used had Mini Me been on at launch; Mini Me waits for a restart.
+ * `xwaylandFailed`: the XWayland relaunch died before it was ready; this launch
+ * is on native Wayland (Mini Me shows, but can't move).
  */
-function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange, nativeWayland = false }) {
+function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange, nativeWayland = false, xwaylandFailed = false }) {
   let win = null;
   let settings = {};
   let size = placement.windowSize(3);
@@ -102,13 +110,16 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   const url = `http://localhost:${appPort}/companion`;
 
   const alive = () => !!win && !win.isDestroyed();
+  // Linux, native Wayland, Mini Me turned on: no window until Marven restarts under XWayland.
+  const waitingForRestart = () => !!nativeWayland && !!settings.miniMeEnabled;
   const status = () => ({
     visible: alive() && win.isVisible(),
     hotkeyOk,
     hotkeyReason,
     unavailable,
     wakeWord: !!settings.miniMeWakeWord,
-    needsRestartForLinux: !!nativeWayland && !!settings.miniMeEnabled,
+    needsRestartForLinux: waitingForRestart(),
+    xwaylandFailed: !!xwaylandFailed && !!settings.miniMeEnabled,
   });
   const notify = () => { if (onStatusChange) onStatusChange(status()); };
 
@@ -397,7 +408,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     hotkeyOk = true;
     hotkeyReason = null;
     const accel = typeof settings.miniMeHotkey === 'string' ? settings.miniMeHotkey.trim() : '';
-    if (!accel || !settings.miniMeEnabled || unavailable) return;
+    if (!accel || !settings.miniMeEnabled || unavailable || waitingForRestart()) return;
     if (isReservedHotkey(accel)) {
       hotkeyOk = false; // Marven's own Listen shortcut
       hotkeyReason = 'reserved';
@@ -511,6 +522,12 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   screen.on('display-added', reclamp);
   screen.on('display-removed', reclamp);
   screen.on('display-metrics-changed', reclamp);
+  // Linux: the shape is in window DIPs; re-apply it when the display's scale changes.
+  screen.on('display-metrics-changed', (_event, _display, changedMetrics) => {
+    if (!USE_SHAPE || !Array.isArray(changedMetrics) || !changedMetrics.includes('scaleFactor')) return;
+    appliedShape = null;
+    applyShape();
+  });
 
   /** Apply the full settings object (call on launch and after every save). */
   function applySettings(next) {
@@ -521,7 +538,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     if (savePending && prev.miniMePosition) settings.miniMePosition = prev.miniMePosition;
     const enabled = !!settings.miniMeEnabled;
     if (!enabled) unavailable = false;
-    if (enabled && !alive()) {
+    if (enabled && !alive() && !waitingForRestart()) {
       unavailable = false;
       create();
     } else if (!enabled && alive()) {

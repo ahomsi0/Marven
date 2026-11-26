@@ -10,6 +10,8 @@ type Rect = { x: number; y: number; width: number; height: number };
 function fakeElectron() {
   const calls: { method: string; args: unknown[] }[] = [];
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const screenHandlers: { event: string; fn: (...args: unknown[]) => unknown }[] = [];
+  const shortcuts: string[] = [];
   let win: FakeWindow | null = null;
   class FakeWindow {
     pos: [number, number];
@@ -51,8 +53,12 @@ function fakeElectron() {
   const display = { id: 1, workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
   const electron = {
     BrowserWindow: FakeWindow,
-    screen: { getAllDisplays: () => [display], getPrimaryDisplay: () => display, on() {} },
-    globalShortcut: { register: () => true, unregister() {} },
+    screen: {
+      getAllDisplays: () => [display],
+      getPrimaryDisplay: () => display,
+      on: (event: string, fn: (...args: unknown[]) => unknown) => screenHandlers.push({ event, fn }),
+    },
+    globalShortcut: { register: (accel: string) => (shortcuts.push(accel), true), unregister() {} },
     ipcMain: {
       handle: (ch: string, fn: (...a: unknown[]) => unknown) => handlers.set(ch, fn),
       on: (ch: string, fn: (...a: unknown[]) => unknown) => handlers.set(ch, fn),
@@ -63,7 +69,9 @@ function fakeElectron() {
   return {
     electron,
     calls,
-    win: () => win!,
+    win: () => win,
+    shortcuts,
+    emitScreen: (event: string, ...args: unknown[]) => screenHandlers.filter((h) => h.event === event).forEach((h) => h.fn({}, ...args)),
     send: (ch: string, ...args: unknown[]) => handlers.get(ch)!({ sender: win!.webContents }, ...args),
   };
 }
@@ -72,13 +80,13 @@ const electronPath = require.resolve("electron");
 const companionPath = require.resolve("./companion");
 const realPlatform = process.platform;
 
-function loadCompanion(platform: NodeJS.Platform) {
+function loadCompanion(platform: NodeJS.Platform, options: { nativeWayland?: boolean; xwaylandFailed?: boolean } = {}) {
   const fake = fakeElectron();
   Object.defineProperty(process, "platform", { value: platform });
   require.cache[electronPath] = { id: electronPath, filename: electronPath, loaded: true, exports: fake.electron } as unknown as NodeJS.Module;
   delete require.cache[companionPath];
   const { createCompanion } = require("./companion");
-  const companion = createCompanion({ appPort: 1, savePosition() {}, nativeWayland: platform === "linux" });
+  const companion = createCompanion({ appPort: 1, savePosition() {}, ...options });
   return { ...fake, companion };
 }
 
@@ -130,7 +138,38 @@ describe("companion click-through by platform", () => {
     // Garbage falls back to the sprite box rather than an empty (invisible) shape.
     send("companion:set-hit-rects", "nope");
     expect(shapes(calls).at(-1)).toEqual([{ x: 124, y: 176, width: 112, height: 104 }]);
-    expect(companion.status().needsRestartForLinux).toBe(true);
+    expect(companion.status().needsRestartForLinux).toBe(false);
+  });
+
+  it("Linux: a display scale change re-applies the same shape; other metric changes don't", () => {
+    const { calls, send, companion, emitScreen } = loadCompanion("linux");
+    companion.applySettings({ miniMeEnabled: true, miniMeScale: 3, miniMeLook: { artStyle: "chibi" } });
+    send("companion:set-hit-rects", [{ x: 132, y: 184, width: 96, height: 96 }]);
+    const count = shapes(calls).length;
+    emitScreen("display-metrics-changed", {}, ["workArea"]);
+    expect(shapes(calls).length).toBe(count);
+    emitScreen("display-metrics-changed", {}, ["scaleFactor"]);
+    expect(shapes(calls).length).toBe(count + 1);
+    expect(shapes(calls).at(-1)).toEqual(shapes(calls).at(-2));
+  });
+
+  it("Linux, native Wayland: no window or hotkey until a restart, and status says so", () => {
+    const { calls, companion, shortcuts } = loadCompanion("linux", { nativeWayland: true });
+    companion.applySettings({ miniMeEnabled: false });
+    expect(companion.status().needsRestartForLinux).toBe(false);
+    companion.applySettings({ miniMeEnabled: true, miniMeHotkey: "CommandOrControl+Shift+Space" });
+    expect(calls.some((c) => c.method === "constructor")).toBe(false);
+    expect(shortcuts).toEqual([]);
+    expect(companion.status()).toMatchObject({ visible: false, needsRestartForLinux: true, xwaylandFailed: false });
+  });
+
+  it("Linux, XWayland failed to start: Mini Me shows anyway and status says why he can't move", () => {
+    const { calls, companion } = loadCompanion("linux", { xwaylandFailed: true });
+    companion.applySettings({ miniMeEnabled: true });
+    expect(calls.some((c) => c.method === "constructor")).toBe(true);
+    expect(companion.status()).toMatchObject({ needsRestartForLinux: false, xwaylandFailed: true });
+    companion.applySettings({ miniMeEnabled: false });
+    expect(companion.status().xwaylandFailed).toBe(false);
   });
 
   it("Linux: resizing the window resets the shape to the new sprite box", () => {

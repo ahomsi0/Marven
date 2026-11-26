@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   // ── Mini Me ────────────────────────────────────────────────────────────────
   // Main window side: status, wake-word hand-over, threads and settings requests.
   companionStatus: () => ipcRenderer.invoke('companion-status'),
+  // Linux: Settings → Mini Me's "Restart now" (main only acts while Mini Me waits for XWayland).
+  relaunchForMiniMe: () => ipcRenderer.invoke('mini-me:relaunch-xwayland'),
   onCompanionVisibility: subscribe('companion-visibility'),
   onCompanionOpenThread: subscribe('companion-open-thread'),
   // The answer to a companion-open-thread hand-off: { id, ok, reason? }.

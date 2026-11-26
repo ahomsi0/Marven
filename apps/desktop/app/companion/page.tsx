@@ -270,6 +270,7 @@ export default function CompanionPage() {
   const { hovered, handlers } = useCompanionPointer({
     bridge,
     dispatch,
+    shapeWindow,
     onClick: () => (bubbleOpenRef.current ? closeBubble() : openBubble(true)),
     onDoubleClick: () => {
       if (bubbleOpenRef.current) closeBubble();
