@@ -282,6 +282,8 @@ const en = {
     nothingToStop: "There's nothing to stop.",
     preview: {
       waiting: "Waiting for the first page…",
+      showing: "Here's {{name}}.",
+      notFound: "I couldn't find that project in your projects folder.",
       invalid: "Nothing to preview.",
       reload: "Reload",
       openInBrowser: "Open in browser",

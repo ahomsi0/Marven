@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     openUrl: (url) => ipcRenderer.invoke('companion:open-url', url),
     showPreview: (root, name) => ipcRenderer.invoke('companion:preview-show', root, name).then((u) => (typeof u === 'string' ? u : null), () => null),
     previewReload: () => ipcRenderer.send('companion:preview-reload'),
+    listProjects: () => ipcRenderer.invoke('companion:list-projects').then((l) => (Array.isArray(l) ? l : []), () => []),
     setBubbleRect: (rect) => ipcRenderer.send('companion:bubble-rect', rect),
     onPreviewClosed: subscribe('companion:preview-closed'),
     onPreviewOpenInMarven: subscribe('companion:preview-open-in-marven'),

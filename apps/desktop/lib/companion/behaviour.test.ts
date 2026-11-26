@@ -319,3 +319,27 @@ describe("dragging", () => {
     expect(effect).toEqual({ returnHome: true });
   });
 });
+
+describe("painting while a project is built", () => {
+  const rand = seq(0.1);
+  it("paints from the start of a build to its end", () => {
+    const s = run(initialState(0), { type: "building", now: 1 }).state;
+    expect(s.anim).toBe("paint");
+    expect(s.working).toBe(true);
+    expect(reduce(s, { type: "build-ended", now: 2 }).state).toMatchObject({ working: false, anim: "idle" });
+  });
+  it("keeps painting when the bubble closes, and doesn't wander or sleep", () => {
+    let s = run(initialState(0), { type: "bubble-open", now: 1 }, { type: "building", now: 2 }, { type: "bubble-close", now: 3 }).state;
+    expect(s.anim).toBe("paint");
+    s = run(s, tick(500_000, rand)).state;
+    expect(s.anim).toBe("paint");
+  });
+  it("goes back to painting after answering something mid-build", () => {
+    const s = run(initialState(0), { type: "building", now: 1 }, { type: "thinking", now: 2 }, { type: "talking", now: 3 }, { type: "succeeded", now: 4 }, { type: "oneshot-done", now: 5 }).state;
+    expect(s.anim).toBe("paint");
+  });
+  it("celebrates when the build ends well, then stands", () => {
+    const s = run(initialState(0), { type: "building", now: 1 }, { type: "build-ended", now: 2 }, { type: "succeeded", now: 3 }, { type: "oneshot-done", now: 4 }).state;
+    expect(s.anim).toBe("idle");
+  });
+});

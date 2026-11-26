@@ -64,6 +64,8 @@ interface Options {
   onCorrection?: (kind: "new-instead" | "chat-instead" | "stop", previous: LastJob | null) => void;
   /** A build or change is running (so "stop" means it, even after other chat). */
   isJobRunning?: () => boolean;
+  /** Show a project in the preview panel: the one `query` names, else the current one. */
+  onPreview?: (query: string) => void;
 }
 
 /** The clipboard's text via Marven's main process (the page has no clipboard permission), or "" when unreadable. */
@@ -212,6 +214,17 @@ export function useCompanionBrain(options: Options) {
       if (route.kind === "chat-instead" && previous) void sendRef.current(previous.request, { skipBuild: true });
       return;
     }
+    // "Show me the preview of …": not a job, and not chat (the model can't open anything).
+    const showPreview = (query: string) => {
+      lastJobRef.current = null;
+      setReply(null);
+      setBusy(false);
+      optionsRef.current.onPreview?.(query);
+    };
+    if (route.kind === "preview") {
+      showPreview(route.query);
+      return;
+    }
     if (route.kind === "build") {
       startJob("build", route.name);
       return;
@@ -332,6 +345,10 @@ export function useCompanionBrain(options: Options) {
       const resolved = resolveChatReply(full, markerEnabled, markerEnabled && !!project);
       if (resolved.kind === "edit" && project) {
         startJob("edit");
+        return;
+      }
+      if (resolved.kind === "preview") {
+        showPreview(resolved.query);
         return;
       }
       if (resolved.kind === "edit") {

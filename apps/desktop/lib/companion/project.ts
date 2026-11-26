@@ -131,3 +131,61 @@ export function forgetProject(storage: Pick<Storage, "getItem" | "setItem" | "re
     /* non-fatal */
   }
 }
+
+/** A project folder in the projects folder (`name` is the folder's name). */
+export interface ProjectFolder {
+  root: string;
+  name: string;
+}
+
+// Words in "show me the preview of the jane doe website" that don't name a project.
+const MATCH_FILLER = new Set([
+  "show", "me", "the", "preview", "previews", "of", "website", "websites", "site", "sites", "page", "pages", "project", "projects",
+  "open", "let", "see", "view", "display", "bring", "pull", "up", "it", "its", "my", "for", "a", "an", "please", "can", "could",
+  "would", "you", "i", "want", "to", "like", "id", "d", "again", "now", "and", "then", "hey", "live", "that", "this", "one",
+  "made", "built", "web", "look", "at", "on", "in",
+]);
+
+function matchTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !MATCH_FILLER.has(w));
+}
+
+function wordsMatch(token: string, word: string): boolean {
+  if (token === word) return true;
+  return token.length >= 3 && word.length >= 3 && (word.startsWith(token) || token.startsWith(word));
+}
+
+/**
+ * The project `query` names, from `projects` (newest first): the folder whose
+ * name shares the most words with it (at least half of them; ties go to the
+ * newest). A query that names nothing means the current project. Null when
+ * nothing matches.
+ */
+export function matchProject(query: string, projects: ProjectFolder[], currentRoot: string | null): ProjectFolder | null {
+  const tokens = matchTokens(query);
+  if (tokens.length === 0) {
+    if (!currentRoot) return null;
+    return projects.find((p) => p.root === currentRoot) ?? { root: currentRoot, name: projectDisplayName(currentRoot) };
+  }
+  let best: ProjectFolder | null = null;
+  let bestScore = 0;
+  for (const p of projects) {
+    const words = p.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const score = tokens.filter((t) => words.some((w) => wordsMatch(t, w))).length;
+    if (score > bestScore) {
+      best = p;
+      bestScore = score;
+    }
+  }
+  return best && bestScore >= Math.ceil(tokens.length / 2) ? best : null;
+}
+
+/** "…/Marven Projects/website-jane-doe" → "website jane doe". */
+export function projectDisplayName(root: string): string {
+  const base = root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+  return base.replace(/-+/g, " ").trim();
+}

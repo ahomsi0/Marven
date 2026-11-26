@@ -95,6 +95,8 @@ export interface CompanionBridge {
   showPreview(root: string, name: string): Promise<string | null>;
   /** The project's files changed: the preview window (if open) reloads. */
   previewReload(): void;
+  /** The project folders in the projects folder, newest first (`name` is the folder's name). */
+  listProjects(): Promise<{ root: string; name: string }[]>;
   /** Where the speech bubble is in this window (the preview docks beside it); null when it closed, which closes the preview too. */
   setBubbleRect(rect: { x: number; y: number; width: number; height: number } | null): void;
   /** The preview closed (its own ×, or with the bubble). */

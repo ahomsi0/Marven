@@ -12,9 +12,9 @@ const pixel = (px: Uint8ClampedArray, size: number, x: number, y: number) => {
 };
 
 describe("ANIMATIONS", () => {
-  it("covers all twelve states", () => {
+  it("covers all thirteen states", () => {
     expect(STATES.sort()).toEqual(
-      ["confused", "dangle", "happy", "idle", "listen", "look", "sit", "sleep", "stretch", "talk", "think", "walk"],
+      ["confused", "dangle", "happy", "idle", "listen", "look", "paint", "sit", "sleep", "stretch", "talk", "think", "walk"],
     );
   });
   it("matches every art style's frame counts and timing", () => {
@@ -137,7 +137,7 @@ describe("composeFrame", () => {
     const plain = { ...base, hairStyle: "short" as const, skin: "#d39a6c", hair: "#3a2a26", eyes: "#5a3b26", shirt: "#3f7fd8", pants: "#34405e", shoes: "#e9e3d8" };
     const extras = { ...base, hairStyle: "curly" as const, glasses: true, beard: true, glassesColor: "#c79a3c", skin: "#80513a", hair: "#211c22", eyes: "#2e1f1a", shirt: "#c9413c", pants: "#2f3442", shoes: "#30303a" };
     const second = { ...base, glasses: true, skin: "#f4d0b5", hair: "#7b4a2c", eyes: "#3f7d55", shirt: "#4e9a5e", pants: "#4b5f86", shoes: "#7a4b33" };
-    const expected: Record<ArtStyle, string> = { detailed: "e021cc8d", chibi: "f07103e3", chibiLarge: "25cb24fc" };
+    const expected: Record<ArtStyle, string> = { detailed: "c272d286", chibi: "f0547c66", chibiLarge: "af92eee3" };
     for (const artStyle of ART_STYLE_IDS) {
       const art = ART_STYLES[artStyle];
       const looks: Look[] = [plain, extras, ...Object.keys(art.hair).map((h) => ({ ...second, hairStyle: h as Look["hairStyle"] }))].map(

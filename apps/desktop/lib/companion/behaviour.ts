@@ -4,7 +4,9 @@
 
 export type AnimState =
   | "idle" | "walk" | "look" | "sit" | "stretch" | "sleep"
-  | "listen" | "think" | "talk" | "happy" | "confused" | "dangle";
+  | "listen" | "think" | "talk" | "happy" | "confused" | "dangle"
+  /** Building or changing a project: he paints a canvas with a roller. */
+  | "paint";
 
 /** roam: lives on the Dock strip and wanders. perched: dropped elsewhere, sits and stays. */
 export type Mode = "roam" | "perched";
@@ -22,6 +24,8 @@ export interface BehaviourState {
   walkUntil: number;
   /** Dropped off the Dock with "fall back to the Dock": plunging until the next "arrived". */
   falling: boolean;
+  /** A project is being built or changed: he paints between everything else, and doesn't wander or sleep. */
+  working: boolean;
 }
 
 export interface Strip {
@@ -50,6 +54,9 @@ export type BehaviourEvent =
   | { type: "bubble-open"; now: number }
   | { type: "bubble-close"; now: number; rand?: () => number }
   | { type: "thinking"; now: number }
+  /** A build or change started (he paints until "build-ended"). */
+  | { type: "building"; now: number }
+  | { type: "build-ended"; now: number }
   | { type: "talking"; now: number }
   | { type: "succeeded"; now: number }
   | { type: "failed"; now: number }
@@ -87,13 +94,14 @@ const STILL_PAUSE_MS = 6000;
 const STILL_PAUSE_JITTER_MS = 6000;
 
 export function initialState(now: number): BehaviourState {
-  return { anim: "idle", mode: "roam", busy: false, resting: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0, falling: false };
+  return { anim: "idle", mode: "roam", busy: false, resting: false, lastInteraction: now, nextIdleAt: now + IDLE_PAUSE_MS, walkUntil: 0, falling: false, working: false };
 }
 
 /** How long a lively Mini Me waits before his next pick (events without a rand use the midpoint). */
 const livelyPause = (now: number, rand?: () => number) => now + LIVELY_PAUSE_MS + (rand ? rand() : 0.5) * LIVELY_PAUSE_JITTER_MS;
 
-const standing = (state: BehaviourState): AnimState => (state.mode === "perched" ? "sit" : "idle");
+/** His resting pose: painting while a project is built, else standing (or sitting where he was dropped). */
+const standing = (state: BehaviourState): AnimState => (state.working ? "paint" : state.mode === "perched" ? "sit" : "idle");
 
 const stopIfWalking = (state: BehaviourState): Effect => (state.anim === "walk" ? { stop: true } : {});
 
@@ -141,7 +149,7 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       if (state.anim === "walk" && e.now >= state.walkUntil) {
         return { state: { ...state, anim: standing(state), nextIdleAt: livelyPause(e.now, e.rand) }, effect: { stop: true } };
       }
-      if (state.busy || state.anim === "sleep" || state.anim === "walk" || state.anim === "dangle" || ONESHOTS.has(state.anim)) {
+      if (state.busy || state.working || state.anim === "sleep" || state.anim === "walk" || state.anim === "dangle" || ONESHOTS.has(state.anim)) {
         return none;
       }
       if (e.now - state.lastInteraction >= e.sleepAfterMs) {
@@ -194,6 +202,12 @@ export function reduce(state: BehaviourState, e: BehaviourEvent): { state: Behav
       };
     case "thinking":
       return { state: { ...state, busy: true, resting: false, anim: "think", lastInteraction: e.now }, effect: { stop: true } };
+    case "building":
+      return { state: { ...state, working: true, resting: false, anim: "paint", lastInteraction: e.now }, effect: { stop: true } };
+    case "build-ended": {
+      const done = { ...state, working: false, lastInteraction: e.now, nextIdleAt: livelyPause(e.now) };
+      return { state: state.anim === "paint" ? { ...done, anim: standing(done) } : done, effect: {} };
+    }
     case "talking":
       return { state: { ...state, busy: true, resting: false, anim: "talk", lastInteraction: e.now }, effect: {} };
     case "succeeded":

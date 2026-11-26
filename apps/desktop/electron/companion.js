@@ -43,7 +43,7 @@ const os = require('os');
 const path = require('path');
 const placement = require('./companionPlacement');
 const shape = require('./companionShape');
-const { isReservedHotkey, projectFolderInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
+const { isReservedHotkey, projectFolderInside, listProjectFolders, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
 const projectServer = require('./projectServer');
 const { createPreviewWindow } = require('./previewWindow');
 
@@ -474,6 +474,17 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const serverUrl = await projectServer.urlFor(real);
     if (!serverUrl) return null;
     return preview.show({ root: real, url: serverUrl, name: typeof name === 'string' ? name : '' }) ? serverUrl : null;
+  });
+  // The project folders Mini Me can show ("show me the jane doe website"), newest first.
+  ipcMain.handle('companion:list-projects', (event) => {
+    if (!fromCompanion(event)) return [];
+    return listProjectFolders(settings.miniMeProjectsDir, {
+      home: os.homedir(),
+      realpath: fs.realpathSync.native,
+      lstat: fs.lstatSync,
+      readdir: (p) => fs.readdirSync(p),
+      stat: fs.statSync,
+    });
   });
   ipcMain.on('companion:preview-reload', (event) => {
     if (fromCompanion(event)) preview.reload();

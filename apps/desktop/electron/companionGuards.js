@@ -98,6 +98,47 @@ function projectFolderInside(target, projectsDir, { home, realpath, lstat }) {
   }
 }
 
+const MAX_PROJECT_FOLDERS = 50;
+
+/**
+ * The project folders in Mini Me's projects folder (the `miniMeProjectsDir`
+ * setting, `~` expanded), newest first, at most 50: real, visible directories
+ * only (no symlinks, dot-folders or bundle-like names). [] when the folder is
+ * missing or the setting isn't an absolute path.
+ *
+ * @param {unknown} projectsDir
+ * @param {{ home: string, realpath: (p: string) => string, lstat: (p: string) => { isDirectory(): boolean, isSymbolicLink(): boolean }, readdir: (p: string) => string[], stat: (p: string) => { mtimeMs: number } }} deps
+ */
+function listProjectFolders(projectsDir, deps) {
+  const setting = typeof projectsDir === 'string' && projectsDir.trim() ? projectsDir.trim() : DEFAULT_PROJECTS_DIR;
+  const dir = expandHome(setting, deps.home);
+  if (!path.isAbsolute(dir)) return [];
+  let realDir;
+  let names;
+  try {
+    realDir = deps.realpath(path.resolve(dir));
+    names = deps.readdir(realDir);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const name of names) {
+    if (typeof name !== 'string' || !name || name.startsWith('.') || BUNDLE_NAME.test(name)) continue;
+    const root = path.join(realDir, name);
+    try {
+      const st = deps.lstat(root);
+      if (st.isSymbolicLink() || !st.isDirectory()) continue;
+      out.push({ root, name, mtimeMs: deps.stat(root).mtimeMs });
+    } catch {
+      /* gone meanwhile: skip */
+    }
+  }
+  return out
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, MAX_PROJECT_FOLDERS)
+    .map(({ root, name }) => ({ root, name }));
+}
+
 /** True for a folder with nothing in it but a .DS_Store; false when unreadable. */
 function isFreshFolder(dir, readdir) {
   try {
@@ -181,6 +222,7 @@ module.exports = {
   sanitizeHandOffAck,
   isReservedHotkey,
   projectFolderInside,
+  listProjectFolders,
   isLoopbackHttpUrl,
   DEFAULT_PROJECTS_DIR,
   MAX_MESSAGE_CHARS,

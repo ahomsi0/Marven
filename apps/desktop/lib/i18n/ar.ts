@@ -284,6 +284,8 @@ const ar: Shape<typeof en> = {
     nothingToStop: "لا يوجد شيء لإيقافه.",
     preview: {
       waiting: "بانتظار الصفحة الأولى…",
+      showing: "هذا {{name}}.",
+      notFound: "لم أجد هذا المشروع في مجلد المشاريع.",
       invalid: "لا شيء لمعاينته.",
       reload: "إعادة التحميل",
       openInBrowser: "فتح في المتصفح",

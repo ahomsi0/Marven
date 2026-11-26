@@ -14,7 +14,7 @@ import { useT } from "@/lib/i18n";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
 import { projectNameFor } from "@/lib/companion/brain";
-import { loadThread } from "@/lib/companion/project";
+import { loadThread, matchProject, projectDisplayName } from "@/lib/companion/project";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, getCompanionPlatform, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
@@ -103,6 +103,7 @@ export default function CompanionPage() {
       // No questions: a build or a change starts (or queues) straight away.
       onBuild: (request, name) => buildSubmit({ kind: "build", request, name }),
       onEdit: (request) => buildSubmit({ kind: "edit", request }),
+      onPreview: (query) => void showProjectPreviewRef.current(query),
       onCorrection: (kind, previous) => {
         if (kind === "stop") {
           if (!buildStop()) announce(t("companion.nothingToStop"));
@@ -166,6 +167,12 @@ export default function CompanionPage() {
   });
   const buildViewRef = useRef(build);
   buildViewRef.current = build;
+  // While a project is built or changed he paints (a roller on a canvas), between
+  // answering anything else; he stops when the run ends.
+  const buildActive = isBuildActive(build);
+  useEffect(() => {
+    dispatch({ type: buildActive ? "building" : "build-ended", now: Date.now() });
+  }, [buildActive, dispatch]);
   const buildNeedsUser = !!build?.approval;
   // The build takes the bubble when it needs the user, or when there's no reply to show.
   const showBuild = !!build && (buildNeedsUser || (!reply && !busy));
@@ -222,6 +229,41 @@ export default function CompanionPage() {
     },
     [bridge, closeBubble, t],
   );
+  // ── "Show me the preview of …" ─────────────────────────────────────────────
+  // Finds the project the words name in the projects folder (the current one
+  // when they name none), shows it in the preview panel beside the bubble, and
+  // makes it the current project, so a change after this edits it.
+  const showProjectPreview = useCallback(
+    async (query: string) => {
+      if (!bubbleOpenRef.current) openBubble(false);
+      if (!bridge) {
+        announce(t("companion.build.previewFailed"));
+        return;
+      }
+      const projects = await bridge.listProjects();
+      const found = matchProject(query, projects, getProject()?.root ?? null);
+      if (!found) {
+        announce(t("companion.preview.notFound"));
+        dispatch({ type: "failed", now: Date.now() });
+        return;
+      }
+      const name = projectDisplayName(found.root);
+      const url = await bridge.showPreview(found.root, name);
+      if (!url) {
+        announce(t("companion.build.previewFailed"));
+        dispatch({ type: "failed", now: Date.now() });
+        return;
+      }
+      setProject(found.root, name);
+      setPreviewOpen(true);
+      announce(t("companion.preview.showing", { name }));
+      dispatch({ type: "succeeded", now: Date.now() });
+    },
+    [announce, bridge, dispatch, getProject, openBubble, setProject, t],
+  );
+  const showProjectPreviewRef = useRef(showProjectPreview);
+  showProjectPreviewRef.current = showProjectPreview;
+
   // The preview window's button arrives through a subscription set up once.
   const openProjectInMarvenRef = useRef(openProjectInMarven);
   openProjectInMarvenRef.current = openProjectInMarven;
@@ -358,10 +400,10 @@ export default function CompanionPage() {
     return () => clearTimeout(timer);
   }, [bubbleOpen, buildFinished, previewOpen, hovered, draft, closeBubble]);
 
-  // Mini Me thinks while a build runs in front of the user; with the bubble
-  // closed he goes about his day. (Closing the bubble clears "busy" as usual.)
+  // Opening the bubble mid-build (or an approval just answered) puts him back to
+  // painting rather than listening.
   useEffect(() => {
-    if (bubbleOpen && buildWorking) dispatch({ type: "thinking", now: Date.now() });
+    if (buildWorking) dispatch({ type: "building", now: Date.now() });
   }, [bubbleOpen, buildWorking, dispatch]);
 
   // Escape closes the bubble from anywhere in it (cards and results have no text input).

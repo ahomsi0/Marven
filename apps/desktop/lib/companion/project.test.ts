@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROJECT_KEY, PROJECT_RECENT_MS, THREADS_KEY, THREAD_LIMIT, THREAD_PROJECTS, appendThread, forgetProject, isRecentProject, loadProject, loadThread, saveProject } from "./project";
+import { PROJECT_KEY, PROJECT_RECENT_MS, THREADS_KEY, THREAD_LIMIT, THREAD_PROJECTS, appendThread, forgetProject, isRecentProject, loadProject, loadThread, matchProject, projectDisplayName, saveProject } from "./project";
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -65,5 +65,33 @@ describe("project threads", () => {
     forgetProject(s, "/p/a");
     expect(loadProject(s)).toBeNull();
     expect(loadThread(s, "/p/a")).toEqual([]);
+  });
+});
+
+describe("matchProject", () => {
+  // Newest first, as the projects folder lists them.
+  const projects = [
+    { root: "/p/calculator-site", name: "calculator-site" },
+    { root: "/p/website-jane-doe", name: "website-jane-doe" },
+    { root: "/p/james-doe-portfolio", name: "james-doe-portfolio" },
+    { root: "/p/cafe-menu", name: "cafe-menu" },
+  ];
+  it("finds the project you name", () => {
+    expect(matchProject("show me the preview of jane doe website", projects, "/p/calculator-site")?.root).toBe("/p/website-jane-doe");
+    expect(matchProject("open the preview for the cafe", projects, null)?.root).toBe("/p/cafe-menu");
+    expect(matchProject("let me see james's portfolio", projects, null)?.root).toBe("/p/james-doe-portfolio");
+  });
+  it("is the current project when you don't name one", () => {
+    expect(matchProject("show the preview", projects, "/p/calculator-site")?.root).toBe("/p/calculator-site");
+    expect(matchProject("preview it", projects, null)).toBeNull();
+  });
+  it("is null when nothing matches", () => {
+    expect(matchProject("show me the preview of the weather app", projects, "/p/calculator-site")).toBeNull();
+  });
+});
+
+describe("projectDisplayName", () => {
+  it("turns a folder name into words", () => {
+    expect(projectDisplayName("/Users/me/Marven Projects/website-jane-doe")).toBe("website jane doe");
   });
 });

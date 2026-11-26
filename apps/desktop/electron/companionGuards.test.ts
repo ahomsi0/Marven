@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 
 const require = createRequire(import.meta.url);
-const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, isReservedHotkey, projectFolderInside, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
+const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, isReservedHotkey, projectFolderInside, listProjectFolders, sanitizeSettingsPage, isLoopbackHttpUrl, MAX_MESSAGE_CHARS, MAX_MESSAGES } = require("./companionGuards");
 
 describe("sanitizeThreadMessages", () => {
   it("returns null for non-arrays", () => {
@@ -244,5 +244,33 @@ describe("sanitizeSettingsPage", () => {
     expect(sanitizeSettingsPage(undefined)).toBe("keys-ai");
     expect(sanitizeSettingsPage("about")).toBe("keys-ai");
     expect(sanitizeSettingsPage({ page: "general" })).toBe("keys-ai");
+  });
+});
+
+describe("listProjectFolders", () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "marven-projects-")));
+  const projects = path.join(base, "Marven Projects");
+  fs.mkdirSync(projects);
+  for (const name of ["older-site", "newer-site", ".hidden", "Tool.app"]) fs.mkdirSync(path.join(projects, name));
+  fs.writeFileSync(path.join(projects, "notes.txt"), "x");
+  fs.mkdirSync(path.join(base, "elsewhere"));
+  fs.symlinkSync(path.join(base, "elsewhere"), path.join(projects, "linked"));
+  fs.utimesSync(path.join(projects, "older-site"), new Date(1_000_000), new Date(1_000_000));
+  fs.utimesSync(path.join(projects, "newer-site"), new Date(2_000_000), new Date(2_000_000));
+  const deps = { home: base, realpath: fs.realpathSync.native, lstat: fs.lstatSync, readdir: (p: string) => fs.readdirSync(p), stat: fs.statSync };
+
+  it("lists real, visible project folders, newest first", () => {
+    expect(listProjectFolders("~/Marven Projects", deps)).toEqual([
+      { root: path.join(projects, "newer-site"), name: "newer-site" },
+      { root: path.join(projects, "older-site"), name: "older-site" },
+    ]);
+  });
+  it("is empty when the folder is missing or not absolute", () => {
+    expect(listProjectFolders("~/Nope", deps)).toEqual([]);
+    expect(listProjectFolders("relative/dir", deps)).toEqual([]);
+  });
+  it("keeps at most 50", () => {
+    const many = { ...deps, readdir: () => Array.from({ length: 60 }, () => "older-site") };
+    expect(listProjectFolders("~/Marven Projects", many)).toHaveLength(50);
   });
 });

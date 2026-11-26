@@ -331,3 +331,41 @@ describe("projectNameFor", () => {
     expect(projectNameFor("   ")).toBe("project");
   });
 });
+
+describe("preview requests", () => {
+  const on = { allowCommands: true, project: { recent: false } };
+  it("routes asking to see a project to preview, with the words to match", () => {
+    for (const t of [
+      "show me the preview of jane doe website",
+      "show the preview",
+      "preview it",
+      "can you open the preview for the calculator site",
+      "let me see the jane doe website",
+      "show me the website",
+      "I want to see the preview",
+    ]) {
+      expect(routeInput(t, on), t).toEqual({ kind: "preview", query: t });
+    }
+  });
+  it("leaves other asks alone", () => {
+    expect(routeInput("open spotify", on)).toEqual({ kind: "command" });
+    expect(routeInput("make a preview page for my cafe", on).kind).toBe("build");
+    expect(routeInput("what is a website preview?", on)).toEqual({ kind: "chat" });
+  });
+});
+
+describe("preview marker", () => {
+  it("resolves [[PREVIEW]] and [[PREVIEW: name]] when builds are on", () => {
+    expect(resolveChatReply("[[PREVIEW: jane doe]]", true)).toEqual({ kind: "preview", query: "jane doe" });
+    expect(resolveChatReply("[[PREVIEW]]", true)).toEqual({ kind: "preview", query: "" });
+    expect(resolveChatReply("[[PREVIEW]]", false)).toEqual({ kind: "text", text: "" });
+  });
+  it("holds back a streamed preview marker", () => {
+    for (const p of ["[[P", "[[prev", "[[PREVIEW", "[[PREVIEW: ja"]) expect(looksLikeBuildMarkerPrefix(p), p).toBe(true);
+  });
+  it("tells the model it can only act through markers", () => {
+    const prompt = buildCompanionPrompt("BASE", "", "playful");
+    expect(prompt).toContain("[[PREVIEW");
+    expect(prompt).toMatch(/never say you opened/i);
+  });
+});

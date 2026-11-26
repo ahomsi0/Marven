@@ -18,6 +18,8 @@ export type Route =
   | { kind: "chat-instead" }
   /** Stop the run (and the queue). */
   | { kind: "stop" }
+  /** Show a project in the preview panel: the one the text names, else the current one. */
+  | { kind: "preview"; query: string }
   | { kind: "command" }
   | { kind: "chat" };
 
@@ -118,6 +120,18 @@ export function projectNameFor(text: string): string {
   return name || "project";
 }
 
+// "show me the preview of the jane doe website", "preview it", "let me see the
+// cafe site": a see/show verb with the word "preview", or "show me"/"let me
+// see"/"view" plus a site word. Plain "open …" is left to the command route
+// ("open spotify").
+const LEAD_FILLER = String.raw`(?:(?:please|can\s+you|could\s+you|would\s+you|now|ok(?:ay)?|and|then|hey)[\s,]+)*`;
+const SEE_VERB = String.raw`(?:show|open|display|view|see|bring\s+up|pull\s+up|let\s+me\s+see|i\s+want\s+to\s+see|i(?:'|\u2019)?d\s+like\s+to\s+see|can\s+i\s+see)`;
+const PREVIEW_ASK = new RegExp(String.raw`^\s*${LEAD_FILLER}(?:${SEE_VERB}\b.*\bpreview\b|preview\b)`, "i");
+const SHOW_SITE = new RegExp(
+  String.raw`^\s*${LEAD_FILLER}(?:show(?:\s+me)?|let\s+me\s+see|view|i\s+want\s+to\s+see|can\s+i\s+see)\s+(?:\S+\s+){0,5}?(?:site|website|page|project|portfolio)s?\b`,
+  "i",
+);
+
 export function routeInput(
   text: string,
   opts: {
@@ -138,6 +152,9 @@ export function routeInput(
   if (timer) return { kind: "timer", ...timer };
   const clip = detectClipboardAction(text);
   if (clip) return { kind: "clipboard", action: clip };
+  if (opts.allowBuild !== false && !QUESTION.test(text) && (PREVIEW_ASK.test(text) || SHOW_SITE.test(text))) {
+    return { kind: "preview", query: text };
+  }
   // A change to the project goes to it, never to a new folder; a new build request still wins.
   if (opts.project && !QUESTION.test(text) && detectEdit(text, opts.project.recent)) {
     if (opts.allowBuild === false || !detectBuild(text)) return { kind: "edit" };
@@ -164,11 +181,16 @@ export const PERSONAS: Record<Personality, string> = {
 
 /** Tells the model to hand project requests to the build flow instead of writing code in the bubble. */
 export const BUILD_RULE =
-  "If the user asks you to create, build or make something that would be a project of files (a website, web page, app, game, tool, script, menu page, portfolio and similar), do not write the code or explain how to. Reply with exactly [[BUILD: <a short 2-4 word name for it>]] and nothing else. If they clearly only want text (a poem, an email, a list, an explanation), answer normally.";
+  "If the user asks you to create, build or make something that would be a project of files (a website, web page, app, game, tool, script, menu page, portfolio and similar), do not write the code or explain how to. Reply with exactly [[BUILD: <a short 2-4 word name for it>]] and nothing else. If they clearly only want text (a poem, an email, a list, an explanation), answer normally. If they ask to see, open or preview a project you made, reply with exactly [[PREVIEW: <its name, or nothing for the one you made last>]] and nothing else. You can only build, change or show projects through these markers: never say you opened, built or changed something yourself.";
 
 const MARKER_LEAD = String.raw`(?:\s|\u0060{1,3}[a-z]*|["'\u201c\u201d\u2018\u2019>*])*`;
 const BUILD_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*build\s*:([^\]\n]*)\]\]`, "i");
 const EDIT_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*edit\s*\]\]`, "i");
+const PREVIEW_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*preview\s*(?::([^\]\n]*))?\]\]`, "i");
+const PREVIEW_MARKER_PREFIX = new RegExp(
+  String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:p(?:r(?:e(?:v(?:i(?:e(?:w\s*(?::[^\]\n]*\]?|\]?))?)?)?)?)?)?)?)?$`,
+  "i",
+);
 const EDIT_MARKER_PREFIX = new RegExp(String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:e(?:d(?:i(?:t\s*\]?)?)?)?)?)?$`, "i");
 const BUILD_MARKER_PREFIX = new RegExp(
   String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:b(?:u(?:i(?:l(?:d(?:\s*(?::[^\]\n]*\]?)?)?)?)?)?)?)?)?$`,
@@ -182,30 +204,34 @@ export function parseBuildMarker(text: string): { name: string } | null {
   return name ? { name } : null;
 }
 
-/** True while streamed text could still turn into a build or edit marker, so it is held back from the bubble. */
+/** True while streamed text could still turn into a build, edit or preview marker, so it is held back from the bubble. */
 export function looksLikeBuildMarkerPrefix(partial: string): boolean {
   return (
     partial.trim() === "" ||
     BUILD_MARKER_PREFIX.test(partial) ||
     parseBuildMarker(partial) !== null ||
     EDIT_MARKER_PREFIX.test(partial) ||
-    EDIT_MARKER.test(partial)
+    EDIT_MARKER.test(partial) ||
+    PREVIEW_MARKER_PREFIX.test(partial) ||
+    PREVIEW_MARKER.test(partial)
   );
 }
 
-/** The text with a leading build or edit marker removed. */
+/** The text with a leading build, edit or preview marker removed. */
 export function stripBuildMarker(text: string): string {
-  return text.replace(BUILD_MARKER, "").replace(EDIT_MARKER, "").trim();
+  return text.replace(BUILD_MARKER, "").replace(EDIT_MARKER, "").replace(PREVIEW_MARKER, "").trim();
 }
 
-/** What to do with a finished chat reply: offer a build or an edit of the current project, or show the text (with any stray marker removed). */
+/** What to do with a finished chat reply: a build, an edit of the current project, a preview, or the text (with any stray marker removed). */
 export function resolveChatReply(
   full: string,
   buildEnabled: boolean,
   editEnabled = false,
-): { kind: "build"; name: string } | { kind: "edit" } | { kind: "text"; text: string } {
+): { kind: "build"; name: string } | { kind: "edit" } | { kind: "preview"; query: string } | { kind: "text"; text: string } {
   if (editEnabled && EDIT_MARKER.test(full)) return { kind: "edit" };
   if (buildEnabled) {
+    const preview = PREVIEW_MARKER.exec(full);
+    if (preview) return { kind: "preview", query: (preview[1] ?? "").trim().slice(0, 80) };
     const marker = parseBuildMarker(full);
     if (marker) return { kind: "build", name: marker.name };
   }
