@@ -12,6 +12,7 @@ const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { withAppCsp } = require('./appCsp');
 const { createCompanion } = require('./companion');
+const projectServer = require('./projectServer');
 const linuxDisplay = require('./linuxDisplay');
 const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, sanitizeSettingsPage } = require('./companionGuards');
 
@@ -912,6 +913,20 @@ function isAllowedExternalUrl(urlString) {
   return true;
 }
 
+// "Open in browser" for a page in a workspace folder (the in-app preview's
+// /api/ address needs the API token, which a browser doesn't have): the folder
+// is served read-only on 127.0.0.1 and the page opened there. Marven's own
+// window (main frame) only.
+ipcMain.handle('open-folder-in-browser', async (event, root, relPath) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return { ok: false };
+  if (!event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) return { ok: false };
+  const base = await projectServer.urlFor(root);
+  const url = base && projectServer.pageUrl(base, typeof relPath === 'string' ? relPath : '');
+  if (!url) return { ok: false };
+  await shell.openExternal(url);
+  return { ok: true, url };
+});
+
 ipcMain.handle('open-external', async (_event, url, browser) => {
   if (!isAllowedExternalUrl(url)) {
     console.warn('[Marven] open-external: invalid or disallowed URL:', url);
@@ -1354,6 +1369,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  projectServer.closeAll();
   inAppBrowser.flush();
 });
 

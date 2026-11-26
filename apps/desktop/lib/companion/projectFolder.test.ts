@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "path";
-import { expandHome, isStrictlyInside, parentRejection, pickUniqueName, projectSlug } from "./projectFolder";
+import { expandHome, isDirectChild, isStrictlyInside, parentRejection, pickUniqueName, projectSlug } from "./projectFolder";
 
 describe("projectSlug", () => {
   it("lowercases and joins words with dashes", () => {
@@ -95,5 +95,16 @@ describe("parentRejection", () => {
   it("rejects paths outside home", () => {
     expect(parentRejection("/etc", home)).toMatch(/home/i);
     expect(parentRejection("/Users/me", home)).toMatch(/home/i);
+  });
+});
+
+describe("isDirectChild", () => {
+  it("accepts only a folder one level inside", () => {
+    expect(isDirectChild("/Users/me/Marven Projects/ali-itani", "/Users/me/Marven Projects")).toBe(true);
+    expect(isDirectChild("/Users/me/Marven Projects/a/b", "/Users/me/Marven Projects")).toBe(false);
+    expect(isDirectChild("/Users/me/Marven Projects", "/Users/me/Marven Projects")).toBe(false);
+    expect(isDirectChild("/Users/me/Marven Projects/../x", "/Users/me/Marven Projects")).toBe(false);
+    expect(isDirectChild("/etc", "/Users/me/Marven Projects")).toBe(false);
+    expect(isDirectChild("relative", "/Users/me/Marven Projects")).toBe(false);
   });
 });

@@ -10,6 +10,7 @@ import {
   buildCompanionPrompt,
   loadHistory,
   projectSlug,
+  projectNameFor,
   routeInput,
   saveHistory,
   type CompanionMessage,
@@ -249,5 +250,84 @@ describe("build marker", () => {
     expect(resolveChatReply("[[BUILD: site]]", true)).toEqual({ kind: "build", name: "site" });
     expect(resolveChatReply("[[BUILD: site]]", false)).toEqual({ kind: "text", text: "" });
     expect(resolveChatReply("Hi there", true)).toEqual({ kind: "text", text: "Hi there" });
+  });
+});
+
+describe("edit routing (a project Mini Me built)", () => {
+  const recent = { allowCommands: true, project: { recent: true } };
+  const older = { allowCommands: true, project: { recent: false } };
+
+  it("routes a change to the current project to edit, not to a new build", () => {
+    expect(routeInput("change the background to red", recent)).toEqual({ kind: "edit" });
+    expect(routeInput("please make the title bigger", recent)).toEqual({ kind: "edit" });
+    expect(routeInput("can you add a contact section", recent)).toEqual({ kind: "edit" });
+    expect(routeInput("remove the photo", older)).toEqual({ kind: "edit" });
+    expect(routeInput("Change the website colours to blue.", older)).toEqual({ kind: "edit" });
+  });
+  it("reads 'it' as the project only right after working on it", () => {
+    expect(routeInput("make it red", recent)).toEqual({ kind: "edit" });
+    expect(routeInput("make it shorter", older)).toEqual({ kind: "chat" });
+  });
+  it("never edits without a project", () => {
+    expect(routeInput("change the background to red", { allowCommands: true })).toEqual({ kind: "chat" });
+  });
+  it("keeps new builds, questions, timers and unrelated asks as they were", () => {
+    expect(routeInput("make a portfolio website", recent)).toEqual({ kind: "build", name: "portfolio website" });
+    expect(routeInput("how do I change the background?", recent)).toEqual({ kind: "chat" });
+    expect(routeInput("set a timer for 2 minutes", recent).kind).toBe("timer");
+    expect(routeInput("add 2 and 3", recent)).toEqual({ kind: "chat" });
+    expect(routeInput("delete everything in Downloads", recent)).toEqual({ kind: "agent" });
+  });
+});
+
+describe("edit marker", () => {
+  it("resolves [[EDIT]] to an edit only when edits are on", () => {
+    expect(resolveChatReply("[[EDIT]]", true, true)).toEqual({ kind: "edit" });
+    expect(resolveChatReply("```\n[[edit]]\n```", true, true)).toEqual({ kind: "edit" });
+    expect(resolveChatReply("[[EDIT]]", true, false)).toEqual({ kind: "text", text: "" });
+    expect(resolveChatReply("[[BUILD: site]]", true, true)).toEqual({ kind: "build", name: "site" });
+  });
+  it("holds back a streamed edit marker", () => {
+    for (const p of ["[", "[[", "[[E", "[[ed", "[[edit", "[[EDIT]", "[[EDIT]]"]) expect(looksLikeBuildMarkerPrefix(p), p).toBe(true);
+    expect(looksLikeBuildMarkerPrefix("[[editor")).toBe(false);
+  });
+  it("tells the model about the current project", () => {
+    const prompt = buildCompanionPrompt("BASE", "", "playful", { project: { name: 'ali "itani"\nsite' } });
+    expect(prompt).toContain("[[EDIT]]");
+    expect(prompt).toContain("ali itani site");
+    expect(buildCompanionPrompt("BASE", "", "playful", { allowBuild: false, project: { name: "x" } })).not.toContain("[[EDIT]]");
+  });
+});
+
+describe("corrections right after a run", () => {
+  const after = { allowCommands: true, afterRun: true, project: { recent: true } };
+  it("switches to a new project", () => {
+    for (const t of ["no, make a new one", "start a new project", "make it a separate site", "a new one instead", "No. New project!"]) {
+      expect(routeInput(t, after), t).toEqual({ kind: "new-instead" });
+    }
+  });
+  it("answers in chat instead", () => {
+    expect(routeInput("no, just tell me", after)).toEqual({ kind: "chat-instead" });
+    expect(routeInput("don't build it", after)).toEqual({ kind: "chat-instead" });
+  });
+  it("stops", () => {
+    expect(routeInput("stop", after)).toEqual({ kind: "stop" });
+    expect(routeInput("cancel!", after)).toEqual({ kind: "stop" });
+  });
+  it("only right after a run", () => {
+    const idle = { allowCommands: true };
+    expect(routeInput("no, make a new one", idle).kind).not.toBe("new-instead");
+    expect(routeInput("stop", idle).kind).not.toBe("stop");
+  });
+  it("a new request with details is a build, not a correction", () => {
+    expect(routeInput("make another site for my cafe", after)).toEqual({ kind: "build", name: "site cafe" });
+  });
+});
+
+describe("projectNameFor", () => {
+  it("uses the build name, else the first words", () => {
+    expect(projectNameFor("make a portfolio website for James Doe")).toBe("portfolio website james doe");
+    expect(projectNameFor("red background, bigger title")).toBe("red background bigger title");
+    expect(projectNameFor("   ")).toBe("project");
   });
 });

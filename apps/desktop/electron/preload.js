@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('marvenElectron', {
   getRecentLogs: () => ipcRenderer.invoke('get-recent-logs'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   openExternal: (url, browser) => ipcRenderer.invoke('open-external', url, browser),
+  openFolderInBrowser: (root, relPath) => ipcRenderer.invoke('open-folder-in-browser', root, relPath),
   getVersion: () => ipcRenderer.invoke('get-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

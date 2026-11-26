@@ -44,6 +44,8 @@ const path = require('path');
 const placement = require('./companionPlacement');
 const shape = require('./companionShape');
 const { isReservedHotkey, projectFolderInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
+const projectServer = require('./projectServer');
+const { createPreviewWindow } = require('./previewWindow');
 
 const TICK_MS = 33;
 const WALK_PX_BY_SPEED = { slow: 1, normal: 2, fast: 4 };
@@ -108,6 +110,15 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   let hitRects = []; // Linux: the page's last reported [data-hit] rects
   let appliedShape = null;
   const url = `http://localhost:${appPort}/companion`;
+  // The preview panel is attached to this window: it follows it and hides with it.
+  const preview = createPreviewWindow({
+    appPort,
+    companionWindow: () => win,
+    // So the bubble knows it may fade again.
+    onClosed: () => {
+      if (alive()) win.webContents.send('companion:preview-closed');
+    },
+  });
 
   const alive = () => !!win && !win.isDestroyed();
   // Linux, native Wayland, Mini Me turned on: no window until Marven restarts under XWayland.
@@ -229,6 +240,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
         const nx = placement.stepToward(cx, walkTarget.x, walkStep());
         const ny = placement.stepToward(cy, walkTarget.y, walkTarget.fall ? placement.fallSpeed(fallTicks++) : FALL_PX_PER_TICK);
         win.setPosition(Math.round(nx), Math.round(ny));
+        preview.follow();
         const [ax, ay] = win.getPosition();
         // Arrived, or the window didn't move at all (blocked): stop either way.
         const reached = nx === walkTarget.x && ny === walkTarget.y;
@@ -294,6 +306,9 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       },
     });
     win = w;
+    w.on('move', () => preview.follow());
+    w.on('hide', () => preview.setVisible(false));
+    w.on('show', () => preview.setVisible(true));
     win.setAlwaysOnTop(true, 'floating');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
     if (USE_SHAPE) {
@@ -389,6 +404,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
     flushPosition();
+    preview.close();
     if (alive()) win.destroy();
     win = null;
     notify();
@@ -449,6 +465,41 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     await shell.openExternal(url);
     return true;
   });
+  // Show a project in the preview window: its folder (inside the projects
+  // folder only) served read-only on 127.0.0.1. Resolves to the address, or null.
+  ipcMain.handle('companion:preview-show', async (event, target, name) => {
+    if (!fromCompanion(event)) return null;
+    const real = projectFolderInside(target, settings.miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
+    if (!real) return null;
+    const serverUrl = await projectServer.urlFor(real);
+    if (!serverUrl) return null;
+    return preview.show({ root: real, url: serverUrl, name: typeof name === 'string' ? name : '' }) ? serverUrl : null;
+  });
+  ipcMain.on('companion:preview-reload', (event) => {
+    if (fromCompanion(event)) preview.reload();
+  });
+  // Where the speech bubble is (the preview docks beside it); null when it closed (the preview closes too).
+  ipcMain.on('companion:bubble-rect', (event, rect) => {
+    if (fromCompanion(event)) preview.setBubble(rect);
+  });
+  // The preview window's toolbar.
+  ipcMain.on('preview:open-browser', (event) => {
+    const p = preview.current();
+    if (preview.isSender(event) && p && isLoopbackHttpUrl(p.url)) void shell.openExternal(p.url);
+  });
+  ipcMain.on('preview:open-folder', (event) => {
+    const p = preview.current();
+    if (!preview.isSender(event) || !p) return;
+    const real = projectFolderInside(p.root, settings.miniMeProjectsDir, { home: os.homedir(), realpath: fs.realpathSync.native, lstat: fs.lstatSync });
+    if (real) void shell.openPath(real);
+  });
+  ipcMain.on('preview:open-in-marven', (event) => {
+    const p = preview.current();
+    if (preview.isSender(event) && p && alive()) win.webContents.send('companion:preview-open-in-marven', p.root);
+  });
+  ipcMain.on('preview:close', (event) => {
+    if (preview.isSender(event)) preview.close();
+  });
   ipcMain.on('companion:set-interactive', (event, on) => {
     // Linux: the window shape decides where clicks land (see the top of this file).
     if (USE_SHAPE || !fromCompanion(event)) return;
@@ -494,6 +545,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     stopWalking();
     const [x, y] = win.getPosition();
     win.setPosition(Math.round(x + dx), Math.round(y + dy));
+    preview.follow();
   });
   ipcMain.on('companion:drop', (event) => {
     if (!fromCompanion(event)) return;
@@ -503,6 +555,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const onDock = placement.isInDockStrip({ x: c.x, y: c.y, ...size }, display.workArea);
     const strip = placement.dockStrip(display.workArea, size);
     win.setPosition(c.x, onDock ? strip.y : c.y);
+    preview.follow();
     if (!onDock && placement.dropMode(settings.miniMeDrop) === 'dock') {
       // Fall straight down to the Dock strip; the walk timer reports "arrived" and saves on landing.
       walkTo({ x: c.x, y: strip.y, dock: true, fall: true });
@@ -550,6 +603,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       const [x, y] = win.getPosition();
       stopWalking();
       win.setBounds({ x, y: y + oldHeight - size.height, ...size });
+      preview.follow();
       // Linux: the old rects are stale; the sprite's default spot until the page re-reports its layout.
       hitRects = [];
       applyShape();

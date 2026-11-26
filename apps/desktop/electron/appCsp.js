@@ -13,6 +13,19 @@
 const PREVIEW_PREFIX = '/api/workspace/preview/';
 const FALLBACK_PREVIEW_CSP = "sandbox allow-scripts; default-src 'self' data: blob:";
 
+// Mini Me's preview window shows the project server (electron/projectServer.js,
+// 127.0.0.1 only) in an iframe; only that page may frame it.
+const MINI_ME_PREVIEW_PAGE = '/companion/preview';
+
+function isMiniMePreviewPage(url, appOrigin) {
+  if (!url.startsWith(appOrigin)) return false;
+  try {
+    return new URL(url).pathname === MINI_ME_PREVIEW_PAGE;
+  } catch {
+    return false;
+  }
+}
+
 function isPreviewUrl(url, appOrigin) {
   if (!url.startsWith(appOrigin)) return false;
   try {
@@ -30,7 +43,8 @@ function isPreviewUrl(url, appOrigin) {
 function withAppCsp(url, headers, { appOrigin, csp }) {
   if (!url.startsWith(appOrigin)) return headers;
   if (!isPreviewUrl(url, appOrigin)) {
-    return { ...headers, 'Content-Security-Policy': [csp] };
+    const policy = isMiniMePreviewPage(url, appOrigin) ? `${csp}; frame-src http://127.0.0.1:*` : csp;
+    return { ...headers, 'Content-Security-Policy': [policy] };
   }
   const rest = {};
   let own = '';

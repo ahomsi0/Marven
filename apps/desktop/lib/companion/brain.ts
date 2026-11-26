@@ -10,6 +10,14 @@ export type Route =
   | { kind: "clipboard"; action: Exclude<ClipboardAction, null> }
   | { kind: "agent" }
   | { kind: "build"; name: string }
+  /** A change to the project Mini Me built last (see `project` in routeInput). */
+  | { kind: "edit" }
+  /** Right after a run: start the previous request as a new project instead. */
+  | { kind: "new-instead" }
+  /** Right after a run: answer the previous request in chat instead. */
+  | { kind: "chat-instead" }
+  /** Stop the run (and the queue). */
+  | { kind: "stop" }
   | { kind: "command" }
   | { kind: "chat" };
 
@@ -44,7 +52,7 @@ const BUILDABLE =
   /(?:web\s*sites?|sites?|web\s*pages?|pages?|apps?|applications?|games?|menus?|portfolios?|blogs?|dashboards?|forms?|calculators?|tools?|extensions?|scripts?|bots?|chatbots?|apis?|servers?|projects?|prototypes?|templates?|resumes?|cvs?|invitations?|quizz?es|quiz|to-?\s?do\s+lists?|shops?|stores?|galleries|gallery)$/i;
 // Where the object's head noun phrase ends ("a landing page | for my bakery").
 const HEAD_END = /\s+(?:about|for|that|which|who|where|with|to|in|on|using|from|by|so|like|called|named|of|and)(?=\s)/i;
-const NAME_FILLER = new Set(["a", "an", "the", "my", "our", "your", "some", "new", "me", "us", "of", "to", "in", "on", "and"]);
+const NAME_FILLER = new Set(["a", "an", "the", "my", "our", "your", "some", "new", "another", "me", "us", "of", "to", "in", "on", "and"]);
 const NAME_MAX_WORDS = 6;
 
 function words(s: string): string[] {
@@ -77,11 +85,63 @@ function detectBuild(text: string): string | null {
   return nameWords.slice(0, NAME_MAX_WORDS).join(" ").toLowerCase();
 }
 
-export function routeInput(text: string, opts: { allowCommands: boolean; allowBuild?: boolean }): Route {
+// "change the background to red", "can you add a contact section": a change
+// verb first, then something a built site has. "it" counts only while the
+// project is what Mini Me was last working on ("make it red" right after it).
+const EDIT_REQUEST = new RegExp(
+  String.raw`^\s*(?:(?:please|can\s+you|could\s+you|would\s+you|now|ok(?:ay)?|also|and|then)[\s,]+)*(?:change|edit|update|modify|fix|tweak|adjust|replace|swap|recolou?r|restyle|rename|remove|delete|add|put|insert|move|turn|use|increase|decrease|enlarge|shrink|cent(?:er|re)|align|make)\b(.*)$`,
+  "i",
+);
+const EDIT_TARGET =
+  /\b(?:background|colou?rs?|fonts?|text|titles?|headings?|headers?|footers?|nav(?:igation|bar)?|menus?|buttons?|images?|photos?|pictures?|logos?|icons?|sections?|pages?|site|website|layout|styles?|theme|links?|bio|about|contact|hero|banner|cards?|paragraphs?|css|html|dark\s+mode|light\s+mode|animations?|spacing|margins?|padding|borders?)\b/i;
+const EDIT_PRONOUN = /\b(?:it|its|it's)\b/i;
+
+function detectEdit(text: string, recent: boolean): boolean {
+  const m = EDIT_REQUEST.exec(text);
+  if (!m) return false;
+  return EDIT_TARGET.test(m[1]) || (recent && EDIT_PRONOUN.test(m[1]));
+}
+
+// Said right after Mini Me started (or finished) a run from your previous
+// message. A new request with details ("make another site for my cafe") is
+// not a correction: the noun must end the sentence.
+const NEW_INSTEAD =
+  /^\s*(?:no[,.!]?\s+)?(?:(?:please|actually)[\s,]+)?(?:(?:make|start|create|build|do)\s+(?:(?:it|that)\s+(?:as\s+)?)?(?:a\s+)?)?(?:a\s+)?(?:brand[\s-]+)?(?:new|separate|another|different)\s+(?:one|project|site|website|page|app)(?:\s+instead)?[\s.!]*$/i;
+const CHAT_INSTEAD = /^\s*(?:no[,.!]?\s+)?(?:just\s+(?:tell\s+me|answer|explain)|don(?:'|\u2019)?t\s+(?:build|make|change|do)\s+(?:it|that|anything))\b/i;
+const STOP = /^\s*(?:stop|cancel|never\s*mind|nevermind|hold\s+on)\b[\s.!]*$/i;
+
+/** A short name for a project made from `text`: its build name, else its first words. */
+export function projectNameFor(text: string): string {
+  const built = detectBuild(text);
+  if (built) return built;
+  const name = words(text).filter((w) => !NAME_FILLER.has(w.toLowerCase())).slice(0, 4).join(" ").toLowerCase();
+  return name || "project";
+}
+
+export function routeInput(
+  text: string,
+  opts: {
+    allowCommands: boolean;
+    allowBuild?: boolean;
+    /** Mini Me has a project it built; `recent` when it was the last thing worked on. */
+    project?: { recent: boolean };
+    /** Mini Me is working on, or just finished, a run started from the previous message. */
+    afterRun?: boolean;
+  },
+): Route {
+  if (opts.afterRun) {
+    if (STOP.test(text)) return { kind: "stop" };
+    if (NEW_INSTEAD.test(text)) return { kind: "new-instead" };
+    if (CHAT_INSTEAD.test(text)) return { kind: "chat-instead" };
+  }
   const timer = parseTimer(text);
   if (timer) return { kind: "timer", ...timer };
   const clip = detectClipboardAction(text);
   if (clip) return { kind: "clipboard", action: clip };
+  // A change to the project goes to it, never to a new folder; a new build request still wins.
+  if (opts.project && !QUESTION.test(text) && detectEdit(text, opts.project.recent)) {
+    if (opts.allowBuild === false || !detectBuild(text)) return { kind: "edit" };
+  }
   if (!QUESTION.test(text) && AGENT_ONLY.some((re) => re.test(text))) return { kind: "agent" };
   if (opts.allowBuild !== false && !QUESTION.test(text)) {
     const name = detectBuild(text);
@@ -108,6 +168,8 @@ export const BUILD_RULE =
 
 const MARKER_LEAD = String.raw`(?:\s|\u0060{1,3}[a-z]*|["'\u201c\u201d\u2018\u2019>*])*`;
 const BUILD_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*build\s*:([^\]\n]*)\]\]`, "i");
+const EDIT_MARKER = new RegExp(String.raw`^${MARKER_LEAD}\[\[\s*edit\s*\]\]`, "i");
+const EDIT_MARKER_PREFIX = new RegExp(String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:e(?:d(?:i(?:t\s*\]?)?)?)?)?)?$`, "i");
 const BUILD_MARKER_PREFIX = new RegExp(
   String.raw`^${MARKER_LEAD}\[(?:\[\s*(?:b(?:u(?:i(?:l(?:d(?:\s*(?::[^\]\n]*\]?)?)?)?)?)?)?)?)?$`,
   "i",
@@ -120,18 +182,29 @@ export function parseBuildMarker(text: string): { name: string } | null {
   return name ? { name } : null;
 }
 
-/** True while streamed text could still turn into a build marker, so it is held back from the bubble. */
+/** True while streamed text could still turn into a build or edit marker, so it is held back from the bubble. */
 export function looksLikeBuildMarkerPrefix(partial: string): boolean {
-  return partial.trim() === "" || BUILD_MARKER_PREFIX.test(partial) || parseBuildMarker(partial) !== null;
+  return (
+    partial.trim() === "" ||
+    BUILD_MARKER_PREFIX.test(partial) ||
+    parseBuildMarker(partial) !== null ||
+    EDIT_MARKER_PREFIX.test(partial) ||
+    EDIT_MARKER.test(partial)
+  );
 }
 
-/** The text with a leading build marker removed. */
+/** The text with a leading build or edit marker removed. */
 export function stripBuildMarker(text: string): string {
-  return text.replace(BUILD_MARKER, "").trim();
+  return text.replace(BUILD_MARKER, "").replace(EDIT_MARKER, "").trim();
 }
 
-/** What to do with a finished chat reply: offer a build, or show the text (with any stray marker removed). */
-export function resolveChatReply(full: string, buildEnabled: boolean): { kind: "build"; name: string } | { kind: "text"; text: string } {
+/** What to do with a finished chat reply: offer a build or an edit of the current project, or show the text (with any stray marker removed). */
+export function resolveChatReply(
+  full: string,
+  buildEnabled: boolean,
+  editEnabled = false,
+): { kind: "build"; name: string } | { kind: "edit" } | { kind: "text"; text: string } {
+  if (editEnabled && EDIT_MARKER.test(full)) return { kind: "edit" };
   if (buildEnabled) {
     const marker = parseBuildMarker(full);
     if (marker) return { kind: "build", name: marker.name };
@@ -139,10 +212,22 @@ export function resolveChatReply(full: string, buildEnabled: boolean): { kind: "
   return { kind: "text", text: stripBuildMarker(full) };
 }
 
-/** Marven's base prompt plus the Mini Me persona (and the build rule unless `allowBuild` is false), with the user's custom instructions first and last (as the main chat does). */
-export function buildCompanionPrompt(base: string, extra: string, personality: Personality = "playful", opts: { allowBuild?: boolean } = {}): string {
+/** Tells the model that changes to the project Mini Me built go to it, not to a new build. */
+export function projectRule(name: string): string {
+  const safe = name.replace(/["\u201c\u201d`\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 60) || "the project";
+  return `You already built the user a project called "${safe}" (a folder of files). If they ask to change, fix, restyle, add to or remove something in it, even without naming it (e.g. "make the background red"), do not start a new project and do not write the code: reply with exactly [[EDIT]] and nothing else.`;
+}
+
+/** Marven's base prompt plus the Mini Me persona (and the build rule, and the current project's edit rule, unless `allowBuild` is false), with the user's custom instructions first and last (as the main chat does). */
+export function buildCompanionPrompt(
+  base: string,
+  extra: string,
+  personality: Personality = "playful",
+  opts: { allowBuild?: boolean; project?: { name: string } } = {},
+): string {
   const persona = PERSONAS[personality] ?? PERSONAS.playful;
-  const withPersona = `${base}\n\n${persona}${opts.allowBuild === false ? "" : `\n\n${BUILD_RULE}`}`;
+  const rules = opts.allowBuild === false ? "" : `\n\n${BUILD_RULE}${opts.project ? `\n\n${projectRule(opts.project.name)}` : ""}`;
+  const withPersona = `${base}\n\n${persona}${rules}`;
   const e = extra.trim();
   return e
     ? `### PRIORITY INSTRUCTIONS (always follow these):\n${e}\n\n---\n\n${withPersona}\n\n---\n\nREMINDER: ${e}`

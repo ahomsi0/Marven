@@ -48,6 +48,13 @@ export function isStrictlyInside(child: string, parent: string): boolean {
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
+/** True when `child` is an absolute path directly inside `parent` (one level down, not `parent` itself). */
+export function isDirectChild(child: string, parent: string): boolean {
+  if (!path.isAbsolute(child) || !path.isAbsolute(parent)) return false;
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel !== "" && !rel.includes(path.sep) && rel !== ".." && !path.isAbsolute(rel);
+}
+
 /**
  * Why a projects parent folder is not acceptable, or null when it is fine.
  * `parent` must already be resolved (realpath of its existing part). Keeps new

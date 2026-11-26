@@ -19,6 +19,7 @@ import { getCompanionBridge, type CompanionSettingsPage } from "@/lib/companion/
 import {
   appendHistory,
   buildCompanionPrompt,
+  projectNameFor,
   looksLikeBuildMarkerPrefix,
   resolveChatReply,
   stripBuildMarker,
@@ -28,22 +29,25 @@ import {
   saveHistory,
   type CompanionMessage,
 } from "@/lib/companion/brain";
+import { forgetProject, isRecentProject, loadProject, saveProject, type CompanionProject } from "@/lib/companion/project";
 
 export type BrainEvent = "thinking" | "talking" | "succeeded" | "failed";
-/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat; "build-choice" offers to build the request as a project; "build-here" offers to build `build` right here. */
-export type BubbleAction = "build-choice" | "build-here" | "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
+/** "open-in-agent" hands the request to Marven's Agent; "open-in-marven" opens the thread as a chat. */
+export type BubbleAction = "retry" | "open-in-marven" | "open-in-agent" | "open-settings" | "retry-or-settings" | null;
 
 export interface BrainReply {
   text: string;
   action: BubbleAction;
   done: boolean;
-  /** Set with the "build-choice" / "build-here" actions: the request, the project name, and (build-here) the folder already made for it. */
-  build?: { request: string; name: string; root?: string };
   /** With "open-settings": the Settings page that fixes the problem (default: AI keys). */
   settingsPage?: CompanionSettingsPage;
 }
 
-export type BuildChoice = "here" | "marven" | "chat";
+/** The last build or change Mini Me started, which a correction ("no, make a new one") is about. */
+export interface LastJob {
+  request: string;
+  kind: "build" | "edit";
+}
 
 interface Options {
   speakReplies: boolean;
@@ -52,10 +56,14 @@ interface Options {
   onSpeakingChange?: (speaking: boolean) => void;
   /** A timer fired. The brain has put the text in `reply`; the host should show the bubble. */
   onNotify?: (text: string) => void;
-  /** "Build it here" was chosen (Task 17B fills this in). */
-  onBuildHere?: (request: string, name: string) => void;
-  /** "Open in Marven" was chosen on a build request (Task 17C fills this in). */
-  onBuildInMarven?: (request: string, name: string) => void;
+  /** Build `request` as a new project named `name`. */
+  onBuild?: (request: string, name: string) => void;
+  /** Make `request` as a change to the current project. */
+  onEdit?: (request: string) => void;
+  /** "No, make a new one" / "no, just tell me" / "stop", about `previous` (the last job started), if any. */
+  onCorrection?: (kind: "new-instead" | "chat-instead" | "stop", previous: LastJob | null) => void;
+  /** A build or change is running (so "stop" means it, even after other chat). */
+  isJobRunning?: () => boolean;
 }
 
 /** The clipboard's text via Marven's main process (the page has no clipboard permission), or "" when unreadable. */
@@ -95,9 +103,15 @@ export function useCompanionBrain(options: Options) {
   const busyRef = useRef(false);
   busyRef.current = busy;
   const pendingNotesRef = useRef<string[]>([]);
+  /** The project Mini Me built last: changes to it are edits, not new projects. */
+  const projectRef = useRef<CompanionProject | null>(null);
+  /** The build or change started by the previous message; corrections are about it. */
+  const lastJobRef = useRef<LastJob | null>(null);
+  const sendRef = useRef<(raw: string, sendOpts?: { skipBuild?: boolean }) => Promise<void>>(async () => {});
 
   useEffect(() => {
     historyRef.current = loadHistory(localStorage);
+    projectRef.current = loadProject(localStorage);
   }, []);
 
   const say = useCallback((text: string) => {
@@ -172,7 +186,41 @@ export function useCompanionBrain(options: Options) {
     };
 
     const custom = getSystemPrompt().trim();
-    const route = routeInput(text, { allowCommands: !custom, allowBuild: !sendOpts?.skipBuild });
+    const project = projectRef.current;
+    const route = routeInput(text, {
+      allowCommands: !custom,
+      allowBuild: !sendOpts?.skipBuild,
+      project: project && !sendOpts?.skipBuild ? { recent: isRecentProject(project, Date.now()) } : undefined,
+      afterRun: !sendOpts?.skipBuild && (lastJobRef.current !== null || !!optionsRef.current.isJobRunning?.()),
+    });
+    // A build or a change starts straight away; the build card takes the bubble.
+    const startJob = (kind: "build" | "edit", name?: string) => {
+      lastJobRef.current = { request: text, kind };
+      setReply(null);
+      setBusy(false);
+      emit("thinking");
+      if (kind === "build") optionsRef.current.onBuild?.(text, name ?? projectNameFor(text));
+      else optionsRef.current.onEdit?.(text);
+    };
+
+    if (route.kind === "new-instead" || route.kind === "chat-instead" || route.kind === "stop") {
+      const previous = lastJobRef.current;
+      lastJobRef.current = null;
+      setReply(null);
+      setBusy(false);
+      optionsRef.current.onCorrection?.(route.kind, previous);
+      if (route.kind === "chat-instead" && previous) void sendRef.current(previous.request, { skipBuild: true });
+      return;
+    }
+    if (route.kind === "build") {
+      startJob("build", route.name);
+      return;
+    }
+    if (route.kind === "edit" && project) {
+      startJob("edit");
+      return;
+    }
+    lastJobRef.current = null;
 
     try {
       if (route.kind === "timer") {
@@ -184,15 +232,6 @@ export function useCompanionBrain(options: Options) {
         }, route.ms);
         timersRef.current.add(id);
         succeed(tRef.current("companion.timerSet", { label: route.label }));
-        return;
-      }
-      if (route.kind === "build") {
-        // Not remembered yet: history only gets the exchange once the user picks "Just tell me".
-        const ask = tRef.current("companion.buildAsk");
-        setReply({ text: ask, action: "build-choice", done: true, build: { request: text, name: route.name } });
-        emit("talking");
-        say(ask);
-        setBusy(false);
         return;
       }
       if (route.kind === "agent") {
@@ -231,7 +270,10 @@ export function useCompanionBrain(options: Options) {
         messages: [...historyRef.current, { role: "user", content: prompt }],
         model,
         provider,
-        systemPrompt: buildCompanionPrompt(base, custom, optionsRef.current.personality, { allowBuild: markerEnabled }),
+        systemPrompt: buildCompanionPrompt(base, custom, optionsRef.current.personality, {
+          allowBuild: markerEnabled,
+          project: project ? { name: project.name } : undefined,
+        }),
         allowCommands: route.kind === "command",
         commandText: text,
       };
@@ -287,14 +329,18 @@ export function useCompanionBrain(options: Options) {
         fail(full ? `${full}\n\n${why}` : why, "retry");
         return;
       }
-      const resolved = resolveChatReply(full, markerEnabled);
+      const resolved = resolveChatReply(full, markerEnabled, markerEnabled && !!project);
+      if (resolved.kind === "edit" && project) {
+        startJob("edit");
+        return;
+      }
+      if (resolved.kind === "edit") {
+        fail(tRef.current("companion.emptyReply"), "retry");
+        return;
+      }
       if (resolved.kind === "build") {
-        // Same bubble as the phrase route; the marker is never spoken or remembered.
-        const ask = tRef.current("companion.buildAsk");
-        setReply({ text: ask, action: "build-choice", done: true, build: { request: text, name: resolved.name } });
-        emit("talking");
-        say(ask);
-        setBusy(false);
+        // Same as the phrase route; the marker is never spoken or remembered.
+        startJob("build", resolved.name);
         return;
       }
       if (!resolved.text) {
@@ -307,6 +353,7 @@ export function useCompanionBrain(options: Options) {
       fail(chatErrorMessage(err), "retry");
     }
   }, [say, notify]);
+  sendRef.current = send;
 
   const retry = useCallback(() => send(lastInputRef.current, { skipBuild: lastSkipBuildRef.current }), [send]);
 
@@ -320,37 +367,41 @@ export function useCompanionBrain(options: Options) {
 
   const history = useCallback(() => historyRef.current, []);
 
+  const getProject = useCallback(() => projectRef.current, []);
+
+  /** The current project's folder is gone: forget it and its history. */
+  const forgetCurrentProject = useCallback(() => {
+    const p = projectRef.current;
+    projectRef.current = null;
+    if (p) forgetProject(localStorage, p.root);
+  }, []);
+
+  /** The folder Mini Me just made (or reused) is now its current project. */
+  const setProject = useCallback((root: string, name: string) => {
+    projectRef.current = { root, name, at: Date.now() };
+    saveProject(localStorage, projectRef.current);
+  }, []);
+
+  /** Add an exchange that happened outside chat (a finished build or edit) to the history the model sees. */
+  const recordExchange = useCallback((user: string, assistant: string) => {
+    if (!user.trim() || !assistant.trim()) return;
+    historyRef.current = appendHistory(historyRef.current, { role: "user", content: user }, { role: "assistant", content: assistant });
+    saveHistory(localStorage, historyRef.current);
+  }, []);
+
   /**
    * Show a line from outside the chat (e.g. how a hand-off went), not recorded
    * in the history. `done: false` keeps it up without buttons while work goes on.
    */
   const announce = useCallback(
-    (
-      text: string,
-      opts?: { action?: BubbleAction; settingsPage?: CompanionSettingsPage; build?: BrainReply["build"]; done?: boolean; speak?: boolean },
-    ) => {
+    (text: string, opts?: { action?: BubbleAction; settingsPage?: CompanionSettingsPage; done?: boolean; speak?: boolean }) => {
       abortRef.current?.abort();
       setBusy(false);
-      setReply({ text, action: opts?.action ?? null, done: opts?.done ?? true, settingsPage: opts?.settingsPage, build: opts?.build });
+      setReply({ text, action: opts?.action ?? null, done: opts?.done ?? true, settingsPage: opts?.settingsPage });
       if (opts?.speak) say(text);
     },
     [say],
   );
 
-  const chooseBuild = useCallback(
-    (choice: BuildChoice) => {
-      const build = reply?.build;
-      if (!build) return;
-      if (choice === "chat") {
-        void send(build.request, { skipBuild: true });
-        return;
-      }
-      setReply(null);
-      const { onBuildHere, onBuildInMarven } = optionsRef.current;
-      (choice === "here" ? onBuildHere : onBuildInMarven)?.(build.request, build.name);
-    },
-    [reply, send],
-  );
-
-  return { reply, busy, send, retry, dismiss, history, chooseBuild, announce };
+  return { reply, busy, send, retry, dismiss, history, announce, setProject, getProject, forgetCurrentProject, recordExchange };
 }

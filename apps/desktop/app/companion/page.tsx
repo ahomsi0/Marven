@@ -6,19 +6,22 @@ import { SpeechBubble } from "./SpeechBubble";
 import { useCompanionPointer } from "./useCompanionPointer";
 import { useCompanionHitRects } from "./useCompanionHitRects";
 import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/useCompanionBrain";
-import { isBuildActive, prepareProjectFolder, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
+import { isBuildActive, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
 import { useVoice } from "@/hooks/useVoice";
 import { stopSpeaking } from "@/lib/speak";
 import { initialState, reduce, type BehaviourEvent, type BehaviourState, type Strip } from "@/lib/companion/behaviour";
 import { useT } from "@/lib/i18n";
-import { chatErrorMessage } from "@/lib/chatErrors";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
+import { projectNameFor } from "@/lib/companion/brain";
+import { loadThread } from "@/lib/companion/project";
 import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, getCompanionPlatform, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
 /** A finished build's result stays up longer: it has buttons worth reaching for. */
 const BUILD_RESULT_CLOSE_MS = 45_000;
+/** Writes close together reload the preview once. */
+const PREVIEW_RELOAD_MS = 300;
 /** Left alone this long, Mini Me sits down and stays seated. */
 const REST_AFTER_MS = 120_000;
 /** A voice-opened bubble that heard nothing closes itself after this. */
@@ -46,6 +49,27 @@ export default function CompanionPage() {
   const [bubbleOpen, setBubbleOpen] = useState(false);
   const bubbleOpenRef = useRef(false);
   bubbleOpenRef.current = bubbleOpen;
+  // The preview panel docks beside the bubble (main needs its rect as it
+  // changes size) and closes when the bubble closes. While the preview is
+  // open the bubble doesn't fade by itself.
+  const bubbleBoxRef = useRef<HTMLDivElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (!bridge) return;
+    const el = bubbleBoxRef.current;
+    if (!bubbleOpen || !el) {
+      bridge.setBubbleRect(null);
+      return;
+    }
+    const report = () => {
+      const r = el.getBoundingClientRect();
+      bridge.setBubbleRect({ x: r.x, y: r.y, width: r.width, height: r.height });
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bridge, bubbleOpen]);
   const [draft, setDraft] = useState("");
   const [interim, setInterim] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -69,24 +93,50 @@ export default function CompanionPage() {
   const voiceRef = useRef<{ pause: () => void; resume: () => void }>({ pause: () => {}, resume: () => {} });
   // Destructured so the callbacks below depend on the hook's stable functions,
   // not on the object it returns (which is new every render).
-  const { reply, busy, send, retry, dismiss, history, chooseBuild, announce } = useCompanionBrain({
-    speakReplies: settings.speak,
-    personality: settings.personality,
-    onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
-    onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
-    onNotify: () => openBubble(false),
-    onBuildHere: (request, name) => void buildStart(request, name),
-    onBuildInMarven: (request, name) => void buildInMarven(request, name),
-  });
+  const { reply, busy, send, retry, dismiss, history, announce, setProject, getProject, forgetCurrentProject, recordExchange } =
+    useCompanionBrain({
+      speakReplies: settings.speak,
+      personality: settings.personality,
+      onEvent: (e: BrainEvent) => dispatch({ type: e, now: Date.now() }),
+      onSpeakingChange: (speaking) => (speaking ? voiceRef.current.pause() : voiceRef.current.resume()),
+      onNotify: () => openBubble(false),
+      // No questions: a build or a change starts (or queues) straight away.
+      onBuild: (request, name) => buildSubmit({ kind: "build", request, name }),
+      onEdit: (request) => buildSubmit({ kind: "edit", request }),
+      onCorrection: (kind, previous) => {
+        if (kind === "stop") {
+          if (!buildStop()) announce(t("companion.nothingToStop"));
+          else dispatch({ type: "failed", now: Date.now() });
+          return;
+        }
+        buildStop();
+        // "No, make a new one" after a change: the change becomes a new project.
+        if (kind === "new-instead" && previous?.kind === "edit") {
+          buildSubmit({ kind: "build", request: previous.request, name: projectNameFor(previous.request) });
+        }
+      },
+      isJobRunning: () => isBuildActive(buildViewRef.current),
+    });
 
-  // ── Building projects ("Build it here") ────────────────────────────────────
+  // The preview reloads once after a burst of file writes.
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadPreviewSoon = useCallback(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = setTimeout(() => {
+      previewTimerRef.current = null;
+      bridge?.previewReload();
+    }, PREVIEW_RELOAD_MS);
+  }, [bridge]);
+  useEffect(() => () => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+  }, []);
+
+  // ── Builds and changes ─────────────────────────────────────────────────────
   const {
     view: build,
-    start: buildStart,
+    submit: buildSubmit,
     stop: buildStop,
     answer: buildAnswer,
-    keepGoing: buildKeepGoing,
-    switchTo: buildSwitchTo,
     clear: buildClear,
   } = useCompanionBuild({
     projectsDir: settings.projectsDir,
@@ -97,14 +147,26 @@ export default function CompanionPage() {
       if (!bubbleOpenRef.current) openBubble(false);
       // A result replaces a chat reply that's already finished (one still
       // streaming keeps the bubble; the result waits for the next opening).
-      if (reason !== "approval" && reason !== "conflict" && replyRef.current?.done && !busyRef.current) dismiss();
+      if (reason !== "approval" && replyRef.current?.done && !busyRef.current) dismiss();
       const now = Date.now();
       if (reason === "done") dispatch({ type: "succeeded", now });
       else if (reason === "failed" || reason === "blocked") dispatch({ type: "failed", now });
       else dispatch({ type: "talking", now });
     },
+    getProject,
+    // The folder is Mini Me's current project: a follow-up change edits it.
+    onFolderReady: (root, name) => setProject(root, name),
+    onProjectGone: () => forgetCurrentProject(),
+    onFileWritten: reloadPreviewSoon,
+    // So a follow-up in chat knows what was built (or changed).
+    onDone: ({ request, name, summary, edit }) => {
+      recordExchange(request, [t(edit ? "companion.build.editDoneTitle" : "companion.build.doneTitle", { name }), summary].filter(Boolean).join(". "));
+      bridge?.previewReload();
+    },
   });
-  const buildNeedsUser = !!build && (!!build.approval || !!build.conflict);
+  const buildViewRef = useRef(build);
+  buildViewRef.current = build;
+  const buildNeedsUser = !!build?.approval;
   // The build takes the bubble when it needs the user, or when there's no reply to show.
   const showBuild = !!build && (buildNeedsUser || (!reply && !busy));
   const buildWorking = showBuild && isBuildActive(build) && !buildNeedsUser;
@@ -145,41 +207,24 @@ export default function CompanionPage() {
     dispatch({ type: "bubble-close", now: Date.now() });
   }, [dismiss, buildClear, bridge, dispatch]);
 
-  // ── "Open in Marven" on a build request ────────────────────────────────────
-  // Same folder as "Build it here" (fresh, trusted, read-only profile refused),
-  // then Marven's main window opens an Agent conversation on it and starts it.
-  const handOffRunRef = useRef(0);
-  const buildInMarven = useCallback(
-    async (request: string, name: string) => {
-      const run = ++handOffRunRef.current;
-      const show = (text: string, outcome: "succeeded" | "failed", opts?: Parameters<typeof announce>[1]) => {
-        if (run !== handOffRunRef.current) return;
-        if (!bubbleOpenRef.current) openBubble(false);
-        announce(text, opts);
-        dispatch({ type: outcome, now: Date.now() });
-      };
-      announce(t("companion.build.preparing", { name }), { done: false });
-      dispatch({ type: "thinking", now: Date.now() });
-      try {
-        const prep = await prepareProjectFolder(name, settingsRef.current.projectsDir);
-        if (!prep.ok) {
-          show(prep.message, "failed", prep.settingsPage ? { action: "open-settings", settingsPage: prep.settingsPage } : undefined);
-          return;
-        }
-        const result = bridge
-          ? await bridge.openInMarven([{ role: "user", content: request }], "agent", { workspaceRoot: prep.root, autostart: true })
-          : { ok: false };
-        if (result.ok) show(t("companion.build.inMarven"), "succeeded", { speak: true });
-        else if (result.reason === "busy")
-          // Marven's Agent is on something else: offer to build it here, in the folder just made.
-          show(t("companion.build.agentBusy"), "failed", { action: "build-here", build: { request, name, root: prep.root }, speak: true });
-        else show(t("companion.build.handOffRefused"), "failed");
-      } catch (err) {
-        show(chatErrorMessage(err), "failed");
-      }
+  // ── Open in Marven ─────────────────────────────────────────────────────────
+  // The project's thread goes to Marven, which returns to the Agent
+  // conversation already on that folder (one per project) or makes one.
+  const openProjectInMarven = useCallback(
+    async (root: string, fallbackRequest?: string) => {
+      if (!bridge) return;
+      const thread = loadThread(localStorage, root);
+      const messages = thread.length ? thread : fallbackRequest ? [{ role: "user" as const, content: fallbackRequest }] : [];
+      if (messages.length === 0) return;
+      const result = await bridge.openInMarven(messages, "agent", { workspaceRoot: root });
+      if (result.ok) closeBubble();
+      else setNotice(t(result.reason === "busy" ? "companion.build.marvenBusy" : "companion.build.handOffRefused"));
     },
-    [announce, bridge, dispatch, openBubble, t],
+    [bridge, closeBubble, t],
   );
+  // The preview window's button arrives through a subscription set up once.
+  const openProjectInMarvenRef = useRef(openProjectInMarven);
+  openProjectInMarvenRef.current = openProjectInMarven;
 
   const {
     voiceState,
@@ -236,6 +281,8 @@ export default function CompanionPage() {
         if (p.dropped) dispatch({ type: "drop", now: Date.now(), inDock: p.inDock, falling: p.falling });
       }),
       bridge.onOpenInput(() => openBubble(true)),
+      bridge.onPreviewOpenInMarven((root) => void openProjectInMarvenRef.current(root)),
+      bridge.onPreviewClosed(() => setPreviewOpen(false)),
       bridge.onListen(() => {
         openBubble(false, true);
         startListenRef.current();
@@ -297,19 +344,19 @@ export default function CompanionPage() {
 
   // Fade the bubble after a finished reply unless the user is engaged with it.
   useEffect(() => {
-    // A pending build choice (or "build it here instead?") waits for the user
-    // rather than fading away. So does a build that's asking something.
-    if (!bubbleOpen || !reply?.done || reply.action === "build-choice" || reply.action === "build-here" || buildNeedsUser || hovered || draft) return;
+    // A build that's asking something waits for the user rather than fading
+    // away, and so does the bubble while its preview is open.
+    if (!bubbleOpen || !reply?.done || buildNeedsUser || previewOpen || hovered || draft) return;
     const timer = setTimeout(closeBubble, AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
-  }, [bubbleOpen, reply, buildNeedsUser, hovered, draft, closeBubble]);
+  }, [bubbleOpen, reply, buildNeedsUser, previewOpen, hovered, draft, closeBubble]);
 
   // A build's result fades too, just later.
   useEffect(() => {
-    if (!bubbleOpen || !buildFinished || hovered || draft) return;
+    if (!bubbleOpen || !buildFinished || previewOpen || hovered || draft) return;
     const timer = setTimeout(closeBubble, BUILD_RESULT_CLOSE_MS);
     return () => clearTimeout(timer);
-  }, [bubbleOpen, buildFinished, hovered, draft, closeBubble]);
+  }, [bubbleOpen, buildFinished, previewOpen, hovered, draft, closeBubble]);
 
   // Mini Me thinks while a build runs in front of the user; with the bubble
   // closed he goes about his day. (Closing the bubble clears "busy" as usual.)
@@ -333,36 +380,17 @@ export default function CompanionPage() {
       // Leave the thinking pose: a small shrug, then back to standing.
       dispatch({ type: "failed", now: Date.now() });
     },
-    onSwitch: buildSwitchTo,
     onClose: closeBubble,
     onAnswer: (accept: boolean) => void buildAnswer(accept),
-    onKeepGoing: buildKeepGoing,
-    onOpenFolder: () => {
+    onShowPreview: () => {
       if (!build?.root || !bridge) return;
-      void bridge.openPath(build.root).then(
-        (error) => error && setNotice(t("companion.build.openFolderFailed")),
-        () => setNotice(t("companion.build.openFolderFailed")),
+      void bridge.showPreview(build.root, build.name).then(
+        (url) => (url ? setPreviewOpen(true) : setNotice(t("companion.build.previewFailed"))),
+        () => setNotice(t("companion.build.previewFailed")),
       );
     },
     onOpenInMarven: () => {
-      if (!build?.root) return;
-      const summary = build.summary || t("companion.build.emptySummary");
-      void bridge?.openInMarven(
-        [
-          { role: "user", content: build.request },
-          { role: "assistant", content: summary },
-        ],
-        "agent",
-        { workspaceRoot: build.root },
-      );
-      closeBubble();
-    },
-    onOpenUrl: (url: string) => {
-      if (!bridge) return;
-      void bridge.openUrl(url).then(
-        (ok) => !ok && setNotice(t("companion.build.openUrlFailed")),
-        () => setNotice(t("companion.build.openUrlFailed")),
-      );
+      if (build?.root) void openProjectInMarven(build.root, build.request);
     },
     onOpenSettings: (page: CompanionSettingsPage) => {
       bridge?.openSettings(page);
@@ -371,15 +399,6 @@ export default function CompanionPage() {
   };
 
   const onAction = (action: Exclude<BubbleAction, null>) => {
-    if (action === "build-choice") return;
-    if (action === "build-here") {
-      const b = reply?.build;
-      if (!b) return;
-      // The question goes; the build takes the bubble.
-      dismiss();
-      void buildStart(b.request, b.name, b.root);
-      return;
-    }
     if (action === "retry") void retry();
     else if (action === "open-in-marven" || action === "open-in-agent") {
       void bridge?.openInMarven(history(), action === "open-in-agent" ? "agent" : "chat");
@@ -394,7 +413,7 @@ export default function CompanionPage() {
     <main ref={rootRef} className="flex h-screen w-screen select-none flex-col items-center justify-end overflow-hidden">
       <style>{`html,body{background:transparent!important;overflow:hidden}`}</style>
       {bubbleOpen && (
-        <div className="mb-3">
+        <div ref={bubbleBoxRef} className="mb-3">
           <SpeechBubble
             reply={reply}
             busy={busy}
@@ -415,7 +434,6 @@ export default function CompanionPage() {
               focusInput();
             }}
             onAction={onAction}
-            onBuildChoice={chooseBuild}
             build={showBuild ? build : null}
             buildHandlers={buildHandlers}
           />

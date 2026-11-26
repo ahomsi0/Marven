@@ -13,7 +13,8 @@ const MAX_MESSAGES = 20;
 
 /**
  * Validate a thread handed over from the companion window. Returns the last
- * MAX_MESSAGES well-formed `{ role, content }` messages (content truncated), or
+ * MAX_MESSAGES well-formed `{ role, content }` messages (content truncated,
+ * plus a short `id` when there is one), or
  * null when the input isn't an array or nothing valid remains.
  */
 function sanitizeThreadMessages(messages) {
@@ -23,7 +24,9 @@ function sanitizeThreadMessages(messages) {
     if (!m || typeof m !== 'object') continue;
     if (m.role !== 'user' && m.role !== 'assistant') continue;
     if (typeof m.content !== 'string') continue;
-    out.push({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) });
+    const msg = { role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) };
+    if (typeof m.id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(m.id)) msg.id = m.id;
+    out.push(msg);
   }
   const kept = out.slice(-MAX_MESSAGES);
   return kept.length ? kept : null;

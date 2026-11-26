@@ -246,6 +246,9 @@ export default function Home() {
 
   // ─── Conversations ──────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // For handlers registered once (Mini Me hand-offs) that need the current list.
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
   const [folders, setFolders] = useState<ConversationFolder[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
@@ -434,6 +437,9 @@ export default function Home() {
     autoVerifyCommands: agentAutoVerifyCommands,
     onUsage: (usage) => addAgentTokens(activeConversationId, usage),
   });
+  // For handlers registered once (Mini Me hand-offs) that need the current function.
+  const agentStreamLoadMessagesRef = useRef(agentStreamLoadMessages);
+  agentStreamLoadMessagesRef.current = agentStreamLoadMessages;
   // For the Mini Me hand-off listener, which is registered once.
   const agentRunningRef = useRef(false);
   agentRunningRef.current = agentStreamIsRunning;
@@ -1613,8 +1619,11 @@ export default function Home() {
       const raw = payload?.messages;
       if (!Array.isArray(raw)) return { ok: false, reason: "invalid" };
       const messages = raw.filter(
-        (m): m is { role: "user" | "assistant"; content: string } =>
-          !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+        (m): m is { role: "user" | "assistant"; content: string; id?: string } =>
+          !!m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string" &&
+          (m.id === undefined || typeof m.id === "string"),
       );
       if (messages.length === 0) return { ok: false, reason: "invalid" };
       if (payload?.mode === "agent" && typeof payload.workspaceRoot === "string" && payload.workspaceRoot) {
@@ -1645,17 +1654,38 @@ export default function Home() {
           setAgentAttachments([]);
           return { ok: true };
         }
+        // Back to the Agent conversation already on that folder (one per
+        // project), adding the thread messages it doesn't have yet (by id); a
+        // new conversation only if there's none. Never while the Agent runs:
+        // switching conversations would abort it.
+        if (agentRunningRef.current || pendingAutostartRef.current) return { ok: false, reason: "busy" };
         setWorkspaceTrusted(root, true);
-        const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
-        agentMessagesByConvRef.current.set(
-          agentConv.id,
-          messages.map((m, i): AgentMessage => ({ id: `minime-${Date.now()}-${i}`, role: m.role, content: m.content })),
+        const incoming = messages.map(
+          (m, i): AgentMessage => ({ id: m.id || `minime-${Date.now()}-${i}`, role: m.role, content: m.content }),
         );
-        // Show the finished site: once the folder has loaded, open its
-        // index.html and the preview.
-        queueSiteOpen({ convId: agentConv.id, root, gate: "files" });
-        setConversations((prev) => [...prev, agentConv]);
-        setActiveConversationId(agentConv.id);
+        const existing = [...conversationsRef.current].reverse().find((c) => c.mode === "agent" && c.workspaceRoot === root);
+        if (existing) {
+          const have = agentMessagesByConvRef.current.get(existing.id) ?? [];
+          const ids = new Set(have.map((m) => m.id));
+          const merged = [...have, ...incoming.filter((m) => !ids.has(m.id))];
+          agentMessagesByConvRef.current.set(existing.id, merged);
+          if (lastAgentConvIdRef.current === existing.id) {
+            // Already loaded (shown now, or the last Agent thread): update it in place.
+            agentStreamLoadMessagesRef.current(merged);
+          } else {
+            // Show the site once the folder has loaded after the switch.
+            queueSiteOpen({ convId: existing.id, root, gate: "files" });
+          }
+          setActiveConversationId(existing.id);
+        } else {
+          const agentConv: Conversation = { ...createConversationWithMode(request, "agent"), workspaceRoot: root };
+          agentMessagesByConvRef.current.set(agentConv.id, incoming);
+          // Show the finished site: once the folder has loaded, open its
+          // index.html and the preview.
+          queueSiteOpen({ convId: agentConv.id, root, gate: "files" });
+          setConversations((prev) => [...prev, agentConv]);
+          setActiveConversationId(agentConv.id);
+        }
         setAgentInput("");
         setAgentAttachments([]);
         return { ok: true };

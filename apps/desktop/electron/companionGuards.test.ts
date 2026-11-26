@@ -33,6 +33,11 @@ describe("sanitizeThreadMessages", () => {
     const long = sanitizeThreadMessages([{ role: "user", content: "a".repeat(MAX_MESSAGE_CHARS + 10) }])!;
     expect(long[0].content).toHaveLength(MAX_MESSAGE_CHARS);
   });
+  it("keeps a short id, drops anything else", () => {
+    expect(sanitizeThreadMessages([{ role: "user", content: "a", id: "minime-abc-1" }])).toEqual([{ role: "user", content: "a", id: "minime-abc-1" }]);
+    expect(sanitizeThreadMessages([{ role: "user", content: "a", id: "x".repeat(101) }])).toEqual([{ role: "user", content: "a" }]);
+    expect(sanitizeThreadMessages([{ role: "user", content: "a", id: "bad id!" }])).toEqual([{ role: "user", content: "a" }]);
+  });
   it("returns null when nothing remains", () => {
     expect(sanitizeThreadMessages([{ role: "tool", content: "x" }])).toBeNull();
     expect(sanitizeThreadMessages([])).toBeNull();
@@ -84,6 +89,11 @@ describe("sanitizeOpenOptions", () => {
     expect(sanitizeOpenOptions({ workspaceRoot: root }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root });
     expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: true }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root, autostart: true });
     expect(sanitizeOpenOptions({ workspaceRoot: root, autostart: false }, "agent", "~/Marven Projects", deps)).toEqual({ workspaceRoot: root });
+  });
+
+  it("ignores an edit option (there is no change hand-off any more)", () => {
+    const withFiles = { ...deps, readdir: () => ["index.html"] };
+    expect(sanitizeOpenOptions({ workspaceRoot: root, edit: true }, "agent", "~/Marven Projects", withFiles)).toEqual({ workspaceRoot: root });
   });
 
   it("only a real boolean true starts anything", () => {

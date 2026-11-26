@@ -1,8 +1,10 @@
 "use client";
 
-// Mini Me's "Build it here": makes a fresh project folder, runs Marven's real
-// Agent on it in the background with the user's agent settings, and turns the
-// Agent's event stream into a calm bubble view (latest step, approvals, result).
+// Mini Me's builds and changes: makes (or reopens) a project folder, runs
+// Marven's real Agent on it in the background with the user's agent settings
+// and the project's history, and turns the Agent's event stream into a calm
+// bubble view (latest step, approvals, result). What you ask for while a run
+// is going is queued; queued changes run together when it ends.
 //
 // Mini Me answers an approval itself only for file writes inside the folder it
 // just created (shouldAutoApprove); everything else is asked in the bubble.
@@ -30,6 +32,8 @@ import { loadMemories } from "@/lib/userProfile";
 import { chatErrorMessage, classifyProviderError, providerErrorMessage } from "@/lib/chatErrors";
 import { speak } from "@/lib/speak";
 import { loadGlobalMemories } from "@/hooks/useCompanionBrain";
+import { appendThread, loadThread, type CompanionProject } from "@/lib/companion/project";
+import { editRequestText, takeNext, type Job, type QueuedJob } from "@/lib/companion/queue";
 import type { CompanionSettingsPage } from "@/lib/companion/bridge";
 
 export type BuildPhase = "preparing" | "running" | "done" | "failed" | "stopped" | "blocked";
@@ -50,6 +54,8 @@ export interface BuildView {
   phase: BuildPhase;
   name: string;
   request: string;
+  /** A change to a project Mini Me built before (its folder is reused), not a new build. */
+  edit: boolean;
   /** The project folder, once created. */
   root: string | null;
   /** Tool calls so far. */
@@ -57,8 +63,8 @@ export interface BuildView {
   label: ProgressLabel;
   /** Something only the user may answer. */
   approval: BuildApproval | null;
-  /** Another build was asked for while this one runs. */
-  conflict: { request: string; name: string; root?: string } | null;
+  /** Requests queued behind this run, shown as "Next: …". */
+  queue: string[];
   summary: string;
   liveUrl: string | null;
   /** Why it failed (or is blocked), in plain words. */
@@ -70,7 +76,7 @@ export interface BuildView {
 }
 
 /** Why the bubble should come up: the host opens it (unfocused) and reacts. */
-export type BuildAttention = "approval" | "conflict" | "done" | "failed" | "blocked";
+export type BuildAttention = "approval" | "done" | "failed" | "blocked";
 
 interface Options {
   /** Where projects go (Settings → Mini Me); a leading ~ is the home folder. */
@@ -78,6 +84,16 @@ interface Options {
   speakReplies: boolean;
   onSpeakingChange?: (speaking: boolean) => void;
   onAttention: (reason: BuildAttention) => void;
+  /** The project a change applies to, read when the change runs. */
+  getProject: () => CompanionProject | null;
+  /** The project folder is ready (made, or reused for an edit): it is now Mini Me's current project. */
+  onFolderReady?: (root: string, name: string) => void;
+  /** The current project's folder is gone. */
+  onProjectGone?: (root: string) => void;
+  /** The Agent wrote or patched a file in the project (the preview reloads). */
+  onFileWritten?: () => void;
+  /** The Agent finished: what was asked and what it said, for Mini Me's history. */
+  onDone?: (result: { request: string; name: string; root: string; summary: string; edit: boolean }) => void;
 }
 
 const APPROVE_RETRIES = 8;
@@ -85,11 +101,15 @@ const APPROVE_RETRY_MS = 250;
 const ERROR_DETAIL_MAX = 160;
 const NOTE_MS = 8000;
 const PACKAGE_JSON_MAX = 64_000;
+const WRITE_TOOLS = new Set(["write_file", "apply_patch"]);
 
 export const isBuildActive = (view: BuildView | null) => !!view && (view.phase === "preparing" || view.phase === "running");
 
 /** The request, plus what the Agent needs to know about where it is. */
-function buildPrompt(request: string): string {
+function buildPrompt(request: string, name: string, edit: boolean): string {
+  if (edit) {
+    return `${request}\n\n(You're working in the existing project "${name}", which you built earlier in this folder. Look at its files first, then make this change to them. Don't start a new project or make a new folder. When you're done, end with a short, friendly summary of what you changed.)`;
+  }
   return `${request}\n\n(You're working in a brand-new, empty project folder made for this request. Build it there. When you're done, end with a short, friendly summary of what you made and how to open it.)`;
 }
 
@@ -110,7 +130,7 @@ export type FolderPrep =
       settings: { agentSafetyProfile?: unknown; liteAgentMode?: unknown } | null;
       profile: AgentSafetyProfile;
     }
-  | { ok: false; message: string; settingsPage: CompanionSettingsPage | null; blocked: boolean };
+  | { ok: false; message: string; settingsPage: CompanionSettingsPage | null; blocked: boolean; gone?: boolean };
 
 /**
  * Gets a project ready for the Agent, for "Build it here" and "Open in Marven"
@@ -118,11 +138,34 @@ export type FolderPrep =
  * all), makes a fresh folder under the projects folder, and marks it trusted
  * (Mini Me made it; the main window agrees when it opens it). Network errors throw.
  */
-export async function prepareProjectFolder(name: string, parent: string, signal?: AbortSignal, existingRoot?: string): Promise<FolderPrep> {
+export async function prepareProjectFolder(
+  name: string,
+  parent: string,
+  signal?: AbortSignal,
+  existingRoot?: string,
+  opts?: { edit?: boolean },
+): Promise<FolderPrep> {
   const settings = await readAgentSettings();
   const profile = normalizeAgentSafetyProfile(settings?.agentSafetyProfile);
   if (profile === "read-only") {
     return { ok: false, message: i18n.t("companion.build.readOnly"), settingsPage: "general", blocked: true };
+  }
+  if (existingRoot && opts?.edit) {
+    // A project Mini Me built before: the server approves it for the Agent
+    // again (approvals don't survive a restart), if it's still a folder
+    // directly inside the projects folder.
+    const res = await fetch("/api/workspace/reopen-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root: existingRoot, parent }),
+      signal,
+    });
+    const folder = (await res.json().catch(() => ({}))) as { root?: unknown };
+    if (!res.ok || typeof folder.root !== "string") {
+      return { ok: false, message: i18n.t("companion.build.error.reopen", { name }), settingsPage: null, blocked: false, gone: res.status === 404 };
+    }
+    setWorkspaceTrusted(folder.root, true);
+    return { ok: true, root: folder.root, settings, profile };
   }
   if (existingRoot) {
     // A folder this flow already made (e.g. Marven's Agent was busy, so the
@@ -221,6 +264,8 @@ export function useCompanionBuild(options: Options) {
   optionsRef.current = options;
   const runIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const queueRef = useRef<QueuedJob[]>([]);
+  const queueLabels = () => queueRef.current.map((j) => j.request);
 
   const commit = useCallback((next: BuildView | null) => {
     viewRef.current = next;
@@ -244,14 +289,16 @@ export function useCompanionBuild(options: Options) {
   // Mini Me switched off (window closed) or the page reloads: end the run.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const start = useCallback(
-    /** `existingRoot`: a fresh project folder made for this request already (reused instead of making another). */
-    async (request: string, name: string, existingRoot?: string) => {
-      if (isBuildActive(viewRef.current)) {
-        commit({ ...viewRef.current!, conflict: { request, name, root: existingRoot } });
-        optionsRef.current.onAttention("conflict");
-        return;
-      }
+  const runRef = useRef<(job: Job) => Promise<void>>(async () => {});
+
+  /** Runs one job; when it ends (done or failed, not stopped or replaced), the queue drains. */
+  const run = useCallback(
+    async (job: Job) => {
+      const project = job.kind === "edit" ? optionsRef.current.getProject() : null;
+      if (job.kind === "edit" && !project) return;
+      const edit = job.kind === "edit";
+      const request = job.kind === "edit" ? editRequestText(job.requests) : job.request;
+      const name = project ? project.name : job.kind === "build" ? job.name : "";
       const runId = ++runIdRef.current;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -260,11 +307,12 @@ export function useCompanionBuild(options: Options) {
         phase: "preparing",
         name,
         request,
+        edit,
         root: null,
         steps: 0,
-        label: { key: "companion.build.preparing", params: { name } },
+        label: { key: edit ? "companion.build.opening" : "companion.build.preparing", params: { name } },
         approval: null,
-        conflict: null,
+        queue: queueLabels(),
         summary: "",
         liveUrl: null,
         error: null,
@@ -272,26 +320,40 @@ export function useCompanionBuild(options: Options) {
         note: null,
       });
 
+      let root: string | null = null;
+      let settled = false;
+      const note = (content: string) => {
+        if (root) appendThread(localStorage, root, [{ role: "assistant", content }]);
+      };
       const fail = (message: string, settingsPage: CompanionSettingsPage | null = null, phase: BuildPhase = "failed") => {
         if (runId !== runIdRef.current) return;
-        patch(runId, { phase, error: message, settingsPage, approval: null, conflict: null, note: null });
+        settled = true;
+        note(i18n.t("companion.build.failedNote", { error: message }));
+        patch(runId, { phase, error: message, settingsPage, approval: null, note: null, queue: queueLabels() });
         optionsRef.current.onAttention(phase === "blocked" ? "blocked" : "failed");
       };
 
       try {
-        const prep = await prepareProjectFolder(name, optionsRef.current.projectsDir, controller.signal, existingRoot);
+        const prep = await prepareProjectFolder(name, optionsRef.current.projectsDir, controller.signal, project?.root, { edit });
         if (!alive()) return;
         if (!prep.ok) {
+          if (prep.gone && project) optionsRef.current.onProjectGone?.(project.root);
           fail(prep.message, prep.settingsPage, prep.blocked ? "blocked" : "failed");
           return;
         }
-        const { root, settings } = prep;
-        // A background build never runs commands unattended: "trusted" becomes
+        const runRoot = prep.root;
+        root = runRoot;
+        const { settings } = prep;
+        // The project's history so far goes to the Agent, then this request joins it.
+        const history = loadThread(localStorage, runRoot).map(({ role, content }) => ({ role, content }));
+        appendThread(localStorage, runRoot, [{ role: "user", content: request }]);
+        // A background run never runs commands unattended: "trusted" becomes
         // "ask-before-command" here, so every command (and git, fetch, MCP,
-        // global memory) still asks in the bubble. Writes inside the new folder
-        // are approved by shouldAutoApprove, so building stays hands-free.
+        // global memory) still asks in the bubble. Writes inside the project
+        // folder are approved by shouldAutoApprove, so building stays hands-free.
         const safetyProfile = prep.profile === "trusted" ? "ask-before-command" : prep.profile;
-        patch(runId, { root, phase: "running", label: { key: "companion.build.planning" } });
+        patch(runId, { root: runRoot, phase: "running", label: { key: "companion.build.planning" } });
+        optionsRef.current.onFolderReady?.(runRoot, name);
 
         const provider: AIProvider = loadAgentProvider() ?? "groq";
         const model = loadAgentModelMap()?.[provider] ?? "";
@@ -303,15 +365,15 @@ export function useCompanionBuild(options: Options) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: buildPrompt(request),
-            history: [],
+            prompt: buildPrompt(request, name, edit),
+            history,
             provider,
             model,
-            workspaceRoot: root,
-            conversationId: `minime-build-${Date.now()}`,
+            workspaceRoot: runRoot,
+            conversationId: `minime-${edit ? "edit" : "build"}-${Date.now()}`,
             memory,
             // No MCP tools: each call would need its own approval in the bubble,
-            // and a fresh project doesn't need them.
+            // and a small project doesn't need them.
             mcpServers: [],
             requireWriteApproval: false,
             planMode: false,
@@ -331,12 +393,14 @@ export function useCompanionBuild(options: Options) {
 
         let finished = false;
         let summary = "";
+        const tools = new Map<string, string>();
         await consumeSse(res, async (event) => {
           if (!alive() || finished) return;
           const current = viewRef.current;
           if (!current) return;
           switch (event.type) {
             case "tool_call": {
+              tools.set(event.callId, event.tool);
               patch(runId, { steps: current.steps + 1, label: progressLabel(event) ?? current.label });
               return;
             }
@@ -357,10 +421,11 @@ export function useCompanionBuild(options: Options) {
               changes.label = { key: "companion.build.step.next" };
               if (liveUrl) changes.liveUrl = liveUrl;
               patch(runId, changes);
+              if (WRITE_TOOLS.has(tools.get(event.callId) ?? "")) optionsRef.current.onFileWritten?.();
               return;
             }
             case "pending_approval": {
-              if (shouldAutoApprove(event, root)) {
+              if (shouldAutoApprove(event, runRoot)) {
                 if (await postApproval(event.callId, true, APPROVE_RETRIES, alive)) return;
                 if (!alive()) return;
                 // Couldn't answer it: fall through and let the user decide.
@@ -371,7 +436,7 @@ export function useCompanionBuild(options: Options) {
               }
               const asked = approvalSummary(event);
               const runsCode = asked.kind === "command" && runsProjectCode(asked.detail);
-              const scripts = runsCode ? await readProjectScripts(root) : null;
+              const scripts = runsCode ? await readProjectScripts(runRoot) : null;
               if (!alive()) return;
               patch(runId, { approval: { callId: event.callId, ...asked, runsProjectCode: runsCode, scripts, sending: false }, note: null });
               optionsRef.current.onAttention("approval");
@@ -397,16 +462,19 @@ export function useCompanionBuild(options: Options) {
             }
             case "done": {
               finished = true;
+              settled = true;
               const text = plainSummary(summary);
+              note(text || i18n.t(edit ? "companion.build.editDoneTitle" : "companion.build.doneTitle", { name }));
               patch(runId, {
                 phase: "done",
                 summary: text,
                 liveUrl: viewRef.current?.liveUrl ?? extractLiveUrl(summary),
                 approval: null,
-                conflict: null,
+                queue: queueLabels(),
               });
               optionsRef.current.onAttention("done");
-              say(i18n.t("companion.build.doneSay", { name }));
+              optionsRef.current.onDone?.({ request, name, root: runRoot, summary: text, edit });
+              say(i18n.t(edit ? "companion.build.editDoneSay" : "companion.build.doneSay", { name }));
               return;
             }
             default:
@@ -419,20 +487,51 @@ export function useCompanionBuild(options: Options) {
         if (!alive()) return;
         fail(chatErrorMessage(err));
       } finally {
-        if (abortRef.current === controller && runId === runIdRef.current && !isBuildActive(viewRef.current)) abortRef.current = null;
+        if (abortRef.current === controller && runId === runIdRef.current) abortRef.current = null;
+        // Done or failed (not stopped, not replaced): run what was asked for meanwhile.
+        if (settled && runId === runIdRef.current && !controller.signal.aborted) {
+          const next = takeNext(queueRef.current);
+          if (next) {
+            queueRef.current = next.rest;
+            void runRef.current(next.job);
+          }
+        }
       }
     },
     [commit, patch, say],
   );
+  runRef.current = run;
 
-  /** Stop the running build (a pending approval is denied first). */
+  /** Run a job now, or queue it behind the one that's running. */
+  const submit = useCallback(
+    (job: QueuedJob) => {
+      if (isBuildActive(viewRef.current)) {
+        queueRef.current = [...queueRef.current, job];
+        commit({ ...viewRef.current!, queue: queueLabels() });
+        return;
+      }
+      const next = takeNext([...queueRef.current, job]);
+      if (!next) return;
+      queueRef.current = next.rest;
+      void run(next.job);
+    },
+    [commit, run],
+  );
+
+  /** Stop the running job and drop the queue (a pending approval is denied first). False when nothing was running. */
   const stop = useCallback(() => {
+    queueRef.current = [];
     const current = viewRef.current;
-    if (!isBuildActive(current)) return;
+    if (!isBuildActive(current)) {
+      if (current?.queue.length) commit({ ...current, queue: [] });
+      return false;
+    }
     if (current!.approval) void postApproval(current!.approval.callId, false);
     abortRef.current?.abort();
     abortRef.current = null;
-    commit({ ...current!, phase: "stopped", approval: null, conflict: null });
+    if (current!.root) appendThread(localStorage, current!.root, [{ role: "assistant", content: i18n.t("companion.build.stoppedNote") }]);
+    commit({ ...current!, phase: "stopped", approval: null, queue: [] });
+    return true;
   }, [commit]);
 
   /** The user's Allow / Deny on the approval card. */
@@ -450,29 +549,10 @@ export function useCompanionBuild(options: Options) {
     [patch],
   );
 
-  /** "Stop and build <new>" on the still-building question. */
-  const switchTo = useCallback(() => {
-    const next = viewRef.current?.conflict;
-    if (!next) return;
-    stop();
-    void start(next.request, next.name, next.root);
-  }, [stop, start]);
-
-  /** "Keep going" on the still-building question. */
-  const keepGoing = useCallback(() => {
-    if (viewRef.current?.conflict) commit({ ...viewRef.current, conflict: null });
-  }, [commit]);
-
-  /** The bubble closed: forget a finished build; a running one carries on. */
+  /** The bubble closed: forget a finished run; a running one carries on. */
   const clear = useCallback(() => {
-    const current = viewRef.current;
-    if (!current) return;
-    if (isBuildActive(current)) {
-      if (current.conflict) commit({ ...current, conflict: null });
-      return;
-    }
-    commit(null);
+    if (!isBuildActive(viewRef.current)) commit(null);
   }, [commit]);
 
-  return { view, start, stop, answer, keepGoing, switchTo, clear };
+  return { view, submit, stop, answer, clear };
 }

@@ -77,14 +77,30 @@ export interface CompanionBridge {
    * project Mini Me built; main checks it is inside the projects folder) the
    * Agent conversation opens on that folder with the thread loaded instead;
    * with `autostart` too, the request is sent straight away (main refuses an
-   * autostart unless the folder is a fresh project folder). Resolves ok only
+   * autostart unless the folder is a fresh project folder). Without autostart,
+   * Marven reuses the Agent conversation already on that folder and adds the
+   * messages (by id) it doesn't have. Resolves ok only
    * once Marven's window has received and accepted it.
    */
-  openInMarven(messages: CompanionMessage[], mode?: "agent" | "chat", options?: { workspaceRoot?: string; autostart?: boolean }): Promise<HandOffResult>;
+  openInMarven(
+    messages: CompanionMessage[],
+    mode?: "agent" | "chat",
+    options?: { workspaceRoot?: string; autostart?: boolean },
+  ): Promise<HandOffResult>;
   /** Open a folder or file inside the projects folder (main refuses anything else); resolves to "" or an error. */
   openPath(target: string): Promise<string>;
   /** Open a dev server address on this machine in the default browser (main refuses anything else). */
   openUrl(url: string): Promise<boolean>;
+  /** Show a project folder (inside the projects folder) in the preview window, served on 127.0.0.1; resolves to its address, or null. */
+  showPreview(root: string, name: string): Promise<string | null>;
+  /** The project's files changed: the preview window (if open) reloads. */
+  previewReload(): void;
+  /** Where the speech bubble is in this window (the preview docks beside it); null when it closed, which closes the preview too. */
+  setBubbleRect(rect: { x: number; y: number; width: number; height: number } | null): void;
+  /** The preview closed (its own ×, or with the bubble). */
+  onPreviewClosed(cb: () => void): Unsubscribe;
+  /** The preview window's "Open in Marven" was pressed for this project folder. */
+  onPreviewOpenInMarven(cb: (root: string) => void): Unsubscribe;
   /** The clipboard's text, read by the main process (capped); "" when empty. */
   readClipboard(): Promise<string>;
   /** Open Marven's Settings on one of the pages Mini Me may point to (main checks it; default "keys-ai"). */

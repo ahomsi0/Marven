@@ -11,7 +11,7 @@ import { PdfPreview } from "./PdfPreview";
 import { MarkdownView } from "./MarkdownView";
 import { useTheme } from "@/lib/theme";
 import { useT } from "@/lib/i18n";
-import { workspacePreviewUrl } from "@/lib/previewUrl";
+import { decodePreviewRoot, workspacePreviewUrl } from "@/lib/previewUrl";
 import { RestClientPanel } from "./RestClientPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
 import type { VoiceState } from "@/hooks/useVoice";
@@ -137,19 +137,31 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
     }
   }
 
-  function openInBrowser() {
+  async function openInBrowser() {
     const raw = currentUrl?.trim() ?? "";
     if (!raw) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const electron = (window as any).marvenElectron;
+    // A page in a workspace folder: its in-app address is under /api/, which
+    // needs Marven's API token, so serve the folder on 127.0.0.1 instead.
+    const local = /^\/api\/workspace\/preview\/@([^/?#]+)\/([^?#]*)/.exec(raw);
+    const root = local ? decodePreviewRoot(local[1]) : null;
+    if (local && root && electron?.openFolderInBrowser) {
+      try {
+        const res = await electron.openFolderInBrowser(root, local[2]);
+        if (res?.ok) return;
+      } catch {
+        /* fall through to the plain address */
+      }
+    }
+    let absolute: string;
     try {
-      // eslint-disable-next-line no-new
-      new URL(raw);
+      absolute = new URL(raw, window.location.origin).href;
     } catch {
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const electron = (window as any).marvenElectron;
-    if (electron?.openExternal) void electron.openExternal(raw, "default").catch(() => {});
-    else window.open(raw, "_blank", "noopener,noreferrer");
+    if (electron?.openExternal) void electron.openExternal(absolute, "default").catch(() => {});
+    else window.open(absolute, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -169,7 +181,7 @@ function PreviewPane({ url, workspaceRoot, onClose: _onClose }: { url: string; w
           onFocus={(e) => e.target.select()}
           className="flex-1 rounded border border-[var(--m-border-subtle)] bg-[var(--m-bg)] px-2 py-0.5 text-[11px] text-[var(--m-text-muted)] outline-none focus:border-[var(--m-text-faint)]"
         />
-        <button type="button" onClick={openInBrowser} title="Open in browser" className="rounded p-1 text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]">
+        <button type="button" onClick={() => void openInBrowser()} title="Open in browser" className="rounded p-1 text-[var(--m-text-faint)] hover:bg-[var(--m-surface-3)] hover:text-[var(--m-text-muted)]">
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
           </svg>

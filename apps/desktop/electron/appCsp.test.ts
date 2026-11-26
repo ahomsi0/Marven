@@ -53,3 +53,16 @@ describe("withAppCsp", () => {
     expect(out["Content-Security-Policy"]).toEqual([csp]);
   });
 });
+
+describe("the Mini Me preview page", () => {
+  const opts = { appOrigin: "http://localhost:3000", csp: "default-src 'self'; frame-ancestors 'none'" };
+  it("may frame the project server on 127.0.0.1", () => {
+    const h = withAppCsp("http://localhost:3000/companion/preview?u=x", {}, opts);
+    expect(h["Content-Security-Policy"][0]).toContain("frame-src http://127.0.0.1:*");
+  });
+  it("other pages may not", () => {
+    for (const url of ["http://localhost:3000/companion", "http://localhost:3000/", "http://localhost:3000/companion/previewx"]) {
+      expect(withAppCsp(url, {}, opts)["Content-Security-Policy"][0]).not.toContain("frame-src");
+    }
+  });
+});
