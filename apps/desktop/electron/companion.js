@@ -4,12 +4,30 @@
 // the /companion page. The main process owns its position: walking, dragging,
 // keeping it on screen and remembering where it was. Geometry lives in
 // companionPlacement.js.
+//
+// How Linux differs (macOS and Windows are unchanged):
+// - Click-through. macOS/Windows make the window ignore the mouse with
+//   `setIgnoreMouseEvents(true, { forward: true })`; the page still sees mouse
+//   moves and asks for the mouse back (companion:set-interactive) while the
+//   pointer is over a `[data-hit]` element. `forward` is macOS/Windows only, so
+//   on Linux the page would never see the pointer. There the window gets a
+//   shape instead (`setShape`, Windows/Linux): the page reports its `[data-hit]`
+//   rects (companion:set-hit-rects), and only that area (padded, see
+//   companionShape.js) is drawn and takes clicks; everything else falls
+//   through. set-interactive is a no-op there.
+// - Wayland. Under native Wayland a window can't position itself (setPosition
+//   and setBounds are ignored), and always-on-top and shapes aren't reliable,
+//   so Mini Me couldn't walk or be dragged. main.js relaunches Marven under
+//   XWayland (`--ozone-platform=x11`) while Mini Me is on; see linuxDisplay.js.
+//   MARVEN_NATIVE_WAYLAND=1 opts out. Turning Mini Me on while already running
+//   natively on Wayland needs a restart; status() reports needsRestartForLinux.
 
 const { BrowserWindow, screen, globalShortcut, ipcMain, clipboard, shell } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const placement = require('./companionPlacement');
+const shape = require('./companionShape');
 const { isReservedHotkey, projectFolderInside, isLoopbackHttpUrl, DEFAULT_PROJECTS_DIR } = require('./companionGuards');
 
 const TICK_MS = 33;
@@ -20,6 +38,8 @@ const FALL_PX_PER_TICK = 8;
 const MAX_LOAD_RETRIES = 20;
 const POSITION_SAVE_INTERVAL_MS = 30000;
 const MAX_CLIPBOARD_CHARS = 20000;
+// Linux has no forwarded mouse moves: click-through comes from the window shape instead.
+const USE_SHAPE = process.platform === 'linux';
 
 /** The configured projects folder, as typed (a leading ~ is the home folder). */
 function projectsDirSetting(s) {
@@ -42,10 +62,14 @@ const sameSize = (a, b) => a.width === b.width && a.height === b.height;
  *   appPort: number,
  *   savePosition: (position: { x: number, y: number, displayId: number }) => void,
  *   isQuitting?: () => boolean,
- *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, hotkeyReason: 'reserved' | 'taken' | null, unavailable: boolean, wakeWord: boolean }) => void,
+ *   onStatusChange?: (status: { visible: boolean, hotkeyOk: boolean, hotkeyReason: 'reserved' | 'taken' | null, unavailable: boolean, wakeWord: boolean, needsRestartForLinux: boolean }) => void,
+ *   nativeWayland?: boolean,
  * }} options
+ *
+ * `nativeWayland`: this process runs natively on Wayland where XWayland would
+ * have been used had Mini Me been on at launch; Mini Me needs a restart to move.
  */
-function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange }) {
+function createCompanion({ appPort, savePosition, isQuitting = () => false, onStatusChange, nativeWayland = false }) {
   let win = null;
   let settings = {};
   let size = placement.windowSize(3);
@@ -61,6 +85,8 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   let savePending = false;
   let lastSaveAt = 0;
   let saveTimer = null;
+  let hitRects = []; // Linux: the page's last reported [data-hit] rects
+  let appliedShape = null;
   const url = `http://localhost:${appPort}/companion`;
 
   const alive = () => !!win && !win.isDestroyed();
@@ -70,6 +96,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     hotkeyReason,
     unavailable,
     wakeWord: !!settings.miniMeWakeWord,
+    needsRestartForLinux: !!nativeWayland && !!settings.miniMeEnabled,
   });
   const notify = () => { if (onStatusChange) onStatusChange(status()); };
 
@@ -141,6 +168,19 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     const wait = Math.max(0, lastSaveAt + POSITION_SAVE_INTERVAL_MS - Date.now());
     if (wait === 0) return flushPosition();
     saveTimer = setTimeout(flushPosition, wait);
+  }
+
+  /** Linux: shape the window to the hit rects (or the default sprite box), skipping no-op updates. */
+  function applyShape() {
+    if (!USE_SHAPE || !alive()) return;
+    const next = shape.shapeFor(hitRects, size);
+    if (appliedShape && shape.sameRects(next, appliedShape)) return;
+    appliedShape = next;
+    try {
+      win.setShape(next);
+    } catch (err) {
+      console.warn('[Marven] Mini Me: could not set the window shape:', err && err.message);
+    }
   }
 
   function stopWalking() {
@@ -233,7 +273,14 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     win = w;
     win.setAlwaysOnTop(true, 'floating');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
-    win.setIgnoreMouseEvents(true, { forward: true });
+    if (USE_SHAPE) {
+      // Until the page reports its rects, take clicks over the sprite's spot only.
+      hitRects = [];
+      appliedShape = null;
+      applyShape();
+    } else {
+      win.setIgnoreMouseEvents(true, { forward: true });
+    }
 
     // Never let the companion page leave the app origin.
     const appOrigin = `http://localhost:${appPort}`;
@@ -377,7 +424,15 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
     return true;
   });
   ipcMain.on('companion:set-interactive', (event, on) => {
-    if (fromCompanion(event)) win.setIgnoreMouseEvents(!on, { forward: true });
+    // Linux: the window shape decides where clicks land (see the top of this file).
+    if (USE_SHAPE || !fromCompanion(event)) return;
+    win.setIgnoreMouseEvents(!on, { forward: true });
+  });
+  // Linux only: the page's [data-hit] rects, in window coordinates.
+  ipcMain.on('companion:set-hit-rects', (event, rects) => {
+    if (!USE_SHAPE || !fromCompanion(event)) return;
+    hitRects = shape.sanitizeHitRects(rects, size);
+    applyShape();
   });
   ipcMain.on('companion:set-focusable', (event, on) => {
     if (!fromCompanion(event)) return;
@@ -455,6 +510,9 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       const [x, y] = win.getPosition();
       stopWalking();
       win.setBounds({ x, y: y + oldHeight - size.height, ...size });
+      // Linux: the old rects are stale; the sprite's default spot until the page re-reports its layout.
+      hitRects = [];
+      applyShape();
       reclamp();
     }
     // Switched to "fall back to the Dock" while perched somewhere else: drop him now.

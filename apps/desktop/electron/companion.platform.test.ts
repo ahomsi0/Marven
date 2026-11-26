@@ -1,0 +1,132 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { createRequire } from "module";
+
+// companion.js is CommonJS and requires "electron". Load it against a fake
+// Electron, with process.platform faked, to check which click-through path each
+// platform takes. (Nothing here runs a real window.)
+const require = createRequire(import.meta.url);
+type Rect = { x: number; y: number; width: number; height: number };
+
+function fakeElectron() {
+  const calls: { method: string; args: unknown[] }[] = [];
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  let win: FakeWindow | null = null;
+  class FakeWindow {
+    pos: [number, number];
+    webContents = { id: 7, on() {}, setWindowOpenHandler() {}, send() {}, getURL: () => "" };
+    constructor(opts: { x: number; y: number }) {
+      this.pos = [opts.x, opts.y];
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      win = this;
+    }
+    private record(method: string, args: unknown[]) {
+      calls.push({ method, args });
+    }
+    setAlwaysOnTop(...a: unknown[]) { this.record("setAlwaysOnTop", a); }
+    setVisibleOnAllWorkspaces(...a: unknown[]) { this.record("setVisibleOnAllWorkspaces", a); }
+    setIgnoreMouseEvents(...a: unknown[]) { this.record("setIgnoreMouseEvents", a); }
+    setShape(...a: unknown[]) { this.record("setShape", a); }
+    setBounds(b: Rect) { this.record("setBounds", [b]); this.pos = [b.x, b.y]; }
+    setPosition(x: number, y: number) { this.pos = [x, y]; }
+    getPosition() { return this.pos; }
+    isDestroyed() { return false; }
+    isVisible() { return true; }
+    showInactive() {}
+    loadURL() {}
+    on() {}
+    destroy() {}
+  }
+  const display = { id: 1, workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
+  const electron = {
+    BrowserWindow: FakeWindow,
+    screen: { getAllDisplays: () => [display], getPrimaryDisplay: () => display, on() {} },
+    globalShortcut: { register: () => true, unregister() {} },
+    ipcMain: {
+      handle: (ch: string, fn: (...a: unknown[]) => unknown) => handlers.set(ch, fn),
+      on: (ch: string, fn: (...a: unknown[]) => unknown) => handlers.set(ch, fn),
+    },
+    clipboard: { readText: () => "" },
+    shell: {},
+  };
+  return {
+    electron,
+    calls,
+    win: () => win!,
+    send: (ch: string, ...args: unknown[]) => handlers.get(ch)!({ sender: win!.webContents }, ...args),
+  };
+}
+
+const electronPath = require.resolve("electron");
+const companionPath = require.resolve("./companion");
+const realPlatform = process.platform;
+
+function loadCompanion(platform: NodeJS.Platform) {
+  const fake = fakeElectron();
+  Object.defineProperty(process, "platform", { value: platform });
+  require.cache[electronPath] = { id: electronPath, filename: electronPath, loaded: true, exports: fake.electron } as unknown as NodeJS.Module;
+  delete require.cache[companionPath];
+  const { createCompanion } = require("./companion");
+  const companion = createCompanion({ appPort: 1, savePosition() {}, nativeWayland: platform === "linux" });
+  return { ...fake, companion };
+}
+
+afterEach(() => {
+  Object.defineProperty(process, "platform", { value: realPlatform });
+  delete require.cache[electronPath];
+  delete require.cache[companionPath];
+});
+
+const shapes = (calls: { method: string; args: unknown[] }[]) => calls.filter((c) => c.method === "setShape").map((c) => c.args[0] as Rect[]);
+
+describe("companion click-through by platform", () => {
+  it("macOS: forwarded mouse events, no shape, hit rects ignored", () => {
+    const { calls, send, companion } = loadCompanion("darwin");
+    companion.applySettings({ miniMeEnabled: true, miniMeScale: 3, miniMeLook: { artStyle: "chibi" } });
+    expect(calls.filter((c) => c.method === "setIgnoreMouseEvents").map((c) => c.args)).toEqual([[true, { forward: true }]]);
+    send("companion:set-interactive", true);
+    expect(calls.filter((c) => c.method === "setIgnoreMouseEvents").at(-1)!.args).toEqual([false, { forward: true }]);
+    send("companion:set-hit-rects", [{ x: 0, y: 0, width: 10, height: 10 }]);
+    expect(shapes(calls)).toEqual([]);
+    expect(companion.status().needsRestartForLinux).toBe(false);
+  });
+
+  it("Linux: a window shape around the sprite, then the page's rects; set-interactive is a no-op", () => {
+    const { calls, send, companion } = loadCompanion("linux");
+    companion.applySettings({ miniMeEnabled: true, miniMeScale: 3, miniMeLook: { artStyle: "chibi" } });
+    expect(calls.some((c) => c.method === "setIgnoreMouseEvents")).toBe(false);
+    // Window 360×280 (chibi at 3×: a 96-px sprite): the default sprite box, padded by 8.
+    expect(shapes(calls)).toEqual([[{ x: 124, y: 176, width: 112, height: 104 }]]);
+
+    send("companion:set-interactive", true);
+    expect(calls.some((c) => c.method === "setIgnoreMouseEvents")).toBe(false);
+
+    send("companion:set-hit-rects", [
+      { x: 20, y: 40, width: 320, height: 120 },
+      { x: 132, y: 184, width: 96, height: 96 },
+    ]);
+    expect(shapes(calls).at(-1)).toEqual([
+      { x: 12, y: 32, width: 336, height: 136 },
+      { x: 124, y: 176, width: 112, height: 104 },
+    ]);
+    // The same rects again: no extra setShape.
+    const count = shapes(calls).length;
+    send("companion:set-hit-rects", [
+      { x: 20, y: 40, width: 320, height: 120 },
+      { x: 132, y: 184, width: 96, height: 96 },
+    ]);
+    expect(shapes(calls).length).toBe(count);
+    // Garbage falls back to the sprite box rather than an empty (invisible) shape.
+    send("companion:set-hit-rects", "nope");
+    expect(shapes(calls).at(-1)).toEqual([{ x: 124, y: 176, width: 112, height: 104 }]);
+    expect(companion.status().needsRestartForLinux).toBe(true);
+  });
+
+  it("Linux: resizing the window resets the shape to the new sprite box", () => {
+    const { calls, send, companion } = loadCompanion("linux");
+    companion.applySettings({ miniMeEnabled: true, miniMeScale: 3, miniMeLook: { artStyle: "chibi" } });
+    send("companion:set-hit-rects", [{ x: 20, y: 40, width: 320, height: 120 }]);
+    companion.applySettings({ miniMeEnabled: true, miniMeScale: 4, miniMeLook: { artStyle: "chibi" } });
+    // 360×312 (128-px sprite).
+    expect(shapes(calls).at(-1)).toEqual([{ x: 108, y: 176, width: 144, height: 136 }]);
+  });
+});

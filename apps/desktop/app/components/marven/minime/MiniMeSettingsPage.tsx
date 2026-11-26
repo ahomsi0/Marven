@@ -24,7 +24,7 @@ const PERSONALITY_KEYS: Record<Personality, string> = { playful: "personalityPla
 type Electron = {
   getSettings: () => Promise<any>;
   saveSettings: (s: any) => Promise<any>;
-  companionStatus?: () => Promise<{ hotkeyOk: boolean; hotkeyReason?: "reserved" | "taken" | null }>;
+  companionStatus?: () => Promise<CompanionStatus>;
   onCompanionVisibility?: (cb: () => void) => (() => void) | void;
 };
 
@@ -56,7 +56,14 @@ const DEFAULTS: MiniMeState = {
   miniMeProjectsDir: "~/Marven Projects",
 };
 
-function problemOf(st: { hotkeyOk: boolean; hotkeyReason?: "reserved" | "taken" | null }): "reserved" | "taken" | null {
+interface CompanionStatus {
+  hotkeyOk: boolean;
+  hotkeyReason?: "reserved" | "taken" | null;
+  /** Linux: Marven runs natively on Wayland, where Mini Me can't move until a restart (under XWayland). */
+  needsRestartForLinux?: boolean;
+}
+
+function problemOf(st: CompanionStatus): "reserved" | "taken" | null {
   if (st.hotkeyOk) return null;
   return st.hotkeyReason === "reserved" ? "reserved" : "taken";
 }
@@ -69,6 +76,12 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
   const [hotkeyDraft, setHotkeyDraft] = useState(DEFAULTS.miniMeHotkey);
   const [projectsDraft, setProjectsDraft] = useState(DEFAULTS.miniMeProjectsDir);
   const [hotkeyProblem, setHotkeyProblem] = useState<"reserved" | "taken" | null>(null);
+  const [needsRestart, setNeedsRestart] = useState(false);
+  const applyStatus = useCallback((st: CompanionStatus | undefined) => {
+    if (!st) return;
+    setHotkeyProblem(problemOf(st));
+    setNeedsRestart(!!st.needsRestartForLinux);
+  }, []);
   const pendingLook = useRef<Look | null>(null);
   const lookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -93,18 +106,19 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
       setProjectsDraft(next.miniMeProjectsDir);
       setLook(s?.miniMeLook ? parseLook(s.miniMeLook) : DEFAULT_LOOK);
     });
-    void electron.companionStatus?.().then((st) => !cancelled && setHotkeyProblem(problemOf(st)));
+    void electron.companionStatus?.().then((st) => !cancelled && applyStatus(st));
     // The tray's "Show Mini Me" toggle changes the saved setting behind this page's back.
     const off = electron.onCompanionVisibility?.(() => {
       void electron.getSettings().then((s: any) => {
         if (!cancelled && typeof s?.miniMeEnabled === "boolean") setState((prev) => ({ ...prev, miniMeEnabled: s.miniMeEnabled }));
       });
+      void electron.companionStatus?.().then((st) => !cancelled && applyStatus(st));
     });
     return () => {
       cancelled = true;
       off?.();
     };
-  }, [electron]);
+  }, [electron, applyStatus]);
 
   // The main process merges a patch into the stored settings, so send only what changed.
   const persist = useCallback(
@@ -119,8 +133,7 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
     setState((prev) => ({ ...prev, ...patch }));
     try {
       await persist(patch);
-      const st = await electron.companionStatus?.();
-      if (st) setHotkeyProblem(problemOf(st));
+      applyStatus(await electron.companionStatus?.());
     } catch (err) {
       console.warn("Mini Me: could not save settings", err);
       setState((prev) => {
@@ -160,6 +173,11 @@ export function MiniMeSettingsPage({ electron }: { electron: Electron }) {
         <Row id="mini-me-enabled" label={tr("settings.miniMe.enabled")} hint={tr("settings.miniMe.enabledHint")}>
           <Switch labelledBy="mini-me-enabled" checked={state.miniMeEnabled} onChange={(v) => void save({ miniMeEnabled: v })} />
         </Row>
+        {state.miniMeEnabled && needsRestart && (
+          <p role="status" className="text-[11px] leading-snug text-amber-400">
+            {tr("settings.miniMe.linuxRestart")}
+          </p>
+        )}
         <div>
           <label htmlFor="mini-me-hotkey" className="text-[12px] text-[var(--m-text)]">
             {tr("settings.miniMe.hotkey")}

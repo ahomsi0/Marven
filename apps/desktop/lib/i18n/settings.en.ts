@@ -203,6 +203,7 @@ const settingsEn = {
     cardMiniHint: "A tiny you that lives on your desktop and does what you tell it.",
     enabled: "Show Mini Me",
     enabledHint: "Put Mini Me on your desktop. Turn it off to hide it; your choices below are kept.",
+    linuxRestart: "On Linux (Wayland), restart Marven so Mini Me can move and be clicked.",
     hotkey: "Shortcut",
     hotkeyHint: "Opens Mini Me's bubble from anywhere, e.g. CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "Shortcut unavailable: another app is using it.",

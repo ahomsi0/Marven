@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CompanionSprite } from "./CompanionSprite";
 import { SpeechBubble } from "./SpeechBubble";
 import { useCompanionPointer } from "./useCompanionPointer";
+import { useCompanionHitRects } from "./useCompanionHitRects";
 import { useCompanionBrain, type BrainEvent, type BubbleAction } from "@/hooks/useCompanionBrain";
 import { isBuildActive, prepareProjectFolder, useCompanionBuild, type BuildAttention } from "@/hooks/useCompanionBuild";
 import { useVoice } from "@/hooks/useVoice";
@@ -13,7 +14,7 @@ import { useT } from "@/lib/i18n";
 import { chatErrorMessage } from "@/lib/chatErrors";
 import { voiceNotice } from "@/lib/companion/voiceNotice";
 import { DEFAULT_LOOK, parseLook } from "@/lib/companion/look";
-import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
+import { DEFAULT_COMPANION_SETTINGS, getCompanionBridge, getCompanionPlatform, type CompanionSettings, type CompanionSettingsPage } from "@/lib/companion/bridge";
 
 const AUTO_CLOSE_MS = 8000;
 /** A finished build's result stays up longer: it has buttons worth reaching for. */
@@ -26,6 +27,10 @@ const VOICE_IDLE_CLOSE_MS = 4000;
 export default function CompanionPage() {
   const { t } = useT();
   const bridge = useMemo(getCompanionBridge, []);
+  // Linux shapes the window to the [data-hit] elements instead of forwarding mouse moves.
+  const shapeWindow = useMemo(() => getCompanionPlatform() === "linux", []);
+  const rootRef = useRef<HTMLElement>(null);
+  useCompanionHitRects(bridge, shapeWindow, rootRef);
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_COMPANION_SETTINGS);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -385,7 +390,7 @@ export default function CompanionPage() {
   };
 
   return (
-    <main className="flex h-screen w-screen select-none flex-col items-center justify-end overflow-hidden">
+    <main ref={rootRef} className="flex h-screen w-screen select-none flex-col items-center justify-end overflow-hidden">
       <style>{`html,body{background:transparent!important;overflow:hidden}`}</style>
       {bubbleOpen && (
         <div className="mb-3">

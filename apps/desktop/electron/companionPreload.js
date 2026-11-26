@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('marvenElectron', {
     getSettings: () => ipcRenderer.invoke('companion:get-settings'),
     getPosition: () => ipcRenderer.invoke('companion:get-position'),
     setInteractive: (on) => ipcRenderer.send('companion:set-interactive', !!on),
+    // Linux: the [data-hit] rects that shape the window (main sanitizes them).
+    setHitRects: (rects) => ipcRenderer.send('companion:set-hit-rects', rects),
     setFocusable: (on) => ipcRenderer.send('companion:set-focusable', !!on),
     walkTo: (x) => ipcRenderer.send('companion:walk-to', x),
     stop: () => ipcRenderer.send('companion:stop'),

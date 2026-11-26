@@ -203,6 +203,7 @@ const settingsAr = {
     cardMiniHint: "نسخة صغيرة منك تعيش على سطح المكتب وتنفّذ ما تطلبه.",
     enabled: "إظهار ميني مي",
     enabledHint: "ضع ميني مي على سطح المكتب. أوقفه لإخفائه؛ وتبقى اختياراتك أدناه محفوظة.",
+    linuxRestart: "على لينكس (Wayland)، أعد تشغيل Marven لكي يتمكّن ميني مي من الحركة واستقبال النقرات.",
     hotkey: "الاختصار",
     hotkeyHint: "يفتح فقاعة ميني مي من أي مكان، مثل CommandOrControl+Shift+Space.",
     hotkeyUnavailable: "الاختصار غير متاح: يستخدمه تطبيق آخر.",

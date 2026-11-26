@@ -44,6 +44,13 @@ export const DEFAULT_COMPANION_SETTINGS: CompanionSettings = {
   look: null,
 };
 
+export interface HitRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** Settings pages Mini Me may open: AI keys, General (the Agent's safety profile), Mini Me. */
 export type CompanionSettingsPage = "keys-ai" | "general" | "mini-me";
 
@@ -53,6 +60,11 @@ export interface CompanionBridge {
   getSettings(): Promise<CompanionSettings | null>;
   getPosition(): Promise<CompanionPosition | null>;
   setInteractive(on: boolean): void;
+  /**
+   * Linux only: the `[data-hit]` rects in window (CSS pixel) coordinates. The
+   * window is shaped to them (padded), so clicks elsewhere fall through.
+   */
+  setHitRects(rects: HitRect[]): void;
   setFocusable(on: boolean): void;
   walkTo(x: number): void;
   stop(): void;
@@ -98,4 +110,11 @@ export function getCompanionBridge(): CompanionBridge | null {
   if (typeof window === "undefined") return null;
   const electron = (window as unknown as { marvenElectron?: { companion?: CompanionBridge } }).marvenElectron;
   return electron?.companion ?? null;
+}
+
+/** The OS the companion window runs on ("darwin", "win32", "linux"), or null outside Electron. */
+export function getCompanionPlatform(): string | null {
+  if (typeof window === "undefined") return null;
+  const platform = (window as unknown as { marvenElectron?: { platform?: unknown } }).marvenElectron?.platform;
+  return typeof platform === "string" ? platform : null;
 }

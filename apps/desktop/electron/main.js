@@ -12,6 +12,7 @@ const { registerBrowserIpc } = require('./browser/ipc');
 const { API_TOKEN_HEADER, createApiToken, createRequestHeaderHandler } = require('./apiToken');
 const { withAppCsp } = require('./appCsp');
 const { createCompanion } = require('./companion');
+const linuxDisplay = require('./linuxDisplay');
 const { sanitizeThreadMessages, sanitizeOpenMode, sanitizeOpenOptions, sanitizeHandOffAck, sanitizeSettingsPage } = require('./companionGuards');
 
 const isDev = !app.isPackaged;
@@ -49,6 +50,28 @@ const logCapture = createLogCapture({
   homeDir: os.homedir(),
 });
 patchConsole(logCapture);
+
+// ── Linux: XWayland while Mini Me is on ──────────────────────────────────────
+// Under native Wayland, Mini Me can't move (setPosition/setBounds are ignored)
+// and click-through isn't reliable; under XWayland both work. The display
+// backend is picked before this script runs (appendSwitch is too late), so
+// relaunch once with --ozone-platform=x11 on the real command line. Skipped if
+// a backend was chosen explicitly (no loop: the relaunch carries the switch),
+// without an X server, or with MARVEN_NATIVE_WAYLAND=1. See linuxDisplay.js.
+// readStoredSettings works before ready: it only needs app.getPath('userData').
+const linuxDisplayInput = { platform: process.platform, argv: process.argv, env: process.env };
+if (linuxDisplay.shouldUseXWayland({ ...linuxDisplayInput, miniMeEnabled: process.platform === 'linux' && !!readStoredSettings().miniMeEnabled })) {
+  console.log('[Marven] Mini Me is on in a Wayland session: restarting under XWayland (--ozone-platform=x11) so it can move and be clicked. Set MARVEN_NATIVE_WAYLAND=1 to stay on native Wayland.');
+  // An AppImage's own binary lives in a mount that goes away when this process exits: relaunch the AppImage file.
+  app.relaunch({
+    args: linuxDisplay.xwaylandRelaunchArgs(process.argv),
+    ...(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE } : {}),
+  });
+  app.exit(0);
+  return; // CommonJS module scope: stop evaluating the rest of main.js.
+}
+// Running natively on Wayland where XWayland would be used: turning Mini Me on needs a restart.
+const miniMeNeedsRestartOnLinux = linuxDisplay.needsRestartForMiniMe(linuxDisplayInput);
 
 // Fix PATH for GUI-launched apps. When users launch Marven from Finder/Dock,
 // Electron inherits a minimal PATH that's missing /opt/homebrew/bin, /usr/local/bin,
@@ -440,7 +463,7 @@ ipcMain.handle('save-settings', (_, settings) => {
   return publicSettings(next);
 });
 ipcMain.handle('companion-status', () =>
-  companion ? companion.status() : { visible: false, hotkeyOk: true, hotkeyReason: null, unavailable: false, wakeWord: false });
+  companion ? companion.status() : { visible: false, hotkeyOk: true, hotkeyReason: null, unavailable: false, wakeWord: false, needsRestartForLinux: false });
 
 function fromCompanionWindow(event) {
   return !!companion && companion.webContentsId() === event.sender.id;
@@ -1160,6 +1183,7 @@ app.whenReady().then(async () => {
     appPort: APP_PORT,
     savePosition: saveCompanionPosition,
     isQuitting: () => isQuitting,
+    nativeWayland: miniMeNeedsRestartOnLinux,
     onStatusChange: (s) => {
       rebuildTrayMenu();
       if (mainWindow && !mainWindow.isDestroyed()) {
