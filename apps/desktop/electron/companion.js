@@ -15,6 +15,16 @@
 //   rects (companion:set-hit-rects), and only that area (padded, see
 //   companionShape.js) is drawn and takes clicks; everything else falls
 //   through. set-interactive is a no-op there.
+// - Keyboard focus. macOS/Windows build the window non-focusable and toggle it
+//   with setFocusable (companion:set-focusable) while the bubble's input is in
+//   use. setFocusable is macOS/Windows only, and on Linux `focusable: false`
+//   takes the window out of the window manager's hands for good, so the input
+//   could never be typed in. On Linux the window is built focusable instead
+//   (skipTaskbar, always-on-top and all workspaces as elsewhere) and
+//   set-focusable(true) focuses it; set-focusable(false) leaves focus alone.
+//   Because the shape limits clicks to Mini Me and his bubble, the window can
+//   only take focus when the user clicks him (or opens the bubble with the
+//   shortcut).
 // - Wayland. Under native Wayland a window can't position itself (setPosition
 //   and setBounds are ignored), and always-on-top and shapes aren't reliable,
 //   so Mini Me couldn't walk or be dragged. main.js relaunches Marven under
@@ -40,6 +50,8 @@ const POSITION_SAVE_INTERVAL_MS = 30000;
 const MAX_CLIPBOARD_CHARS = 20000;
 // Linux has no forwarded mouse moves: click-through comes from the window shape instead.
 const USE_SHAPE = process.platform === 'linux';
+// Linux can't toggle focusability (setFocusable is macOS/Windows only): the window is built focusable.
+const ALWAYS_FOCUSABLE = process.platform === 'linux';
 
 /** The configured projects folder, as typed (a leading ~ is the home folder). */
 function projectsDirSetting(s) {
@@ -259,7 +271,7 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       fullscreenable: false,
       skipTaskbar: true,
       show: false,
-      focusable: false,
+      focusable: ALWAYS_FOCUSABLE,
       backgroundColor: '#00000000',
       // A non-activating panel: typing in the bubble doesn't pull Marven's main window forward.
       ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
@@ -312,6 +324,9 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
       if (loadFailed || !isCompanionUrl(w.webContents.getURL())) return;
       retries = 0;
       if (!w.isVisible()) w.showInactive();
+      // A focusable window is managed by the window manager on Linux: ask again to keep it
+      // out of the taskbar now that it's mapped (the option is documented for macOS/Windows only).
+      if (ALWAYS_FOCUSABLE) w.setSkipTaskbar(true);
       sendPosition();
       notify();
     });
@@ -436,6 +451,14 @@ function createCompanion({ appPort, savePosition, isQuitting = () => false, onSt
   });
   ipcMain.on('companion:set-focusable', (event, on) => {
     if (!fromCompanion(event)) return;
+    if (ALWAYS_FOCUSABLE) {
+      // Linux: no setFocusable, and no blur() (focus goes back when the user clicks elsewhere).
+      if (on) {
+        win.focus();
+        win.webContents.focus();
+      }
+      return;
+    }
     win.setFocusable(!!on);
     if (on) win.focus();
     // On macOS, blur() orders the window out and straight back in, which shows

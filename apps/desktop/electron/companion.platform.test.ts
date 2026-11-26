@@ -13,8 +13,16 @@ function fakeElectron() {
   let win: FakeWindow | null = null;
   class FakeWindow {
     pos: [number, number];
-    webContents = { id: 7, on() {}, setWindowOpenHandler() {}, send() {}, getURL: () => "" };
+    webContents = {
+      id: 7,
+      on() {},
+      setWindowOpenHandler() {},
+      send() {},
+      getURL: () => "",
+      focus: () => calls.push({ method: "webContents.focus", args: [] }),
+    };
     constructor(opts: { x: number; y: number }) {
+      calls.push({ method: "constructor", args: [opts] });
       this.pos = [opts.x, opts.y];
       // eslint-disable-next-line @typescript-eslint/no-this-alias
       win = this;
@@ -26,6 +34,10 @@ function fakeElectron() {
     setVisibleOnAllWorkspaces(...a: unknown[]) { this.record("setVisibleOnAllWorkspaces", a); }
     setIgnoreMouseEvents(...a: unknown[]) { this.record("setIgnoreMouseEvents", a); }
     setShape(...a: unknown[]) { this.record("setShape", a); }
+    setFocusable(...a: unknown[]) { this.record("setFocusable", a); }
+    setSkipTaskbar(...a: unknown[]) { this.record("setSkipTaskbar", a); }
+    focus() { this.record("focus", []); }
+    blur() { this.record("blur", []); }
     setBounds(b: Rect) { this.record("setBounds", [b]); this.pos = [b.x, b.y]; }
     setPosition(x: number, y: number) { this.pos = [x, y]; }
     getPosition() { return this.pos; }
@@ -129,4 +141,47 @@ describe("companion click-through by platform", () => {
     // 360×312 (128-px sprite).
     expect(shapes(calls).at(-1)).toEqual([{ x: 108, y: 176, width: 144, height: 136 }]);
   });
+
+  it("macOS: built non-focusable; set-focusable toggles focusability, never blur()", () => {
+    const { calls, send, companion } = loadCompanion("darwin");
+    companion.applySettings({ miniMeEnabled: true });
+    expect((constructorOptions(calls) as { focusable: boolean }).focusable).toBe(false);
+    expect((constructorOptions(calls) as { skipTaskbar: boolean }).skipTaskbar).toBe(true);
+    send("companion:set-focusable", true);
+    expect(focusCalls(calls)).toEqual(["setFocusable:true", "focus"]);
+    send("companion:set-focusable", false);
+    expect(focusCalls(calls)).toEqual(["setFocusable:true", "focus", "setFocusable:false"]);
+  });
+
+  it("Windows: unchanged, set-focusable(false) blurs", () => {
+    const { calls, send, companion } = loadCompanion("win32");
+    companion.applySettings({ miniMeEnabled: true });
+    expect((constructorOptions(calls) as { focusable: boolean }).focusable).toBe(false);
+    send("companion:set-focusable", false);
+    expect(focusCalls(calls)).toEqual(["setFocusable:false", "blur"]);
+  });
+
+  it("Linux: built focusable; set-focusable(true) focuses the window and page, false leaves focus alone", () => {
+    const { calls, send, companion } = loadCompanion("linux");
+    companion.applySettings({ miniMeEnabled: true });
+    const opts = constructorOptions(calls) as { focusable: boolean; skipTaskbar: boolean };
+    expect(opts.focusable).toBe(true);
+    expect(opts.skipTaskbar).toBe(true);
+    expect(calls.some((c) => c.method === "setAlwaysOnTop")).toBe(true);
+    expect(calls.some((c) => c.method === "setVisibleOnAllWorkspaces")).toBe(true);
+    send("companion:set-focusable", true);
+    expect(focusCalls(calls)).toEqual(["focus", "webContents.focus"]);
+    send("companion:set-focusable", false);
+    expect(focusCalls(calls)).toEqual(["focus", "webContents.focus"]);
+  });
 });
+
+function constructorOptions(calls: { method: string; args: unknown[] }[]) {
+  return calls.find((c) => c.method === "constructor")!.args[0];
+}
+
+function focusCalls(calls: { method: string; args: unknown[] }[]) {
+  return calls
+    .filter((c) => ["setFocusable", "focus", "blur", "webContents.focus"].includes(c.method))
+    .map((c) => (c.method === "setFocusable" ? `setFocusable:${c.args[0]}` : c.method));
+}
