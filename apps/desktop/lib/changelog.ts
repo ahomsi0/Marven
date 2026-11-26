@@ -12,6 +12,23 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.19.0",
+    items: [
+      { tag: "new", label: "Mini Me builds websites and small apps: ask for one and he makes it in its own project folder, then ask for changes (\"make the background red\", \"add a contact section\") and he edits that same project" },
+      { tag: "new", label: "No buttons to click: he just does it, and anything you ask while he works waits its turn, with several changes done in one go. Say \"no, make a new one\", \"just tell me\" or \"stop\" to change course" },
+      { tag: "new", label: "A live preview docked beside Mini Me's bubble shows the site as he builds it, with buttons to open it in your browser, in Marven or in its folder; \"show me the preview of…\" opens any project you name" },
+      { tag: "new", label: "Open in Marven picks up the project's one Agent conversation, with everything Mini Me did on it" },
+      { tag: "new", label: "Mini Me looks up at a thought cloud while he thinks, and swipes a paint roller while he builds" },
+      { tag: "new", label: "Mini Me on Linux: click, drag and type to him on Wayland too" },
+      { tag: "new", label: "Mini Me can fall back to the Dock when you drop him somewhere else, and comes back onto the Dock when Marven starts" },
+      { tag: "imp", label: "The sidebar footer is a profile card with your name and the model you're on, and a shorter menu behind its gear" },
+      { tag: "imp", label: "Opening a built website is easy to find, and Open in browser works for pages on your computer" },
+      { tag: "fix", label: "HTML previews no longer come up blank" },
+      { tag: "fix", label: "The file tree fills in after you open a folder" },
+      { tag: "fix", label: "In a narrow Agent panel, the Send button stays visible, the model menu stays on screen and the model name no longer covers the Lite badge" },
+    ],
+  },
+  {
     version: "2.18.0",
     items: [
       { tag: "new", label: "Mini Me: a pixel-art mini you that lives above the Dock. Click it or press ⌘⇧Space and tell it what to do; it answers in a speech bubble (and out loud if you like), opens apps and sites, sets timers and reads your clipboard" },
