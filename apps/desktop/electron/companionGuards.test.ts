@@ -76,7 +76,8 @@ describe("sanitizeOpenOptions", () => {
   const home = "/Users/me";
   const dir = { isDirectory: () => true, isSymbolicLink: () => false };
   const deps = { home, realpath: (p: string) => p, lstat: () => dir, readdir: () => [] as string[] };
-  const root = "/Users/me/Marven Projects/cafe-menu";
+  // Resolved, so it reads as the code returns it on any OS (a drive letter on Windows).
+  const root = path.resolve("/Users/me/Marven Projects/cafe-menu");
 
   it("passes nothing on when there are no options", () => {
     expect(sanitizeOpenOptions(undefined, "agent", "~/Marven Projects", deps)).toEqual({});
@@ -154,8 +155,8 @@ describe("projectFolderInside", () => {
   const deps = { home, realpath: identity, lstat: () => dir };
 
   it("returns the real path of a project folder directly inside the projects dir", () => {
-    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
-    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu/", "/Users/me/Marven Projects", deps)).toBe("/Users/me/Marven Projects/cafe-menu");
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu", "~/Marven Projects", deps)).toBe(path.resolve("/Users/me/Marven Projects/cafe-menu"));
+    expect(projectFolderInside("/Users/me/Marven Projects/cafe-menu/", "/Users/me/Marven Projects", deps)).toBe(path.resolve("/Users/me/Marven Projects/cafe-menu"));
   });
 
   it("refuses files and anything deeper than a direct child", () => {
@@ -172,12 +173,12 @@ describe("projectFolderInside", () => {
     for (const name of ["Evil.app", "x.bundle", "run.command", "a.tool", "b.workflow", "c.terminal", "d.pkg", "e.mpkg", "f.webloc", "G.APP"]) {
       expect(projectFolderInside(`/Users/me/Marven Projects/${name}`, "~/Marven Projects", deps), name).toBeNull();
     }
-    expect(projectFolderInside("/Users/me/Marven Projects/my-app", "~/Marven Projects", deps)).toBe("/Users/me/Marven Projects/my-app");
+    expect(projectFolderInside("/Users/me/Marven Projects/my-app", "~/Marven Projects", deps)).toBe(path.resolve("/Users/me/Marven Projects/my-app"));
   });
 
   it("falls back to the default projects dir when the setting is empty", () => {
-    expect(projectFolderInside("/Users/me/Marven Projects/x", "", deps)).toBe("/Users/me/Marven Projects/x");
-    expect(projectFolderInside("/Users/me/Marven Projects/x", undefined, deps)).toBe("/Users/me/Marven Projects/x");
+    expect(projectFolderInside("/Users/me/Marven Projects/x", "", deps)).toBe(path.resolve("/Users/me/Marven Projects/x"));
+    expect(projectFolderInside("/Users/me/Marven Projects/x", undefined, deps)).toBe(path.resolve("/Users/me/Marven Projects/x"));
   });
 
   it("rejects the projects dir itself, siblings, escapes and non-strings", () => {
@@ -248,7 +249,8 @@ describe("sanitizeSettingsPage", () => {
 });
 
 describe("listProjectFolders", () => {
-  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "marven-projects-")));
+  // The native realpath, as the code uses (Windows: the long name, not RUNNER~1).
+  const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "marven-projects-")));
   const projects = path.join(base, "Marven Projects");
   fs.mkdirSync(projects);
   for (const name of ["older-site", "newer-site", ".hidden", "Tool.app"]) fs.mkdirSync(path.join(projects, name));

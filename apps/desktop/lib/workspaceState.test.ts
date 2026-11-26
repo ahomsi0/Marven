@@ -1,3 +1,4 @@
+import path from "path";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // In dev, Next.js can load this module more than once (per route bundle / after
@@ -18,7 +19,7 @@ describe("workspaceState", () => {
     const a = await freshCopy();
     a.setActiveWorkspaceRoot("/tmp/project-a");
     const b = await freshCopy();
-    expect(b.getActiveWorkspaceRoot()).toBe("/tmp/project-a");
+    expect(b.getActiveWorkspaceRoot()).toBe(path.resolve("/tmp/project-a"));
   });
 
   it("shares clearing the active root too", async () => {
@@ -33,7 +34,7 @@ describe("workspaceState", () => {
     const a = await freshCopy();
     a.setActiveWorkspaceRoot("/tmp/project-a");
     a.approveWorkspaceRoot("/tmp/project-b");
-    expect(a.getActiveWorkspaceRoot()).toBe("/tmp/project-a");
+    expect(a.getActiveWorkspaceRoot()).toBe(path.resolve("/tmp/project-a"));
     expect(a.isApprovedWorkspaceRoot("/tmp/project-b")).toBe(true);
   });
 });

@@ -12,7 +12,8 @@ let base: string;
 let root: string;
 
 beforeAll(() => {
-  base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "marven-serve-")));
+  // The native realpath, as the server uses (Windows: the long name, not RUNNER~1).
+  base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "marven-serve-")));
   root = path.join(base, "site");
   fs.mkdirSync(path.join(root, "about"), { recursive: true });
   fs.mkdirSync(path.join(root, "docs"));
