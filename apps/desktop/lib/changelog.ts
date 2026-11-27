@@ -12,6 +12,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "2.20.0",
+    items: [
+      { tag: "new", label: "A Profile page in Settings: choose the name Marven calls you and your picture: your initial on a colour, your Mini Me's face, or a photo of your own" },
+      { tag: "new", label: "Your picture shows in the sidebar card straight away, and Profile is first in the card's menu" },
+      { tag: "imp", label: "Photos are cropped to a square and kept small, on your computer only" },
+    ],
+  },
+  {
     version: "2.19.1",
     items: [
       { tag: "new", label: "Mini Me builds websites and small apps: ask for one and he makes it in its own project folder, then ask for changes (\"make the background red\", \"add a contact section\") and he edits that same project" },
