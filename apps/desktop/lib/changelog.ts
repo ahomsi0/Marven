@@ -12,7 +12,7 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
-    version: "2.19.0",
+    version: "2.19.1",
     items: [
       { tag: "new", label: "Mini Me builds websites and small apps: ask for one and he makes it in its own project folder, then ask for changes (\"make the background red\", \"add a contact section\") and he edits that same project" },
       { tag: "new", label: "No buttons to click: he just does it, and anything you ask while he works waits its turn, with several changes done in one go. Say \"no, make a new one\", \"just tell me\" or \"stop\" to change course" },
