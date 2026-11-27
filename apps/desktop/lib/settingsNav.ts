@@ -21,6 +21,7 @@ export const OPEN_SETTINGS_EVENT = "marven:open-settings";
 
 /** Every Settings page, in nav order. */
 export const SETTINGS_PAGES = [
+  "profile",
   "general",
   "memory",
   "ai-backends",

@@ -125,6 +125,16 @@ export const GearIcon = (p: IconProps) =>
     { strokeWidth: 1.6, ...p },
   );
 
+/** A person: your profile. */
+export const UserIcon = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20.5c1.4-3.6 4.5-5.5 8-5.5s6.6 1.9 8 5.5" />
+    </>,
+    { strokeWidth: 1.6, ...p },
+  );
+
 export const HelpCircleIcon = (p: IconProps) =>
   svg(
     <>

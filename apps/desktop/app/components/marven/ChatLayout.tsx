@@ -38,6 +38,7 @@ import { generateMarkdown } from "@/lib/chatHelpers";
 import { getStoredTheme, isDarkTheme, setStoredTheme, type Theme } from "@/lib/theme";
 import { useProviderModels } from "@/hooks/useProviderModels";
 import { isLocalProvider } from "@/lib/visionModels";
+import type { ProfileAvatar } from "@/lib/userProfile";
 import { eventMatchesCombo, formatBinding, getBindingCombo, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
 import { getBrowserBridge, hostOf, type Bookmark } from "@/lib/inAppBrowser";
 import { versionControls } from "@/lib/messageVersions";
@@ -85,6 +86,7 @@ interface ChatLayoutProps {
   onSelectRecent?: (path: string) => void;
   appVersion?: string;
   userName?: string;
+  userAvatar?: ProfileAvatar;
   onAgentInputChange: (v: string) => void;
   onAgentSend: (opts?: { mentions?: import("@/types").Mention[] }) => void;
   onAgentRunPrompt?: (prompt: string) => void;
@@ -218,6 +220,7 @@ export function ChatLayout({
   onSelectRecent,
   appVersion,
   userName,
+  userAvatar,
   onAgentInputChange,
   onAgentSend,
   onAgentRunPrompt,
@@ -628,6 +631,7 @@ export function ChatLayout({
           onRenameConversation={onRenameConversation}
           onOpenSettings={() => setSettingsOpen(true)}
           userName={userName}
+          userAvatar={userAvatar}
           providerLabel={PROVIDER_LABELS[provider]}
           modelLabel={selectedModel ? shortModelName(selectedModel) : undefined}
           providerLocal={isLocalProvider(provider)}

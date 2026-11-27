@@ -59,6 +59,7 @@ const en = {
     releaseNotes: "Release notes",
     privacyPolicy: "Privacy policy",
     sourceCode: "Source code",
+    profile: "Profile",
   },
   glitch: {
     report: "Report a glitch",

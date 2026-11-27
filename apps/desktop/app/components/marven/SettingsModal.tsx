@@ -36,6 +36,7 @@ import {
 import { readStats as readInlineStats, resetStats as resetInlineStats } from "@/lib/completion/telemetry";
 import type { VoiceState } from "@/hooks/useVoice";
 import { TerminalSettingsPage } from "@/app/components/marven/TerminalSettingsPage";
+import { ProfileSettingsPage } from "@/app/components/marven/ProfileSettingsPage";
 
 // Loaded on demand: it pulls in the Mini Me art (~530 KB of JSON) that nothing else in this window needs.
 const MiniMeSettingsPage = dynamic(() => import("./minime/MiniMeSettingsPage").then((m) => m.MiniMeSettingsPage), { ssr: false });
@@ -150,7 +151,7 @@ const SECTIONS: Array<{
   heading: "workspace" | "integrations" | "customization" | "help";
   items: SettingsPage[];
 }> = [
-  { heading: "workspace", items: ["general", "memory"] },
+  { heading: "workspace", items: ["profile", "general", "memory"] },
   { heading: "integrations", items: ["ai-backends", "keys-ai", "keys-voice", "connectors", "browser"] },
   { heading: "customization", items: ["shortcuts", "keyboard", "terminal", "templates", "mini-me"] },
   { heading: "help", items: ["commands", "about"] },
@@ -2730,6 +2731,9 @@ export function SettingsModal({
             )}
           </div>
         )}
+
+        {/* ── Profile ── */}
+        {activePage === "profile" && <ProfileSettingsPage />}
 
         {/* ── Terminal ── */}
         {activePage === "terminal" && <TerminalSettingsPage />}

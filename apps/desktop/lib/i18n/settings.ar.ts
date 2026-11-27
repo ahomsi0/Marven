@@ -14,6 +14,7 @@ const settingsAr = {
     help: "المساعدة",
   },
   pages: {
+    profile: { title: "الملف الشخصي", description: "اسمك وصورتك كما يعرضهما Marven. يُحفظان على هذا الحاسوب." },
     general: { title: "عام", description: "نظرة عامة والتفضيلات الأساسية لـ Marven." },
     memory: {
       title: "الذاكرة",
@@ -351,6 +352,23 @@ const settingsAr = {
     url: "الرابط",
     editAria: "تعديل الاختصار",
     deleteAria: "حذف الاختصار",
+  },
+  profile: {
+    previewHint: "هكذا تظهر في الشريط الجانبي.",
+    name: "الاسم",
+    nameHint: "ما يناديك به Marven.",
+    namePlaceholder: "اسمك",
+    nameEmpty: "اكتب اسمًا لحفظه.",
+    picture: "الصورة",
+    pictureHint: "الحرف الأول من اسمك على لون، أو وجه ميني مي، أو صورة.",
+    initial: "الحرف الأول",
+    miniMe: "ميني مي",
+    photo: "صورة",
+    colour: "اللون",
+    miniMeHint: "وجه ميني مي بالمظهر الذي اخترته له في الإعدادات ← ميني مي.",
+    photoHint: "تُقصّ إلى مربع وتُصغَّر، وتبقى على هذا الحاسوب فقط.",
+    replacePhoto: "اختر صورة أخرى",
+    photoError: "تعذّرت قراءة هذه الصورة. جرّب PNG أو JPEG أو WebP.",
   },
   terminal: {
     preview: "معاينة",

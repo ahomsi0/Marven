@@ -61,6 +61,7 @@ const ar: Shape<typeof en> = {
     releaseNotes: "ملاحظات الإصدار",
     privacyPolicy: "سياسة الخصوصية",
     sourceCode: "الشيفرة المصدرية",
+    profile: "الملف الشخصي",
   },
   glitch: {
     report: "الإبلاغ عن خلل",

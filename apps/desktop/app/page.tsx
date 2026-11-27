@@ -53,6 +53,7 @@ import {
 } from "@/lib/conversationSync";
 import {
   loadProfile,
+  PROFILE_CHANGED_EVENT,
   saveProfile,
   loadMemories,
 } from "@/lib/userProfile";
@@ -543,6 +544,13 @@ export default function Home() {
       }, 300);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Settings → Profile saves your name and picture; show them everywhere at once.
+  useEffect(() => {
+    const onProfileChanged = () => setUserProfile(loadProfile());
+    window.addEventListener(PROFILE_CHANGED_EVENT, onProfileChanged);
+    return () => window.removeEventListener(PROFILE_CHANGED_EVENT, onProfileChanged);
   }, []);
 
   // Settings → Memory, the toast's Undo and the agent's remember tool change
@@ -2753,6 +2761,7 @@ export default function Home() {
         onSelectRecent={openWorkspaceFolder}
         appVersion={packageJson.version}
         userName={userProfile?.name}
+        userAvatar={userProfile?.avatar}
         onAgentInputChange={setAgentInput}
         onAgentSend={(opts) => { agentStreamSend(agentInput, { attachments: agentAttachments, mentions: opts?.mentions }); setAgentInput(""); setAgentAttachments([]); }}
         onAgentRunPrompt={(prompt) => {

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GearIcon, GlobeIcon, HelpCircleIcon } from "./Icons";
+import { GearIcon, GlobeIcon, HelpCircleIcon, UserIcon } from "./Icons";
+import { ProfileAvatar } from "./ProfileAvatar";
+import type { ProfileAvatar as Avatar } from "@/lib/userProfile";
+import { openSettingsPage } from "@/lib/settingsNav";
 import { REPO_URL } from "@/lib/glitchReport";
 import { useT } from "@/lib/i18n";
 import { formatBinding, isMacPlatform, loadKeybindings } from "@/lib/keybindings";
@@ -9,6 +12,8 @@ import { LanguageModal } from "./LanguageModal";
 
 interface AccountBarProps {
   userName?: string;
+  /** Your picture (Settings → Profile); unset shows your initial. */
+  userAvatar?: Avatar;
   providerLabel?: string;
   /** The active model, short form ("Llama 3.3 70B"). */
   modelLabel?: string;
@@ -42,7 +47,7 @@ function openExternal(url: string) {
  * that are active, with a gear: it opens a short menu (Settings, Language,
  * help) with the release notes, privacy policy and source links underneath.
  */
-export function AccountBar({ userName, providerLabel, modelLabel, providerLocal, appVersion, onOpenSettings }: AccountBarProps) {
+export function AccountBar({ userName, userAvatar, providerLabel, modelLabel, providerLocal, appVersion, onOpenSettings }: AccountBarProps) {
   const [open, setOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [settingsKey, setSettingsKey] = useState("");
@@ -50,7 +55,6 @@ export function AccountBar({ userName, providerLabel, modelLabel, providerLocal,
   const { t } = useT();
 
   const name = userName?.trim() || t("account.you");
-  const initial = name.charAt(0).toUpperCase();
   const using = [providerLabel, modelLabel].filter(Boolean).join(" · ");
 
   useEffect(() => {
@@ -84,6 +88,21 @@ export function AccountBar({ userName, providerLabel, modelLabel, providerLocal,
           role="menu"
           className="absolute bottom-full start-2 end-2 z-50 mb-1.5 rounded-xl border border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] p-[5px] shadow-2xl"
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              // Open Settings the usual way (a window in chat mode, a tab in agent mode),
+              // then ask for the Profile page: Settings picks the request up as it opens.
+              onOpenSettings();
+              openSettingsPage({ page: "profile" });
+            }}
+            className={MENU_ITEM}
+          >
+            <UserIcon className={MENU_ICON} />
+            {t("account.profile")}
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -138,9 +157,7 @@ export function AccountBar({ userName, providerLabel, modelLabel, providerLocal,
             : "border-[var(--m-border-subtle)] bg-[var(--m-surface-2)] hover:border-[var(--m-border)] hover:bg-[var(--m-surface-3)]"
         }`}
       >
-        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--m-accent-soft)] text-[13px] font-semibold text-[var(--m-accent)]">
-          {initial}
-        </span>
+        <ProfileAvatar avatar={userAvatar} name={name} size={30} />
         <span className="flex min-w-0 flex-1 flex-col gap-px">
           <span className="truncate text-[13.5px] font-medium leading-tight text-[var(--m-text)]">{name}</span>
           {using && (

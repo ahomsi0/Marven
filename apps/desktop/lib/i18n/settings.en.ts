@@ -13,6 +13,7 @@ const settingsEn = {
     help: "Help",
   },
   pages: {
+    profile: { title: "Profile", description: "Your name and picture, as Marven shows them. Kept on this computer." },
     general: { title: "General", description: "Overview and basic preferences for Marven." },
     memory: {
       title: "Memory",
@@ -347,6 +348,23 @@ const settingsEn = {
     url: "URL",
     editAria: "Edit shortcut",
     deleteAria: "Delete shortcut",
+  },
+  profile: {
+    previewHint: "How you appear in the sidebar.",
+    name: "Name",
+    nameHint: "What Marven calls you.",
+    namePlaceholder: "Your name",
+    nameEmpty: "Type a name to save it.",
+    picture: "Picture",
+    pictureHint: "Your initial on a colour, your Mini Me's face, or a photo.",
+    initial: "Initial",
+    miniMe: "Mini Me",
+    photo: "Photo",
+    colour: "Colour",
+    miniMeHint: "Your Mini Me's face, in the look you gave him in Settings → Mini Me.",
+    photoHint: "Cropped to a square and kept small, on this computer only.",
+    replacePhoto: "Choose another photo",
+    photoError: "That image couldn't be read. Try a PNG, JPEG or WebP.",
   },
   terminal: {
     preview: "Preview",

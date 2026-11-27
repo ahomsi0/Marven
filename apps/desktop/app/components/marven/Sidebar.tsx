@@ -4,6 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import type { Conversation, ConversationFolder } from "@/types";
 import { MarvenLogo } from "./MarvenLogo";
 import { AccountBar } from "./AccountBar";
+import type { ProfileAvatar as Avatar } from "@/lib/userProfile";
 import { ChatBubbleIcon, CodeIcon, DotsIcon, PencilIcon, PinIcon, SidebarIcon, TrashIcon } from "./Icons";
 import { filterConversations } from "@/lib/chatHelpers";
 import { useT } from "@/lib/i18n";
@@ -20,6 +21,7 @@ interface SidebarProps {
   onRenameConversation: (id: string, name: string) => void;
   onOpenSettings: () => void;
   userName?: string;
+  userAvatar?: Avatar;
   providerLabel?: string;
   /** The active model, short form ("Llama 3.3 70B"). */
   modelLabel?: string;
@@ -250,6 +252,7 @@ export function Sidebar({
   onRenameConversation,
   onOpenSettings,
   userName,
+  userAvatar,
   providerLabel,
   modelLabel,
   providerLocal,
@@ -908,6 +911,7 @@ export function Sidebar({
           {/* Account + settings + glitch report at bottom */}
           <AccountBar
             userName={userName}
+            userAvatar={userAvatar}
             providerLabel={providerLabel}
             modelLabel={modelLabel}
             providerLocal={providerLocal}
